@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-160
 title: Observability and Audit Log
-version: 1.0.0
+version: 1.1.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -875,6 +875,18 @@ Required observations:
 
 **OBS-GDS-003:** Handoff idempotent replay that returns existing completion is `SUCCESS`/`NOOP` semantic and MUST not increment the successful-completion business effect twice.
 
+### 28.1 Inventory adjustment reason code
+
+The existing authorized Administrator inventory-capacity adjustment operation (`SPEC-110 API-ADM-GDS-005`, required Capability `goods_inventory.manage`) has exactly one canonical reason code:
+
+```text
+ADMINISTRATIVE_CAPACITY_ADJUSTMENT
+```
+
+**OBS-GDS-004:** For `API-ADM-GDS-005`, the server MUST derive `reason_code = ADMINISTRATIVE_CAPACITY_ADJUSTMENT` and persist it in the same-transaction Audit Event together with the existing safe before/after counters and signed adjustment quantity required by `OBS-GDS-002` / §35 / §37. It MUST NOT be a client-supplied field, a client-selectable enum, or free text.
+
+**OBS-GDS-005:** `ADMINISTRATIVE_CAPACITY_ADJUSTMENT` is the only reason code defined for `API-ADM-GDS-005`. This rule MUST NOT add a business purpose, Capability, Domain State, UI control, or API field, and MUST NOT define additional reason values for future cases; any such value requires its own Canonical owner change.
+
 ## 29. Notification / Resend observability
 
 Canonical events:
@@ -1133,7 +1145,7 @@ Canonical safe change summary:
 | Refund | Refund Record state, requested amount/currency, provider result category |
 | QR rotation | key version, token relation state `ACTIVE/REVOKED`; raw token/digest absent |
 | Reservation cancellation | Reservation state, Ticket state, Slot state (`SOLD` remains) |
-| Inventory adjustment | held/committed/available safe counters, signed adjustment quantity, reason code |
+| Inventory adjustment | held/committed/available safe counters, signed adjustment quantity, fixed reason code `ADMINISTRATIVE_CAPACITY_ADJUSTMENT` |
 | Goods Handoff | `PENDING -> COMPLETED`, quantity, Goods Item ref |
 | Check-in | Ticket state transition and check-in purpose/outcome only |
 | Public Content | Publication State and changed field names; body content not copied |
@@ -1205,7 +1217,7 @@ The following MUST be auditable for success, authenticated rejection, and import
 | full Refund provider result | Refund | provider result, Unknown/reconciled state |
 | QR token rotation | Entry/Karaoke Ticket | old/new key version/state; no token |
 | Karaoke Reservation cancellation | Reservation | Ticket + Slot safe state refs |
-| Goods Inventory adjustment | Goods | before/after counters + reason |
+| Goods Inventory adjustment | Goods | before/after counters + fixed reason code `ADMINISTRATIVE_CAPACITY_ADJUSTMENT` |
 | Goods Handoff completion | Goods Handoff / Item | Staff/Admin actor, outcome |
 | Entry Check-in | Entry Ticket | Staff actor, outcome, check-in ref if available |
 | Karaoke Check-in | Karaoke Ticket | Staff actor, outcome, time-window result |
@@ -1787,7 +1799,7 @@ Can determine:
 - effective Role/Capability
 - Goods target ref
 - before/after safe counters
-- adjustment reason
+- fixed adjustment reason code `ADMINISTRATIVE_CAPACITY_ADJUSTMENT` (`API-ADM-GDS-005`)
 - resulting consistency state
 
 ### 56.8 Notification not sent
@@ -1912,7 +1924,7 @@ Implementation MUST satisfy all of the following.
 26. full Refund request/result is auditable without duplicate Provider side effects.
 27. QR rotation is auditable without raw QR/token/digest.
 28. Karaoke Reservation cancellation is auditable and records that Slot remains `SOLD` where relevant.
-29. Goods Inventory adjustment is auditable with safe before/after counters.
+29. Goods Inventory adjustment is auditable with safe before/after counters and fixed reason code `ADMINISTRATIVE_CAPACITY_ADJUSTMENT`.
 30. Goods Handoff completion is auditable.
 31. Entry/Karaoke Check-in is auditable and conflict loser does not become second business effect.
 32. Public Content publish/archive is auditable without copying content body.
