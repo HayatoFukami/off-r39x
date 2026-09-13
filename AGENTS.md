@@ -5,7 +5,7 @@
 - This revision is specification-only. The tracked project content is `docs/specs/` (21 Markdown specifications) plus `LICENSE`; there is no application source, `package.json`, lockfile, test configuration, CI workflow, formatter/linter configuration, or repository-local OpenCode config.
 - No build, lint, typecheck, or test command is currently executable here. Do not invent commands or report the future pipeline described in `SPEC-180` as having run.
 - `SPEC-010`, `SPEC-180`, and `SPEC-190` describe the planned TypeScript/pnpm monorepo and deployment layout; their `apps/`, `packages/`, `tests/`, and `scripts/` paths do not exist yet.
-- All 21 current specifications are `provisional` version `1.0.0`. Treat `reviews/specification-review/`, when present, as generated review evidence rather than canonical specification.
+- The 21 specifications are `provisional` and use mixed semver versions `1.0.0`–`1.3.0` at HEAD `385127c` (for example `SPEC-130` is `1.2.0` and `SPEC-160` is `1.3.0`); pin behavior to the current canonical text rather than assuming a single version. Treat `reviews/specification-review/`, when present, as generated review evidence rather than canonical specification.
 
 ## Specification Source Of Truth
 
@@ -13,8 +13,8 @@
 - For an implementation task, read `SPEC-000`, the target behavior's Canonical Owner, that owner's `depends_on`, and any explicitly named specifications. Use `SPEC-NNN` identifiers when cross-referencing; do not duplicate another specification's detailed rules.
 - Formal specification filenames use `NNN-kebab-case-name.md` and frontmatter must retain `spec_id`, English `title`, semver `version`, `status`, `depends_on`, and `related_specs`. A feature task must not rewrite specifications unless it explicitly includes a specification revision.
 - Never resolve a specification conflict silently. Record the required change in the affected specification using the UCR format from `SPEC-000` and keep implementation aligned with the current canonical text.
-- The unresolved UCRs are `UCR-130-001` through `UCR-130-006`, `UCR-150-001` through `UCR-150-002`, and `UCR-170-001`. They are not implementation contracts: do not copy their proposed endpoints, capabilities, operation IDs, indexes, or recovery commands into code.
-- Before implementing the affected flows, canonicalize capability semantics in `SPEC-060`, handoff semantics in `SPEC-130`, and API, operation-ID, and recovery contracts in `SPEC-110`, then propagate the accepted contracts to dependent specifications and tests.
+- UCR status at HEAD `385127c`: `UCR-130-001`, `UCR-130-002`, `UCR-130-003`, `UCR-130-004`, `UCR-130-006`, `UCR-150-001`, `UCR-150-002`, and `UCR-170-001` are incorporated into the canonical specifications and are implementation contracts. `UCR-130-005` remains `DEFERRED_NONBLOCKING` pending actual query plan, selectivity, and data shape; do not add its proposed indexes speculatively.
+- The accepted flows are canonical: capability semantics in `SPEC-060`, handoff and admin semantics in `SPEC-130`, and API, operation-ID, and recovery contracts in `SPEC-110` (with `SPEC-120` for notification recovery). Reference those canonical rules directly; do not copy UCR proposals or add UCR-only endpoints, capabilities, operation IDs, indexes, or recovery commands.
 
 ## Non-Negotiable Boundaries
 
