@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-130
 title: Admin and Staff Specification
-version: 1.1.0
+version: 1.2.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -118,13 +118,23 @@ related_specs:
 
 `SPEC-010`, `SPEC-040`, `SPEC-050` はSystem Invariant / User Flow / 一般利用者Page境界のTraceability上強く関連するが、本書の入力として直接再定義しないため `related_specs` とする。
 
-### 3.1 上流不足の扱い
+### 3.1 上流契約の反映
 
-本書作成時点で、`SPEC-020` / `SPEC-060` が要求する一部Administrator / Staff UIを完成させるために必要なserver operationまたはquery contractが `SPEC-110` に十分定義されていない領域を確認した。
+本書作成時点で不足していたAdministrator / Staff UI向けserver operation / query contractは、`SPEC-060 v1.1.0`、`SPEC-110 v1.1.0`、`SPEC-120 v1.1.0` へCanonical化された。本書はそれらをexactに参照し、画面都合で別endpointを発明しない。正確なOperation IDは `SPEC-110` / `SPEC-120` がCanonical Ownerであり、本書はHTTP Method、Route、Operation ID、Zod schema、HTTP Status、DB transaction、lock、SQL、Transport Idempotency contractを再定義しない。
 
-本書はその不足を画面都合で別endpointとして発明しない。第36章のUpstream Change Requestに記録し、対象UCRがCanonical upstreamへ反映されるまで、該当mutation / previewを実装済みとして扱ってはならない。
+| 領域 | Capability Owner | API Canonical evidence |
+|---|---|---|
+| Entry Offering販売条件管理 | `SPEC-060` `entry_sales.manage` | `SPEC-110` `API-ADM-ENT-SALES-001〜003`（§48.1） |
+| Karaoke Sales Configuration管理 | `SPEC-060` `karaoke_sales.manage` | `SPEC-110` `API-ADM-KRK-SALES-001〜003`（§48.2） |
+| Staff Goods Handoff preview / normal completion | `SPEC-060` `goods_handoff.execute` | `SPEC-110` `API-STF-GDS-002` / `API-STF-GDS-001`（§40） |
+| Admin Goods Handoff read / explicit completion | `SPEC-060` `goods_handoff.manage` | `SPEC-110` `API-ADM-HOF-001〜003`（§48.4） |
+| Admin authoritative read（Slot / Scope / Goods / Event / FAQ / Announcement） | `karaoke_slots.manage` / `goods_inventory.manage` / `public_content.manage` | `SPEC-110` `API-ADM-KRK-008〜011`, `API-ADM-GDS-002〜003`, `API-ADM-CNT-001/003/004/009/010` |
+| Admin list filter / sort | `SPEC-110` query allowlist owner | `SPEC-110` §41 / §48.3 |
+| Operation ID | `SPEC-110` | §41 / §46〜§48 の各canonical route |
+| Unknown Result reconciliation | `SPEC-110` | `API-ADM-REC-006`（`SPEC-120 §36.2` のstate / lock / provider / error contractを再利用） |
+| Manual recovery command | `SPEC-110` | `API-ADM-REC-003〜007`（§48.5） |
 
-`UCR-130-003` については、本改訂で **Administrator Goods Handoff operationの業務意味・表示条件・確認・禁止条件を本書のCanonical responsibilityとして確定する**。一方、Staff preview、Administrator list / detail read、および本書で確定したAdministrator commandをHTTPへ写像する契約は引き続き `SPEC-110` のCanonical responsibilityであり、本書はHTTP Method、Route、Operation ID、Zod schema、HTTP Status、DB transaction、lock、SQL、Transport Idempotency contractを新設しない。
+`UCR-130-005` だけは `SPEC-100` の `DEFERRED_NONBLOCKING` として残す（operational indexは本書の対象外）。
 
 ---
 
@@ -292,13 +302,13 @@ Staff Shellは操作速度を優先し、Primary Navigationを次の4項目と�
 | `PG-ADM-003` | `/admin/orders/{order_ref}` | Administrator | `orders.manage.read` | Order / Payment / Refund detail |
 | `PG-ADM-004` | `/admin/entry-tickets` | Administrator | `tickets.manage.read` | Entry Ticket list |
 | `PG-ADM-005` | `/admin/entry-tickets/{ticket_ref}` | Administrator | `tickets.manage.read` | Ticket / Check-in / QR operational detail |
-| `PG-ADM-006` | `/admin/sales/entry` | Administrator | management capability per UCR-130-001 | Entry Ticket Offering sales configuration |
+| `PG-ADM-006` | `/admin/sales/entry` | Administrator | `entry_sales.manage` | Entry Ticket Offering sales configuration |
 | `PG-ADM-007` | `/admin/karaoke/slots` | Administrator | `karaoke_slots.manage` | Slot schedule / list |
 | `PG-ADM-008` | `/admin/karaoke/slots/generate` | Administrator | `karaoke_slots.manage` | Slot batch generation |
 | `PG-ADM-009` | `/admin/karaoke/slots/{slot_ref}` | Administrator | `karaoke_slots.manage` | Slot detail / edit / stop / resume |
 | `PG-ADM-010` | `/admin/karaoke/reservations` | Administrator | `karaoke_reservations.manage.read` | Reservation list |
 | `PG-ADM-011` | `/admin/karaoke/reservations/{reservation_ref}` | Administrator | `karaoke_reservations.manage.read` | Reservation detail / allowed recovery |
-| `PG-ADM-012` | `/admin/sales/karaoke` | Administrator | management capability per UCR-130-001 | Karaoke sales configuration |
+| `PG-ADM-012` | `/admin/sales/karaoke` | Administrator | `karaoke_sales.manage` | Karaoke sales configuration |
 | `PG-ADM-013` | `/admin/goods` | Administrator | `goods_inventory.manage` | Goods / Inventory list |
 | `PG-ADM-014` | `/admin/goods/{goods_ref}` | Administrator | `goods_inventory.manage` | Goods detail / inventory adjustment |
 | `PG-ADM-015` | `/admin/goods-handoffs` | Administrator | `goods_handoff.manage` | Handoff list / status |
@@ -314,7 +324,7 @@ Staff Shellは操作速度を優先し、Primary Navigationを次の4項目と�
 | `PG-ADM-025` | `/admin/notifications/{notification_ref}` | Administrator | `recovery.review` | Notification detail / attempts / recovery |
 | `PG-ADM-026` | `/admin/access-denied` | Authenticated User | none | Admin access denied |
 
-`PG-ADM-006`, `PG-ADM-012`, `PG-ADM-015`, `PG-ADM-016` は上流API不足を第36章UCRへ記録する。`PG-ADM-015` / `PG-ADM-016` のAdministrator Goods Handoff business semanticsは本書§30でCanonical化するが、read / commandのHTTP contractが `SPEC-110` へ反映される前にBrowserからDBへ直接アクセスしたり、仮endpointを発明して穴埋めしてはならない。
+`PG-ADM-006` / `PG-ADM-012` は `SPEC-110` の `API-ADM-ENT-SALES-001〜003` / `API-ADM-KRK-SALES-001〜003` を使用する（Capability `entry_sales.manage` / `karaoke_sales.manage`）。`PG-ADM-015` / `PG-ADM-016` のAdministrator Goods Handoff business semanticsは本書§30でCanonical化し、read / commandは `SPEC-110` `API-ADM-HOF-001〜003` を使用する。BrowserからDBへ直接アクセスしたり、仮endpointを発明して穴埋めしてはならない。
 
 ## 12. Staff Page Catalog
 
@@ -418,10 +428,10 @@ Capabilityに応じて次を表示する。
 
 | Card | Data source | Display |
 |---|---|---|
-| Orders requiring review | `API-ADM-ORD-001` のreview filter（UCR-130-004 query contract） | なし / あり / 複数あり |
+| Orders requiring review | `API-ADM-ORD-001` `state=REVIEW_REQUIRED`（`SPEC-110 §48.3.1`） | なし / あり / 複数あり |
 | Recent confirmed orders | `API-ADM-ORD-001` | recent preview |
-| Upcoming Karaoke | `API-ADM-KRK-001` + Slot page read contract | upcoming preview |
-| Pending Goods Handoff | Admin Handoff read contract（UCR-130-003） | pending presence |
+| Upcoming Karaoke | `API-ADM-KRK-001` + `API-ADM-KRK-008`（`SPEC-110 §48.3`） | upcoming preview |
+| Pending Goods Handoff | `API-ADM-HOF-001`（`SPEC-110 §48.4`） | pending presence |
 | Consistency Reviews | `API-ADM-REC-001` | unresolved presence |
 | Failed / blocked notifications | `API-ADM-EML-001` | `FAILED_RETRYABLE`, `BLOCKED`, `UNKNOWN_RESULT` presence |
 
@@ -473,6 +483,7 @@ List rowから許可するActionはdetail遷移のみとする。Refundをlist r
 
 - read: `API-ADM-ORD-002` `GET /api/v1/admin/orders/{order_ref}`
 - full refund: `API-ADM-PAY-001` `POST /api/v1/admin/orders/{order_ref}/refund`
+- explicit recovery read / action: `API-ADM-REC-002`（related Case）および `API-ADM-REC-003` / `API-ADM-REC-004` / `API-ADM-REC-005`（§41.5の共通UI contractを使用）
 
 ### 18.2 Main sections
 
@@ -500,6 +511,7 @@ List rowから許可するActionはdetail遷移のみとする。Refundをlist r
    - requested / provider update / success / failed timestamps
 7. Review
    - `REVIEW_REQUIRED` or related Consistency Review indication
+   - explicit recovery action: current preconditionを満たす場合だけ §41.5 のcanonical operationを候補表示する
 8. Actions
 
 ### 18.3 Refund eligibility display
@@ -847,7 +859,7 @@ Trace: `FR-ADM-009〜015,019〜022`, `KRK-GEN-*`, `KRK-CAN-*`, `KRK-EDT-*`, `API
 
 ### 28.1 API mapping
 
-- goods read: `GET /api/v1/admin/goods`
+- goods read: `API-ADM-GDS-002` `GET /api/v1/admin/goods`
 - inventory read: `API-ADM-GDS-001` `GET /api/v1/admin/goods/inventory`
 
 ### 28.2 Row fields
@@ -879,7 +891,7 @@ only when3値を同一successful response snapshotから取得した場合に限
 
 ### 29.1 Goods edit
 
-`PATCH /api/v1/admin/goods/{goods_ref}` のallowlisted public / sales fieldsだけを編集する。
+`API-ADM-GDS-004` `PATCH /api/v1/admin/goods/{goods_ref}` のallowlisted public / sales fieldsだけを編集する。
 
 - name / description where API allows
 - unit amount / currency where API allows
@@ -891,7 +903,7 @@ Inventoryは同PATCHへ混在させず、専用Inventory Adjustment commandを�
 
 ### 29.2 Inventory Adjustment
 
-`POST /api/v1/admin/goods/{goods_ref}/inventory-adjustments`
+`API-ADM-GDS-005` `POST /api/v1/admin/goods/{goods_ref}/inventory-adjustments`
 
 UIはserver contractが定義するadjustment valueだけを送信し、held / committed counterの直接編集inputを提供しない。
 
@@ -933,7 +945,7 @@ Customer minimal operational summaryは対象受け渡しを識別するため�
 
 List rowから許可するActionはdetail遷移を標準とし、irreversible completionを1-click row actionとして実行しない。
 
-Administrator list readのHTTP contract不足は `UCR-130-003` の未解消部分として `SPEC-110` が解消する。
+Administrator list readのHTTP contractは `SPEC-110` `API-ADM-HOF-001`、detailは `API-ADM-HOF-002`（§48.4）を使用する。
 
 ### 30.2 `PG-ADM-016` Detail
 
@@ -1126,9 +1138,9 @@ FR-STF-* / FR-GDS-014〜015
   -> BR-GDS-010〜013
 ```
 
-Admin read / commandのHTTP contract不足は `UCR-130-003` の未解消部分として `SPEC-110` が解消する。
+Admin readは `SPEC-110` `API-ADM-HOF-001/002`、commandは `API-ADM-HOF-003`（§48.4）を使用する。
 
-Trace: `FR-ADM-016〜017,019〜022`, `FR-GDS-014〜015`, `AR-ROLE-012〜015`, `AR-AZ-015`, `BR-GDS-001〜013`, `INV-010-07,08,10`.
+Trace: `FR-ADM-016〜017,019〜022`, `FR-GDS-014〜015`, `AR-ROLE-012〜015`, `AR-AZ-015`, `BR-GDS-001〜013`, `API-ADM-HOF-001〜003`, `INV-010-07,08,10`.
 
 ---
 
@@ -1165,7 +1177,7 @@ Trace: `FR-ADM-016〜017,019〜022`, `FR-GDS-014〜015`, `AR-ROLE-012〜015`, `A
 
 ### 31.3 API boundary
 
-`SPEC-110` にEntry Offering用Admin mutation contractが存在しないため、UI implementationは `UCR-130-002` のCanonical化を前提とする。BrowserからBusiness Databaseを直接更新してはならない。
+Readは `SPEC-110` `API-ADM-ENT-SALES-001` / `API-ADM-ENT-SALES-002`、updateは `API-ADM-ENT-SALES-003`（§48.1、Capability `entry_sales.manage`）を使用する。BrowserからBusiness Databaseを直接更新してはならない。
 
 ## 32. `PG-ADM-012` Karaoke Sales Configuration
 
@@ -1188,7 +1200,7 @@ Configuration変更は新規availability / purchase startへ反映する。既�
 
 ### 32.3 API boundary
 
-`SPEC-110` のAdmin Karaoke Sales Configuration mutation contract不足は `UCR-130-002` へ記録する。
+Readは `SPEC-110` `API-ADM-KRK-SALES-001` / `API-ADM-KRK-SALES-002`、updateは `API-ADM-KRK-SALES-003`（§48.2、Capability `karaoke_sales.manage`）を使用する。
 
 **ADM-KRK-009:** Sales Configuration編集をSlot individual state editorとして利用しない。
 
@@ -1214,7 +1226,7 @@ ARCHIVED
 
 ### 34.1 API
 
-`PATCH /api/v1/admin/event`
+`API-ADM-CNT-002` `PATCH /api/v1/admin/event`
 
 ### 34.2 Fields
 
@@ -1276,10 +1288,10 @@ Actions:
 
 API mapping:
 
-- `POST /admin/announcements`
-- `PATCH /admin/announcements/{announcement_ref}`
-- `POST /admin/announcements/{announcement_ref}/publish`
-- `POST /admin/announcements/{announcement_ref}/archive`
+- `API-ADM-CNT-011` `POST /admin/announcements`
+- `API-ADM-CNT-012` `PATCH /admin/announcements/{announcement_ref}`
+- `API-ADM-CNT-013` `POST /admin/announcements/{announcement_ref}/publish`
+- `API-ADM-CNT-014` `POST /admin/announcements/{announcement_ref}/archive`
 
 一覧:
 
@@ -1332,9 +1344,9 @@ Trace: `FR-ADM-018〜020,022`, `BR-EVT-001〜004`, `API-ADM-CNT operations`, `DB
 
 ### 37.1 API mapping
 
-- `GET /api/v1/admin/role-assignments`
-- `POST /api/v1/admin/role-assignments`
-- `POST /api/v1/admin/role-assignments/{role_assignment_ref}/deactivate`
+- `API-ADM-ROL-001` `GET /api/v1/admin/role-assignments`
+- `API-ADM-ROL-002` `POST /api/v1/admin/role-assignments`
+- `API-ADM-ROL-003` `POST /api/v1/admin/role-assignments/{role_assignment_ref}/deactivate`
 
 ### 37.2 Visible fields
 
@@ -1460,26 +1472,54 @@ Defaultは `resolved_at IS NULL` に相当するunresolved caseだけを表示�
 
 `recovery.review` はreadだけを許可する。
 
-Mutationは、上流で明示Operationとして既に存在し、そのOperation-specific preconditionを満たす場合だけAction buttonを表示する。
+Mutationは、上流で明示Operationとして存在し、そのOperation-specific preconditionを満たす場合だけAction buttonを表示する。`PG-ADM-023` で候補表示できるrecovery mutationは §41.5 に列挙したcanonical operationだけである。
 
-例:
+- full Refund operation（`API-ADM-PAY-001`）
+- QR token rotation（`API-ADM-TQR-001`）
+- Normal Reservation cancellation（`API-ADM-KRK-007`）
+- Notification retry / cancel（`API-ADM-EML-004` / `API-ADM-EML-005`）
+- operation-specific recovery（`API-ADM-REC-003〜007`、§41.5）
 
-- full Refund operation
-- QR token rotation
-- Normal Reservation cancellation
-- Notification retry / cancel
-
-「任意SQL」「任意state change」「mark fixedだけ」「constraint disable」は提供しない。
+「任意SQL」「任意state change」「mark fixedだけ」「constraint disable」は提供しない。generic `Recover` / `Force Fix` / `Retry Everything` / `Resolve State` controlを提供しない。
 
 ### 41.4 Resolved indication
 
-Caseが他operationにより解消済みと再取得で判明した場合はread-only resolved indicationへ切り替える。BrowserだけでresolvedにするActionは、上流APIが定義しない限り提供しない。
+Caseが他operationにより解消済みと再取得で判明した場合はread-only resolved indicationへ切り替える。BrowserだけでresolvedにするActionは提供しない。post-verification resolutionは `API-ADM-REC-007` だけが提供し、`recovery.review` だけを持つActorへは表示しない。
+
+### 41.5 Explicit recovery command wiring (`API-ADM-REC-003〜007`)
+
+`PG-ADM-023`（Consistency Review detail）と、Order detail §18 / Notification detail §43 の関連sectionは、`API-ADM-ORD-002`（Order）/ `API-ADM-REC-002`（Case）/ `API-ADM-EML-002`（Notification）で再取得したcurrent stateがpreconditionを満たす場合だけ、下記canonical operationをActionとして候補表示する。各commandのbusiness purposeは変更せず、1操作1目的を維持する。
+
+全Action共通UI contract:
+
+- Visibility: active `ADMINISTRATOR` かつ対象Actionのrequired Capability。`recovery.review` だけではmutation Actionを表示しない。
+- Required capability: 下表のCapability（全て `recovery.exception.execute`）。
+- Current-state precondition: 表示 / 実行可否はserver current stateで判定する。Client cache / Case snapshotをAuthorityにしない。
+- Confirmation: 対象Public Reference、current state、operation名とbusiness purpose、`recovery.exception.execute` を使用するhigh-risk Actionであること、success / unknown / conflictの扱い、explicit Cancel / Confirmを表示する。
+- Submitting: submit中は同Actionをdisabledとし、duplicate click / blind再送 / 別target送信をしない。
+- Success: server responseのcanonical resultだけをsuccess表示に使う。unknown / pending / `REVIEW_REQUIRED` をsuccessにしない。
+- Conflict (`409 STATE_CONFLICT` / `409 CONSISTENCY_REVIEW_REQUIRED`): Actionを閉じ、current detailをreloadする。自動再実行しない。
+- Unknown / temporary failure (`503 TEMPORARY_UNAVAILABLE` / `503 DATABASE_TEMPORARY_FAILURE` / provider temporary): 結果を推測せずcurrent detailをreloadし、blind再送しない。
+- Reload: 常にserver current stateを再取得し、stale preconditionでの再実行を禁止する。
+- Data boundary: provider raw body、Secret、raw QR、full Email、Internal ID、unrelated Customer historyを表示しない。
+
+| Action | Operation ID | Business purpose | 表示位置 | Candidate precondition | Success display |
+|---|---|---|---|---|---|
+| Checkout Attempt result reconcile | `API-ADM-REC-003` | Unknown Checkout Attemptをsame cause / same Stripe keyでreconcile | Order detail（Checkout Attempt section）/ `PG-ADM-023` | Attempt `creation_result=UNKNOWN` unresolved、Order `PREPARED\|REVIEW_REQUIRED` | exactly 1 Active CheckoutまたはProvider非作成確定 |
+| Payment Confirmation reconcile | `API-ADM-REC-004` | paid authorityとconfirmation未成立のOrderを同一Business Confirmation transactionで確定 | Order detail / `PG-ADM-023` | Order `REVIEW_REQUIRED` または paid-unconfirmed | Order `CONFIRMED` または未支払terminal |
+| Refund result reconcile | `API-ADM-REC-005` | existing Refund Recordへprovider resultをcorrelate | Order detail Refund section / `PG-ADM-023` | live full Refund `REQUESTED\|PENDING\|REVIEW_REQUIRED` | Refund state確定（`SUCCEEDED` / `FAILED` / 継続pending） |
+| Notification unknown result reconcile | `API-ADM-REC-006` | same Attempt / provider keyのresultをlocal persistenceへ反映 | Notification detail §43 / `PG-ADM-023` | Job `UNKNOWN_RESULT` | `SENT` / `CLOSED` またはretryableへ復帰 |
+| Consistency Review post-verification resolve | `API-ADM-REC-007` | current authority再検証後のみCaseをresolve | `PG-ADM-023` | Case unresolved + Authority / Invariant再検証成立 | `case_ref` + `resolved_at` |
 
 **ADM-REC-001:** Consistency ReviewをOrder/Notificationの正常成功badgeへ混ぜない。
 
 **ADM-REC-002:** `recovery.exception.execute` はReview画面から任意mutationを生成する権限ではない。
 
-Trace: `FR-ADM-021〜022`, `BR-ORD-010`, `PAY-REC-*`, `TQR-REC-*`, `KRK-REC-*`, `API-REC-001`, `DB-XFN-002〜003`, `INV-010-01,07,08,10`.
+**ADM-REC-003:** §41.5 のActionはbusiness purposeごとに分離し、generic recovery / force-fix / retry-everything / state resolve controlへ統合しない。
+
+**ADM-REC-004:** `API-ADM-REC-003〜007` のいずれもprovider raw body、Secret、raw QR、full Email、Internal IDをUIへ表示せず、success / unknown / conflictを§56のclassificationで区別する。
+
+Trace: `FR-ADM-021〜022`, `BR-ORD-010`, `PAY-REC-*`, `TQR-REC-*`, `KRK-REC-*`, `API-REC-001`, `API-ADM-REC-003〜007`, `DB-XFN-002〜003`, `INV-010-01,07,08,10`.
 
 ---
 
@@ -1543,6 +1583,7 @@ Email全文、recipient Email全文、render_context全文、provider bodyをrow
 - attempts: `API-ADM-EML-003`
 - retry: `API-ADM-EML-004`
 - cancel: `API-ADM-EML-005`
+- unknown result reconcile: `API-ADM-REC-006`（§41.5、`SPEC-120 §36.2` のstate / lock / provider / error contractを再利用）
 
 ### 43.2 Detail fields
 
@@ -1649,6 +1690,10 @@ Confirmation:
 | `NOTIFICATION_NOT_RETRYABLE_NOW` | failure原因修復が必要 |
 | `NOTIFICATION_RECIPIENT_UNAVAILABLE` | recipient recovery条件不足 |
 | `EMAIL_PROVIDER_TEMPORARY_FAILURE` | Provider障害。Domain stateを成功へ変えない |
+
+### 43.8 Unknown Result reconciliation action
+
+`API-ADM-REC-006` はJob `UNKNOWN_RESULT` だけに候補表示する。`NOTIFICATION_PROVIDER_RESULT_UNKNOWN` / `UNKNOWN_RESULT` を理由にblind resend / new provider key / recipient変更 / cancelを提供しない。§41.5 の共通UI contractを適用し、successは `SENT` / `CLOSED` または上流が許すretryable復帰だけを表示し、conflict / unknown時はcurrent Notification detailをreloadする。
 
 **ADM-EML-001:** `SENT` Notificationのmanual resend UIを作らない。
 
@@ -1816,7 +1861,7 @@ Canonical targetはGoods Order Item Public Referenceとする。Internal IDを�
 - Handoff `PENDING|COMPLETED|VOID`
 - Customerの最小operational reference
 
-この事前確認read operationは `SPEC-110` に不足しているため `UCR-130-003` の未解消API項目として記録する。Staff previewの業務表示要件は本節が所有するが、HTTP endpoint、Operation ID、response schemaを本書で発明しない。
+この事前確認read operationは `SPEC-110` `API-STF-GDS-002`（§40）がCanonical Ownerとして定義する。Staff previewの業務表示要件は本節が所有するが、HTTP endpoint、Operation ID、response schemaは `SPEC-110` をexactに参照し、本書で発明しない。
 
 Previewは対象Handoffの受け渡し判断に必要な情報だけを返す前提とし、raw Email、Internal ID、raw QR token、Customer全Order履歴、unrelated Ticket / Karaoke / Goods履歴をStaffへ表示しない。
 
@@ -1854,7 +1899,7 @@ Dialog:
 
 **STF-GDS-005:** Staff Handoff preview / resultは対象受け渡しに必要な最小情報へ制限し、Customer全履歴、raw Email、Internal ID、raw QR tokenを返すことを前提にしてはならない。
 
-Trace: `FR-STF-001〜016`, relevant `FR-GDS-*`, `AR-ROLE-012〜015`, `TQR-CHK-*`, `TQR-OUT-*`, `KRK-CHK-*`, `BR-CHK-*`, `BR-GDS-010〜013`, `API-STF-CHK-001〜002`, `API-STF-GDS-001`, `INV-010-05,08,10`.
+Trace: `FR-STF-001〜016`, relevant `FR-GDS-*`, `AR-ROLE-012〜015`, `TQR-CHK-*`, `TQR-OUT-*`, `KRK-CHK-*`, `BR-CHK-*`, `BR-GDS-010〜013`, `API-STF-CHK-001〜002`, `API-STF-GDS-001〜002`, `INV-010-05,08,10`.
 
 ---
 
@@ -1881,7 +1926,7 @@ Default `limit` はAPI default 30を使用する。
 
 ## 51. Canonical operational filter requirements
 
-`SPEC-110` が各Admin listの詳細query allowlistを完全には定義していないため、本章は**UIに必要なfilter semantics**をCanonicalに決定し、API query contract追加を `UCR-130-004` へ要求する。
+本章はUIに必要なfilter semanticsをCanonicalに定義し、API query allowlist / canonical sortは `SPEC-110 §48.3` のZod schemaをexactに参照する。本章のUI filterはそのallowlist parameterだけを送出し、任意column / raw SQL / arbitrary sort / client-side全件filterを提供しない。`SPEC-110 §48.3` がCanonical sort tupleのOwnerであり、本書はsort tupleを再定義しない。
 
 ### 51.1 Order
 
@@ -2084,6 +2129,9 @@ Public Reference全文の再入力等のtyped confirmationは標準必須とし�
 | Publish / archive | 対象editor/listでserver state再取得 | local unsaved dataを自動上書きせずconflict表示 |
 | Role grant / revoke | `PG-ADM-021` listを再取得 | listを再取得しduplicate / last-admin / stale state表示 |
 | Notification retry / cancel | `PG-ADM-025` detailを再取得 | 同detailでcanonical Notification / Processing State表示 |
+| Recovery: Checkout / Payment / Refund reconcile（`API-ADM-REC-003〜005`） | 対象Order detail / `PG-ADM-023` に留まりcurrent stateとresult classificationを再取得 | 同detailを再取得。stale / unknownなら自動再送せず§41.5に従う |
+| Recovery: Notification unknown result reconcile（`API-ADM-REC-006`） | `PG-ADM-025` detail / `PG-ADM-023` に留まりDomain / Processing Stateを再取得 | 同detailを再取得。`NOTIFICATION_PROVIDER_RESULT_UNKNOWN` はblind再送しない |
+| Recovery: Consistency Review post-verification resolve（`API-ADM-REC-007`） | `PG-ADM-023` でCase resolved indicationを再取得 | 同detailでcurrent source state / Review表示 |
 | Staff Check-in | result pageへtransient遷移 | canonical outcome result page。Auth denialのみgateへ |
 | Goods Handoff completion | `PG-STF-007` resultへ | target pageへ戻りserver summary再resolve |
 
@@ -2281,27 +2329,27 @@ Trace: `FR-STF-016`, `FR-XFN-004,017,033`, `AR-ROLE-015`, `TQR-SEC-*`, `EML-SEC-
 |---|---|---|---|
 | `PG-ADM-001` | existing Admin lists / previews | none | per-card capability |
 | `PG-ADM-002` | `API-ADM-ORD-001` | none | `orders.manage.read` |
-| `PG-ADM-003` | `API-ADM-ORD-002` | `API-ADM-PAY-001` | read + `recovery.exception.execute` for refund |
+| `PG-ADM-003` | `API-ADM-ORD-002` | `API-ADM-PAY-001`; explicit recovery `API-ADM-REC-003〜005`（§41.5） | read + `recovery.exception.execute` |
 | `PG-ADM-004` | `API-ADM-TKT-001` | none | `tickets.manage.read` |
 | `PG-ADM-005` | `API-ADM-TKT-002` | `API-ADM-TQR-001` | read + `recovery.exception.execute` for rotation |
-| `PG-ADM-006` | UCR-130-002 requested API | UCR-130-002 requested API | UCR-130-001 requested capability |
-| `PG-ADM-007` | UCR-130-006 requested Slot list/detail read | `API-ADM-KRK-004/005` from detail | `karaoke_slots.manage` |
-| `PG-ADM-008` | scope/config references | `API-ADM-KRK-003` | `karaoke_slots.manage` |
-| `PG-ADM-009` | Slot detail | `API-ADM-KRK-004〜006` | `karaoke_slots.manage` |
+| `PG-ADM-006` | `API-ADM-ENT-SALES-001〜002` | `API-ADM-ENT-SALES-003` | `entry_sales.manage` |
+| `PG-ADM-007` | `API-ADM-KRK-008` | none | `karaoke_slots.manage` |
+| `PG-ADM-008` | `API-ADM-KRK-010〜011` | `API-ADM-KRK-003` | `karaoke_slots.manage` |
+| `PG-ADM-009` | `API-ADM-KRK-009` | `API-ADM-KRK-004〜006` | `karaoke_slots.manage` |
 | `PG-ADM-010` | `API-ADM-KRK-001` | none | `karaoke_reservations.manage.read` |
 | `PG-ADM-011` | `API-ADM-KRK-002` | `API-ADM-KRK-007` | read + `recovery.exception.execute` for cancel |
-| `PG-ADM-012` | UCR-130-002 requested API | UCR-130-002 requested API | UCR-130-001 requested capability |
-| `PG-ADM-013` | `GET /admin/goods`, `API-ADM-GDS-001` | none | `goods_inventory.manage` |
-| `PG-ADM-014` | UCR-130-006 requested Goods detail read | `PATCH /admin/goods/{goods_ref}`, inventory adjustment | `goods_inventory.manage` |
-| `PG-ADM-015〜016` | UCR-130-003 requested Admin list/detail read | UCR-130-003 requested HTTP mapping for §30 `Administrative Handoff Completion` | `goods_handoff.manage` |
-| `PG-ADM-018` | UCR-130-006 requested Admin Event read | `PATCH /admin/event` | `public_content.manage` |
-| `PG-ADM-019` | UCR-130-006 requested FAQ list/detail read | FAQ create/edit/publish/archive | `public_content.manage` |
-| `PG-ADM-020` | UCR-130-006 requested Announcement list/detail read | create/edit/publish/archive | `public_content.manage` |
-| `PG-ADM-021` | `GET /admin/role-assignments` | create/deactivate | `role_assignment.manage` |
+| `PG-ADM-012` | `API-ADM-KRK-SALES-001〜002` | `API-ADM-KRK-SALES-003` | `karaoke_sales.manage` |
+| `PG-ADM-013` | `API-ADM-GDS-002`, `API-ADM-GDS-001` | none | `goods_inventory.manage` |
+| `PG-ADM-014` | `API-ADM-GDS-003` | `API-ADM-GDS-004`, `API-ADM-GDS-005` | `goods_inventory.manage` |
+| `PG-ADM-015〜016` | `API-ADM-HOF-001〜002` | `API-ADM-HOF-003`（§30 `Administrative Handoff Completion`） | `goods_handoff.manage` |
+| `PG-ADM-018` | `API-ADM-CNT-001` | `API-ADM-CNT-002` | `public_content.manage` |
+| `PG-ADM-019` | `API-ADM-CNT-003〜004` | `API-ADM-CNT-005〜008`, `API-ADM-CNT-015` | `public_content.manage` |
+| `PG-ADM-020` | `API-ADM-CNT-009〜010` | `API-ADM-CNT-011〜014`, `API-ADM-CNT-016` | `public_content.manage` |
+| `PG-ADM-021` | `API-ADM-ROL-001` | `API-ADM-ROL-002〜003` | `role_assignment.manage` |
 | `PG-ADM-022` | `API-ADM-REC-001` | none | `recovery.review` |
-| `PG-ADM-023` | `API-ADM-REC-002` | explicit linked recovery operation only | review + operation-specific capability |
+| `PG-ADM-023` | `API-ADM-REC-002` | explicit recovery §41.5 `API-ADM-REC-003〜007` | `recovery.review` + `recovery.exception.execute` |
 | `PG-ADM-024` | `API-ADM-EML-001` | none | `recovery.review` |
-| `PG-ADM-025` | `API-ADM-EML-002〜003` | `API-ADM-EML-004〜005` | review + `recovery.exception.execute` |
+| `PG-ADM-025` | `API-ADM-EML-002〜003` | `API-ADM-EML-004〜005`, `API-ADM-REC-006`（§41.5） | `recovery.review` + `recovery.exception.execute` |
 
 ## 67. Staff mapping
 
@@ -2309,12 +2357,12 @@ Trace: `FR-STF-016`, `FR-XFN-004,017,033`, `AR-ROLE-015`, `TQR-SEC-*`, `EML-SEC-
 |---|---|---|
 | `PG-STF-002〜003` | `API-STF-CHK-001` | `entry_checkin.execute` |
 | `PG-STF-004〜005` | `API-STF-CHK-002` | `karaoke_checkin.execute` |
-| `PG-STF-006` preview | UCR-130-003 requested read | `goods_handoff.execute` |
+| `PG-STF-006` preview | `API-STF-GDS-002` | `goods_handoff.execute` |
 | `PG-STF-006〜007` completion | `API-STF-GDS-001` | `goods_handoff.execute` |
 
 **ADM-UI-005:** Page mappingに存在しないHono endpointをBrowserから推測して呼び出さない。
 
-**ADM-UI-006:** UCR対象PageをSupabase direct queryで仮実装しない。
+**ADM-UI-006:** Canonical APIが存在しないRead / mutationをSupabase direct queryや仮endpointで実装しない。
 
 ---
 
@@ -2329,24 +2377,24 @@ Trace: `FR-STF-016`, `FR-XFN-004,017,033`, `AR-ROLE-015`, `TQR-SEC-*`, `EML-SEC-
 | `FR-ADM-001` | §§6〜10, Page guard, server-side capability mapping |
 | `FR-ADM-002` | `PG-ADM-002` |
 | `FR-ADM-003` | `PG-ADM-003` |
-| `FR-ADM-004` | §§50〜51.1 |
+| `FR-ADM-004` | §§50〜51.1, `SPEC-110 §48.3.1` (`orderListQuery`) |
 | `FR-ADM-005` | Order/Ticket/Reservation/Goods operational summaries |
 | `FR-ADM-006` | §§18〜19 |
-| `FR-ADM-007` | `PG-ADM-004〜005` |
-| `FR-ADM-008` | §51.2 |
-| `FR-ADM-009` | `PG-ADM-007〜009`, §51.3 |
-| `FR-ADM-010` | `PG-ADM-008` |
-| `FR-ADM-011` | `PG-ADM-009` |
-| `FR-ADM-012` | stop/resume §§25.3 |
-| `FR-ADM-013` | `PG-ADM-010〜011`, §51.4 |
-| `FR-ADM-014` | `PG-ADM-006`, UCR-130-001/002 |
-| `FR-ADM-015` | `PG-ADM-012`, UCR-130-001/002 |
-| `FR-ADM-016` | `PG-ADM-013〜014` |
-| `FR-ADM-017` | `goods_handoff.manage` → `PG-ADM-015〜016` → §30 `ADM-GDS-005〜016` / `Administrative Handoff Completion` → `BR-GDS-010〜013`; HTTP mapping remains UCR-130-003 |
-| `FR-ADM-018` | `PG-ADM-017〜020` |
+| `FR-ADM-007` | `PG-ADM-004〜005`, `API-ADM-TKT-001〜002`, `API-ADM-TQR-001` |
+| `FR-ADM-008` | §51.2, `SPEC-110 §48.3.2` (`entryTicketListQuery`, `issued_at DESC`) |
+| `FR-ADM-009` | `PG-ADM-007〜009`, §51.3, `API-ADM-KRK-008〜011`, `SPEC-110 §48.3.3` |
+| `FR-ADM-010` | `PG-ADM-008`, `API-ADM-KRK-010〜011` |
+| `FR-ADM-011` | `PG-ADM-009`, `API-ADM-KRK-009` |
+| `FR-ADM-012` | stop/resume §§25.3, `API-ADM-KRK-004〜005` |
+| `FR-ADM-013` | `PG-ADM-010〜011`, §51.4, `API-ADM-KRK-001〜002`, `SPEC-110 §48.3.4` |
+| `FR-ADM-014` | `PG-ADM-006`, `SPEC-060` `entry_sales.manage`, `API-ADM-ENT-SALES-001〜003` |
+| `FR-ADM-015` | `PG-ADM-012`, `SPEC-060` `karaoke_sales.manage`, `API-ADM-KRK-SALES-001〜003` |
+| `FR-ADM-016` | `PG-ADM-013〜014`, `API-ADM-GDS-001〜005` |
+| `FR-ADM-017` | `goods_handoff.manage` → `PG-ADM-015〜016` → §30 `ADM-GDS-005〜016` / `Administrative Handoff Completion` → `API-ADM-HOF-001〜003`, `API-STF-GDS-002` / `API-STF-GDS-001` → `BR-GDS-010〜013` |
+| `FR-ADM-018` | `PG-ADM-017〜020`, `API-ADM-CNT-001〜016` |
 | `FR-ADM-019` | §§7〜8, server-side authorization |
 | `FR-ADM-020` | action eligibility / current state / no generic state editor |
-| `FR-ADM-021` | Dashboard, Consistency Review, Notification recovery |
+| `FR-ADM-021` | Dashboard, Consistency Review (`API-ADM-REC-001〜007`), Notification recovery (`API-ADM-EML-001〜005`, `API-ADM-REC-006`) |
 | `FR-ADM-022` | §§65, high-risk action audit readiness |
 
 ### 68.2 Staff
@@ -2434,9 +2482,10 @@ Trace: `FR-STF-016`, `FR-XFN-004,017,033`, `AR-ROLE-015`, `TQR-SEC-*`, `EML-SEC-
 - cursor pagination
 - common error envelope
 - `API-STF-CHK-001〜002`
-- `API-STF-GDS-001`
-- `API-ADM-ORD-*`, `API-ADM-TKT-*`, `API-ADM-KRK-*`, `API-ADM-GDS-*`, `API-ADM-PAY-001`, `API-ADM-TQR-001`, `API-ADM-REC-*`
+- `API-STF-GDS-001〜002`
+- `API-ADM-ORD-*`, `API-ADM-TKT-*`, `API-ADM-KRK-001〜011`, `API-ADM-ENT-SALES-001〜003`, `API-ADM-KRK-SALES-001〜003`, `API-ADM-GDS-001〜005`, `API-ADM-HOF-001〜003`, `API-ADM-CNT-001〜016`, `API-ADM-ROL-001〜003`, `API-ADM-PAY-001`, `API-ADM-TQR-001`, `API-ADM-REC-001〜007`
 - `API-ADM-EML-001〜005`
+- Admin list query / sort: `SPEC-110 §41 / §48.3`
 
 ### Email
 
@@ -2487,6 +2536,12 @@ Trace: `FR-STF-016`, `FR-XFN-004,017,033`, `AR-ROLE-015`, `TQR-SEC-*`, `EML-SEC-
 33. Goods Handoff list / detail / confirmationのCustomer情報が最小化され、raw Email、Internal ID、raw QR token、unrelated履歴を表示しない。
 34. important mutationがAudit-ready contextを持つ。
 35. UCRが必要な領域を非Canonical direct DB accessや仮endpointで穴埋めしない。
+36. 販売条件管理Page（`PG-ADM-006` / `PG-ADM-012`）は `entry_sales.manage` / `karaoke_sales.manage` と `API-ADM-ENT-SALES-001〜003` / `API-ADM-KRK-SALES-001〜003` だけを使用する。
+37. Admin Goods Handoffは §30 semanticsと `API-ADM-HOF-001〜003` だけを使用し、readは `API-ADM-HOF-001/002`、mutationは `API-ADM-HOF-003` に限定する。
+38. 各Admin listは `SPEC-110 §48.3` のallowlist query / canonical sortだけを使用し、任意filter / sort / client-side全件filterを提供しない。
+39. Recovery Actionは `API-ADM-REC-003〜007` と既にcanonicalなoperationだけを候補表示し、generic recovery / force-fix / retry-everything / resolve-state controlを提供しない。
+40. §41.5 の各recovery Actionはvisibility / required capability / current-state precondition / confirmation / submitting / success / conflict / unknown・temporary failure / reload contractを持つ。
+41. Admin authoritative read（Slot / Scope / Goods / Event / FAQ / Announcement）は `SPEC-110` のcanonical read operationだけを使用し、Public APIやBrowser cacheで代用しない。
 
 ---
 
@@ -2494,96 +2549,77 @@ Trace: `FR-STF-016`, `FR-XFN-004,017,033`, `AR-ROLE-015`, `TQR-SEC-*`, `EML-SEC-
 
 ## 72. UCR-130-001 — Sales management Capability不足
 
+- **Status:** `INCORPORATED`（`SPEC-060 v1.1.0`）
+- **Canonical evidence:** `SPEC-060` Capability定義に `entry_sales.manage` / `karaoke_sales.manage` が追加され、Permission Matrixでactive `ADMINISTRATOR` のみAllow。`AR-ROLE-016〜018`、§45 acceptance item 10〜13。
+- **本書側反映:** §3.1、Page catalog `PG-ADM-006` / `PG-ADM-012`、§31 / §32。
+- **残作業:** なし。
 - **対象:** `SPEC-060 Authentication / Authorization`
-- **現在の仕様:** `FR-ADM-014` はEntry Ticket販売条件管理、`FR-ADM-015` はKaraoke販売条件管理を要求する。一方、現行Capability Matrixには `tickets.manage.read` と `karaoke_slots.manage` は存在するが、Entry Ticket Offeringの販売条件mutationを許可するCapability、およびKaraoke Sales Configurationの価格・販売期間・購入制限mutationを明示するCapabilityが存在しない。`recovery.exception.execute` はgeneric管理権限として使用できない。
-- **要求する変更:** 通常Administrator operationとして、少なくとも次の2Capabilityを追加し、active `ADMINISTRATOR` のみAllowとする。
-  - `entry_sales.manage`: Entry Ticket Offeringの上流許可販売条件管理
-  - `karaoke_sales.manage`: Karaoke Sales Configurationの上流許可販売条件管理
-- **理由:** read-only capabilityをmutationへ拡張解釈するとCapability名とPermission Matrixの意味を破壊する。`recovery.exception.execute`を通常設定管理へ流用することもAR-ROLE-014に違反する。
-- **変更しない場合の影響:** `PG-ADM-006` / `PG-ADM-012` のmutationを安全に認可できず、`FR-ADM-014〜015` を完成システムとして満たせない。
-- **影響を受ける可能性がある仕様書:** `SPEC-110`, `SPEC-130`, `SPEC-140`, `SPEC-160`, `SPEC-170`。
+- **履歴:** 本UCRはread Capabilityをmutationへ拡張解釈せず、`recovery.exception.execute` を通常販売条件管理へ流用しないことを要求した。当該要求は `SPEC-060` でCanonical化済み。
 
 ## 73. UCR-130-002 — Entry / Karaoke Sales Configuration Admin API不足
 
+- **Status:** `INCORPORATED`（`SPEC-110 v1.1.0`）
+- **Canonical evidence:** `API-ADM-ENT-SALES-001〜003`（`SPEC-110 §48.1`）、`API-ADM-KRK-SALES-001〜003`（§48.2）。`entryOfferingListQuery` / `karaokeSalesConfigListQuery`（§48.3.11/12）、Capability `entry_sales.manage` / `karaoke_sales.manage`、Idempotency-Key required、capacity / period precondition、`409 STATE_CONFLICT` / `422 DOMAIN_RULE_VIOLATION`。standard 15+5はread-only。
+- **本書側反映:** §3.1、§31.3、§32.3、§66、§68。
+- **残作業:** なし。
 - **対象:** `SPEC-110 API Specification`
-- **前提:** `UCR-130-001` のCapabilityが `SPEC-060` へCanonical化されること。
-- **現在の仕様:** Public read APIはEntry Offering / Karaoke Sales Guideを持つが、`FR-ADM-014〜015` を満たすAdmin sales configuration read / update operationがAdmin API catalogに定義されていない。
-- **要求する変更:** `/api/v1/admin` namespaceへ、次の意味を持つ明示的server operationを追加する。正確なOperation ID / Zod schemaはSPEC-110がCanonical化する。
-  - Entry Ticket Offering list/detail read
-  - Entry Ticket Offering allowlisted sales field update
-  - Karaoke Sales Configuration list/detail read
-  - Karaoke Sales Configuration allowlisted sales field update
-- **最低限のmutation rule:** Client price / counterをAuthorityにしない、existing Order snapshotを変更しない、held + committed > capacityとなる変更を拒否、standard Karaoke 15+5はread-only、Idempotency / current state conflict contractを明示する。
-- **推奨route shape（SPEC-110採否対象）:**
-  - `GET /api/v1/admin/entry-offerings`
-  - `GET/PATCH /api/v1/admin/entry-offerings/{offering_ref}`
-  - `GET /api/v1/admin/karaoke/sales-configurations`
-  - `GET/PATCH /api/v1/admin/karaoke/sales-configurations/{sales_configuration_ref}`
-- **理由:** SPEC-130がAPI Canonical Ownerを越えてendpointを発明せず、Browser direct DB更新なしでFRを満たすため。
-- **変更しない場合の影響:** `PG-ADM-006`, `PG-ADM-012` はread-only説明画面にしかできず、正式要件を満たさない。
-- **影響を受ける可能性がある仕様書:** `SPEC-060`, `SPEC-100`, `SPEC-130`, `SPEC-140`, `SPEC-160`, `SPEC-170`。
+- **履歴:** route shape / Zod schemaは `SPEC-110` がCanonical化する前提で要求され、`SPEC-110 v1.1.0 §48.1/§48.2` で確定した。Client price / counter非Authority、既存Order snapshot非変更、`held + committed > capacity` 拒否、standard 15+5 read-onlyは同contractで維持される。
 
 ## 74. UCR-130-003 — Goods Handoff operational read / Admin command API不足
 
+- **Status:** `INCORPORATED`（`SPEC-110 v1.1.0`）
+- **Canonical evidence:** Staff preview `API-STF-GDS-002`（`SPEC-110 §40`）、normal completion `API-STF-GDS-001`。Admin read `API-ADM-HOF-001/002`、explicit command `API-ADM-HOF-003`（§48.4）。`goodsHandoffListQuery`（§48.3.6）。`goods_handoff.manage` の通常mutationは §30 `Administrative Handoff Completion` だけ。
+- **本書側反映:** §3.1、§30.1、§30.9、§49.1、§66、§67、§68。
+- **残作業:** なし。§30のAdmin Goods Handoff semantics、no generic state editor、no Admin→Staff inheritanceを維持。
 - **対象:** `SPEC-110 API Specification`
-- **本改訂で解消した範囲:** Administrator Goods Handoff operationの業務意味、表示条件、Precondition、Confirmation、Business effect、禁止条件、stale / response loss時UXを§30でCanonical化した。`goods_handoff.manage` の意味をgeneric state editorへ拡張せず、通常Admin mutationを `Administrative Handoff Completion` に固定した。
-- **未解消として残る範囲:** HTTP contractのみ。`SPEC-110` は次をCanonical化する必要がある。
-  - Staff: Goods Order Item Public Referenceから、completion前に最小Handoff target summaryを取得するread operation
-  - Administrator: Goods Handoff list / detail read
-  - Administrator: §30 `Administrative Handoff Completion` を実行する明示command operation
 - **Staff response boundary:** Goods Item Public Reference、Goods name、quantity、Goods Order Item State、Handoff State、Customer minimal operational referenceまでを業務上限とし、Customer全履歴、raw Email、Internal ID、raw QR tokenを返さない。
 - **Administrator command boundary:** §30のPrecondition / effectをそのままHTTPへ写像し、Browserから任意 `PENDING|COMPLETED|VOID` を送るstate editor、direct VOID、undo / reopen / reset、`COMPLETED -> PENDING|VOID` を成立させるoperationを追加しない。
 - **Concurrent / retry boundary:** server current stateをAuthorityとし、stale commandはconflictへ収束させる。response loss後はtargetを再取得し、既に `COMPLETED` なら既存完了結果として返せるが、二回目のcompletionを成立させない。Transport Idempotency-Key等の具体契約は `SPEC-110` が決定する。
 - **Capability boundary:** Staff preview / normal completionは `goods_handoff.execute`、Admin list / detail / `Administrative Handoff Completion` は `goods_handoff.manage` とし、`ADMINISTRATOR` から `STAFF` へのRole inheritanceを導入しない。
-- **API Canonical Owner boundary:** 本UCRはHTTP Method、URL、Route、Operation ID、Zod schema、HTTP Status、API Error Code、DB transaction、row lock、SQL、Indexを本書から指定しない。
-- **理由:** `FR-ADM-017` → `goods_handoff.manage` → explicit business semantics → safe HTTP commandという一方向の責務連鎖を成立させ、API側が業務意味を発明する循環を解消するため。
-- **変更しない場合の影響:** `PG-STF-006` の事前確認および `PG-ADM-015〜016` のCanonical HTTP実装が完成せず、REV-002のend-to-end implementation / test / acceptanceは閉じない。
-- **影響を受ける可能性がある仕様書:** `SPEC-100`, `SPEC-110`, `SPEC-140`, `SPEC-160`, `SPEC-170`, `SPEC-200`。
+- **境界の帰結:** 本書はHTTP Method、URL、Route、Operation ID、Zod schema、HTTP Status、API Error Code、DB transaction、row lock、SQL、Indexを `SPEC-110` のCanonical contractから変更しない。
 
 ## 75. UCR-130-004 — Admin list filter query contract明示不足
 
+- **Status:** `INCORPORATED`（`SPEC-110 v1.1.0`）
+- **Canonical evidence:** `SPEC-110 §48.3` のAdmin list Zod allowlist schemaとcomplete canonical sort tuple（Order §48.3.1、Entry Ticket §48.3.2 `issued_at DESC`、Slot §48.3.3、Reservation §48.3.4 `order` mode、Goods §48.3.5、Handoff §48.3.6、Role Assignment §48.3.7、Consistency Review §48.3.8、FAQ §48.3.9、Announcement §48.3.10、Entry Offering §48.3.11、Karaoke Sales Config §48.3.12）および `API-QRY-001〜004`。
+- **本書側反映:** §50〜§51。
+- **残作業:** なし。任意column / raw SQL / arbitrary sortは導入しない。
 - **対象:** `SPEC-110 API Specification`
-- **現在の仕様:** cursor paginationとallowlist filter原則は定義されるが、多くのAdmin list operationで具体的query parameter schemaが固定されていない。
-- **要求する変更:** 本書§51で定義したoperational filter semanticsを、各既存list endpointのZod allowlist queryへ具体化する。任意column / raw SQL / arbitrary sortは導入しない。
-- **特に必要:** Order, Entry Ticket, Karaoke Slot, Karaoke Reservation, Goods, Goods Handoff, Role Assignment, Consistency Reviewのexact ref / state / date-range / relation-ref filter。
-- **理由:** `FR-ADM-004,008,009,013` 等をAI実装時に推測させず、ClientとAPIでfilter contractを一致させるため。
-- **変更しない場合の影響:** UI filterを実装してもAPI contract上非Canonicalとなるか、Client-side全件filterという誤実装を招く。
-- **影響を受ける可能性がある仕様書:** `SPEC-100`, `SPEC-130`, `SPEC-140`, `SPEC-170`。
+- **履歴:** 本書§51のUI filter semanticsを各list endpointのZod allowlist queryへ具体化する要求は `SPEC-110 v1.1.0 §48.3` で確定した。任意column / raw SQL / arbitrary sortは導入しない。
 
 ## 76. UCR-130-005 — Operational query index追加
 
+- **Status:** `DEFERRED_NONBLOCKING`
 - **対象:** `SPEC-100 Database Design`
-- **前提:** `UCR-130-003〜004` および `UCR-130-006` のquery/read contractがSPEC-110へCanonical化されること。
-- **現在の仕様:** Admin Order用state/purpose index、Karaoke Reservation state/time、pending Handoff、unresolved Review等はあるが、SPEC-130でCanonical化した全Admin filterを安定したcursor queryで支えるindexは網羅されていない。
-- **要求する変更:** 実際のquery planとselectivityを確認したうえで、少なくとも次のoperational access patternを支えるnamed indexを追加する。
-  - Entry Ticket: `(state, issued_at DESC)` と必要なrelation lookup
-  - Karaoke Slot: `(state, usage_start)` / Scope + timeは既存indexを再利用
-  - Goods Handoff: `(state, created_at DESC)`（pending partialだけでなくhistory filter用）
-  - Role Assignment: `(state, role, granted_at DESC)` または同等cursor-supporting index
-  - Consistency Review: reason category + opened timeが高頻度運用queryになる場合のcomposite index
-  - Notification Admin search: `SPEC-120` support table / Notification Requestでstate/type/processing state filterを支えるindexを、既存queue indexと重複しない形で追加
-- **理由:** 長期運用のAdmin listで全件scan / Client-side filterを標準化せず、cursor paginationを安定させるため。
-- **変更しない場合の影響:** Data量増加時にAdmin運用queryが不安定になり、DB load / timeoutが運用障害化する可能性がある。
-- **影響を受ける可能性がある仕様書:** `SPEC-110`, `SPEC-120`, `SPEC-130`, `SPEC-150`, `SPEC-160`, `SPEC-170`, `SPEC-180`。
+- **現在の扱い:** 追加operational indexは提案しない。実query plan / selectivity / data volume / SLOの証拠が得られるまでCanonical化せず、SPEC-130 / SPEC-110は既存indexと `SPEC-110 §48.3` のcursor paginationの範囲で実装する。
+- **理由:** speculative indexを先行追加しない（`SPEC-100` の方針）。Current acceptanceのblockerではない。
+- **変更しない場合の影響:** Data量増加時にAdmin query性能が劣化し得るが、currentな機能・authorizationは成立する。
+- **影響を受ける可能性がある仕様書:** `SPEC-100`, `SPEC-110`, `SPEC-130`, `SPEC-170`。
 
 ---
 
 ## 77. UCR-130-006 — Admin read contract completeness
 
+- **Status:** `INCORPORATED`（`SPEC-110 v1.1.0`）
+- **Canonical evidence:** `API-ADM-KRK-008/009`（Slot list/detail）、`API-ADM-KRK-010/011`（Exclusive Scope list/detail）、`API-ADM-GDS-002/003`（Goods list/detail）、`API-ADM-CNT-001`（Event read）、`API-ADM-CNT-003/004`（FAQ list/detail）、`API-ADM-CNT-009/010`（Announcement list/detail）。Public Referenceのみをaddressable IDとし、Internal ID / raw QR token / secret / provider raw bodyを返さない。`SPEC-110 §41 / §48.3`。
+- **本書側反映:** §3.1、§23、§28、§35、§66、§68。
+- **残作業:** なし。
 - **対象:** `SPEC-110 API Specification`
-- **現在の仕様:** Administrator mutation endpointは一部定義されているが、SPEC-130の直接URL再訪・state再取得・安全なconfirmationに必要なAdmin read operationが不足している。具体的にはKaraoke Slot list/detail、Slot generationで選択するExclusive Scope read、Goods detail、Admin Event current value、DRAFT/ARCHIVEDを含むFAQ / Announcement list/detailが明示されていない。Public APIは公開済み情報だけを返すためAdmin編集状態のAuthorityとして代用できない。
-- **要求する変更:** 既存Capabilityを使用し、少なくとも次のread operationをSPEC-110へ追加する。
-  - `karaoke_slots.manage`: Karaoke Slot list / detail、およびSlot generationに必要なExclusive Scopeのallowlisted list/read
-  - `goods_inventory.manage`: Goods detail read
-  - `public_content.manage`: Admin Event current read、FAQ list/detail、Announcement list/detail（`DRAFT|PUBLISHED|ARCHIVED`をAdmin authorization後に取得可能）
-- **最低限のresponse rule:** Public Referenceのみをaddressable IDとし、Internal ID、raw QR token、secret、provider raw bodyを返さない。listはSPEC-110 cursor paginationを使用し、filterはUCR-130-004のallowlistに従う。
-- **理由:** High-risk mutation前後のcurrent state再取得、direct URL reload、unsaved/concurrent edit recoveryをBrowser cacheやPublic APIだけに依存させないため。
-- **変更しない場合の影響:** `PG-ADM-007〜009`, `PG-ADM-014`, `PG-ADM-018〜020` をCanonical APIだけで完成実装できず、state確認・競合UX・DRAFT編集が不完全になる。
-- **影響を受ける可能性がある仕様書:** `SPEC-100`, `SPEC-130`, `SPEC-140`, `SPEC-160`, `SPEC-170`。
+- **履歴:** High-risk mutation前後のcurrent state再取得、direct URL reload、unsaved / concurrent edit recoveryをBrowser cacheやPublic APIだけに依存させない要求は、`SPEC-110 v1.1.0` のcanonical read operationで満たされた。
 
 ---
 
-## 78. 最終確認
+## 78. UCR-150-002 — Recovery-page wiring（SPEC-130該当範囲）
+
+- **Status:** `INCORPORATED`（本書側）
+- **対象:** `SPEC-130`
+- **Canonical evidence:** `SPEC-110 v1.1.0 §48.5` の `API-ADM-REC-003〜007`。`PG-ADM-023` およびOrder detail §18 / Notification detail §43 へのwiringを §41.3〜§41.5 / §43.8 / §56.1 に定義。
+- **境界:** 本書はroute / request / response schema / Operation ID semanticsを定義せず、canonical operationだけをcurrent precondition付きで候補表示する。generic recovery buttonを追加しない。
+- **残作業:** なし（`SPEC-150 §67` はUCR-150-001〜002をINCORPORATEDとして反映済み）。
+
+---
+
+## 79. 最終確認
 
 本書は次を意図的に追加していない。
 

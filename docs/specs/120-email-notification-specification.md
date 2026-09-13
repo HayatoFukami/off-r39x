@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-120
 title: Email Notification Specification
-version: 1.0.0
+version: 1.1.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -1024,6 +1024,8 @@ Notificationが `PENDING` / `FAILED_RETRYABLE` で、AttemptがUnknown / unresol
 
 へ進めてよい。
 
+Administratorが明示的に実行するoperation-specific HTTP mappingは `SPEC-110` の `API-ADM-REC-006` が所有する。`API-ADM-REC-006` は本書の既存Notification Domain / Processing State（`§7` / `§39`）、`§30.1` のlock order、provider authority、`§37` のerror contractをそのまま再利用し、本書はそのroute / request / response schema / Operation ID semanticsを定義しない。
+
 ### 28.4 Post-acceptance delivery event
 
 Notificationが既に `SENT` の場合:
@@ -1352,6 +1354,17 @@ Admin retry / cancelは `SPEC-110` のTransport Idempotency semanticsを使用�
 - same Principal + Operation ID + normalized fingerprintで同じresultを再利用
 - same key / different payloadは `409 IDEMPOTENCY_KEY_REUSED`
 - Transport keyが失われてもDomain state / row lockでduplicate effectを防ぐ
+
+### 36.2 Unknown Result reconciliation boundary (SPEC-110-owned)
+
+Unknown Result reconciliationのAdministrator向けoperation-specific HTTP mappingは `SPEC-110` の `API-ADM-REC-006` がCanonical Ownerとして定義する。本書は次を提供する側であり、`API-ADM-REC-006` はそれらを変更せず再利用する。
+
+- 既存Notification Domain State / Processing State（`§7` / `§39`、`UNKNOWN_RESULT` / `SENT` / `CLOSED`）
+- `§30.1` のcanonical local lock order
+- same Attempt / provider keyのprovider authority
+- `§37` のNotification error code contract
+
+**EML-REC-001:** `API-ADM-REC-006` を理由に新しいNotification State、Capability、retry、provider key、recipient変更を本書へ追加してはならない。blind resend / new provider key禁止の既存境界を維持する。route / request / response schema / Operation ID semanticsは `SPEC-110` が所有し、本書は重複定義しない。
 
 ---
 
@@ -1836,6 +1849,7 @@ Email未達時もこれらPageのBusiness Database current stateが利用者向�
 - `API-IDM-001〜002`
 - `API-WHK-EML-001`
 - `API-ADM-EML-001〜005`
+- `API-ADM-REC-006`（SPEC-110-owned Unknown Result reconciliation boundary; 本書state / lock order / provider authority / error contractを再利用）
 - SPEC-110 Part XX §62 Notification Request generation boundary
 - common request correlation ID / error envelope / Internal ID非公開
 
@@ -1880,6 +1894,7 @@ Email未達時もこれらPageのBusiness Database current stateが利用者向�
 31. Email未達でもCustomerがMypageから確定済み権利を確認できる。
 32. Provider / DB failureを送信成功として偽装しない。
 33. Requirement / Rule / Page / Auth / Payment / Karaoke / Database / APIへTrace可能である。
+34. Unknown Result reconciliationのAdmin HTTP mappingは `SPEC-110 API-ADM-REC-006` だけであり、本書の既存Notification State、`§30.1` lock order、provider authority、`§37` error contractを変更せず再利用する。new provider key / blind resend / 新Capabilityを追加しない。
 
 ---
 

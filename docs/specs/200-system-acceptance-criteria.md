@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-200
 title: System Acceptance Criteria
-version: 1.0.0
+version: 1.1.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -134,39 +134,45 @@ related_specs:
 
 ## 4. Current UCR statusとAcceptanceへの影響
 
-本書作成時点では次を**未反映**として扱う。
+`UCR-130-001〜004/006`、`UCR-150-001〜002`、`UCR-170-001` は対象Canonical Owner（`SPEC-060` / `SPEC-110` / `SPEC-120` / `SPEC-130`）へ反映済みであり、System Acceptanceは対応するcanonical contractのE2E evidenceを要求する。未反映として扱うのは `UCR-130-005`（deferred operational index）だけである。
 
-```text
-UCR-130-001〜006
-UCR-150-001〜002
-UCR-170-001
-```
+**ACC-GEN-003:** UCRは対象Canonical Owner本文へ反映されるまでCanonical behaviorではない。反映済みoperation familyはCanonical contractとしてAcceptance対象とし、未反映 `UCR-130-005` と将来のnoncanonical proposalだけを先取りしない。
 
-**ACC-GEN-003:** UCRは対象Canonical Owner本文へ反映されるまでCanonical behaviorではない。UCR-only Capability、API、Recovery command、UI、Index、Operation IDをSystem Acceptanceの必須実装として先取りしない。
+**ACC-GEN-004:** Acceptance Manifestは各UCRの `ucr_id`, `target_spec`, `current_status`, `acceptance_impact`, `affected_current_rule_ids[]`, `blocking` を持ち、`UCR-130-005` のみ `DEFERRED_NONBLOCKING`、それ以外は `INCORPORATED` として記録する。
 
-**ACC-GEN-004:** open UCRはAcceptance Manifestへ必ず記録し、少なくとも `ucr_id`, `target_spec`, `current_status`, `acceptance_impact`, `affected_current_rule_ids[]`, `blocking` を持たせる。
+### 4.1 Sales management（`UCR-130-001〜002`）
 
-### 4.1 `UCR-130-001〜006`
+Capability `entry_sales.manage` / `karaoke_sales.manage`（`SPEC-060`）と `SPEC-110` `API-ADM-ENT-SALES-001〜003` / `API-ADM-KRK-SALES-001〜003`（§48.1 / §48.2）に対するE2E acceptance evidenceを要求する。
 
-`UCR-130-001〜006` は、Current Canonical `FR-ADM-*` / `FR-STF-*` の一部を完成実装するためのCapability / API / read / query / index不足を明示している。
+**ACC-GEN-005:** `FR-ADM-014〜015` は `entry_sales.manage` / `karaoke_sales.manage` のserver-side authorization、allowlistされていないfieldの拒否、capacity / period invariant、`409 STATE_CONFLICT` / `422 DOMAIN_RULE_VIOLATION`、Idempotency-Key / response lossを、`ACC-BIZ-022` のEvidenceとして満たす。`tickets.manage.read` / `karaoke_slots.manage` / `recovery.exception.execute` による代替はFAILとする。
 
-**ACC-GEN-005:** Current Canonical Requirementを満たすために未反映 `UCR-130-*` の内容が必要であり、現行Canonical contractだけでは該当Requirementの実装・検証が成立しないreleaseは、UCR内容を仮実装してAcceptanceしてはならず、該当 `ACC-BIZ-*` をFAILとしてSystem Acceptanceを `REJECTED` とする。
+### 4.2 Goods Handoff（`UCR-130-003`）
 
-特に `FR-ADM-014〜015` は `UCR-130-001〜002` 未反映のまま安全なmutation contractを成立させられないことが `SPEC-130` で明示されているため、Current Canonical setが同じ状態であるreleaseは該当Business Capabilityをpassにできない。
+Staff preview / normal completionは `SPEC-110` `API-STF-GDS-002` / `API-STF-GDS-001`、Admin read / explicit completionは `API-ADM-HOF-001〜003`（§40 / §48.4）を使用する。Adminの通常mutationは `SPEC-130 §30` の `Administrative Handoff Completion` だけである。
 
-### 4.2 `UCR-150-001〜002`
+**ACC-GEN-006:** Goods Handoff acceptanceは `goods_handoff.execute` / `goods_handoff.manage` の分離、server current `PENDING` + `FULFILLABLE`、one-time completion、PII最小化、no generic state input / direct VOID / undo / reopenを、`ACC-BIZ-020` のEvidenceとして満たす。
 
-`UCR-150-001〜002` は、対象別dedicated manual recovery commandとそれに接続するUIを要求する未反映UCRである。
+### 4.3 Authoritative read / filter（`UCR-130-004` / `UCR-130-006`）
 
-**ACC-GEN-006:** `UCR-150-001〜002` だけに存在するdedicated Recovery API / UIをAcceptance対象として発明しない。ただしCurrent `SPEC-150` が要求するmanual recovery capabilityが現行Canonical operationだけでは完成システムとして成立しないことがEvidence上確認された場合、そのCurrent Canonical gap自体をAcceptance blockerとして記録する。
+Admin authoritative read / filterは `SPEC-110` §41 / §48.3 のcanonical Operation ID、Zod allowlist、canonical sort tupleを使用する。
 
-### 4.3 `UCR-170-001`
+**ACC-GEN-007:** `DRAFT|PUBLISHED|ARCHIVED` content、current counter、Slot / Scope current stateはcanonical Admin read operationだけが返し、public API / client cache / client-side全件filterで代用しない。Evidenceは `ACC-API-001` / `ACC-API-009` に接続する。
 
-`UCR-170-001` は、Current API routeの一部にOperation IDが不足するCanonical completeness gapを記録する。
+### 4.4 Manual recovery（`UCR-150-001〜002`）
 
-**ACC-GEN-007:** `UCR-170-001` 未反映中は不足Operation IDをSPEC-200または実装が発明しない。`SPEC-170` が明示するmethod + path + capability単位のTestをCurrent evidenceとして使用する。
+`API-ADM-REC-003〜007`（`SPEC-110 §48.5`）と `SPEC-130 §41.5` のUI wiringはCanonicalであり、対応するmanual recovery acceptanceを要求する。
 
-**ACC-GEN-008:** `UCR-170-001` の対象routeについてOperation IDベースの完全coverageを「達成済み」と偽装してはならない。Acceptance Manifestは当該gapをopen UCRとして保持する。
+**ACC-GEN-008:** Checkout Attempt / Payment Confirmation / Refund result / Notification unknown result / Consistency Review post-verification resolveは、operation-specific precondition、same Business Cause / Provider key、15秒deadline、unknownをsuccessにしないこと、blind再送しないこと、secret / raw provider body / full Email非返却を、`ACC-REL-009〜011` / `ACC-API-010` のEvidenceとして満たす。generic / non-canonical recovery commandの仮実装はFAILとする。
+
+### 4.5 Operation ID completeness（`UCR-170-001`）
+
+`UCR-170-001` は `SPEC-110 v1.1.0`（§41 / §46〜§48）の全canonical routeへの一意な `API-*` Operation ID付与により `INCORPORATED` である（Operation ID completeness gapは `SPEC-110` 側で解消済み）。
+
+**ACC-GEN-028:** 全current operationはOperation IDベースのAPI Test / log / metric / Audit correlation evidenceを持ち、method + path fallbackやOperation IDの発明をAcceptance evidenceとして使用しない（`ACC-API-001` / `ACC-API-002` / `ACC-OBS-002`）。
+
+### 4.6 Deferred UCR
+
+`UCR-130-005`（Operational query index）のみ `DEFERRED_NONBLOCKING` として残し、speculative indexをAcceptanceの必須依存にしない。
 
 ---
 
@@ -516,13 +522,13 @@ Acceptance Manifest、Release Manifest、最終gate summary、approval reference
 | `ACC-BIZ-017` | Payment / Refund | `FR-XFN-*`, `PAY-*` | G3/G4/G5/G6/G9/G10 | authority / idempotency / verified webhook / refund current-state rule / unknown resultを維持 |
 | `ACC-BIZ-018` | Entry Check-in | `FR-STF-*`, `BR-CHK-*`, `TQR-*` | G3/G4/G5/G8/G10 | correct purpose / Staff auth / current Ticket state / single-useが成立 |
 | `ACC-BIZ-019` | Karaoke Check-in | `FR-KRK-*`, `FR-STF-*`, `BR-CHK-*`, `KRK-CHK-*`, `TQR-*` | G3/G4/G5/G8/G10 | canonical time predicate + purpose + single-use + Staff authが成立 |
-| `ACC-BIZ-020` | Goods Handoff | `FR-GDS-*`, `FR-STF-*`, `BR-GDS-*`, `ADM-*`, `STF-*` | G3/G4/G5/G8/G10 | authorized targetに最大1回のhandoffが成立し、concurrent repeatで重複しない |
+| `ACC-BIZ-020` | Goods Handoff | `FR-GDS-*`, `FR-STF-*`, `BR-GDS-*`, `ADM-*`, `STF-*`, `API-STF-GDS-001〜002`, `API-ADM-HOF-001〜003` | G3/G4/G5/G8/G10 | authorized targetに最大1回のhandoffが成立し、Staff / Admin capability分離・PII最小化・no generic state inputを満たす |
 | `ACC-BIZ-021` | Email Notification | `FR-EML-*`, `BR-NTF-*`, `EML-*` | G3/G4/G6/G9 | Notification Request永続化、recipient authority、worker/provider semantics、business rollback分離 |
-| `ACC-BIZ-022` | Administrator operation | `FR-ADM-*`, `ADM-*`, `OPS-*`, `AR-ROLE-*` | G4/G5/G8 + Audit evidence | Current Canonical capabilityだけでrequired operationを実行し、generic superuser / direct DB bypassなし |
-| `ACC-BIZ-023` | Staff operation | `FR-STF-*`, `STF-*`, `AR-ROLE-*` | G4/G5/G8/G10 | Staff namespace / capability / minimal data / current stateをserver-side再評価 |
-| `ACC-BIZ-024` | Consistency / recovery | `FR-XFN-*`, `REL-*`, `OBS-REC-*` | G3/G6/G7/G10 | safe automatic convergenceまたはConsistency Reviewへ移行し、blind repair / generic state editなし |
+| `ACC-BIZ-022` | Administrator operation | `FR-ADM-*`, `ADM-*`, `OPS-*`, `AR-ROLE-*`, `API-ADM-ENT-SALES-001〜003`, `API-ADM-KRK-SALES-001〜003`, `API-ADM-HOF-003` | G4/G5/G8 + Audit evidence | Current Canonical capabilityだけでrequired operationを実行し、generic superuser / direct DB bypassなし |
+| `ACC-BIZ-023` | Staff operation | `FR-STF-*`, `STF-*`, `AR-ROLE-*`, `API-STF-GDS-002` | G4/G5/G8/G10 | Staff namespace / capability / minimal data / current stateをserver-side再評価 |
+| `ACC-BIZ-024` | Consistency / recovery | `FR-XFN-*`, `REL-*`, `OBS-REC-*`, `API-ADM-REC-003〜007` | G3/G6/G7/G10 | safe automatic convergenceまたは `SPEC-110 §48.5` のoperation-specific recovery / Consistency Reviewへ移行し、blind repair / generic state editなし |
 
-**ACC-BIZ-025:** UCR-only endpoint / capabilityを仮実装してBusiness CapabilityをPassにしない。
+**ACC-BIZ-025:** 未反映UCR（`UCR-130-005`）またはfuture proposalだけに存在するendpoint / capabilityを仮実装してBusiness CapabilityをPassにしない。Canonical化済みoperation familyは対応する `SPEC-110` Operation IDのEvidenceで判定する。
 
 **ACC-BIZ-026:** Current Canonical `FR-*` の未実装を「今回releaseの対象外」としてSystem Acceptanceから除外しない。完成システムAcceptanceではmandatory Current Requirementは全件対象である。
 
@@ -632,7 +638,7 @@ Acceptance Manifest、Release Manifest、最終gate summary、approval reference
 
 **ACC-GDS-005:** inventory inconsistencyをblind counter overwriteで修復せずConsistency Reviewへ送る。
 
-**ACC-GDS-006:** `UCR-130-003〜006` にだけ存在するread / manage contractを既にCurrent APIにあると仮定しない。Current FRを満たせない場合は該当AcceptanceをFAILとする。
+**ACC-GDS-006:** Goods Handoffは `SPEC-110` `API-STF-GDS-001〜002` / `API-ADM-HOF-001〜003` と `SPEC-130 §30` semanticsで受入れ、Admin mutationは `Administrative Handoff Completion` だけとする。generic state editor / direct VOID / undo / reopenをPassとしない。
 
 ---
 
@@ -666,7 +672,7 @@ Acceptance Manifest、Release Manifest、最終gate summary、approval reference
 
 **ACC-API-001:** Current Canonical API method / path / Operation IDは`SPEC-170` semantic coverageを100%満たす。Operation IDがCurrent specに存在するoperationは全件API Testを持つ。
 
-**ACC-API-002:** `UCR-170-001`対象のOperation ID未付与routeはCurrent `SPEC-170`どおりmethod + path + capability単位でTestし、欠落IDを発明しない。
+**ACC-API-002:** 全canonical routeは `SPEC-110` のOperation ID manifestで100% Testされ、method + path fallbackや欠落IDの発明をPass evidenceとして使用しない（`UCR-170-001` はINCORPORATED）。
 
 **ACC-API-003:** Hono RPC type boundaryとZod runtime validationが有効であり、path / query / body /主要success response / common error contractをcompile-time typeだけに依存しない。
 
@@ -679,6 +685,10 @@ Acceptance Manifest、Release Manifest、最終gate summary、approval reference
 **ACC-API-007:** Transport Idempotency KeyはBusiness Cause / Provider Idempotency Keyと分離される。
 
 **ACC-API-008:** Stripe / Resend webhook routeはraw body preservationとprovider signature verificationを満たし、通常Browser RPC auth modelへ混在させない。
+
+**ACC-API-009:** Admin authoritative read / filterは `SPEC-110 §41 / §48.3` のcanonical Operation ID、Zod allowlist、canonical sort tupleでEvidenceを持ち、public API / client cache / client-side全件filterでの代用をPassとしない。
+
+**ACC-API-010:** `API-ADM-REC-003〜007` は `SPEC-110 §48.5` のoperation-specific contract（required capability / precondition / same Business Cause・Provider key / result classification）と `SPEC-130 §41.5` のUI wiring contractにtraceし、generic state input / secret / raw provider body / full Email非公開をEvidenceとする。
 
 ---
 
@@ -772,7 +782,9 @@ SPEC-200はretry count、backoff、jitter、timeout、reconciliation cadence、c
 
 **ACC-REL-010:** G6のrequired fault injection / response loss / provider failure / DB failure / recovery testがPassし、Critical recovery testにretry / quarantineがない。
 
-**ACC-REL-011:** `UCR-150-001〜002`だけのmanual recovery commandをcurrent implementation requirementとして先取りしない。
+**ACC-REL-011:** manual recoveryは `API-ADM-REC-003〜007` と既にcanonicalなoperation（`API-ADM-PAY-001` / `API-ADM-TQR-001` / `API-ADM-KRK-007` / `API-ADM-GDS-005` / `API-ADM-EML-004〜005`）だけを使用し、generic / non-canonical recovery commandをPassとしない。
+
+**ACC-REL-012:** `API-ADM-REC-003〜007` はoperation-specific precondition、same Business Cause / Provider key、15秒deadline、unknownをsuccessにしないこと、blind再送しないこと、post-verification、Audit Event correlationをEvidenceとする。
 
 ---
 
@@ -866,7 +878,7 @@ G10 hot-concurrency
 
 **ACC-TST-010:** concurrency-sensitive operationはexplicit parallel Testを持ち、winner / loser countとpostconditionをmachine判定する。
 
-**ACC-TST-011:** `tests/traceability/test-manifest.json` はduplicate ID、unknown upstream ID、UCR-only active feature、orphan Critical ruleを含まない。
+**ACC-TST-011:** `tests/traceability/test-manifest.json` はduplicate ID、unknown upstream ID、deferred UCR（`UCR-130-005`）/ future proposalのみのactive feature、orphan Critical ruleを含まない。active API featureは `SPEC-110` canonical Operation IDへtraceする。
 
 **ACC-TST-012:** `TST-*` / `TC-*` runtime resultとTest Manifestをjoin可能にする。
 
@@ -968,13 +980,13 @@ G10 hot-concurrency
 
 **ACC-DEV-011:** `traceability/rule-code-map.json` のhashをAcceptance Manifestへ記録し、changed behavioral sourceがCanonical Rule IDへtraceされる。
 
-**ACC-DEV-012:** `rule-code-map.json` をCanonical behavior sourceとして扱わず、UCR-only IDへactive code pathをmapしない。
+**ACC-DEV-012:** `rule-code-map.json` をCanonical behavior sourceとして扱わず、deferred UCR（`UCR-130-005`）/ future proposalのみのIDへactive code pathをmapしない。active API behaviorは `SPEC-110` canonical Operation IDへmapする。
 
 **ACC-DEV-013:** AI completion reportが`SPEC-190`のfixed formatを満たし、changed scope / canonical rules / files / migrations / Test Cases / Test Groups / security-reliability implications / traceability / known UCR / exceptionsを含む。
 
 **ACC-DEV-014:** Git diff self-reviewが行われ、unintended file、generated noise、secret、spec drift、test-only bypassがない。
 
-**ACC-DEV-015:** UCR protection reviewがpassし、`UCR-130-*`, `UCR-150-*`, `UCR-170-001` をCurrent Canonicalとして仮実装していない。
+**ACC-DEV-015:** UCR protection reviewがpassし、未反映 `UCR-130-005` とfuture proposalをCurrent Canonicalとして仮実装せず、canonical化済みoperation familyを `SPEC-110` / `SPEC-120` / `SPEC-130` contractへtraceしている。
 
 **ACC-DEV-016:** `format`, `lint`, `typecheck`, forbidden-import check、required Test、secret scan、traceability validationの未実行を「完了」と報告しない。未実行required itemはSystem Acceptance blockerである。
 
@@ -1007,7 +1019,7 @@ Rule ID
 
 **ACC-TRC-004:** Rule commentだけをTraceability source of truthにしない。
 
-**ACC-TRC-005:** unknown Rule ID、deleted Rule ID、UCR-only active IDをAcceptance Matrix / Test Manifest / rule-code-mapへ登録しない。
+**ACC-TRC-005:** unknown Rule ID、deleted Rule ID、deferred UCR（`UCR-130-005`）/ future proposalのみのactive IDをAcceptance Matrix / Test Manifest / rule-code-mapへ登録しない。
 
 **ACC-TRC-006:** Current Canonical Ruleがdocumentation-only / external factで直接executeできない場合、`verification_method=document_review|config_validation|provider_contract|deployment_validation` 等の明示方法を持たせ、coverageから無言で除外しない。
 
@@ -1077,9 +1089,9 @@ failure_outcome
 | `ACC-GDS-001〜006` | Goods | `FR-GDS-*`, `BR-GDS-*`, `DB-GDS-*` | G3/G4/G5/G8/G10 | inventory/current-state config | staging/Prod smoke as applicable | Yes | no oversell/double-handoff |
 | `ACC-EML-001〜009` | Email | `EML-*` | G3/G4/G6/G9 | Resend / worker config | Email Worker readiness | Yes | persistence/recipient/idempotency/unknown/no rollback |
 | `ACC-DB-001〜012` | Database | `DB-*` | G2/G3/G10 | extension / role / migration validation | Production migration evidence | Yes | real PostgreSQL contract PASS |
-| `ACC-API-001〜008` | API | `API-*` | G4/G5 | route/schema/auth manifest | API readiness | Yes | current route contract 100% + runtime validation |
+| `ACC-API-001〜010` | API | `API-*` | G4/G5 | route/schema/auth manifest | API readiness | Yes | current route contract 100% + runtime validation + authoritative read / recovery trace |
 | `ACC-SEC-001〜014` | Security | `SEC-*` | G5 + config scans | secret / headers / crypto / origin validation | Prod environment separation | Yes | all Critical security controls PASS |
-| `ACC-REL-001〜011` | Reliability / Recovery | `REL-*` | G6/G10 | policy registry / scheduler config | worker readiness / scheduler evidence | Yes | timeout/retry/unknown/recovery converge safely |
+| `ACC-REL-001〜012` | Reliability / Recovery | `REL-*` | G6/G10 | policy registry / scheduler config | worker readiness / scheduler evidence | Yes | timeout/retry/unknown/recovery converge safely |
 | `ACC-OBS-001〜013` | Observability / Audit | `OBS-*` | G7 + DB atomicity cases | dashboard/alert/retention config | Better Stack / independent alert / purge evidence | Yes | schema/correlation/redaction/audit PASS |
 | `ACC-TST-001〜013` | Test evidence | `TST-*`, `TC-*` | G1〜G10 required | runner retry/quarantine manifest | staging gate evidence | Yes | group policy + semantic coverage PASS |
 | `ACC-INF-002〜022` | Infrastructure / deployment | `INF-*` | infra validation + required suites | env / identity / backup / health config | staging + Production deployment | Yes | Current INF contract PASS |
@@ -1249,6 +1261,8 @@ NON_BLOCKING_CLARIFICATION
 
 **ACC-TRC-010:** `CURRENT_REQUIREMENT_BLOCKED`が1件でも未解消ならfinal System Acceptanceは`REJECTED`である。
 
+**ACC-TRC-011:** `UCR-130-005` は `NON_BLOCKING_CLARIFICATION`（`DEFERRED_NONBLOCKING`）として記録し、Acceptanceをblockingしない。`UCR-130-001〜004/006`, `UCR-150-001〜002`, `UCR-170-001` は `INCORPORATED` としてopen listから除外し、対応canonical contractのEvidenceで判定する。
+
 ---
 
 # Part XXIII — Acceptance Evidence Security
@@ -1323,15 +1337,20 @@ Acceptance artifact / CI artifact / release noteは次を含めてはならな�
 42. final resultは`ACCEPTED` / `REJECTED`だけである。
 43. Critical failure / migration failure / infrastructure identity mismatch / Critical Invariant未証明をknown issueでAcceptanceしない。
 44. Acceptance failureがaffected Acceptance ID / Canonical Rule / release / rerun / new release requirementへtraceできる。
-45. UCR-only仕様をCanonicalとして扱わない。
-46. `UCR-130-001〜006`を反映済みと仮定しない。
-47. `UCR-150-001〜002`を反映済みと仮定しない。
-48. `UCR-170-001`を反映済みと仮定しない。
-49. Current requirementを未反映UCRなしでは満たせない場合、そのgapをAcceptance failureとして明示する。
+45. deferred UCR（`UCR-130-005`）またはfuture proposalのみの仕様をCanonicalとして扱わない。
+46. `UCR-130-001〜004/006` のoperation familyをCanonicalとしてE2E Evidenceで受入れる。
+47. `UCR-150-001〜002` のmanual recovery / UI wiringを `API-ADM-REC-003〜007` と `SPEC-130 §41.5` のEvidenceで受入れる。
+48. `UCR-170-001` は `SPEC-110` のOperation ID付与によりINCORPORATEDであり、全canonical operationがOperation IDベースのEvidenceを持つ。
+49. Current requirementをcanonical contractで満たし、deferred `UCR-130-005` をAcceptanceの必須依存にしない。
 50. Canonical Owner / `depends_on` /情報源優先順位 / UCRを守る。
 51. 長期運用される完成システムを対象とする。
 52. MVP / Step1 / Step2等を理由にSecurity / Payment / DB / QR / Reliability / Observability / Audit / Test / Infrastructure / Backup / Development traceability acceptanceを省略しない。
 53. 正式仕様として判断を保留する未確定表現を残さない。
+54. Sales management operation familyは `entry_sales.manage` / `karaoke_sales.manage` と `API-ADM-ENT-SALES-001〜003` / `API-ADM-KRK-SALES-001〜003` のE2E Evidenceで受入れる。
+55. Goods Handoff operation familyは `API-STF-GDS-001〜002` / `API-ADM-HOF-001〜003` と `SPEC-130 §30` semanticsのE2E Evidenceで受入れる。
+56. Admin authoritative read / filterは `SPEC-110 §41 / §48.3` のOperation ID / allowlist / canonical sortのEvidenceで受入れる。
+57. Manual recoveryは `API-ADM-REC-003〜007` と `SPEC-130 §41.5` wiringのEvidenceで受入れ、generic recoveryをPassとしない。
+58. `INV-010-01〜10` 全てがE2E acceptance evidenceへtraceされ、critical invariantがUnit mock / E2E単独で代替されない。
 
 ---
 
@@ -1341,13 +1360,7 @@ Acceptance artifact / CI artifact / release noteは次を含めてはならな�
 
 本書から新規UCRは発行しない。
 
-本書は次の既存UCRを未反映として継承し、Acceptance Manifestでimpactを分類する。
-
-```text
-UCR-130-001〜006
-UCR-150-001〜002
-UCR-170-001
-```
+本書は `UCR-130-001〜004/006`, `UCR-150-001〜002`, `UCR-170-001` をCanonical化済みとしてAcceptance Manifestで`INCORPORATED`に分類し、対応するcanonical operation familyのE2E Evidenceを要求する。`UCR-130-005`（Operational query index）のみ `DEFERRED_NONBLOCKING` として継承し、speculative indexをAcceptance必須依存にしない。
 
 対象Canonical Ownerが改訂され本文へ反映された場合、その改訂版をCurrent CanonicalとしてSpec Version Setを更新し、影響するAcceptance ID / Test Manifest / rule-code-map / release evidenceを再評価する。
 
@@ -1407,7 +1420,7 @@ Production releaseを最終判定するAcceptance agentは、本書の`depends_o
 - AI Development Guidelineの再定義
 - Administrator generic superuserの追加
 - Administrator → Staff role inheritanceの追加
-- UCR-only Capability / API / Recovery command / UI / Index / Operation IDのCanonical化
+- deferred UCR（`UCR-130-005`）/ future proposalのみのCapability / API / Recovery command / UI / Index / Operation IDのCanonical化
 - Critical failureをwarning-onlyでProduction Acceptedへ変換するfallback
 
 System Acceptanceは、**同一release identityに紐づくCurrent Canonical Ruleと実行Evidenceが、Blocking Criterionをすべて満たした場合だけ `ACCEPTED` とする**。

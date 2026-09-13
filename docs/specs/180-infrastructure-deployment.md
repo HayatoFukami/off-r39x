@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-180
 title: Infrastructure and Deployment Specification
-version: 1.0.0
+version: 1.1.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -39,7 +39,7 @@ related_specs:
 - Railway WorkerやVercel Functionを別System of Recordとして扱う。
 - Provider Result Unknownをdeployment都合で成功または失敗へ確定する。
 - migration failure時に旧constraintをapplication-only checkへ置換して続行する。
-- `UCR-130-001〜006`、`UCR-150-001〜002`、`UCR-170-001`を反映済みとしてInfrastructureへ配置する。
+- `UCR-130-001〜004/006`、`UCR-150-001〜002`、`UCR-170-001` のcanonical operation familyを、Hono API以外の経路や未定義runtime subsystemへ配置する。
 - Production Secret / Production Business Data / Production QR protected material / Production Session materialをdevelopment / testへ複製する。
 - external ProviderのSLA、復旧時間、backup retention等を本システムの保証値として捏造する。
 
@@ -88,10 +88,10 @@ related_specs:
 
 | Spec | Infrastructureへ入力するCanonical Contract | 本書でwireする対象 |
 |---|---|---|
-| `SPEC-000` | Canonical Owner、`depends_on`、UCR、未決定事項の決定規則 | 本書の責務境界、UCR未反映扱い、次仕様生成 | 
+| `SPEC-000` | Canonical Owner、`depends_on`、UCR、未決定事項の決定規則 | 本書の責務境界、UCR status handling、次仕様生成 |
 | `SPEC-010` | Vercel / Railway / Supabase / Stripe / Resend System Boundary、System of Record、`INV-010-01〜10` | Hosting topology、Business mutation経路、failure isolation |
 | `SPEC-100` | `app` schema、`pgcrypto`、`btree_gist`、migration / constraint / lock / history rule | PostgreSQL 17、extension readiness、DB principal、migration order |
-| `SPEC-110` | Hono API、`/api/v1`、Stripe webhook、Runtime Validation | Railway API exposure、webhook DNS、health pathとの分離 |
+| `SPEC-110` | Hono API、`/api/v1`、全canonical `API-*` Operation ID、Stripe webhook、Runtime Validation | Railway API exposure、Admin API route exposure、operation-ID registry / log / metric wiring、webhook DNS、health pathとの分離 |
 | `SPEC-120` | Email Worker、Resend webhook、required config、worker HTTP endpoint禁止 | Email Worker service、Resend credentials、worker execution |
 | `SPEC-140` | environment separation、DB least privilege、TLS、Secret / QR key rotation、Fail Closed | Secret store、reader matrix、TLS verify-full、startup failure |
 | `SPEC-150` | failure domain、timeout / retry、worker cadence、reconciliation matrix、recovery | persistent worker scheduler、graceful shutdown、missed-run detection |
@@ -100,22 +100,14 @@ related_specs:
 
 `SPEC-060`, `SPEC-070`, `SPEC-080`, `SPEC-090`, `SPEC-130` はInfrastructureが直接再定義する対象ではなく、上記Canonical Ownerから到達する関連仕様とする。
 
-### 3.1 未反映UCR
+### 3.1 Canonical operation familyの扱い
 
-本書作成時点では次を**未反映**として扱う。
+`UCR-130-001` / `002` / `003` / `004` / `006`、`UCR-150-001` / `UCR-150-002`、`UCR-170-001` が要求したCapability / API / Recovery command / Operation IDはCanonical化済みであり、既存のRailway / Hono / Observability topologyへ配置する。`UCR-130-005`（Operational query index）のみ `DEFERRED_NONBLOCKING` として、speculative indexをInfrastructure dependencyにしない。
 
-```text
-UCR-130-001〜006
-UCR-150-001〜002
-UCR-170-001
-```
-
-したがって、本書は次を行わない。
-
-- `UCR-150-001`だけに存在するdedicated Recovery APIをRailway routeへ追加する。
-- `UCR-150-002`だけに存在するAdmin recovery UIをdeployment smoke対象へ登録する。
-- `UCR-170-001`だけで要求されるOperation IDをlog / metric / deployment registryへ推測追加する。
-- `UCR-130-001〜006`だけのCapability / API / Indexを既存Infrastructure dependencyとみなす。
+- Canonical Admin API operation（Entry / Karaoke sales management、Admin / Staff Goods Handoff、authoritative read / filter、`API-ADM-REC-003〜007`）は、`SPEC-110` のroute contractを変更せず、既存Hono API serviceのrouteとしてのみ露出する。Browser / Next.jsからBusiness Databaseへ直接到達する別経路、専用endpoint、別workerを追加しない。
+- 全canonical Operation IDは `SPEC-110` ownerとし、deployment registry / Application Log / Metric / Dashboard / Audit Eventは `SPEC-160` の `operation_id` / `operation_execution_id` / `request_id` correlation contractへwiringする。Operation IDを推測追加しない。
+- `API-ADM-REC-003〜007` は `SPEC-110 §48.5` のoperation-specific routeとして保護された既存Hono API runtimeで実行し（worker-executed commandではない）、新runtime subsystem / worker / Secret / Key / provider domainを追加せず、APIからworkerへの新しい同期経路も追加しない。Provider credential要件はoperation別である。`API-ADM-REC-003〜005` は既存Stripe provider authority / credentialを既存どおり使用し、`API-ADM-REC-006` だけが既存Resend API key lookupを使用し、`API-ADM-REC-007` はprovider credentialを要求しない。既存Secret storeだけを使用し、必要なprovider / secret readinessが不足する場合は該当commandをdeploy gateでblockedとする。
+- 詳細なwiring / smoke適用は §56.1 と §75 に定義する。
 
 ---
 
@@ -617,7 +609,7 @@ Canonical placement:
 | migration credential | No | No | No | No | Yes | No | No | emergency only |
 | Stripe secret key | No | Yes | No | Yes | No | No | No | No |
 | Stripe webhook signing secret | No | Yes | No | No | No | No | No | No |
-| Resend API key | No | No | Yes | Yes only for same-key reconciliation | No | No | No | No |
+| Resend API key | No | Yes (`API-ADM-REC-006` same-key lookup only) | Yes | Yes same-key reconciliation only | No | No | No | No |
 | Resend webhook signing secret | No | Yes | No | No | No | No | No | No |
 | QR HMAC keyring | No | Yes | No | Yes | No | No | No | emergency inspect prohibited |
 | QR AEAD keyring | No | Yes | No | Yes | No | No | No | emergency inspect prohibited |
@@ -717,6 +709,8 @@ provider message identifiers
 ```
 
 Production Business Email sender domainとnonproduction sender identityを混用しない。
+
+`RESEND_API_KEY` はEmail Worker送信と `API-ADM-REC-006` のsame-key server-to-server lookupに使用し、secret managerから該当service runtimeだけへ渡す。API runtimeが受け取るcredentialは `API-ADM-REC-006` のlookup以外に使用せず、response / log / trace / fixture / artifactへ出さない。このlookupはDB transaction外で実行し、新worker / API→worker同期経路 / 新provider domainを追加しない。
 
 Resend webhook target:
 
@@ -832,7 +826,7 @@ r39x:recon:<canonical-internal-operation-key>
 
 Reconciliation Workerはautomatic repairが上流で明示許可された対象だけstate mutationする。Detection-only対象はCase open / metric / logまでとし、Entitlement、Check-in atomicity mismatch等をblind repairしない。
 
-**INF-WRK-006:** `UCR-150-001`未反映中はmanual dedicated Recovery HTTP routeを追加しない。Automatic reconciliationと既存Canonical operationだけをwireする。
+**INF-WRK-006:** `API-ADM-REC-003〜007` はworker-executed commandではなく、`SPEC-110` のoperation-specific routeとして保護された既存Hono API runtimeへ配線する。Automatic reconciliationだけを既存Reconciliation Worker runtimeへwireし、generic recovery route / 新規worker / 新規runtime subsystem / API→worker同期経路を追加しない。
 
 ---
 
@@ -1151,6 +1145,23 @@ infra/observability/alerts/
 Alert / dashboard changeはPR review + config validation + staging applyを経てProductionへpromotionする。
 
 **INF-OBS-004:** dashboard query failureをzeroへ表示する設定にしない。data freshness / last successful collectionを明示する。
+
+### 56.1 Canonical Admin API operation deployment applicability
+
+Canonical化済みAdmin API operation（Entry / Karaoke sales management、Admin / Staff Goods Handoff、authoritative read / filter、`API-ADM-REC-003〜007`）は、次のInfrastructure適用に従う。API contract（route / schema / precondition / capability）は `SPEC-110` がCanonical Ownerであり、本書は配置とwiringだけを定義する。
+
+- **Route exposure:** 既存Hono API serviceの `/api/v1/admin/*` routeとしてのみ露出する。Browser / Next.js WebからBusiness Databaseへ直接到達する経路、Admin専用の別service / endpoint、別workerを追加しない。
+- **Operation-ID registry / log / metric:** deployment registryは `SPEC-110` のOperation ID manifestをsourceとする。Application Log / Metric / Dashboard / Audit Eventは `SPEC-160` の `operation_id` / `operation_execution_id` / `request_id` correlation contractへwiringし、SPEC-180独自のOperation IDを追加しない。
+- **Recovery runtime:** `API-ADM-REC-003〜007` は保護された既存Hono API runtimeのoperation-specific routeとして実行する（Reconciliation Workerや新規workerが実行するcommandではない）。Provider credential要件はoperation別である。
+  - `API-ADM-REC-003〜005`: 既存Stripe provider authority / credentialを既存どおりread-only照合に使用する。
+  - `API-ADM-REC-006`: API runtimeが既存Resend server-to-server lookupをDB transaction外で実行し、Resend API keyはsecret managerからAPI runtimeだけに渡す。
+  - `API-ADM-REC-007`: provider credentialを要求しない（DB current authorityのpost-verificationのみ）。
+  credentialはresponse / log / trace / fixture / artifactへ出さず、APIからworkerへの新同期経路 / 新worker / 新provider domain / 新Secretを追加しない。既存Secret storeだけを使用し、必要なprovider / secret readinessが不足する場合は該当commandをdeploy gateでblockedとする。
+- **Smoke boundary:** privileged operationのsmokeはbusiness mutation / Provider writeを成立させず、authentication / authorization denial、Zod allowlist reject、route存在、readinessを確認する範囲に限定する。`API-ADM-REC-006` のsmokeはreal Resend lookup / Resend credentialを必要としない。Production Secret、PII、raw QR、raw provider body、Production Provider objectをsmoke fixture / artifactへ使用しない（`INF-PRV-002` / `INF-PRV-003`）。
+
+**INF-OBS-008:** Canonical Admin API operationのdeployment registry / log / metric / Auditは `SPEC-110` Operation IDをexactに使用し、method / pathからOperation IDを推測生成しない。
+
+**INF-OBS-009:** privileged Admin API operation smokeはProduction business mutation / Provider write / real Provider lookup / real PII / raw QR / raw provider bodyを発生させない。
 
 ## 57. Retention enforcement verification
 
@@ -1542,6 +1553,8 @@ G9はstaging / test Provider accountで実行する。
 
 Production Business Data、Production Email list、Production QR、Production Provider objectを使用しない。
 
+**INF-TST-003:** privileged Admin API operationのsmokeは、Productionのbusiness mutation / Provider write / real PII / raw QR / raw provider bodyを発生させず、authentication / authorization denial、Zod allowlist reject、route存在、readinessだけを確認する。smoke fixture / artifactへSecretを残さない。
+
 ## 76. Release evidence
 
 Production promotionに必要なevidence:
@@ -1670,9 +1683,12 @@ SPEC-180は次をすべて満たしたとき受入可能とする。
 40. Critical Test runner retry=0、Critical quarantine禁止を維持する。
 41. diagnostic rerun passでoriginal gate failureを上書きしない。
 42. Production Provider credential / Production Business DataをTestへ使用しない。
-43. `UCR-130-001〜006`, `UCR-150-001〜002`, `UCR-170-001`だけに存在するoperationをInfrastructureへ配置していない。
+43. `UCR-130-001〜004/006`, `UCR-150-001〜002`, `UCR-170-001` のcanonical operationを既存Hono API route / 既存runtimeへ配置し、`UCR-130-005` のみ未反映として推測配置しない。
 44. emergency recovery identityがordinary Administrator / `recovery.exception.execute`をgeneric SQLへ昇格させない。
 45. deployment / rollback / worker recovery / backup restore procedureがAI実装agentにより再現可能な具体度で定義されている。
+46. Canonical Admin API operationはHono API route以外の経路・別service・別workerで露出しない。
+47. deployment registry / log / metric / Auditは `SPEC-110` Operation ID manifestをsourceとし、`SPEC-160` の `operation_id` / `operation_execution_id` correlationへwiringする。
+48. privileged Admin API operation smokeはProduction business mutation / Provider write / real PII / raw QR / raw provider bodyを発生させない。
 
 ---
 
@@ -1684,13 +1700,7 @@ SPEC-180は次をすべて満たしたとき受入可能とする。
 
 本仕様は、Infrastructure Ownerとして明示的に委譲されたEnvironment、DB principal、Secret placement、scheduler、health、deployment、Audit access/purge、observability backend、backup / restore、Test gateの具体化だけを行っている。
 
-既存の以下のUCRは未反映のまま継承する。
-
-```text
-UCR-130-001〜006
-UCR-150-001〜002
-UCR-170-001
-```
+`UCR-130-001〜004/006`、`UCR-150-001〜002`、`UCR-170-001` はCanonical化済みであり、対応operationを既存Hono / Railway / Observability topologyへ配置する。`UCR-130-005`（Operational query index）のみ `DEFERRED_NONBLOCKING` として継承し、speculative indexを配置しない。
 
 ---
 
@@ -1719,7 +1729,7 @@ UCR-170-001
 - Business System Boundaryの変更
 - Browser direct DB mutation
 - new Domain State / API Operationの追加
-- UCR-only Recovery APIの配置
+- canonical recovery commandをHono API以外の経路や新規workerへ配置すること
 - Observability threshold / metric schemaの再定義
 - Reliability cadenceの変更
 - Provider Result Unknownの推測確定

@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-170
 title: Test Specification
-version: 1.0.0
+version: 1.1.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -46,7 +46,7 @@ related_specs:
 - `CONFLICT_LOSER`を内部障害へ読み替える。
 - Product retryとTest runner retryを混同する。
 - Production Secret、Production Provider credential、Production Business dataをTestへ使用する。
-- `UCR-130-001〜006` または `UCR-150-001〜002` のみで要求されているAPI / Capability / UIを現行Canonical機能としてTestする。
+- `UCR-130-005` のみで要求されているoperational indexを、現行Canonical contractとしてTestする。
 
 本書はMVP、Step1、Step2、初期リリース等の実装段階でTest responsibilityを分断しない。長期運用される完成システムを対象とする。
 
@@ -93,25 +93,20 @@ Business DatabaseはOrder / Ticket / Reservation / Goods / Check-in / Notificati
 | `SPEC-100` | `DB-*`、physical schema、named constraint、`READ COMMITTED`、lock / advisory lock / `SKIP LOCKED` / migration |
 | `SPEC-110` | `API-*`、route / method / Operation ID、Hono RPC、Zod、HTTP status、error envelope、idempotency |
 | `SPEC-120` | `EML-*`、Notification / Email Job / Attempt、Resend、120秒claim、23時間safe cutoff、Resend webhook |
-| `SPEC-130` | `ADM-*` / `STF-*` / `OPS-*`、Admin / Staff routeとUX、未反映 `UCR-130-001〜006` |
+| `SPEC-130` | `ADM-*` / `STF-*` / `OPS-*`、Admin / Staff routeとUX、Admin/Staff Handoff semantics、recovery wiring |
 | `SPEC-140` | `SEC-*`、Security Control、Fail Closed、CSRF/CORS/XSS/headers、Secret、QR crypto、Webhook replay、rate limit |
-| `SPEC-150` | `REL-*`、failure class、timeout、retry/backoff/jitter/budget、unknown result、reconciliation、recovery、未反映 `UCR-150-001〜002` |
+| `SPEC-150` | `REL-*`、failure class、timeout、retry/backoff/jitter/budget、unknown result、reconciliation、recovery、canonical recovery command mapping |
 | `SPEC-160` | `OBS-*`、structured log、correlation、Audit Event、Metric、Alert、Sampling、Retention、Redaction |
 
 `SPEC-180` は本書をdeployment gateへ接続する下流仕様、`SPEC-190` は本書をAI開発手順へ接続する下流仕様、`SPEC-200` は本書のTest evidenceをsystem acceptanceへ接続する下流仕様である。
 
-### 3.1 未反映UCR
+### 3.1 Canonical operation family
 
-本書作成時点では次を未反映として扱う。
+`UCR-130-001` / `002` / `003` / `004` / `006` および `UCR-150-001` / `UCR-150-002` が要求したCapability、Admin API、read / filter contract、Goods Handoff preview / manage、Recovery command、Recovery UI actionはCanonical化済みであり、現行Canonical operation familyとしてTest catalogへ登録する。`UCR-130-005`（Operational query index）のみ `DEFERRED_NONBLOCKING` として、speculative indexをTest期待値にしない。
 
-- `UCR-130-001〜006`
-- `UCR-150-001〜002`
+### 3.2 SPEC-110 Operation ID completeness
 
-よって、これらだけに存在するsales management Capability、追加Admin read/mutation、Goods Handoff preview/manage、追加Recovery command、Recovery UI actionは現行Test catalogへ「実装済みoperation」として登録しない。対象Canonical Ownerへ将来反映された場合、本書の該当Test groupとTraceability manifestへTest Caseを追加する。
-
-### 3.2 SPEC-110 Operation ID不足
-
-`SPEC-110` はAPI Operation IDをCanonical correlation keyと定義する一方、現行§46〜48のPublic Content manage、Goods inventory manage、Role Assignment manageの一部routeには個別Operation IDが付与されていない。本書はOperation IDを発明せず、§79に `UCR-170-001` として記録する。反映前もmethod + path + capability contractのTestは必須だが、Operation IDベースの完全Traceabilityは当該routeに限りUCR解消後に満たす。
+`SPEC-110 v1.1.0` は §41 / §46〜§48 の全canonical routeへ一意な `API-*` Operation IDを付与し、Operation IDのCanonical Ownerである。したがって `UCR-170-001` は `INCORPORATED`（Operation ID completeness gapは `SPEC-110` 側で解消済み）であり、method + pathのfallbackでTestを代替するrouteはない。全current operationはOperation IDベースのAPI contract Test / traceability / observability correlation対象とする。route table差分検出のcontract testは維持するが、UCR-only routeをexpected catalogへ入れない。
 
 ---
 
@@ -699,22 +694,44 @@ API-CHK-001
 API-ORD-001..003
 API-WHK-001
 API-TKT-001..003
-API-KRK-SELF-001..004
+API-KRK-SELF-001..003
 API-GDS-SELF-001..002
 API-STF-CHK-001..002
-API-STF-GDS-001
+API-STF-GDS-001..002
 API-ADM-ORD-001..002
 API-ADM-TKT-001..002
-API-ADM-KRK-001..007
-API-ADM-GDS-001
-API-ADM-REC-001..002
+API-ADM-KRK-001..011
+API-ADM-ENT-SALES-001..003
+API-ADM-KRK-SALES-001..003
+API-ADM-GDS-001..005
+API-ADM-HOF-001..003
+API-ADM-CNT-001..016
+API-ADM-ROL-001..003
 API-ADM-PAY-001
 API-ADM-TQR-001
+API-ADM-REC-001..007
 API-WHK-EML-001
 API-ADM-EML-001..005
 ```
 
-Public Content / Goods manage / Role Assignment manageのOperation ID未付与routeはmethod/path単位でTestし、`UCR-170-001`反映後にOperation ID manifestへ移行する。
+全canonical routeは上記Operation ID manifestでTestする。method / pathの文字列fallbackは使用しない。
+
+## 27.1 Newly canonical operation family coverage
+
+次のoperation familyは、それぞれの `SPEC-110` / `SPEC-120` / `SPEC-130` contractに対して、下表のTest assertionを必須とする。API / schema / behaviorの定義はSPEC-170では行わない。
+
+| Family | Operation IDs | Required Test assertions |
+|---|---|---|
+| Entry sales management | `API-ADM-ENT-SALES-001..003` | `entry_sales.manage` allow / non-Administrator deny、Zod body strict（`held_quantity` / counter / Internal ID拒否）、capacity invariant `held + committed <= sales_capacity`、current-state conflict、Idempotency-Key / response loss、`409 STATE_CONFLICT` / `422 DOMAIN_RULE_VIOLATION`、Audit Event correlation |
+| Karaoke sales management | `API-ADM-KRK-SALES-001..003` | `karaoke_sales.manage` allow / deny、`karaoke_slots.manage`で代替不可、standard 15+5 read-only、Slot state editor化不可、Zod body strict、conflict / Idempotency / Audit |
+| Staff Goods Handoff | `API-STF-GDS-001..002` | `goods_handoff.execute` allow / deny、preview PII最小化（raw Email / Internal ID / raw QR / unrelated historyなし）、server current `PENDING` + `FULFILLABLE`、one-time completion、already `COMPLETED` replay、`VOID` / non-fulfillable conflict、response loss convergence |
+| Admin Goods Handoff read | `API-ADM-HOF-001..002` | `goods_handoff.manage` allow / `goods_handoff.execute`との分離・no inheritance、PII最小化、current state読み取り、stale conflict reload、**Application Log / Metric / `operation_id` correlationをassertし、Audit Eventを要求しない**（readでありBusiness mutationではない） |
+| Administrative Handoff Completion | `API-ADM-HOF-003` | `goods_handoff.manage` allow / `goods_handoff.execute`との分離・no inheritance、no generic state input / direct VOID / undo / reopen、before/after state、PII最小化、stale conflict reload、Idempotency-Key、**required Audit Event（before/after state / outcome / actor）と Application Log / Metric / correlation** |
+| Authoritative admin read / filter | `API-ADM-KRK-008..011`, `API-ADM-GDS-002..003`, `API-ADM-CNT-001/003/004/009/010` | authorization後にのみ `DRAFT\|PUBLISHED\|ARCHIVED` / current counter / Slot・Scope current stateを返す、Zod query allowlist strict（unknown param拒否）、canonical sort tuple、cursor opaque、client-side全件filter不可、public API代用不可 |
+| Recovery commands | `API-ADM-REC-003..007` | `recovery.exception.execute` allow / `recovery.review`だけではdeny、operation-specific precondition、same Business Cause / provider key、15秒deadline、result unknownをsuccessにしない、conflict / response lossでblind再送しない、post-verification、Audit Event（exact Operation ID）、secret / raw provider body / full Email非返却 |
+| Content / Goods / Role / Slot / Scope manage | `API-ADM-CNT-002/005..008/011..016`, `API-ADM-GDS-001/004/005`, `API-ADM-ROL-001..003`, `API-ADM-KRK-003..006` | capability allow / deny、Zod allowlist / strict、current state conflict、Idempotency-Key / response loss、Publication State machine、Inventory counter invariant、Role active unique / last-administrator protection、Slot GiST overlap / no resale、Audit / observability |
+
+各familyは上記に加えて共通API contract Test（auth、error envelope、`request_id`、Internal ID非公開、Owner-safe / capability disclosure）を通す。
 
 ## 28. Transport Idempotency
 
@@ -1142,18 +1159,22 @@ Retry matrixも `REL-RTY-*` のinitial / multiplier / max / jitter / attempts / 
 
 ## 53. Manual recovery
 
-現行Canonical APIで実行可能なmanual recoveryのみTestする。
+現行Canonical APIで実行可能なmanual recoveryをTestする。
 
-- full Refund request
-- QR token rotation
-- Karaoke Normal Cancellation
-- Notification retry / cancel
+- full Refund request（`API-ADM-PAY-001`）
+- QR token rotation（`API-ADM-TQR-001`）
+- Karaoke Normal Cancellation（`API-ADM-KRK-007`）
+- Notification retry / cancel（`API-ADM-EML-004` / `API-ADM-EML-005`）
+- Goods Inventory Adjustment（`API-ADM-GDS-005`、fixed reason code `ADMINISTRATIVE_CAPACITY_ADJUSTMENT`）
+- Checkout Attempt result reconcile（`API-ADM-REC-003`）
+- Payment Confirmation reconcile（`API-ADM-REC-004`）
+- Refund result reconcile（`API-ADM-REC-005`）
+- Notification unknown result reconcile（`API-ADM-REC-006`）
+- Consistency Review post-verification resolve（`API-ADM-REC-007`）
 - Consistency Review read / operator decision support
 - emergency Administrator bootstrap/recoveryはinfrastructure-controlled runbook boundary
 
-`UCR-150-001/002`が未反映のため、Checkout Unknown reconcile、Payment Confirmation dedicated reconcile、Refund Result dedicated reconcile、Notification Unknown dedicated reconcile、Case re-evaluate mutationを現行API testとして発明しない。
-
-**TST-REC-004:** `UCR-150-001`が将来SPEC-110へ反映された時点で、追加Recovery commandごとにauthorization、15秒deadline、same Cause/key、unknown result、Audit Event、current authority、no generic state inputを必須Testとして追加する。
+**TST-REC-004:** `API-ADM-REC-003〜007` の各commandは、required capability allow / deny、operation-specific current-state precondition、same Business Cause / Provider key、15秒deadline、unknown resultをsuccessにしないこと、conflict / response lossでblind再送しないこと、post-verification、Audit Event（exact Operation ID）correlation、secret / raw provider body / full Email非返却を必須Testとする。generic recovery / arbitrary state inputのTestを追加しない。
 
 ## 54. Emergency last Administrator recovery
 
@@ -1796,7 +1817,7 @@ SPEC-170に準拠したTest implementationは、少なくとも次をすべて�
 15. canonical reconciliation対象を再現できる。
 16. Consistency Review dedupe / resolve / recurrenceをTestできる。
 17. automatic repair / current manual recovery / emergency Admin recovery境界をTestできる。
-18. `UCR-150-001/002`だけのRecovery commandを現行APIとして発明していない。
+18. `API-ADM-REC-003〜007` のcanonical Recovery commandをTestし、generic / non-canonical Recovery commandを発明していない。
 19. Security Fail ClosedをAuth / Secret / QR key / webhook / CSRF / DB failureでTestできる。
 20. Availability fallbackでSecurity Controlをskipしない。
 21. Ticket / QR / Check-in single-useとparallel scanをTestする。
@@ -1820,10 +1841,15 @@ SPEC-170に準拠したTest implementationは、少なくとも次をすべて�
 39. Critical Test quarantineが0である。
 40. code coverage thresholdとsemantic coverageを両方満たす。
 41. Test resultからupstream Rule IDへmachine-readableに追跡できる。
-42. `UCR-130-001〜006`を反映済みと仮定していない。
-43. `UCR-150-001〜002`を反映済みと仮定していない。
+42. `UCR-130-001〜004/006` および `UCR-150-001〜002` のoperationをCanonicalとしてTestし、`UCR-130-005` のみ未反映として扱う。
+43. `UCR-170-001` は `SPEC-110` のOperation ID付与により `INCORPORATED` であり、method / path fallbackをfeature coverageとして登録しない。
 44. Test-only fault injection endpointをProductionへ公開していない。
 45. E2EだけでDB / Provider / Security invariantを保証済みとしていない。
+46. Entry / Karaoke sales management operation familyはcapability allow / deny、Zod body / query strict、capacity / period conflict、Idempotency / response loss、Audit correlationをTestする。
+47. Staff / Admin Goods Handoff operation familyはcapability分離、PII最小化、no generic state input、current `PENDING` + `FULFILLABLE`、replay / conflict / response lossをTestする。
+48. Authoritative admin read / filterはZod allowlist strict、canonical sort、`DRAFT|PUBLISHED|ARCHIVED` / current counter / Slot・Scope current state、public API代用不可をTestする。
+49. `API-ADM-REC-003〜007` はoperation-specific precondition、same Business Cause / Provider key、unknown非成功、post-verification、Audit correlation、secret / raw provider body / full Email非返却をTestする。
+50. 全canonical Operation IDにAPI contract Testがあり、UCR-only IDをactive featureとして登録しない。
 
 ---
 
@@ -1831,21 +1857,20 @@ SPEC-170に準拠したTest implementationは、少なくとも次をすべて�
 
 ## 78. UCR status inheritance
 
-本書は次の既存Upstream Change Requestを継承するが、反映済みとは扱わない。
+- `UCR-130-001〜004/006`: `INCORPORATED`（`SPEC-060` / `SPEC-110` / `SPEC-120` / `SPEC-130`）
+- `UCR-130-005`: `DEFERRED_NONBLOCKING`（`SPEC-100`、speculative indexなし）
+- `UCR-150-001`: `INCORPORATED`（`SPEC-110 §48.5` `API-ADM-REC-003〜007`）
+- `UCR-150-002`: `INCORPORATED`（`SPEC-130 §41.5` 等のwiring、`SPEC-110 §48.5` command）
+- `UCR-170-001`: `INCORPORATED`（`SPEC-110 §41 / §46〜§48` のOperation ID completeness gap解消）
 
-- `UCR-130-001〜006`
-- `UCR-150-001〜002`
-
-これらが対象Canonical Ownerへ反映された場合は、追加されたCapability / API / UI / index / Recovery commandについて、本書の対応test groupへTest Caseを追加する。反映前に期待値を先取りしない。
+Canonical化済みoperationは §27.1 のoperation-family Test対象とし、`UCR-130-005` のみ未反映として期待値を先取りしない。反映済みoperationへTest Caseを追加し、存在しないoperationを発明しない。
 
 ## 79. UCR-170-001 — SPEC-110のOperation ID completeness
 
-- **対象:** `SPEC-110 API Specification`
-- **現在の仕様:** `SPEC-110` はOperation IDをAPI operationの永続識別子として定義し、`SPEC-160` もAPI log / auditの `operation_id` にSPEC-110のOperation IDをexactに使用する。一方、現行 `SPEC-110` §46 Public content manage、§47 Goods inventory manage、§48 Role Assignment manageでは複数のcanonical method/pathが定義されているが、それぞれに一意な `API-*` Operation IDが明示されていない。
-- **要求する変更:** 既存method/path、Capability、request/response semanticsを変更せず、§46〜48の各canonical routeへ一意なOperation IDを割り当てる。Operation IDは既存命名規則に従い、`SPEC-160` correlation / Audit EventとSPEC-170 traceabilityから参照可能にする。
-- **理由:** API contract Test、structured log、Audit Event、Metric operation registry、incident investigationを同じbounded identifierへ接続し、method/pathの文字列推測を避けるため。
-- **変更しない場合の影響:** 対象routeはmethod/path単位のbehavior Testは可能だが、Operation IDベースの100% API coverage / observability correlationを完全には満たせない。
-- **影響を受ける可能性がある仕様書:** `SPEC-130`, `SPEC-140`, `SPEC-160`, `SPEC-170`, `SPEC-180`, `SPEC-190`, `SPEC-200`。
+- **Status:** `INCORPORATED`（`SPEC-110 v1.1.0` でOperation ID completeness gapは解消済み）
+- **Canonical evidence:** `SPEC-110 §41 / §46〜§48` の全canonical routeに一意な `API-*` Operation IDが付与され、`API-ADM-READ-001` が1 route 1 ID / 1:1 traceabilityを規定する。`SPEC-160` correlation / Audit Eventは同IDをexactに使用する。
+- **本書側反映:** §3.2、§27、§27.1、Acceptance 43 / 50。
+- **残作業:** なし。
 
 ---
 
@@ -1899,12 +1924,11 @@ AIはpassing implementationに合わせてexpected stateを変更してはなら
 - raw QR / Token / Secret / Emailをartifactへ不要に出さない。
 - Metric high-cardinality禁止をTestできる。
 - Alert threshold/window/minimum/cooldownをTestできる。
-- `UCR-130-001〜006`を反映済みとしていない。
-- `UCR-150-001〜002`を反映済みとしていない。
+- `UCR-130-001〜004/006`および`UCR-150-001〜002`をCanonical operationとしてTestし、`UCR-130-005`のみ未反映としている。
 - Production Provider / Secret / dataへ標準suiteが依存しない。
 - critical Testのrunner retry / quarantineでfailureを隠さない。
 - Coverage thresholdが具体値である。
 - Test fixture / clock / fault injection contractが具体化されている。
-- `UCR-170-001`以外に上流変更を暗黙導入していない。
+- `UCR-170-001`はINCORPORATEDであり、canonical Operation ID manifestをTestし、method / path fallbackをfeature coverageとして登録していない。
 - 長期運用される完成システムを対象としている。
 

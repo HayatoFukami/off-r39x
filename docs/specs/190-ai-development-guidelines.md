@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-190
 title: AI Development Guidelines
-version: 1.0.0
+version: 1.1.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -73,7 +73,7 @@ related_specs:
 | `SPEC-070` | Payment / Stripe / idempotency / unknown result | payment service / Stripe adapter境界 | `PAY-*`、state、timeout等 |
 | `SPEC-080` | QR protection / check-in concurrency | QR crypto helper、check-in repository境界 | `TQR-*`、QR format / lifecycle |
 | `SPEC-100` | Physical DB schema / transaction / constraint / migration | `packages/db`、repository、migration | `DB-*`、table/constraint/lock semantics |
-| `SPEC-110` | Hono route / RPC / Zod / Operation ID | API package route→service layering | `API-*`、method/path/response/error contract |
+| `SPEC-110` | Hono route / RPC / Zod / Operation ID | API package route→service layering | `API-*` canonical Operation ID manifest、method/path/response/error contract |
 | `SPEC-120` | Notification / worker / Resend / React Email | email package / worker / provider adapter | `EML-*`、Notification lifecycle |
 | `SPEC-140` | Security / secret / fail-closed | server-only config / secret / redaction / crypto | `SEC-*`、control values |
 | `SPEC-150` | timeout / retry / unknown / reconciliation / graceful shutdown | reliability registry / worker boundary | `REL-*`、retry/cadence values |
@@ -83,23 +83,19 @@ related_specs:
 
 `SPEC-020`, `SPEC-030`, `SPEC-040`, `SPEC-050`, `SPEC-090`, `SPEC-130` は、実装taskの具体的なbehavior traceで必要になる関連Canonical Ownerであるが、Repository / implementation architectureの直接定義元ではないため `related_specs` とする。変更分類に応じて実装agentはこれらも必ず読む。
 
-## 4. 未反映Upstream Change Requestの扱い
+## 4. Canonical operation family / Upstream Change Requestの扱い
 
-本書作成時点では次を未反映と扱う。
+`UCR-130-001` / `002` / `003` / `004` / `006`、`UCR-150-001` / `UCR-150-002`、`UCR-170-001` が要求したCapability、API、Operation ID、Recovery command、Recovery UI actionは対象Canonical Owner（`SPEC-060` / `SPEC-110` / `SPEC-120` / `SPEC-130`）へ反映済みであり、実装agentはcanonical化済みの現行実装要件（canonicalized implementation requirement）として扱う。仕様への反映は実装完了を意味せず、実際の実装完了は §37 self-verificationと §39 completion evidenceのworkflow evidenceを要する。未反映として扱うのは `UCR-130-005`（deferred operational index）と将来のnoncanonical proposalだけである。
 
-```text
-UCR-130-001〜006
-UCR-150-001〜002
-UCR-170-001
-```
+**DEV-GEN-001:** UCRは対象Canonical Owner本文へ反映されるまでCanonical behaviorではない。反映済みの `UCR-130-001〜004/006`、`UCR-150-001〜002`、`UCR-170-001` はCanonical behaviorとして扱う。
 
-**DEV-GEN-001:** UCRは対象Canonical Owner本文へ反映されるまでCanonical behaviorではない。
+**DEV-GEN-002:** 実装agentは、まだCanonical Owner本文へ反映されていない提案（現在は `UCR-130-005` と将来のnoncanonical proposal）だけに存在するCapability、API、Operation ID、UI、Index、Recovery commandを「予定されている」ことを理由に実装済み契約として扱ってはならない。Canonical化済みoperation familyは `SPEC-110` / `SPEC-120` / `SPEC-130` contractへtraceして実装する。
 
-**DEV-GEN-002:** 実装agentはUCRだけに存在するCapability、API、Operation ID、UI、Index、Recovery commandを「予定されている」ことを理由に実装済み契約として扱ってはならない。
+**DEV-GEN-003:** `SPEC-110 v1.1.0` は §41 / §46〜§48 の全canonical routeへ一意な `API-*` Operation IDを付与済みである。実装agentはSPEC-110 Operation ID manifestを使用し、route / schema / behaviorを複製せず、新規Operation IDを発明しない。新IDは `SPEC-110` ownerの改訂でのみ追加する。
 
-**DEV-GEN-003:** `UCR-170-001` 未反映中、SPEC-110にOperation IDがないrouteへSPEC-190または実装agentがOperation IDを発明してはならない。method + path + capability単位の既存Test契約を維持する。
+**DEV-GEN-004:** `API-ADM-REC-003〜007` は `SPEC-110 §48.5` のcanonical operation-specific recovery commandとしてcanonical化済みであり、実装agentが実装すべき現行要件である。これは実装完了・検証済みを意味せず、実際の実装完了は §37 self-verificationと §39 completion evidenceで示す。generic recovery / arbitrary state mutation / UCR-only recovery / 新規recovery UIを追加せず、`UCR-130-005` のdeferred indexを実装依存にしない。
 
-**DEV-GEN-004:** `UCR-150-001〜002` 未反映中、dedicated Recovery API / UIを追加してはならない。既存Canonical operationとautomatic reconciliationだけを実装する。
+**DEV-GEN-010:** Canonical化済みoperation family（Entry / Karaoke sales management、Admin / Staff Goods Handoff、authoritative read / filter、`API-ADM-REC-003〜007`）は `SPEC-110` / `SPEC-120` / `SPEC-130` のcanonical Operation ID / capability / precondition / recovery contractへtraceして実装し、API schema / route / stateを複製または再定義しない。
 
 ## 5. Rule ID体系
 
@@ -714,7 +710,7 @@ unnecessary PII
 
 **DEV-TRC-001:** `rule-code-map.json` はCanonical behaviorのsourceではない。Spec Rule IDを参照するindexである。
 
-**DEV-TRC-002:** active code pathをUCR-only IDへtraceしてはならない。
+**DEV-TRC-002:** active code pathをdeferred UCR（`UCR-130-005`）またはfuture proposalのみのIDへtraceしてはならない。activeなAPI behaviorは `SPEC-110` のcanonical Operation ID / canonical Rule IDへtraceする。
 
 **DEV-TRC-003:** 変更したbehavioral sourceは少なくとも1つのCanonical Rule IDへtraceし、critical behaviorは対応 `TC-*` へtraceする。
 
@@ -728,7 +724,7 @@ AI coding agentは1 taskを次の順序で処理する。
 2. **Change classification** — §33のcategoryを複数選択する。
 3. **Canonical Owner特定** — category + behaviorから直接Ownerを読む。
 4. **Rule ID抽出** — `INV-*`, `AR-*`, `PAY-*`, `TQR-*`, `DB-*`, `API-*`, `EML-*`, `SEC-*`, `REL-*`, `OBS-*`, `TST-*`, `INF-*` 等を列挙する。
-5. **UCR status確認** — UCR-only behaviorをactiveとみなしていないことを確認する。
+5. **Canonical status確認** — `SPEC-110` Operation ID manifestとCanonical Owner contractを確認し、未反映は `UCR-130-005` とfuture proposalだけであり、UCR-only behaviorをactiveとみなしていないことを確認する。
 6. **Existing code / test / migration確認** — implementation map、route、repository、migration、manifestを読む。
 7. **Implementation boundary決定** — 変更するpackage/layerと禁止edgeを明示する。
 8. **Failing / coverage Test作成** — bugは再現fail、新behaviorはcontract Testを先に作る。
@@ -756,7 +752,7 @@ AI coding agentは1 taskを次の順序で処理する。
 
 **DEV-GEN-006:** CodeとSpecが矛盾した場合、Specを基準として差異を報告し、既存Codeの挙動を仕様へ昇格させない。
 
-**DEV-GEN-007:** 上流変更が必要なら `SPEC-000 §15.2` 形式のUpstream Change Requestを作る。UCRは反映まで未実装仕様である。
+**DEV-GEN-007:** 上流変更が必要なら `SPEC-000 §15.2` 形式のUpstream Change Requestを作る。UCRは対象Canonical Owner本文へ反映されるまで未実装仕様であり、反映済みのcanonical operationは実装すべき現行要件（canonicalized implementation requirement）として扱う。仕様への反映は実装完了を意味せず、実装完了は §37 / §39 のworkflow evidenceで示す。
 
 **DEV-GEN-008:** 「既存コードがそうなっている」は仕様変更理由として十分ではない。Domain need、external contract、security/reliability requirement等の根拠を示す。
 
@@ -787,7 +783,7 @@ AI coding agentは1 taskを次の順序で処理する。
 | source diff review | Always | no unintended change/generated noise |
 | Secret scan | Always | no secret/credential match |
 | raw QR / PII / Secret logging review | sensitive paths | prohibited output absent |
-| traceability manifest validation | behavior/test change | all references valid; no UCR-only active ID |
+| traceability manifest validation | behavior/test change | all references valid; active API behavior traces to `SPEC-110` canonical Operation ID; no deferred-UCR / future-proposal-only active ID |
 
 **DEV-TST-010:** diagnostic rerun結果だけをcompletion evidenceにせず、最初のgating failureと修正後のclean runを区別する。
 
@@ -806,7 +802,7 @@ Agentは少なくとも次をdiffに対してyes/no判定する。
 - named constraint / lock / idempotency / Business Causeを弱めていないか。
 - test-only bypass / endpointがProduction graphへ入っていないか。
 - Infrastructure topology / runtime major / secret placementを変更していないか。
-- UCR-only itemを現行Canonicalとして扱っていないか。
+- deferred UCR（`UCR-130-005`）またはfuture proposalだけに存在するitemを現行Canonicalとして扱っていないか。
 
 1つでも不適合ならtaskは完了ではない。
 
@@ -842,9 +838,8 @@ Traceability changes:
 - <manifest / rule-code map updates>
 
 Known non-implemented UCRs:
-- UCR-130-001〜006: not assumed implemented
-- UCR-150-001〜002: not assumed implemented
-- UCR-170-001: not assumed implemented
+- UCR-130-005: deferred operational index, not assumed implemented
+- Canonical operation families UCR-130-001..004/006, UCR-150-001..002, UCR-170-001 are canonicalized implementation requirements traced to SPEC-110/120/130; actual implementation completion requires §37/§39 workflow evidence and is not asserted by this specification-only repository
 
 Verification exceptions:
 - none | <not-run item + concrete reason + release impact>
@@ -924,12 +919,13 @@ SPEC-190は以下を全て満たすとき受入可能である。
 22. Critical Test retry=0 / quarantine禁止を維持する。
 23. generated code self-verificationが具体的な実行項目を持つ。
 24. 上流仕様を実装agentが黙って変更できない。
-25. UCR-only仕様を実装済みと仮定しない。
+25. deferred UCR（`UCR-130-005`）またはfuture proposalのみの仕様を実装済みと仮定せず、canonical化済みoperationは `SPEC-110` / `SPEC-120` / `SPEC-130` contractへtraceする。
 26. completion evidenceが再現可能な固定formatを持つ。
 27. Production codeとTest Harnessが分離される。
 28. `INV-010-01〜10` と関連 `AR-*`, `PAY-*`, `TQR-*`, `DB-*`, `API-*`, `EML-*`, `SEC-*`, `REL-*`, `OBS-*`, `TST-*`, `INF-*`へ追跡可能である。
 29. 長期運用される完成システムを対象とする。
 30. 未確定表現を残さない。
+31. Canonical化済みoperation family（sales management / Handoff / authoritative read・filter / `API-ADM-REC-003〜007`）は `SPEC-110` canonical Operation ID / capability / recovery contractへtraceされ、deferred `UCR-130-005` とfuture proposalのみが未反映として扱われる。
 
 # Part XXIII — Upstream Change Requests
 
@@ -937,7 +933,7 @@ SPEC-190は以下を全て満たすとき受入可能である。
 
 なし。
 
-本書は `UCR-130-001〜006`, `UCR-150-001〜002`, `UCR-170-001` を継承して未反映と扱うが、それらを新規要求として再提出しない。
+本書は `UCR-130-001〜004/006`, `UCR-150-001〜002`, `UCR-170-001` のcanonical operation familyをcanonical化済みの現行実装要件として扱い（実装完了は §37 / §39 のworkflow evidenceを要する）、`UCR-130-005`（deferred operational index）と将来のnoncanonical proposalだけを未反映として扱う。`UCR-130-005` を新規要求として再提出しない。
 
 ## 44. 最終禁止事項
 
@@ -955,5 +951,5 @@ SPEC-190は以下を全て満たすとき受入可能である。
 - Test用public worker endpointをProductionに追加する。
 - Critical Testをretry / quarantineで緑にする。
 - Feature taskへInfrastructure topology変更を混ぜる。
-- UCR-only operationをcurrent APIとして実装する。
+- deferred UCR（`UCR-130-005`）またはfuture proposalのみのoperationをcurrent APIとして実装する。
 

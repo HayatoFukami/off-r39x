@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-160
 title: Observability and Audit Log
-version: 1.1.0
+version: 1.3.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -44,7 +44,7 @@ related_specs:
 - Audit Event欠落を通常Application Logで代替する。
 - Security Fail ClosedをAvailability向上のためskipする。
 - `recovery.exception.execute` をgeneric superuser、任意state editor、任意SQL実行権限として扱う。
-- `UCR-130-001〜006`、`UCR-150-001〜002`を反映済みと仮定する。
+- `UCR-130-005`（operational index、`DEFERRED_NONBLOCKING`）を反映済みと仮定する。
 
 本書はMVP、Step1、Step2等の実装フェーズでObservabilityを分断しない。長期運用される完成システムを対象とする。
 
@@ -98,20 +98,21 @@ related_specs:
 | `SPEC-100` | physical schema、Public Reference、Payment / Webhook / Refund / Review persistence、§44 Audit persistence delegation |
 | `SPEC-110` | API Operation ID、`request_id`、HTTP error、idempotency、Admin / Staff server operation |
 | `SPEC-120` | Notification / Email Job / Attempt / Resend idempotency / webhook / Unknown Result |
-| `SPEC-130` | Admin / Staff operation、Audit-ready context、Recovery UI、未反映 `UCR-130-001〜006` |
+| `SPEC-130` | Admin / Staff operation、Audit-ready context、Recovery UI、Admin/Staff Handoff semantics、authoritative read/filter、recovery wiring |
 | `SPEC-140` | Secret / PII / raw QR redaction、Provider data boundary、Security Fail Closed、abuse control |
-| `SPEC-150` | failure class、timeout、retry、reconciliation、stuck、Consistency Review、Recovery Runbook、未反映 `UCR-150-001〜002` |
+| `SPEC-150` | failure class、timeout、retry、reconciliation、stuck、Consistency Review、Recovery Runbook、canonical recovery command mapping |
 
 `SPEC-040` / `SPEC-050` はUser Flow /一般利用者Pageのincident contextとして関連するが、Observability contractの直接定義元ではないため `related_specs` とする。
 
-### 3.1 未反映UCRの扱い
+### 3.1 Canonical operation familyの扱い
 
-`UCR-130-001〜006` および `UCR-150-001〜002` は本書作成時点で未反映として扱う。
+`UCR-130-001` / `002` / `003` / `004` / `006` および `UCR-150-001` / `UCR-150-002` が要求したCapability、API、Admin UI、Recovery commandはCanonical化済みであり、対応するoperationには本書の同一Audit / Log / Metric / Correlation contractを適用する。`UCR-130-005`（Operational query index）のみ `DEFERRED_NONBLOCKING` として残す。
 
-- UCRだけに存在するCapability、API、Admin UIを既存Canonical operationとして記録しない。
-- 現在存在するOperation IDには本書のAudit / Log contractを適用する。
-- 将来上流Canonical Ownerへ追加された明示Recovery command、Admin read / mutationにも、本書の同一Audit / Log / Metric contractを適用する。
-- `recovery.exception.execute` を理由に、未存在のgeneric recovery operationを本書から新設しない。
+- Canonical化済みのOperation ID（`SPEC-110` owner）には、`request_id`、`operation_id`、`operation_execution_id`、Business Cause / provider reference correlation、actor、target Public Reference、result classification contractを適用する。
+- Admin authoritative read / filter（`SPEC-110 §41 / §48.3`）、特に `API-ADM-HOF-001` / `API-ADM-HOF-002` はserver-side queryとしてoperation-level Application Log / Metric / correlationをemitし、Audit Eventを要求しない（readはBusiness mutationではない）。
+- Sales config mutation（`API-ADM-ENT-SALES-003` / `API-ADM-KRK-SALES-003`）、Admin Goods Handoff command（`API-ADM-HOF-003`）、explicit recovery command（`API-ADM-REC-003〜007`）は §37 のrequired Audit targetとする。
+- `recovery.exception.execute` を理由に、存在しないgeneric recovery operationを本書から新設しない。
+- secret、raw QR、raw provider body、full Email、Internal IDをAudit / Log / Metricへ含めない。
 
 ### 3.2 Audit tableの委譲
 
@@ -1222,6 +1223,10 @@ The following MUST be auditable for success, authenticated rejection, and import
 | Entry Check-in | Entry Ticket | Staff actor, outcome, check-in ref if available |
 | Karaoke Check-in | Karaoke Ticket | Staff actor, outcome, time-window result |
 | Public Content publish/archive | Public Content | Publication State before/after |
+| Entry Ticket Offering sales config mutation (`API-ADM-ENT-SALES-003`) | Offering | actor role/capability `entry_sales.manage`, changed field names, before/after capacity safe counters, result |
+| Karaoke Sales Configuration mutation (`API-ADM-KRK-SALES-003`) | Sales Configuration | actor role/capability `karaoke_sales.manage`, changed field names, result |
+| Administrative Handoff Completion (`API-ADM-HOF-003`) | Goods Handoff / Goods Order Item | `goods_handoff.manage` actor（`goods_handoff.execute` と区別）, Handoff ref / Goods Item ref, before/after safe state, result, Customer PII最小化 |
+| explicit recovery command (`API-ADM-REC-003〜007`) | exact target（Checkout Attempt / Order / Refund / Notification / Consistency Case） | exact Operation ID, Business Cause / provider reference category, same-key preservation, result / unknown classification, post-verification |
 | Notification retry | Notification Request / Email Job | attempt number, snapshot revision, result |
 | Notification cancel | Notification Request | Domain/processing state result |
 | Consistency Review manual recovery | Case + primary target | Case reason, Recovery Execution ID, recovery kind |
@@ -1230,11 +1235,15 @@ The following MUST be auditable for success, authenticated rejection, and import
 | emergency Administrator bootstrap/recovery | target Profile / Role Assignment | Infrastructure operator ref, active admin count before/after |
 | security-sensitive configuration operation owned by this system | Security Configuration | changed setting names only, never secret values |
 
-When `UCR-150-001/002` operations are later Canonicalized, each newly explicit Recovery command automatically becomes a required Audit target under this rule.
+Canonical化済みの `API-ADM-REC-003〜007`、`API-ADM-HOF-003`、`API-ADM-ENT-SALES-003` / `API-ADM-KRK-SALES-003` は上表のrequired Audit targetであり、今後Canonical Ownerへ追加される明示Recovery command / Admin mutationにも同じcontractを適用する。一方、`API-ADM-HOF-001` / `API-ADM-HOF-002` はAdmin authoritative readでありrequired Audit targetではない（§3.1 / `OBS-AUD-013`）。
 
 **OBS-AUD-009:** Automatic repair that changes Business state MUST append a `RECOVERY_EXECUTION` Audit Event with `actor_type=SYSTEM_WORKER`; read-only reconciliation/no-op checks remain Application Log/Metric only.
 
 **OBS-AUD-011:** `recovery.exception.execute` Audit Event MUST identify the concrete recovery kind / Operation ID. Storing only `capability=recovery.exception.execute` is insufficient.
+
+**OBS-AUD-012:** `API-ADM-ENT-SALES-003` / `API-ADM-KRK-SALES-003` / `API-ADM-HOF-003` / `API-ADM-REC-003〜007` は success / authenticated rejection / important failure を、exact Operation ID、actor role/capability、target Public Reference、request correlation、business/result classification でAudit可能にする。secret、raw QR、raw provider body、full Email、Internal IDを含めない。
+
+**OBS-AUD-013:** `API-ADM-HOF-001` / `API-ADM-HOF-002` はAdmin authoritative read / filterであり、required Audit targetではない。server-side queryとしてoperation-level Application Log / Metric / correlation（`request_id`、`operation_id`、`operation_execution_id`、actor、`result`）だけをemitし、Audit Eventを要求しない。このreadにAudit Eventを要求または生成してはならない。secret、raw QR、raw provider body、full Email、Internal IDを含めない。
 
 ## 38. Audit data access
 
@@ -1885,8 +1894,10 @@ Audit events are triggered by server operation, not Page click, but the followin
 - `PG-STF-*` Check-in/Handoff → `API-STF-*` → `OBS-AUD-*`
 - `OPS-ACT-*` / `OPS-AUD-*` → authorization/precondition/business-result fields
 - `ADM-REC-*` → Consistency Review / Recovery Execution correlation
+- `API-ADM-ENT-SALES-003` / `API-ADM-KRK-SALES-003` / `API-ADM-HOF-003` / `API-ADM-REC-003〜007` → `OBS-AUD-*`
+- Admin authoritative read / filter（`SPEC-110 §41 / §48.3`）、特に `API-ADM-HOF-001` / `API-ADM-HOF-002` → operation-level Application Log / Metric / correlation（Audit Eventではない。§3.1 / `OBS-AUD-013`）
 
-Unreflected `UCR-130-*` page/API capabilities remain non-Canonical until upstream reflection.
+Canonical化済みの `UCR-130-001〜004/006` および `UCR-150-001〜002` のoperationは上記traceの対象である。`UCR-130-005`（operational index）のみ `DEFERRED_NONBLOCKING` として残す。
 
 ---
 
@@ -1962,8 +1973,8 @@ Implementation MUST satisfy all of the following.
 64. Alert delivery failure is itself observable through an independent infrastructure health path defined by `SPEC-180`.
 65. Incident investigation questions in §56 can be answered without Secret/raw QR/unnecessary PII.
 66. Retry counts/timeouts/reconciliation cadence/Runbooks are referenced from `SPEC-150` and not redefined.
-67. `UCR-130-001〜006` and `UCR-150-001〜002` are not treated as reflected.
-68. Future Canonical explicit Recovery commands inherit the same Audit/Log contract automatically.
+67. `UCR-130-001〜004/006` および `UCR-150-001〜002` のoperationはCanonical化済みとしてAudit / Log contractの対象とし、`UCR-130-005` のみ未反映として扱う。
+68. Canonical explicit Recovery commands（`API-ADM-REC-003〜007`）および将来Canonical化されるRecovery commandは、同じAudit / Log contractを自動的に継承する。
 69. `INV-010-01〜10` and relevant `FR-*`,`BR-*`,`DI-030-*`,`AR-*`,`PAY-*`,`TQR-*`,`KRK-*`,`DB-*`,`API-*`,`EML-*`,`ADM-*`,`STF-*`,`OPS-*`,`SEC-*`,`REL-*` are traceable through §57–58.
 70. No unresolved implementation-choice placeholder remains in the normative contract.
 
@@ -1980,9 +1991,9 @@ Implementation MUST satisfy all of the following.
 - `SPEC-100 §44` がSPEC-160による専用append-only Audit table追加を明示的に委譲している。
 - Audit/Event/Metric/Alert/Retention/Correlationは上流から本仕様へ明示委譲されている。
 - 本書は既存Domain State、API endpoint、Capability、retry/reconciliation ruleを追加・変更していない。
-- `UCR-130-001〜006`、`UCR-150-001〜002`が未反映であることを維持し、存在しないoperationを発明していない。
+- `UCR-130-001〜004/006`、`UCR-150-001〜002` はCanonical化済みであり、`UCR-130-005` のみ未反映として存在しないoperationを発明していない。
 
-将来 `UCR-150-001` によりRecovery endpointが `SPEC-110` へ追加された場合、本書の `OBS-AUD-011`、`OBS-REC-*`、Correlation、Metric、Alert contractをそのOperation IDへ適用するだけであり、SPEC-160側でgeneric Recovery APIを追加しない。
+Canonical化済みのRecovery command（`API-ADM-REC-003〜007`）は、本書の `OBS-AUD-011`、`OBS-AUD-012`、`OBS-REC-*`、Correlation、Metric、Alert contractをそのexact Operation IDへ適用する。SPEC-160側でgeneric Recovery APIを追加しない。
 
 ---
 
@@ -2005,5 +2016,5 @@ Implementation MUST satisfy all of the following.
 - Metric labelへのhigh-cardinality identifier導入
 - Audit EventのApplication Log sampling依存
 - `recovery.exception.execute` のgeneric superuser化
-- 未反映UCRの反映済み仮定
+- `UCR-130-005`（operational index）の反映済み仮定
 

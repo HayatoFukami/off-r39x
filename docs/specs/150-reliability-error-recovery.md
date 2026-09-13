@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-150
 title: Reliability, Error and Recovery
-version: 1.0.0
+version: 1.1.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -89,16 +89,16 @@ related_specs:
 | `SPEC-100` | Physical state、constraint、`READ COMMITTED`、lock、`40001` / `40P01`、Review table |
 | `SPEC-110` | API error contract、idempotency、Webhook / Admin operation boundary |
 | `SPEC-120` | Notification / Email Job / Attempt、Resend 10秒deadline、120秒claim、23時間safe cutoff |
-| `SPEC-130` | Recovery UI、Consistency Review UI、未反映 `UCR-130-001〜006` |
+| `SPEC-130` | Recovery UI、Consistency Review UI、Admin/Staff Handoff semantics、recovery command wiring |
 | `SPEC-140` | Security Fail Closed、300秒Webhook replay tolerance、QR key protection、rate limit |
 
 `SPEC-040` / `SPEC-050` は既存User Flow /一般画面のUX traceに使用する関連仕様であり、本書はそのPage / Routeを再定義しない。
 
-### 3.1 `UCR-130-001〜006` の扱い
+### 3.1 `UCR-130-001〜006` / `UCR-150-001〜002` の扱い
 
-`SPEC-130` の `UCR-130-001〜006` は本書作成時点で**未反映**として扱う。本書は、要求中のCapability、Admin API、read contract、indexが既にCanonical化されたと仮定しない。
+`SPEC-130` の `UCR-130-001` / `002` / `003` / `004` / `006` および `UCR-150-001` / `UCR-150-002` が要求したCapability、Admin API、read contract、Recovery command、Recovery UI wiringはCanonical化済みである。本書のManual Recovery Runbookは、`SPEC-110 §48.5` のoperation-specific command（`API-ADM-REC-003〜007`）と既存canonical operation（`API-ADM-PAY-001` / `API-ADM-TQR-001` / `API-ADM-KRK-007` / `API-ADM-GDS-005` / `API-ADM-EML-004〜005`）をexactに使用する。route / schema / capability / state / lockは `SPEC-110` / `SPEC-120` / `SPEC-130` を参照し、本書では再定義しない。
 
-本書のRecoveryがそれらに依存する場合は、既存Canonical operationだけで実行できる範囲を明示し、不足は本書末尾のUpstream Change Requestで扱う。
+`UCR-130-005`（Operational query index）のみ `DEFERRED_NONBLOCKING` として残し、indexを先取りしない。
 
 ---
 
@@ -765,6 +765,7 @@ r150:<reason_code>:<primary_entity_type>:<primary_public_ref>:<cause_discriminat
 
 ## 46. Runbook — Stripe Checkout Unknown
 
+- **Canonical operation:** `API-ADM-REC-003`（`SPEC-110 §48.5`）
 - **Trigger:** Checkout Attempt `creation_result=UNKNOWN`が30分reconciliation後も未解決
 - **Required Capability:** `recovery.review`; corrective mutationは`recovery.exception.execute`
 - **Precondition:** Order `PREPARED` / `REVIEW_REQUIRED`、same Attempt / Stripe key特定済み
@@ -779,10 +780,11 @@ r150:<reason_code>:<primary_entity_type>:<primary_public_ref>:<cause_discriminat
 - **Post verification:** active Binding <=1、amount/currency一致、Karaoke時間条件一致
 - **Case resolution:**上記Invariantが成立しunknownが消えたときのみ
 
-専用Admin recovery mutationは現行`SPEC-110`に不足するため`UCR-150-001`を発行する。
+専用Admin recovery mutationは `API-ADM-REC-003`（`SPEC-110 §48.5`）としてCanonical化済みである。
 
 ## 47. Runbook — Payment Confirmation Mismatch
 
+- **Canonical operation:** `API-ADM-REC-004`（`SPEC-110 §48.5`）
 - **Trigger:** Stripe paidだがBusiness Confirmation未成立 / Order `REVIEW_REQUIRED`
 - **Capability:** `recovery.review` + corrective mutation時`recovery.exception.execute`
 - **Authority:** verified Stripe current Payment / Session、Payment Binding、Order snapshot、Allocation / Hold、Ticket / Reservation / Goods current state
@@ -793,10 +795,11 @@ r150:<reason_code>:<primary_entity_type>:<primary_public_ref>:<cause_discriminat
 - **Unknown:** unresolved Case
 - **Post verification:** `INV-010-02/03/04/07/10`
 
-専用Admin recovery mutationは`UCR-150-001`対象とする。
+専用Admin recovery mutationは `API-ADM-REC-004`（`SPEC-110 §48.5`）としてCanonical化済みである。
 
 ## 48. Runbook — Refund Unknown
 
+- **Canonical operation:** `API-ADM-REC-005`（`SPEC-110 §48.5`）
 - **Trigger:** Refund `REVIEW_REQUIRED` / 6時間reconciliation未解決
 - **Capability:** `recovery.review` + `recovery.exception.execute`
 - **Authority:** existing Refund Record、Order / Payment Binding、Stripe Refund current state
@@ -808,7 +811,7 @@ r150:<reason_code>:<primary_entity_type>:<primary_public_ref>:<cause_discriminat
 - **Unknown:** no write retry、Case unresolved
 - **Post verification:** no duplicate live full Refund、amount/currency一致
 
-Result reconciliation専用operationは`UCR-150-001`対象とする。新規Refund開始自体は既存`API-ADM-PAY-001`を使用する。
+Result reconciliation専用operationは `API-ADM-REC-005`（`SPEC-110 §48.5`）としてCanonical化済みである。新規Refund開始自体は既存`API-ADM-PAY-001`を使用する。
 
 ## 49. Runbook — QR Token Compromise / Rotation
 
@@ -845,16 +848,18 @@ Result reconciliation専用operationは`UCR-150-001`対象とする。新規Refu
 
 ## 52. Runbook — Notification Failed / Blocked
 
+- **Canonical operation:** `API-ADM-EML-004`（retry）/ `API-ADM-EML-005`（cancel）（`SPEC-120 §36`）
 - **Trigger:** Notification `FAILED_RETRYABLE` + Job `BLOCKED`
 - **Capability:** `recovery.review` + retry時`recovery.exception.execute`
 - **Authority:** Notification / Job / Attempts、current verified recipient when allowed、source Business state
-- **Allowed:** existing Admin notification retry with `SNAPSHOT`; `CURRENT_VERIFIED`は`SPEC-120`条件だけ
+- **Allowed:** existing `API-ADM-EML-004` retry with `SNAPSHOT`; `CURRENT_VERIFIED`は`SPEC-120`条件だけ。`API-ADM-EML-005` cancelはProvider Acceptance前のみ
 - **Forbidden:** source Business retry、`SENT` resend、`UNKNOWN_RESULT`中recipient変更
 - **Success:** Job `READY` scheduled、または後続Provider Acceptanceで`SENT`
 - **Failure:** `BLOCKED`維持
 
 ## 53. Runbook — Notification Unknown Result
 
+- **Canonical operation:** `API-ADM-REC-006`（`SPEC-110 §48.5`、`SPEC-120 §36.2` のstate / lock / provider / error contractを再利用）
 - **Trigger:** Job `UNKNOWN_RESULT`、22時間automatic probe exhausted
 - **Capability:** `recovery.review`; corrective reconciliation mutationは`recovery.exception.execute`
 - **Authority:** same Attempt / provider key、Resend provider message correlation、verified webhook receipt
@@ -863,7 +868,7 @@ Result reconciliation専用operationは`UCR-150-001`対象とする。新規Refu
 - **Success:** Acceptance確定→`SENT/CLOSED`、definitive non-acceptanceが安全に確認され上流が許せばretryable pathへ戻す
 - **Unknown:** `BLOCKED` + Case unresolved
 
-現行Admin APIにUnknown Result reconciliation commandが不足するため`UCR-150-001`対象とする。
+現行Admin APIのUnknown Result reconciliation commandは `API-ADM-REC-006`（`SPEC-110 §48.5`）としてCanonical化済みである。
 
 ## 54. Runbook — Missing Notification Request
 
@@ -877,10 +882,11 @@ Result reconciliation専用operationは`UCR-150-001`対象とする。新規Refu
 
 ## 55. Runbook — Consistency Review Recovery
 
+- **Canonical post-verification resolution:** `API-ADM-REC-007`（`SPEC-110 §48.5`）。Case reason別の専用Recoveryは §46〜§48 / §51 / §53 のcanonical operationを使用する。
 - **Trigger:** unresolved Case
 - **Capability:** read=`recovery.review`;明示mutation=`recovery.exception.execute`
 - **Precondition:** current source stateを再取得しCase snapshot依存で操作しない
-- **Allowed:** Case reasonに対応する本書 /上流の専用Recoveryのみ
+- **Allowed:** Case reasonに対応する本書 /上流の専用Recoveryのみ。`API-ADM-REC-007` は current authority / Invariant再検証成立時だけ `resolved_at` を設定する
 - **Forbidden:** mark-fixed only、generic state write、SQL editor、constraint disable
 - **Success:** source Authority / Invariantを再検証した後`resolved_at`設定
 - **Stale Case:** sourceが既に正規収束済みならmutationなしでresolve可
@@ -888,12 +894,13 @@ Result reconciliation専用operationは`UCR-150-001`対象とする。新規Refu
 
 ## 56. Runbook — Goods Inventory Adjustment / Counter Recovery
 
+- **Canonical operation:** `API-ADM-GDS-005`（`SPEC-110 §47`、fixed server-generated reason code `ADMINISTRATIVE_CAPACITY_ADJUSTMENT` は `SPEC-160 §28.1`）
 - **Trigger:** Inventory operational correctionが必要、または`GDS_INVENTORY_COUNTER_INCONSISTENT` Caseがopen
 - **Required Capability:** 通常adjustmentは`goods_inventory.manage`; Consistency Reviewの参照は`recovery.review`
 - **Precondition:** Goods / Inventory current rowを再取得し、held / committed Allocation集計とcurrent saleable capacityを確認
 - **Authority:** `app.goods_inventory` current counters、Goods Allocation history、confirmed Goods Order Item / Handoff state
 - **Locks:** Inventory rowをlockし、関連Allocationを必要な範囲で安定順序で参照
-- **Allowed action:** 既存 `POST /api/v1/admin/goods/{goods_ref}/inventory-adjustments` が許可するcapacity adjustmentのみ。adjustment後も`held + committed <= capacity`を満たす
+- **Allowed action:** existing `API-ADM-GDS-005`（`SPEC-110 §47`）が許可するcapacity adjustmentのみ。adjustment後も`held + committed <= capacity`を満たす
 - **Forbidden:** held / committed counter直接編集、Refundだけを根拠に在庫回復、`COMPLETED` Handoffを取り消した扱いにする、allocation history削除
 - **Idempotency:** Transport `Idempotency-Key` + current inventory precondition。response loss後はcurrent snapshotを再取得
 - **Success:** capacity / held / committed invariant成立、existing allocation / sale history不変
@@ -1124,7 +1131,7 @@ SPEC-160は少なくとも次のReliability semanticを観測可能にする。
 39. Case resolution前にpost-recovery authority / invariantを再検証する。
 40. `recovery.exception.execute`がgeneric SQL / state editorを提供しない。
 41. last Administrator emergency recoveryが通常Role Assignment APIと分離される。
-42. UCR-130-001〜006を反映済みとして実装しない。
+42. `UCR-130-001〜004/006` および `UCR-150-001〜002` はCanonical化済みとして扱い、`UCR-130-005` のみ未反映として扱う。
 43. automatic repair対象とdetection-only対象が§42のmatrixどおり分離される。
 44. confirmed Order entitlement mismatchをoutside-transactionでblind repairしない。
 45. retry storm防止としてnested automatic retryが最大1層になる。
@@ -1133,6 +1140,7 @@ SPEC-160は少なくとも次のReliability semanticを観測可能にする。
 48. Recovery failureでも既存確定historyを削除しない。
 49. SPEC-160が観測可能なReliability semanticをemit可能にするがlog / audit schemaを本書で固定しない。
 50. `INV-010-01〜10`、関連`FR-*`、`BR-*`、`DI-030-*`、`AR-*`、`PAY-*`、`TQR-*`、`KRK-*`、`DB-*`、`API-*`、`EML-*`、`ADM-*` / `STF-*` / `OPS-*`、`SEC-*`へ追跡できる。
+51. Manual Recovery Runbookは §46〜§48 / §53 / §55 / §56 のcanonical operation（`API-ADM-REC-003〜007`, `API-ADM-GDS-005`, `API-ADM-EML-004〜005`, `API-ADM-TQR-001`, `API-ADM-KRK-007`, `API-ADM-PAY-001`）だけを使用し、new route / state / retry / capability / lock / generic commandを追加しない。
 
 ---
 
@@ -1142,21 +1150,17 @@ SPEC-160は少なくとも次のReliability semanticを観測可能にする。
 
 ### UCR-150-001
 
+- **Status:** `INCORPORATED`（`SPEC-110 v1.1.0`）
 - 対象: `SPEC-110 API Specification`
-- 現在の仕様: `API-ADM-REC-001〜002` はConsistency Review readのみを提供し、既存の明示mutationはRefund開始、QR token rotation、Karaoke Normal Cancellation、Notification retry / cancel等に限られる。Checkout Attempt Unknownの再照合、Payment Confirmation mismatchの専用recovery、Refund Result Unknownの結果再照合、Email Unknown Provider Resultの結果反映をAdministratorが明示的に実行するdedicated server operationが定義されていない。
-- 要求する変更: `/api/v1/admin`へ、`recovery.exception.execute`を使用する**対象別・precondition固定のRecovery command**を追加する。少なくともCheckout Attempt result reconcile、Order Payment Confirmation reconcile、Refund Result reconcile、Notification Unknown Provider Result reconcile、Consistency Review case re-evaluate / post-verification resolutionの意味を持つoperationをCanonical化する。generic state inputを受けず、arbitrary SQLを受けず、same Business Cause / Provider keyを維持し、current authorityをserver-side取得し、15秒request deadlineを適用し、result unknownをsuccessにせず、raw provider bodyをresponseへ返さないことを最低条件とする。
-- 理由: SPEC-150が要求するAdministrator manual recoveryを、Browser direct DB accessや運用者による手作業SQLなしでHono APIへ集約するため。
-- 変更しない場合の影響: automated reconciliationで解消不能なCheckout / Payment / Refund / Email Unknown Resultはread-only reviewまでしかapplication UIから実行できず、本書のmanual recoveryを完成システムとして実装できない。
-- 影響を受ける可能性がある仕様書: `SPEC-130`, `SPEC-140`, `SPEC-160`, `SPEC-170`, `SPEC-180`, `SPEC-200`
+- **Canonical evidence:** `API-ADM-REC-003`（Checkout Attempt result reconcile、§46）、`API-ADM-REC-004`（Payment Confirmation reconcile、§47）、`API-ADM-REC-005`（Refund result reconcile、§48）、`API-ADM-REC-006`（Notification unknown result reconcile、§53）、`API-ADM-REC-007`（Consistency Review post-verification resolve、§55）。全て `recovery.exception.execute`、operation-specific precondition、same Business Cause / Provider key、generic state input / arbitrary SQLなし、result unknownをsuccessにせず、raw provider bodyをresponseへ返さない。
+- **本書側反映:** §3.1、§46〜§48、§53、§55、Acceptance 51。
 
 ### UCR-150-002
 
+- **Status:** `INCORPORATED`（`SPEC-130` 側wiringは `SPEC-130 §41.5` / §43.8 / §56.1 で定義）
 - 対象: `SPEC-130 Admin / Staff Specification`
-- 現在の仕様: `PG-ADM-023` は既存明示Recovery Actionだけを表示し、Checkout / Payment / Refund-result / Email Unknown-resultの新しいdedicated recovery commandは存在しない。加えて `UCR-130-001〜006` は未反映であり、本要求はそれらが反映済みであることを前提としない。
-- 要求する変更: `UCR-150-001` が `SPEC-110` へCanonical化された場合に限り、`PG-ADM-023` および関連Order / Notification detailへ、そこでCanonical化されたoperationだけをcurrent precondition・required capability・confirmation・pending / unknown result表示付きで接続する。generic recovery buttonは追加しない。
-- 理由: manual recoveryをBrowser cacheやprovider dashboardの手作業だけに依存させず、既存Admin UX / authorization境界から安全に実行可能にするため。
-- 変更しない場合の影響: Recovery Runbookの一部がapplication UIから実行不能となり、`recovery.exception.execute`の明示operation化が不完全になる。
-- 影響を受ける可能性がある仕様書: `SPEC-110`, `SPEC-140`, `SPEC-160`, `SPEC-170`, `SPEC-200`
+- **Canonical evidence:** `SPEC-110 v1.1.0 §48.5` の `API-ADM-REC-003〜007` を `PG-ADM-023` およびOrder / Notification / Consistency viewへ、visibility / required capability / current-state precondition / confirmation / submitting / success / conflict / unknown・temporary failure / reload contract付きで接続する。generic recovery buttonは追加しない。
+- **境界:** 本書はUI / route / schemaを定義せず、`SPEC-130` のwiring contractを参照するだけである。
 
 ---
 
@@ -1178,5 +1182,5 @@ SPEC-160は少なくとも次のReliability semanticを観測可能にする。
 - Resend Unknown Resultでnew Provider key blind resend
 - Security Fail Closedの弱化
 - `recovery.exception.execute`のgeneric bypass化
-- `UCR-130-001〜006`の反映済み仮定
+- `UCR-130-005`の反映済み仮定（`DEFERRED_NONBLOCKING`、index先取りなし）
 - Audit Event schema / metric / alert taxonomyの先取り

@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-140
 title: Security Specification
-version: 1.0.0
+version: 1.1.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -105,21 +105,23 @@ Security Controlを理由として、Client申告RoleをAuthorityへ昇格させ
 | `SPEC-100` | `app` schema、DB physical columns、QR protected fields、constraint / transaction |
 | `SPEC-110` | `/api/v1`、namespace、Hono RPC、Zod、error、size limit、idempotency、server operation |
 | `SPEC-120` | Resend / Notification / recipient resolution / Email support persistence / webhook |
-| `SPEC-130` | `/admin/*`, `/staff/*`, high-risk action、Minimal Staff Data、UCR-130-001〜006 |
+| `SPEC-130` | `/admin/*`, `/staff/*`, high-risk action、Minimal Staff Data、Admin/Staff Handoff semantics、authoritative read/filter、recovery UI wiring |
 
 `SPEC-040`, `SPEC-050`, `SPEC-090` はUser Flow / general Page / Karaoke business detailの関連仕様である。本書は、それらのCanonical stateやPageを再定義しない。
 
-### 3.1 SPEC-130 Upstream Change Requestの扱い
+### 3.1 SPEC-130 Canonical operation familyの適用
 
-`UCR-130-001〜006` は本書作成時点では**未反映の上流変更要求として扱う**。
+`UCR-130-001` / `002` / `003` / `004` / `006`、`UCR-150-001` / `UCR-150-002`（`SPEC-130` 該当範囲）、および `UCR-170-001` が要求したCapability / API / query / recovery operation / Operation IDはCanonical化済みであり、本書の同じSecurity Controlを適用する。`UCR-130-005`（Operational query index）のみ `DEFERRED_NONBLOCKING` として残す。
 
-本書は次を行わない。
+本書は次のoperation familyをCanonicalとして扱い、各contractの詳細（route / schema / capability / precondition）は `SPEC-060` / `SPEC-110` / `SPEC-120` / `SPEC-130` をexactに参照する。本書はroute / schema / capability / stateを再定義しない。
 
-- `entry_sales.manage` / `karaoke_sales.manage` が既に `SPEC-060` に存在するとみなす
-- UCRで要求中のAdmin API / Staff Handoff preview APIが既に `SPEC-110` に存在するとみなす
-- UCRで要求中のDatabase Indexが既に `SPEC-100` に存在するとみなす
+- 販売条件Capability `entry_sales.manage` / `karaoke_sales.manage`（`SPEC-060`）と、対応する `SPEC-110 §48.1 / §48.2` のoperationには、Request時点のactive `ADMINISTRATOR` Role Assignmentとrequired Capabilityのserver-side再評価を要求する。
+- Admin / Staff Goods Handoff（`API-STF-GDS-001〜002` / `API-ADM-HOF-001〜003`、`SPEC-110 §40 / §48.4`）には、Admin/Staff capability分離、PII最小化、server current `PENDING` + `FULFILLABLE` precondition、generic state input禁止を適用する。
+- Admin authoritative read / filter contract（`SPEC-110 §41 / §48.3`）には、authorization後のserver-side queryとcode-defined allowlist / canonical sortを要求し、public APIやbrowser cacheで代用しない。
+- Recovery command `API-ADM-REC-003〜007`（`SPEC-110 §48.5`）には、operation-specific `recovery.exception.execute` authorization、same Business Cause / provider key、secret / provider raw body非返却を適用する。
+- 全canonical method / pathのOperation IDは `SPEC-110` が所有し、log / audit / correlationは同IDをexactに使用する。
 
-これらが将来Canonical化された場合、追加されたoperationにも本書の同じSecurity Controlを適用しなければならない。
+既にCanonical化されたoperationを「未反映」または「存在しない」として扱わない。今後追加されたoperationにも同じSecurity Controlを適用する。
 
 ---
 
@@ -401,6 +403,8 @@ Protected Hono APIは、`SPEC-060` / `SPEC-110` を次の順序で実装する�
 
 **SEC-AZ-016:** `recovery.exception.execute` を持つことだけで任意SQL、任意state edit、任意Refund amount、check-in override、Role overrideを許可してはならない。
 
+**SEC-AZ-017:** `API-ADM-REC-003〜007`（`SPEC-110 §48.5`）は、それぞれのoperation-specific preconditionがserver current stateで成立する場合だけ `recovery.exception.execute` で認可する。same Business Cause / provider keyを維持し、provider raw body、Secret、raw QR、full Email、Internal IDをresponse / logへ返さず、generic recovery / state mutationを提供しない。
+
 ---
 
 # Part IV — Browser / Next.js Web Security
@@ -657,7 +661,7 @@ Public APIをBrowser direct readへ開放する必要がある場合も、Origin
 
 **SEC-API-017:** Drizzle query builder / `pg` parameterized queryを使用し、valueをSQL string interpolationしない。
 
-**SEC-API-018:** sort column、filter field、table名、column名等のidentifierはClient文字列をquoteして利用するのではなく、code-defined allowlistから選択する。
+**SEC-API-018:** sort column、filter field、table名、column名等のidentifierはClient文字列をquoteして利用するのではなく、code-defined allowlistから選択する。Admin authoritative read / filterは `SPEC-110 §41 / §48.3` のallowlist / canonical sortだけを使用し、public APIやclient cacheで代用しない。
 
 **SEC-API-019:** raw SQLは、Drizzleで表現できないlock / advisory lock / exclusion関連等、`SPEC-100` が必要とする箇所に限定し、parameter placeholderを使用する。
 
@@ -779,7 +783,7 @@ nonproductionでProduction由来dataが必要な場合は、専用exportで次�
 | Database connection credential | S1 Critical | Hono runtime / migration principal別々 |
 | Stripe secret key | S1 Critical | Hono payment component only |
 | Stripe webhook signing secret | S1 Critical | Hono Stripe webhook verifier only |
-| Resend API key | S1 Critical | Email worker only |
+| Resend API key | S1 Critical | Email worker、および `API-ADM-REC-006` のsame-key server-to-server reconciliation lookupに限定したprotected Hono API runtime。両reader以外へ公開せず、Client / log / responseへ出さず、他API用途に使用しない |
 | Resend webhook signing secret | S1 Critical | Hono Resend webhook verifier only |
 | QR lookup HMAC key | S1 Critical | Hono QR component only |
 | QR AEAD encryption key | S1 Critical | Hono QR display / rotation component only |
@@ -1048,7 +1052,7 @@ Routine rotation sequenceは次とする。
 
 ## 62. Resend API / header security
 
-**SEC-EML-005:** `RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_REPLY_TO`はserver configurationからのみ取得し、Client inputを使用しない。
+**SEC-EML-005:** `RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_REPLY_TO`はserver configurationからのみ取得し、Client inputを使用しない。`RESEND_API_KEY`のauthorized readerはEmail worker、および `API-ADM-REC-006` のsame-key server-to-server reconciliation lookupを実行するprotected Hono API runtimeだけである。同keyをClient bundle / log / responseへ返さず、`API-ADM-REC-006` 以外のAPI operationから使用せず、新しいworkerやAPI-to-worker同期経路を追加しない。
 
 **SEC-EML-006:** recipient address、From、Reply-To、subjectにCR / LFを含む入力をrejectし、header injectionを防止する。
 
@@ -1187,6 +1191,7 @@ Supabase Authへのdirect provider trafficはHono rate limiterで完全には制
 - Role grant / revoke
 - Notification retry / cancel / recipient refresh
 - Consistency Reviewからのexplicit recovery action
+- operation-specific recovery command `API-ADM-REC-003〜007`（`SPEC-110 §48.5`）
 - Goods Handoff completion
 - Entry / Karaoke Check-in
 
@@ -1218,7 +1223,11 @@ High-risk mutationは最低限次を要求する。
 | Notification retry | `FAILED_RETRYABLE`のみ、`SENT`不可、Unknown Result blind retry不可 |
 | Notification cancel | Provider Acceptance前のみ、source Business state不変 |
 | Staff Check-in | `STAFF` + capability + purpose + atomic single-use |
-| Goods Handoff | `STAFF` + capability + current `PENDING` / fulfillable + one-time completion |
+| Goods Handoff | Staff `goods_handoff.execute` と Admin `goods_handoff.manage` を分離、Admin→Staff inheritanceなし、current `PENDING` / `FULFILLABLE`、one-time completion、generic state input / direct VOID / undo不可 |
+| Entry Offering sales config | `entry_sales.manage` + active `ADMINISTRATOR` server-side再評価、price / capacityはserver-side、`held + committed <= capacity`、`tickets.manage.read` / `recovery.exception.execute`で代替不可 |
+| Karaoke Sales Configuration | `karaoke_sales.manage` + active `ADMINISTRATOR`、standard 15+5 read-only、Slot individual state editorとして使用不可 |
+| Admin authoritative read / filter | authorization後の `SPEC-110 §41 / §48.3` server-side query allowlistのみ、public API / client cacheで代用不可 |
+| Recovery commands | `API-ADM-REC-003〜007` のoperation-specific precondition + `recovery.exception.execute`、same Business Cause / provider key、secret / provider raw body非公開 |
 | Consistency Review | `recovery.review`はreadのみ。mutationはexplicit recovery operation + `recovery.exception.execute` |
 
 ## 74. Staff minimal data
@@ -1245,9 +1254,9 @@ Staffへ返してはならない。
 
 **SEC-ADM-009:** Review解消のために直接DB console操作を通常Admin UIの代替手段として仕様化しない。
 
-## 76. SPEC-130 unresolved UCR protection
+## 76. SPEC-130 canonical operation protection
 
-**SEC-ADM-010:** UCR-130-001〜006が未解決のPageでは、missing API / CapabilityをBrowser direct DB access、generic admin endpoint、`recovery.exception.execute`流用で埋めない。
+**SEC-ADM-010:** Canonical化済みのsales capability / Admin・Staff Handoff API / authoritative read・filter / recovery commandのいずれも、Browser direct DB access、generic admin endpoint、`recovery.exception.execute`の目的外流用で代替しない。`UCR-130-005`（operational index）のみ `DEFERRED_NONBLOCKING` として残す。
 
 ---
 
@@ -1611,18 +1620,20 @@ Production startup / readinessで最低限次を検証する。
 - Payment / Email webhook signature boundaryは上流に既に存在し、本書はSecurity Controlを具体化するだけである
 - Database principal / grant / Secret reader boundaryはphysical business schemaを変更せず設定可能である
 
-### 101.1 Carry-forward UCR
+### 101.1 SPEC-130 UCRの反映状況
 
-`SPEC-130` の次のUCRは未反映のままcarry-forwardする。
+次のUCRはCanonical化済みであり、対応operationに本書のSecurity Controlを適用する。
 
-- `UCR-130-001` Sales management Capability不足
-- `UCR-130-002` Entry / Karaoke Sales Configuration Admin API不足
-- `UCR-130-003` Goods Handoff operational read / Admin manage API不足
-- `UCR-130-004` Admin list filter query contract明示不足
-- `UCR-130-005` Operational query index追加
-- `UCR-130-006` Admin read contract completeness
+- `UCR-130-001` Sales management Capability → `SPEC-060`
+- `UCR-130-002` Entry / Karaoke Sales Configuration Admin API → `SPEC-110 §48.1 / §48.2`
+- `UCR-130-003` Goods Handoff operational read / Admin command API → `SPEC-110 §40 / §48.4`
+- `UCR-130-004` Admin list filter query contract → `SPEC-110 §48.3`
+- `UCR-130-006` Admin read contract completeness → `SPEC-110 §41`
+- `UCR-150-001` Manual recovery command → `SPEC-110 §48.5`（`API-ADM-REC-003〜007`）
+- `UCR-150-002` Recovery-page wiring（SPEC-130該当範囲）→ `SPEC-110 §48.5` / `SPEC-130 §41.5`
+- `UCR-170-001` Operation ID completeness → `SPEC-110 §41 / §46〜§48`（INCORPORATED）
 
-本書はこれらを解決済みとして扱わない。
+`UCR-130-005`（Operational query index）のみ `DEFERRED_NONBLOCKING` としてcarry-forwardし、indexを先取りしない。
 
 ---
 
@@ -1660,5 +1671,5 @@ Production startup / readinessで最低限次を検証する。
 26. rate limit failureでDomain stateを変更しない。
 27. Security controlを安全に評価できない場合はFail Closedとする。
 28. Security failureで確定済みBusiness Dataを削除しない。
-29. `UCR-130-001〜006` を反映済みとみなさない。
+29. `UCR-130-001〜004/006`、`UCR-150-001〜002`（SPEC-130該当範囲）、および `UCR-170-001` はCanonical化済みとして扱い、`UCR-130-005` のみ未反映として扱う。
 30. `INV-010-01〜10` を維持する。
