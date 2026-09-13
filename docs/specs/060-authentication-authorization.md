@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-060
 title: Authentication and Authorization
-version: 1.0.0
+version: 1.1.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -634,7 +634,9 @@ Role Assignment対象は:
 | `goods_handoff.execute` | Goods Handoff対象確認と通常完了 |
 | `orders.manage.read` | Order運用一覧 / 詳細参照 |
 | `tickets.manage.read` | Entry Ticket運用参照 |
+| `entry_sales.manage` | Entry Ticket Offeringの、上流仕様で運用変更可能と定義された販売条件を管理する通常Administrator Capability |
 | `karaoke_slots.manage` | Karaoke Slot生成 / 許可属性編集 / 販売停止・再開 |
+| `karaoke_sales.manage` | Karaoke Sales Configurationの、上流仕様で運用変更可能と定義された販売条件を管理する通常Administrator Capability |
 | `karaoke_reservations.manage.read` | Karaoke Reservation運用参照 |
 | `goods_inventory.manage` | Goods公開情報 / 販売状態 / Inventory管理 |
 | `goods_handoff.manage` | AdministratorとしてGoods Handoff状態を確認・許可された更新を実行 |
@@ -662,7 +664,9 @@ Role Assignment対象は:
 | `goods_handoff.execute` | Deny | Deny | Deny | Allow (role) | Deny unless also `STAFF` |
 | `orders.manage.read` | Deny | Deny | Deny | Deny | Allow (role) |
 | `tickets.manage.read` | Deny | Deny | Deny | Deny | Allow (role) |
+| `entry_sales.manage` | Deny | Deny | Deny | Deny | Allow (role) |
 | `karaoke_slots.manage` | Deny | Deny | Deny | Deny | Allow (role) |
+| `karaoke_sales.manage` | Deny | Deny | Deny | Deny | Allow (role) |
 | `karaoke_reservations.manage.read` | Deny | Deny | Deny | Deny | Allow (role) |
 | `goods_inventory.manage` | Deny | Deny | Deny | Deny | Allow (role) |
 | `goods_handoff.manage` | Deny | Deny | Deny | Deny | Allow (role) |
@@ -1046,6 +1050,28 @@ Administrator operationは:
 
 **AR-AZ-016:** Administratorが管理UIへ到達できること、またはAdministrator Roleがあることだけで、現在Business Ruleに違反する変更を確定してはならない。
 
+Entry Ticket Offeringの販売条件管理Operationは、上流仕様で運用変更可能と定義された販売条件だけを対象とし、次をすべて要求する。
+
+1. verified Identity
+2. Request時点でactiveな `ADMINISTRATOR` Role Assignment
+3. `entry_sales.manage`
+4. Server-side authorization
+5. 対象Domain Business Rule / System Invariant
+
+Karaoke Sales Configurationの販売条件管理Operationも同様に、次をすべて要求する。
+
+1. verified Identity
+2. Request時点でactiveな `ADMINISTRATOR` Role Assignment
+3. `karaoke_sales.manage`
+4. Server-side authorization
+5. 対象Domain Business Rule / System Invariant
+
+**AR-ROLE-016:** `entry_sales.manage` および `karaoke_sales.manage` を要求するOperationは、Request時点のBusiness Database上のactive `ADMINISTRATOR` Role Assignmentと対象CapabilityをServer-sideで評価しなければならない。Login時またはSession中に取得した古いrole claim、Client申告、Navigation / Button表示状態をAuthorization Authorityとしてはならない。
+
+**AR-ROLE-017:** `tickets.manage.read` は `entry_sales.manage` を含意せず、`karaoke_slots.manage` は `karaoke_sales.manage` を含意しない。read CapabilityまたはSlot管理Capabilityを販売条件mutationへ拡張解釈してはならない。
+
+**AR-ROLE-018:** `recovery.exception.execute` は `entry_sales.manage` または `karaoke_sales.manage` を含意せず、両Capabilityの代替として使用してはならない。販売条件管理は通常Administrator operationであり、Recovery権限やgeneric superuser bypassとして実行してはならない。
+
 # Part XVI — Traceability
 
 ## 39. Rule → Upstream Traceability
@@ -1057,7 +1083,7 @@ Administrator operationは:
 | `AR-ID-001〜007` | `FR-AUTH-009〜013`, `FR-MYP-001〜012`, `FR-XFN-002〜003`, `FR-XFN-017`, `BR-USR-001〜006`, `DI-030-010`, `UF-AUTH-001`, `UF-AUTH-006`, `UF-MYP-001〜002`, `PG-MYP-002`, `INV-010-08` |
 | `AR-AZ-001〜016` | `FR-XFN-001〜004`, `FR-XFN-016〜017`, `FR-XFN-025`, `FR-ADM-001`, `FR-ADM-019〜020`, `FR-STF-001`, `BR-USR-002`, `BR-USR-007`, `BR-ORD-002`, `BR-CHK-*`, `DI-030-010`, `UF-MYP-002`, `UF-CHK-001〜002`, `PG-XFN-003`, `INV-010-05`, `INV-010-08` |
 | `AR-OWN-001〜008` | `FR-AUTH-010〜012`, `FR-TKT-023`, `FR-MYP-001〜012`, `FR-XFN-003`, `FR-XFN-017`, `BR-USR-001`, `BR-USR-003〜007`, `BR-TKT-008`, `BR-KRK-015`, `BR-KRK-021`, `BR-GDS-008`, `DI-030-010`, `UF-MYP-001〜002`, `PG-MYP-001〜012`, `PG-XFN-001`, `PG-XFN-003`, `INV-010-08` |
-| `AR-ROLE-001〜015` | `FR-ADM-001〜022`, `FR-STF-001〜016`, `FR-XFN-004`, `FR-XFN-025`, `BR-USR-007`, `BR-CHK-007〜008`, `DI-030-010`, `UF-CHK-001〜002`, `PG-XFN-003`, `INV-010-08` |
+| `AR-ROLE-001〜018` | `FR-ADM-001〜022`, `FR-STF-001〜016`, `FR-XFN-004`, `FR-XFN-025`, `BR-USR-007`, `BR-CHK-007〜008`, `DI-030-010`, `UF-CHK-001〜002`, `PG-XFN-003`, `INV-010-08` |
 | `AR-CONT-001〜004` | `FR-PUB-012`, `FR-XFN-001〜003`, `FR-XFN-016`, `FR-XFN-026`, `UF-PUB-002`, `UF-AUTH-001〜003`, `PG-AUTH-001`, `PG-AUTH-003`, `PG-TKT-001`, `PG-KRK-003`, `PG-GDS-002`, `PG-MYP-001`, `INV-010-08〜10` |
 | `AR-FAIL-001〜006` | `FR-AUTH-005`, `FR-AUTH-014`, `FR-XFN-020`, `FR-XFN-025`, `FR-XFN-032`, `BR-ORD-010`, `DI-030-001`, `DI-030-010`, `DI-030-012`, `UF-AUTH-007`, `UF-MYP-002`, `UF-XFN-004`, `PG-XFN-003`, `INV-010-01`, `INV-010-08`, `INV-010-10` |
 
@@ -1100,7 +1126,9 @@ Administrator operationは:
 ### 41.3 Administrator / Staff
 
 - `FR-ADM-001`, `FR-ADM-019〜020` → `AR-ROLE-*`, `AR-AZ-016`
-- `FR-ADM-002〜018` → Permission MatrixのAdministrator management capabilities
+- `FR-ADM-002〜013`, `FR-ADM-016〜018` → Permission MatrixのAdministrator management capabilities
+- `FR-ADM-014` → `entry_sales.manage` → active `ADMINISTRATOR` Role → `AR-ROLE-016〜018`
+- `FR-ADM-015` → `karaoke_sales.manage` → active `ADMINISTRATOR` Role → `AR-ROLE-016〜018`
 - `FR-ADM-021` → `recovery.review`
 - `FR-ADM-022` → 本書はActor / capability境界のみ。Audit schemaは `SPEC-160`
 - `FR-STF-001〜016` → `AR-ROLE-001`, `AR-ROLE-012`, `AR-ROLE-015`, `AR-AZ-013〜015`
@@ -1191,6 +1219,8 @@ Staff authorizationは本書の `entry_checkin.execute` / `karaoke_checkin.execu
 
 Hono APIは本書の判定順序とFail Closed ruleを実装する。
 
+`FR-ADM-014` / `FR-ADM-015` に対応する後続Admin API Contractは、それぞれ `entry_sales.manage` / `karaoke_sales.manage` をrequired Capabilityとして正確に参照しなければならない。HTTP Method、URL / Route、Operation ID、Request / Response schema、Zod schema、Idempotency-Key、transaction / lock、conflict status、API error codeは `SPEC-110` のCanonical Owner責務であり、本書では定義しない。
+
 ### 43.6 `SPEC-120`
 
 Supabase Authのverification / reset通知はAuthentication Flowであり、購入通知Domainと混同しない。Email Template詳細は `SPEC-120`。
@@ -1198,6 +1228,8 @@ Supabase Authのverification / reset通知はAuthentication Flowであり、購�
 ### 43.7 `SPEC-130`
 
 Administrator / StaffのRoute、Page、Field、Filter、操作手順を定義する。
+
+`FR-ADM-014` / `FR-ADM-015` の販売条件管理Pageは、本書でCanonical化した `entry_sales.manage` / `karaoke_sales.manage` を使用する。`SPEC-130` に残るUCR記録の編集・削除は `SPEC-130` 自身の改訂で扱う。
 
 本書のPermission Matrixを画面都合で拡張してはならない。
 
@@ -1253,6 +1285,10 @@ Role変更、privileged operation、authorization failure等のAudit Event schem
 7. Role Assignment管理はAdministratorのみで、自己Role書換えを許可しない。
 8. Role revoke後のprivileged Requestは古いUI / session role表示だけで継続許可されない。
 9. Staffへ受付に無関係なCustomer Dataを返さない。
+10. `FR-ADM-014` に対応する販売条件管理は `entry_sales.manage` を要求し、Guest / Authenticated User / Customer / Staffでは実行できない。
+11. `FR-ADM-015` に対応する販売条件管理は `karaoke_sales.manage` を要求し、Guest / Authenticated User / Customer / Staffでは実行できない。
+12. `tickets.manage.read`、`karaoke_slots.manage`、`recovery.exception.execute` のいずれも、対応する販売条件管理Capabilityの代替として使用できない。
+13. 販売条件管理OperationはRequest時点でactive `ADMINISTRATOR` Roleとrequired CapabilityをServer-side再評価し、古いrole claimまたはClient-side表示状態だけでは許可されない。
 
 ## 48. Continuation acceptance
 

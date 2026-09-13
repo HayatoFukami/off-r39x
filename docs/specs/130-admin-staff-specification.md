@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-130
 title: Admin and Staff Specification
-version: 1.0.0
+version: 1.1.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -123,6 +123,8 @@ related_specs:
 本書作成時点で、`SPEC-020` / `SPEC-060` が要求する一部Administrator / Staff UIを完成させるために必要なserver operationまたはquery contractが `SPEC-110` に十分定義されていない領域を確認した。
 
 本書はその不足を画面都合で別endpointとして発明しない。第36章のUpstream Change Requestに記録し、対象UCRがCanonical upstreamへ反映されるまで、該当mutation / previewを実装済みとして扱ってはならない。
+
+`UCR-130-003` については、本改訂で **Administrator Goods Handoff operationの業務意味・表示条件・確認・禁止条件を本書のCanonical responsibilityとして確定する**。一方、Staff preview、Administrator list / detail read、および本書で確定したAdministrator commandをHTTPへ写像する契約は引き続き `SPEC-110` のCanonical responsibilityであり、本書はHTTP Method、Route、Operation ID、Zod schema、HTTP Status、DB transaction、lock、SQL、Transport Idempotency contractを新設しない。
 
 ---
 
@@ -312,7 +314,7 @@ Staff Shellは操作速度を優先し、Primary Navigationを次の4項目と�
 | `PG-ADM-025` | `/admin/notifications/{notification_ref}` | Administrator | `recovery.review` | Notification detail / attempts / recovery |
 | `PG-ADM-026` | `/admin/access-denied` | Authenticated User | none | Admin access denied |
 
-`PG-ADM-006`, `PG-ADM-012`, `PG-ADM-015`, `PG-ADM-016` は上流API不足を第36章UCRへ記録する。Page contract自体は完成システムの必要画面として本書が所有するが、UCR解決前にBrowserからDBへ直接アクセスして穴埋めしてはならない。
+`PG-ADM-006`, `PG-ADM-012`, `PG-ADM-015`, `PG-ADM-016` は上流API不足を第36章UCRへ記録する。`PG-ADM-015` / `PG-ADM-016` のAdministrator Goods Handoff business semanticsは本書§30でCanonical化するが、read / commandのHTTP contractが `SPEC-110` へ反映される前にBrowserからDBへ直接アクセスしたり、仮endpointを発明して穴埋めしてはならない。
 
 ## 12. Staff Page Catalog
 
@@ -907,33 +909,193 @@ Conflict時はcurrent inventoryをreloadし、入力を自動再送しない。
 
 ## 30. Admin Goods Handoff
 
+本節は `FR-ADM-017`、`goods_handoff.manage`、`PG-ADM-015` / `PG-ADM-016` を接続する **Administrator Goods Handoff operational semanticsのCanonical Owner** である。
+
+`SPEC-030` のHandoff Stateおよび `BR-GDS-010〜013` を変更しない。Administrator向けUIは任意State値を送るeditorではなく、本節で列挙する明示business commandだけを提示する。
+
 ### 30.1 `PG-ADM-015` List
 
-完成システムでは次を表示する。
+`goods_handoff.manage` を持つAdministratorは、完成システムでGoods Handoffを運用確認できる。各rowは少なくとも次を表示する。
 
-- handoff ref
-- goods item ref
-- Goods name / quantity
+- Handoff Public Reference
+- Goods Order Item Public Reference
+- Goods name
+- quantity
 - Handoff State `PENDING|COMPLETED|VOID`
 - Goods Order Item State
-- Customer operational summary
+- related Order Public Reference
+- Customer minimal operational summary
 - created time
-- completed time
+- completed time where applicable
+- completion actorのsafe summary where applicable
 
-API contract不足は `UCR-130-003` で解消する。
+Customer minimal operational summaryは対象受け渡しを識別するための最小情報に限る。Customer全Order履歴、unrelated Ticket履歴、unrelated Karaoke履歴、Profile全項目、raw Email、Internal ID、raw QR tokenをlistへ表示してはならない。
+
+List rowから許可するActionはdetail遷移を標準とし、irreversible completionを1-click row actionとして実行しない。
+
+Administrator list readのHTTP contract不足は `UCR-130-003` の未解消部分として `SPEC-110` が解消する。
 
 ### 30.2 `PG-ADM-016` Detail
 
-- Handoff public ref
-- Goods item public ref
-- Goods / quantity
-- Customer summary
-- Order ref
-- item state
-- handoff state
-- completion actor / timeのsafe summary
+Detailは少なくとも次を表示する。
 
-`goods_handoff.manage` により許可されるmutationはUpstream APIで明示されたものだけ表示する。generic `PENDING/COMPLETED/VOID` state editorは作らない。
+1. Handoff
+   - Handoff Public Reference
+   - current Handoff State
+   - created time
+   - completed time where applicable
+2. Goods Order Item
+   - Goods Order Item Public Reference
+   - current Goods Order Item State
+   - Goods name
+   - quantity
+3. Related Order
+   - Order Public Reference
+4. Customer
+   - minimal operational summary only
+5. Completion
+   - completion actorのsafe summary
+   - completion time
+6. Available Actions
+   - 本節30.3でCanonical化した明示business commandだけ
+7. Conflict / Review panel
+   - source current stateを安全に確定できない場合のreload / review導線
+
+Completion actorのsafe summaryは、運用上必要なactor種別およびallowlisted operational referenceに限定し、Auth Subject、Internal ID、Email等を表示しない。
+
+### 30.3 Administrator command catalog
+
+`goods_handoff.manage` が通常Administrator UIで許可するHandoff mutationは、**Administrative Handoff Completion** だけとする。
+
+本書における `Administrative Handoff Completion` はbusiness command名であり、API Operation IDではない。HTTP Method、Route、request / response schema、error code、Transport Idempotency contractは `SPEC-110` が定義する。
+
+Business Purposeは、**実際の会場受け渡しが完了したことをAdministratorが運用上確認し、正規のHandoff完了として記録すること**である。任意State修正、取消、recovery、Inventory補正、Refund補正のために使用してはならない。
+
+Administratorは `goods_handoff.manage` だけを根拠にStaffの通常completion operationを代行してはならない。`goods_handoff.execute` はStaffの通常受け渡しCapabilityであり、`ADMINISTRATOR` は `STAFF` を継承しない。AdministratorがStaff Shellの通常completionを実行する必要がある場合は、別途active `STAFF` Roleと `goods_handoff.execute` が必要である。
+
+一方、`Administrative Handoff Completion` はStaff operationの権限借用ではなく、`goods_handoff.manage` に属する独立したAdministrator commandである。同じDomain transition `PENDING -> COMPLETED` を利用するが、Actor、Capability、UI、confirmationおよびaudit contextをStaff pathと分離する。
+
+**ADM-GDS-005:** Administratorの `goods_handoff.manage` をStaffの `goods_handoff.execute` と同一Capabilityとして扱ってはならず、Administrator RoleだけでStaff通常completionを実行してはならない。
+
+**ADM-GDS-006:** 通常Administrator Goods Handoff mutationとして表示してよいのは、本節の `Administrative Handoff Completion` だけである。任意State指定や未列挙commandを `goods_handoff.manage` へ暗黙追加してはならない。
+
+### 30.4 Administrative Handoff Completion
+
+#### 30.4.1 Preconditions
+
+Commandを候補表示し、実行可能とするためには少なくとも次をすべて満たさなければならない。
+
+- Actorがactive `ADMINISTRATOR` である。
+- Actorが `goods_handoff.manage` を持つ。
+- server current Handoff Stateが `PENDING` である。
+- related Goods Order Itemのserver current Stateが `FULFILLABLE` である。
+- 対象HandoffとGoods Order Itemの関係を一意かつ安全に解決できる。
+- unresolved inconsistencyによりcurrent authorityを安全に確定できない状態ではない。
+- Administratorが「実際の会場受け渡しが完了しており、その完了を記録する」ことを明示的に確認する。
+
+`BR-GDS-010` の `PENDING + FULFILLABLE` 条件をUI convenienceのために弱めてはならない。Client表示時に条件を満たしていても、submit時のserver current stateで再評価する。
+
+#### 30.4.2 Confirmation
+
+`Administrative Handoff Completion` はHigh-risk Actionとして、submit前に少なくとも次を表示する。
+
+- Action name: Administrative Handoff Completion / 受け渡し完了を記録
+- Handoff Public Reference
+- Goods Order Item Public Reference
+- Goods name
+- quantity
+- current Handoff State
+- current Goods Order Item State
+- related Order Public Reference
+- Customer minimal operational summary
+- 「完了後はHandoffがTerminalとなり、通常操作でPENDINGへ戻せない」こと
+- 「この操作は実際に完了した会場受け渡しの記録であり、Refund / Inventory / cancellation / recoveryの代替ではない」こと
+- explicit Cancel / Confirm
+
+Confirmation表示値は直前のClient cacheだけをAuthorityにしてはならない。submit時にserver current stateを再検証できることを前提とする。
+
+#### 30.4.3 Business effect
+
+Preconditionを満たしてcommandが成功した場合、Business effectは次に限定する。
+
+- 対象Goods Handoffを `PENDING -> COMPLETED` へ一度だけ遷移させる。
+- completion actor / completion timeを正規の完了記録として追跡可能にする。
+- 既存Order、Payment、Customer ownership、Goods sales configuration、Inventory counterをこのcommandだけで別状態へ変更しない。
+- 同一Goods Order Itemに二件目の完了を成立させない。
+
+`COMPLETED` はTerminalであり、本command成功後に通常Admin UIからundo / reopen / resetを提供しない。
+
+**ADM-GDS-007:** `Administrative Handoff Completion` はserver current `PENDING` + Goods Order Item `FULFILLABLE` の場合だけ成立させ、`BR-GDS-010` をそのまま適用しなければならない。
+
+**ADM-GDS-008:** Command成功は1回の `PENDING -> COMPLETED` だけを表し、同一Goods Order Itemについて重複completionを成立させてはならない。`BR-GDS-011` を維持する。
+
+**ADM-GDS-009:** `COMPLETED` Handoffを通常Administrator operationで `PENDING` または `VOID` へ遷移させてはならない。
+
+### 30.5 VOID / cancellation boundary
+
+`VOID` はAdministratorが任意に選択する管理Stateではない。`SPEC-030` の `BR-GDS-012` に従い、Goods Order Itemの正規Cancellation等により受け渡し対象外となった結果として成立する。
+
+したがって `PG-ADM-016` は次を提供しない。
+
+- `Set state = VOID`
+- `Void Handoff`
+- `Force State`
+- `Save State`
+- `Reset Handoff`
+- `Reopen Handoff`
+- `Undo Completion`
+
+Goods Order Itemが `CANCELED` でHandoffが `VOID` なら、そのcurrent resultを表示する。Goods Order Itemが `CANCELED` なのにHandoffが `PENDING` 等、上流Ruleと一致しない状態が観測された場合、Administrator UIは直接 `VOID` へ補正せず、current stateをreloadし、必要に応じてConsistency Review / 上流で明示されたrecoveryへ誘導する。
+
+`recovery.exception.execute` が存在しても、それ自体をHandoff generic recovery authorityにしてはならない。将来、`COMPLETED` の例外復旧等が必要になった場合は、上流Canonical仕様が対象、Precondition、Business effect、Invariant保持Ruleを明示した専用operationを先に定義しなければならない。本改訂はそのoperationを追加しない。
+
+**ADM-GDS-010:** `PENDING -> VOID` を任意Administrator mutationとして提供してはならず、`BR-GDS-012` の正規上流Cancellation結果として扱う。
+
+**ADM-GDS-011:** `COMPLETED -> PENDING`、`COMPLETED -> VOID`、generic undo / reopen / resetを通常Administrator UIへ提供してはならない。
+
+### 30.6 Concurrent / stale state
+
+AdministratorがDetailを開いた後に別Actorまたは別processがHandoff / Goods Order Itemを変更した場合、Browserの表示stateをAuthorityにしない。
+
+- server current stateをAuthorityとする。
+- stale commandはBusiness effectを成立させず、current detailをreloadする。
+- Handoffが既に `COMPLETED` なら既存completion summaryを表示し、二回目のcompletion successとして表示しない。
+- Handoffが `VOID` ならcompletion actionを閉じ、受け渡し対象外として表示する。
+- Goods Order Itemが `FULFILLABLE` でなくなった場合はcompletionをblockする。
+- stale requestをClientが自動再送しない。
+- terminal stateをClient側だけで巻き戻さない。
+
+**ADM-GDS-012:** Admin Handoff mutationのcurrent-state authorityはserverであり、stale / conflict時はreloadして再評価する。Client cacheを根拠にcommandを強行または自動再送してはならない。
+
+### 30.7 Response loss / retry UI
+
+Command送信後にHTTP response loss、timeout、DB temporary failure等で結果を安全に確定できない場合、UIは同じcompletionをblindly duplicate実行しない。
+
+1. 対象Handoffを再取得する。
+2. current Handoff StateとGoods Order Item Stateを確認する。
+3. `COMPLETED` なら既存completion actor / timeのsafe summaryを表示し、「既存の完了結果を確認した」と扱う。二回目のcompletionが成功したとは表示しない。
+4. `VOID` なら受け渡し対象外として終了する。
+5. `PENDING + FULFILLABLE` のままなら、自動再送せず、Administratorへcurrent summaryを再提示して明示的な再確認からやり直す。
+6. current state自体を取得できない場合は結果不明のまま保持し、成功・失敗を推測しない。
+
+Transport-level idempotencyの具体契約は `SPEC-110` がCanonical Ownerである。
+
+**ADM-GDS-013:** response loss後に再取得したcurrent stateが `COMPLETED` の場合、既存完了結果へ収束させ、新規completionまたは二回目の成功として扱ってはならない。
+
+### 30.8 Capability visibility / privacy / generic editor prohibition
+
+- `PG-ADM-015` / `PG-ADM-016` は `goods_handoff.manage` を持つAdministratorだけにNavigation / read actionを表示する。
+- `Administrative Handoff Completion` は同Capability + current Domain preconditionを満たす場合だけ候補表示する。
+- `goods_handoff.execute` だけを持つStaffへAdmin Shellのcommandを表示しない。
+- Administratorが `STAFF` を併有していても、Admin ShellのcommandとStaff Shellのnormal completionを同じActionとして統合しない。
+- Handoff Stateを `PENDING|COMPLETED|VOID` から選ぶdropdown、任意State request、generic `Save State` / `Force State` UIを実装しない。
+- Customer表示は対象Handoffの運用識別に必要な最小summaryへ制限し、Customer全履歴、Profile全項目、raw Email、Internal ID、raw QR tokenを表示しない。
+
+**ADM-GDS-014:** Admin Goods Handoff list / detail / command visibilityは `goods_handoff.manage` をrequired Capabilityとし、Staff capabilityとのRole inheritanceを作らない。
+
+**ADM-GDS-015:** Goods Handoff UIはcommand-orientedでなければならず、Browserから任意Handoff State値を送信するgeneric state editorを前提にしてはならない。
+
+**ADM-GDS-016:** Admin Goods Handoff list / detail / confirmationで扱うCustomer情報は対象受け渡しの運用に必要な最小summaryに限定し、raw Email、Internal ID、raw QR token、unrelated Customer historyを表示してはならない。
 
 **ADM-GDS-002:** `COMPLETED` HandoffをPENDINGへ戻すUIを提供しない。
 
@@ -941,7 +1103,32 @@ API contract不足は `UCR-130-003` で解消する。
 
 **ADM-GDS-004:** Goods Handoff complete済みOrderを通常refund eligibleとして表示しない。
 
-Trace: `FR-ADM-016〜017,019〜022`, `BR-GDS-001〜013`, `DB-GDS-*`, `API-ADM-GDS-*`, `INV-010-07,08,10`.
+### 30.9 Traceability
+
+Administrator pathは次をCanonical traceとする。
+
+```text
+FR-ADM-017
+  -> goods_handoff.manage
+  -> PG-ADM-015 / PG-ADM-016
+  -> ADM-GDS-005〜016
+  -> Administrative Handoff Completion
+  -> BR-GDS-010〜013
+```
+
+Staff pathはこれと分離し、次を維持する。
+
+```text
+FR-STF-* / FR-GDS-014〜015
+  -> goods_handoff.execute
+  -> PG-STF-006 / PG-STF-007
+  -> normal Goods Handoff completion
+  -> BR-GDS-010〜013
+```
+
+Admin read / commandのHTTP contract不足は `UCR-130-003` の未解消部分として `SPEC-110` が解消する。
+
+Trace: `FR-ADM-016〜017,019〜022`, `FR-GDS-014〜015`, `AR-ROLE-012〜015`, `AR-AZ-015`, `BR-GDS-001〜013`, `INV-010-07,08,10`.
 
 ---
 
@@ -1629,7 +1816,9 @@ Canonical targetはGoods Order Item Public Referenceとする。Internal IDを�
 - Handoff `PENDING|COMPLETED|VOID`
 - Customerの最小operational reference
 
-この事前確認read operationは `SPEC-110` に不足しているため `UCR-130-003` へ記録する。
+この事前確認read operationは `SPEC-110` に不足しているため `UCR-130-003` の未解消API項目として記録する。Staff previewの業務表示要件は本節が所有するが、HTTP endpoint、Operation ID、response schemaを本書で発明しない。
+
+Previewは対象Handoffの受け渡し判断に必要な情報だけを返す前提とし、raw Email、Internal ID、raw QR token、Customer全Order履歴、unrelated Ticket / Karaoke / Goods履歴をStaffへ表示しない。
 
 ### 49.2 Completion confirmation
 
@@ -1660,6 +1849,10 @@ Dialog:
 **STF-GDS-002:** Completion retryで2件目のHandoffを作ったように表示しない。
 
 **STF-GDS-003:** `COMPLETED` をUIだけでPENDINGへ戻さない。
+
+**STF-GDS-004:** `PG-STF-006〜007` は `goods_handoff.execute` による通常Staff completionであり、§30の `Administrative Handoff Completion` または `goods_handoff.manage` をStaffへ付与・表示してはならない。
+
+**STF-GDS-005:** Staff Handoff preview / resultは対象受け渡しに必要な最小情報へ制限し、Customer全履歴、raw Email、Internal ID、raw QR tokenを返すことを前提にしてはならない。
 
 Trace: `FR-STF-001〜016`, relevant `FR-GDS-*`, `AR-ROLE-012〜015`, `TQR-CHK-*`, `TQR-OUT-*`, `KRK-CHK-*`, `BR-CHK-*`, `BR-GDS-010〜013`, `API-STF-CHK-001〜002`, `API-STF-GDS-001`, `INV-010-05,08,10`.
 
@@ -1820,6 +2013,7 @@ Default sortはAPIが返すcanonical orderを使用する。追加の任意sort�
 - Reservation cancellation
 - QR token rotation
 - Inventory adjustment
+- Administrator `Administrative Handoff Completion`
 - Slot generation
 - Slot rights-affecting edit
 - Slot stop / resume
@@ -1886,6 +2080,7 @@ Public Reference全文の再入力等のtyped confirmationは標準必須とし�
 | Slot edit / stop / resume | `PG-ADM-009` でcurrent Slot再取得 | 同detailでstate conflict表示 |
 | Reservation cancellation | `PG-ADM-011` でReservation/Ticket/Slotを再取得 | 同detail。Review必要ならcase link |
 | Inventory adjustment | `PG-ADM-014` でinventory snapshot再取得 | 同detailでcurrent counters再表示 |
+| Administrator Goods Handoff completion | `PG-ADM-016` に留まりHandoff / Goods Item current stateとcompletion summaryを再取得 | 同detailを再取得。stale / unknownなら自動再送せず再確認 |
 | Publish / archive | 対象editor/listでserver state再取得 | local unsaved dataを自動上書きせずconflict表示 |
 | Role grant / revoke | `PG-ADM-021` listを再取得 | listを再取得しduplicate / last-admin / stale state表示 |
 | Notification retry / cancel | `PG-ADM-025` detailを再取得 | 同detailでcanonical Notification / Processing State表示 |
@@ -1994,6 +2189,8 @@ Administratorは運用上必要なCustomer summaryを参照できるが、一覧
 
 Admin detailでCustomer identity確認が必要な場合も、`SPEC-110` がallowlistするfieldだけを表示する。
 
+Goods Handoff list / detail / confirmationではさらに§30の最小化境界を適用し、raw Email、Customer全Order履歴、unrelated Ticket / Karaoke履歴、Profile全項目、Internal ID、raw QR tokenを表示しない。
+
 ## 62. Staff PII boundary
 
 現行Canonical Business Profileに氏名・電話・住所fieldは定義されていないため、Staff UIはそれらを新規要求しない。
@@ -2055,6 +2252,7 @@ Trace: `FR-STF-016`, `FR-XFN-004,017,033`, `AR-ROLE-015`, `TQR-SEC-*`, `EML-SEC-
 | Reservation cancellation | entitlement destructive | Reservation ref, Ticket ref, Slot ref |
 | QR token rotation | credential-like entitlement recovery | Ticket ref, rotation result; raw tokenなし |
 | Inventory adjustment | quantity / sales capacity | Goods ref, before/after safe counters |
+| Administrator Goods Handoff completion | fulfillment / terminal state change | Handoff ref, Goods item ref, before/current state, result; Customer PII最小化 |
 | Slot generation | bulk schedule | scope refs, window, generated/reused result |
 | Slot edit | rights-affecting | Slot ref, changed field names, result |
 | Slot stop / resume | sales control | Slot ref, from/to state |
@@ -2095,7 +2293,7 @@ Trace: `FR-STF-016`, `FR-XFN-004,017,033`, `AR-ROLE-015`, `TQR-SEC-*`, `EML-SEC-
 | `PG-ADM-012` | UCR-130-002 requested API | UCR-130-002 requested API | UCR-130-001 requested capability |
 | `PG-ADM-013` | `GET /admin/goods`, `API-ADM-GDS-001` | none | `goods_inventory.manage` |
 | `PG-ADM-014` | UCR-130-006 requested Goods detail read | `PATCH /admin/goods/{goods_ref}`, inventory adjustment | `goods_inventory.manage` |
-| `PG-ADM-015〜016` | UCR-130-003 requested read | UCR-130-003 explicit allowed command | `goods_handoff.manage` |
+| `PG-ADM-015〜016` | UCR-130-003 requested Admin list/detail read | UCR-130-003 requested HTTP mapping for §30 `Administrative Handoff Completion` | `goods_handoff.manage` |
 | `PG-ADM-018` | UCR-130-006 requested Admin Event read | `PATCH /admin/event` | `public_content.manage` |
 | `PG-ADM-019` | UCR-130-006 requested FAQ list/detail read | FAQ create/edit/publish/archive | `public_content.manage` |
 | `PG-ADM-020` | UCR-130-006 requested Announcement list/detail read | create/edit/publish/archive | `public_content.manage` |
@@ -2144,7 +2342,7 @@ Trace: `FR-STF-016`, `FR-XFN-004,017,033`, `AR-ROLE-015`, `TQR-SEC-*`, `EML-SEC-
 | `FR-ADM-014` | `PG-ADM-006`, UCR-130-001/002 |
 | `FR-ADM-015` | `PG-ADM-012`, UCR-130-001/002 |
 | `FR-ADM-016` | `PG-ADM-013〜014` |
-| `FR-ADM-017` | `PG-ADM-015〜016`, UCR-130-003 |
+| `FR-ADM-017` | `goods_handoff.manage` → `PG-ADM-015〜016` → §30 `ADM-GDS-005〜016` / `Administrative Handoff Completion` → `BR-GDS-010〜013`; HTTP mapping remains UCR-130-003 |
 | `FR-ADM-018` | `PG-ADM-017〜020` |
 | `FR-ADM-019` | §§7〜8, server-side authorization |
 | `FR-ADM-020` | action eligibility / current state / no generic state editor |
@@ -2213,6 +2411,13 @@ Trace: `FR-STF-016`, `FR-XFN-004,017,033`, `AR-ROLE-015`, `TQR-SEC-*`, `EML-SEC-
 - `KRK-EDT-*`: state別 edit / stop / resume
 - `KRK-CHK-*`: normal check-in window
 
+### Goods Handoff
+
+- `BR-GDS-010〜013`: `PENDING + FULFILLABLE` completion、single completion、Cancellation由来VOID、completed後の通常在庫復元禁止
+- `AR-ROLE-012〜015`, `AR-AZ-015`: Admin / Staff Capability分離、no role inheritance、terminal Handoff再完了禁止
+- `ADM-GDS-005〜016`: Administrator explicit command semantics / stale / response loss / PII / generic state editor禁止
+- `STF-GDS-001〜005`: Staff normal completion / preview最小化
+
 ### Database
 
 - Public Ref / Internal ID separation: `DB-ID-*`
@@ -2275,8 +2480,13 @@ Trace: `FR-STF-016`, `FR-XFN-004,017,033`, `AR-ROLE-015`, `TQR-SEC-*`, `EML-SEC-
 26. `202 RETRY_SCHEDULED`を`SENT`として表示しない。
 27. DB / Stripe / Resend / Auth failureをempty / successへ変換しない。
 28. High-risk actionにconfirmation / submitting / result classificationがある。
-29. important mutationがAudit-ready contextを持つ。
-30. UCRが必要な領域を非Canonical direct DB accessや仮endpointで穴埋めしない。
+29. `goods_handoff.manage` と `goods_handoff.execute` を同一Capabilityとして扱わず、Administrator → Staff inheritanceを作らない。
+30. Admin Goods Handoffはgeneric state editorではなく、§30の `Administrative Handoff Completion` だけを通常mutationとして提示する。
+31. Admin Handoff completionはserver current `PENDING` + Goods Order Item `FULFILLABLE` の場合だけ成立し、`COMPLETED -> PENDING|VOID`、direct VOID、undo / reopen / resetを提供しない。
+32. Admin Handoff stale / conflict / response loss時はcurrent stateを再取得し、blind duplicate completionを実行しない。
+33. Goods Handoff list / detail / confirmationのCustomer情報が最小化され、raw Email、Internal ID、raw QR token、unrelated履歴を表示しない。
+34. important mutationがAudit-ready contextを持つ。
+35. UCRが必要な領域を非Canonical direct DB accessや仮endpointで穴埋めしない。
 
 ---
 
@@ -2313,18 +2523,22 @@ Trace: `FR-STF-016`, `FR-XFN-004,017,033`, `AR-ROLE-015`, `TQR-SEC-*`, `EML-SEC-
 - **変更しない場合の影響:** `PG-ADM-006`, `PG-ADM-012` はread-only説明画面にしかできず、正式要件を満たさない。
 - **影響を受ける可能性がある仕様書:** `SPEC-060`, `SPEC-100`, `SPEC-130`, `SPEC-140`, `SPEC-160`, `SPEC-170`。
 
-## 74. UCR-130-003 — Goods Handoff operational read / Admin manage API不足
+## 74. UCR-130-003 — Goods Handoff operational read / Admin command API不足
 
 - **対象:** `SPEC-110 API Specification`
-- **現在の仕様:** Staffには `POST /staff/goods-handoffs/{goods_item_ref}/complete` があるが、completion前のtarget summary readがなく、Administratorの `goods_handoff.manage` に対応するlist/detail/許可mutation APIが定義されていない。
-- **要求する変更:** 新Capabilityは追加せず、既存 `goods_handoff.execute` / `goods_handoff.manage` に次を接続する。
-  - Staff: Goods Item Public Referenceから、completion前に最小Handoff target summaryを取得するread operation
+- **本改訂で解消した範囲:** Administrator Goods Handoff operationの業務意味、表示条件、Precondition、Confirmation、Business effect、禁止条件、stale / response loss時UXを§30でCanonical化した。`goods_handoff.manage` の意味をgeneric state editorへ拡張せず、通常Admin mutationを `Administrative Handoff Completion` に固定した。
+- **未解消として残る範囲:** HTTP contractのみ。`SPEC-110` は次をCanonical化する必要がある。
+  - Staff: Goods Order Item Public Referenceから、completion前に最小Handoff target summaryを取得するread operation
   - Administrator: Goods Handoff list / detail read
-  - Administrator: `SPEC-030` / `SPEC-060` が許可する範囲だけの明示command。generic state editは禁止
-- **Staff response boundary:** Goods name / quantity / item state / Handoff state / minimal Customer operational referenceのみ。Customer全履歴を返さない。
-- **理由:** Staffが誤対象を確認せず不可逆completionを直接実行するUXを避け、`FR-ADM-017` と `goods_handoff.manage` を実装可能にするため。
-- **変更しない場合の影響:** `PG-STF-006` の事前確認、`PG-ADM-015〜016` が安全に実装できない。
-- **影響を受ける可能性がある仕様書:** `SPEC-100`, `SPEC-130`, `SPEC-140`, `SPEC-160`, `SPEC-170`。
+  - Administrator: §30 `Administrative Handoff Completion` を実行する明示command operation
+- **Staff response boundary:** Goods Item Public Reference、Goods name、quantity、Goods Order Item State、Handoff State、Customer minimal operational referenceまでを業務上限とし、Customer全履歴、raw Email、Internal ID、raw QR tokenを返さない。
+- **Administrator command boundary:** §30のPrecondition / effectをそのままHTTPへ写像し、Browserから任意 `PENDING|COMPLETED|VOID` を送るstate editor、direct VOID、undo / reopen / reset、`COMPLETED -> PENDING|VOID` を成立させるoperationを追加しない。
+- **Concurrent / retry boundary:** server current stateをAuthorityとし、stale commandはconflictへ収束させる。response loss後はtargetを再取得し、既に `COMPLETED` なら既存完了結果として返せるが、二回目のcompletionを成立させない。Transport Idempotency-Key等の具体契約は `SPEC-110` が決定する。
+- **Capability boundary:** Staff preview / normal completionは `goods_handoff.execute`、Admin list / detail / `Administrative Handoff Completion` は `goods_handoff.manage` とし、`ADMINISTRATOR` から `STAFF` へのRole inheritanceを導入しない。
+- **API Canonical Owner boundary:** 本UCRはHTTP Method、URL、Route、Operation ID、Zod schema、HTTP Status、API Error Code、DB transaction、row lock、SQL、Indexを本書から指定しない。
+- **理由:** `FR-ADM-017` → `goods_handoff.manage` → explicit business semantics → safe HTTP commandという一方向の責務連鎖を成立させ、API側が業務意味を発明する循環を解消するため。
+- **変更しない場合の影響:** `PG-STF-006` の事前確認および `PG-ADM-015〜016` のCanonical HTTP実装が完成せず、REV-002のend-to-end implementation / test / acceptanceは閉じない。
+- **影響を受ける可能性がある仕様書:** `SPEC-100`, `SPEC-110`, `SPEC-140`, `SPEC-160`, `SPEC-170`, `SPEC-200`。
 
 ## 75. UCR-130-004 — Admin list filter query contract明示不足
 
@@ -2377,6 +2591,8 @@ Trace: `FR-STF-016`, `FR-XFN-004,017,033`, `AR-ROLE-015`, `TQR-SEC-*`, `EML-SEC-
 - Administrator → Staff role inheritance
 - Customer Operational Role
 - arbitrary state editor
+- Goods Handoff direct VOID / undo / reopen / reset
+- Administrator → Staff Goods Handoff permission inheritance
 - partial refund
 - sold Karaoke Slotのresale
 - Check-in override capability
