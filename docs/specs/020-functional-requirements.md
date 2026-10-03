@@ -83,7 +83,7 @@ related_specs:
 | Check-in | 権利の有効性を確認し、利用済み状態へ移す受付処理 |
 | Cart | Entry Ticket OfferingとGoodsの参照と数量だけをBrowserに一時保持する購入前の利用者補助機能。業務データでも販売確保でもない |
 | 購入開始 | Authenticated Userの操作により、Server-sideで販売条件を再検証し、Business Databaseへ `PREPARED` Orderを永続化する業務操作。Cartへの追加・数量変更・削除は購入開始ではない |
-| 複合Order | Entry Ticket OrderItemとGoods Order Itemの両方を含む1つのOrder。1回の外部決済へ対応する |
+| 複合Order | Entry Ticket Order ItemとGoods Order Itemの両方を含む1つのOrder。1回の外部決済へ対応する |
 | Sponsor Logo | 協賛者の表示名、画像、任意のリンク先、表示順、公開状態を持つ公開情報 |
 | Business Database | Supabase PostgreSQL上の業務データストア |
 
