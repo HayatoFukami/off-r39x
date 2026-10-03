@@ -3655,6 +3655,52 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-PUB-001-506",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-PUB-001", "DEV-WEB-001", "TST-UNT-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Static read of apps/web app, presentation, features and mock/dev-ui tsx files (SPEC-050 24.3)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "no literal colour utility (palette, black, white, arbitrary colour) in view files: colours come from @theme tokens"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-PUB-001-505",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": ["PG-PUB-001", "DEV-WEB-001", "TST-E2E-003", "TST-E2E-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; authenticated session and image_broken sponsor scenario preseeded",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "drawer, account menu (Escape, focus return), logout and a broken sponsor image raise no pageerror or console.error"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
     }
   ]
 }

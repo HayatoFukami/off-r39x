@@ -447,6 +447,7 @@ CSS・source のどこにも外部 origin（`http://`、`https://`、`//host`）
 - session の仕込み形（S2 契約 §7）: `{"version":1,"session":{"kind":"authenticated","email":"demo@example.com","emailVerified":true},"pendingVerificationEmail":null}`。
 - ページ読み込み中に `pageerror` が無く、`console.error`（`Failed to load resource` を除く。hydration 警告を含む）が無いこと。
 - ネットワーク要求の宛先は `127.0.0.1:3100`（と `data:` / `blob:`）だけ（外部 font・外部 CDN を使わない）。
+- Playwright の既定 workers は 2（`tests/playwright.config.ts`）。Windows host で 4 workers 並列時に loopback の停止（素の node http server でも再現、最大約 20 秒）が起き、アプリ起因でない timeout が散発したため。retry は 0 のまま（SPEC-170 §69）、各 test は新規 context（TST-FLK-001 / §65）。`--workers=N` で上書き可能。
 - `/mypage`、`/purchase`、`/account` の `Cache-Control: no-store` は既存の `tests/e2e/no-store.spec.ts` が検査する（S3 で変更しない）。
 
 ## 11. テストファイルと契約の対応

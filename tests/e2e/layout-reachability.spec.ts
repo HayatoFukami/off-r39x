@@ -79,11 +79,28 @@ test.describe("TC-PG-PUB-001-501 no link to /admin or /staff on any page, footer
           expect(url.pathname.toLowerCase(), href).not.toMatch(/\/(admin|staff)(\/|$)/);
         }
         // The dev area is never linked from general navigation (DEV-WEB-012).
-        if (route !== ROUTES.dev) {
+        // Same-document fragment links (the skip link "#main-content", contract 4.1) are not
+        // navigation into /dev even when the page itself lives under /dev (test-defect fix).
+        const self = new URL(page.url());
+        const isSameDocumentFragment = (href: string): boolean => {
+          const url = new URL(href);
+          return url.origin === self.origin && url.pathname === self.pathname && url.hash !== "";
+        };
+        if (!self.pathname.startsWith("/dev")) {
           for (const href of hrefs) {
             expect(pathOf(href).startsWith("/dev"), href).toBe(false);
           }
+        } else {
+          // On a /dev page the shell (header, footer, drawer, account menu) must still not link to /dev.
+          for (const href of hrefs) {
+            if (isSameDocumentFragment(href)) continue;
+            if (self.pathname === ROUTES.dev) continue; // the scenario panel may cross-link dev routes
+            expect(pathOf(href).startsWith("/dev"), href).toBe(false);
+          }
         }
+        // The skip link is the only same-document fragment and targets main.
+        const fragments = hrefs.filter(isSameDocumentFragment);
+        expect(new Set(fragments.map((h) => new URL(h).hash))).toEqual(new Set(["#main-content"]));
       });
     }
   }
