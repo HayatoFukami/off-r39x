@@ -2,3 +2,6 @@ packages:
   - apps/*
   - packages/*
   - tests
+allowBuilds:
+  esbuild: false
+  sharp: false
