@@ -1,0 +1,17 @@
+{
+  "name": "@off-r39x/tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:unit": "vitest run --config vitest.config.mts",
+    "test:e2e": "playwright test --config playwright.config.ts"
+  },
+  "dependencies": {
+    "@off-r39x/domain": "workspace:*"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1",
+    "@types/node": "^24",
+    "vitest": "^3"
+  }
+}
