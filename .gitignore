@@ -35,3 +35,6 @@ test-results/
 playwright-report/
 blob-report/
 generated/
+
+# Next.js generated
+next-env.d.ts
