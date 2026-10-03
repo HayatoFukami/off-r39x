@@ -38,14 +38,41 @@
     },
     {
       "rule_id": "DEV-WEB-012",
-      "code_paths": ["scripts/check-import-boundaries.mts"],
-      "test_case_ids": ["TC-DEV-WEB-012-001"],
+      "code_paths": [
+        "scripts/check-import-boundaries.mts",
+        "apps/web/src/config/ui-mock.ts",
+        "apps/web/app/dev/layout.tsx",
+        "apps/web/app/dev/scenarios/page.tsx",
+        "apps/web/app/dev/error-probe/page.tsx",
+        "apps/web/src/mock/dev-ui/mock-mode-badge.tsx",
+        "apps/web/app/layout.tsx",
+        "apps/web/src/config/site.ts"
+      ],
+      "test_case_ids": [
+        "TC-DEV-WEB-012-001",
+        "TC-DEV-WEB-012-101",
+        "TC-DEV-WEB-012-102",
+        "TC-DEV-WEB-012-201",
+        "TC-DEV-WEB-012-301",
+        "TC-PG-PUB-001-202",
+        "TC-PG-PUB-001-501"
+      ],
       "notes": "implementation mapping only: mock-allowlist"
     },
     {
       "rule_id": "DEV-WEB-011",
-      "code_paths": ["apps/web/src/config/ui-mock.ts", "apps/web/next.config.ts"],
-      "test_case_ids": ["TC-DEV-WEB-011-001", "TC-DEV-WEB-011-002"],
+      "code_paths": [
+        "apps/web/src/config/ui-mock.ts",
+        "apps/web/next.config.ts",
+        "apps/web/src/api-client/index.ts",
+        "apps/web/src/auth/index.ts"
+      ],
+      "test_case_ids": [
+        "TC-DEV-WEB-011-001",
+        "TC-DEV-WEB-011-002",
+        "TC-DEV-WEB-011-101",
+        "TC-DEV-WEB-012-101"
+      ],
       "notes": "implementation mapping only"
     },
     {
@@ -72,8 +99,8 @@
     },
     {
       "rule_id": "SEC-WEB-004",
-      "code_paths": ["apps/web/app/globals.css"],
-      "test_case_ids": [],
+      "code_paths": ["apps/web/app/globals.css", "apps/web/app/layout.tsx"],
+      "test_case_ids": ["TC-DEV-WEB-001-203", "TC-SEC-WEB-004-101"],
       "notes": "implementation mapping only: system font stack, no external fonts"
     },
     {
@@ -230,7 +257,10 @@
         "apps/web/src/presentation/state-mapping/availability.ts",
         "apps/web/src/presentation/format/money.ts",
         "apps/web/src/mock/backend/mock-api.ts",
-        "apps/web/src/api-client/cart-line-key.ts"
+        "apps/web/src/api-client/cart-line-key.ts",
+        "apps/web/src/features/cart/cart-count.ts",
+        "apps/web/src/features/cart/use-cart-count.ts",
+        "apps/web/src/presentation/layout/cart-link.tsx"
       ],
       "test_case_ids": [
         "TC-PG-CRT-001-001",
@@ -241,7 +271,10 @@
         "TC-PG-CRT-001-101",
         "TC-PG-CRT-001-102",
         "TC-PG-CRT-001-103",
-        "TC-PG-CRT-001-104"
+        "TC-PG-CRT-001-104",
+        "TC-PG-CRT-001-201",
+        "TC-PG-CRT-001-202",
+        "TC-PG-CRT-001-301"
       ],
       "notes": "implementation mapping only: availability and money formatting; S2 mock backend"
     },
@@ -392,9 +425,21 @@
       "code_paths": [
         "apps/web/src/api-client/port.ts",
         "apps/web/src/api-client/types.ts",
-        "apps/web/src/mock/backend/mock-api.ts"
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/api-client/index.ts",
+        "apps/web/src/auth/index.ts",
+        "apps/web/src/config/browser-storage.ts",
+        "apps/web/src/api-client/provider.tsx",
+        "apps/web/src/auth/session-provider.tsx"
       ],
-      "test_case_ids": ["TC-DEV-WEB-010-101", "TC-DEV-WEB-010-102", "TC-DEV-WEB-010-103"],
+      "test_case_ids": [
+        "TC-DEV-WEB-010-101",
+        "TC-DEV-WEB-010-102",
+        "TC-DEV-WEB-010-103",
+        "TC-DEV-WEB-010-111",
+        "TC-DEV-WEB-013-111",
+        "TC-DEV-WEB-013-112"
+      ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
@@ -404,7 +449,11 @@
         "apps/web/src/mock/backend/scenario.ts",
         "apps/web/src/mock/backend/session-store.ts",
         "apps/web/src/mock/backend/mock-api.ts",
-        "apps/web/src/mock/backend/mock-auth.ts"
+        "apps/web/src/mock/backend/mock-auth.ts",
+        "apps/web/src/mock/dev-ui/scenario-panel.tsx",
+        "apps/web/app/dev/scenarios/page.tsx",
+        "apps/web/src/config/browser-storage.ts",
+        "apps/web/public/mock/sponsors"
       ],
       "test_case_ids": [
         "TC-SEC-AUTH-018-101",
@@ -417,7 +466,16 @@
         "TC-DEV-WEB-013-103",
         "TC-DEV-WEB-013-104",
         "TC-DEV-WEB-013-105",
-        "TC-PG-KRK-003-106"
+        "TC-PG-KRK-003-106",
+        "TC-DEV-WEB-013-111",
+        "TC-DEV-WEB-013-112",
+        "TC-DEV-WEB-013-121",
+        "TC-DEV-WEB-013-122",
+        "TC-DEV-WEB-013-201",
+        "TC-DEV-WEB-013-202",
+        "TC-DEV-WEB-013-203",
+        "TC-DEV-WEB-013-204",
+        "TC-PG-PUB-001-231"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
@@ -442,7 +500,9 @@
       "code_paths": [
         "apps/web/src/mock/backend/db.ts",
         "apps/web/src/mock/backend/scenario.ts",
-        "apps/web/src/mock/backend/session-store.ts"
+        "apps/web/src/mock/backend/session-store.ts",
+        "apps/web/src/features/cart/cart-count.ts",
+        "apps/web/src/mock/dev-ui/scenario-panel.tsx"
       ],
       "test_case_ids": [
         "TC-DEV-TS-004-101",
@@ -450,7 +510,11 @@
         "TC-DEV-WEB-013-102",
         "TC-DEV-WEB-013-104",
         "TC-DEV-WEB-013-105",
-        "TC-PG-CRT-001-104"
+        "TC-PG-CRT-001-104",
+        "TC-PG-CRT-001-202",
+        "TC-DEV-WEB-013-121",
+        "TC-DEV-WEB-013-201",
+        "TC-DEV-WEB-013-202"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
@@ -474,8 +538,45 @@
     },
     {
       "rule_id": "PG-PUB-001",
-      "code_paths": ["apps/web/src/mock/backend/mock-api.ts", "apps/web/src/mock/backend/seed.ts"],
-      "test_case_ids": ["TC-BR-EVT-005-101", "TC-PG-PUB-001-101"],
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/mock/backend/seed.ts",
+        "apps/web/app/layout.tsx",
+        "apps/web/app/page.tsx",
+        "apps/web/src/config/site.ts",
+        "apps/web/src/config/assets.ts",
+        "apps/web/src/presentation/layout",
+        "apps/web/src/features/shell",
+        "apps/web/src/presentation/components/ui",
+        "apps/web/app/globals.css",
+        "apps/web/public/mock/sponsors"
+      ],
+      "test_case_ids": [
+        "TC-BR-EVT-005-101",
+        "TC-PG-PUB-001-101",
+        "TC-PG-PUB-001-201",
+        "TC-PG-PUB-001-202",
+        "TC-PG-PUB-001-203",
+        "TC-PG-PUB-001-211",
+        "TC-PG-PUB-001-212",
+        "TC-PG-PUB-001-213",
+        "TC-PG-PUB-001-221",
+        "TC-PG-PUB-001-231",
+        "TC-PG-PUB-001-301",
+        "TC-PG-PUB-001-302",
+        "TC-PG-PUB-001-303",
+        "TC-PG-PUB-001-304",
+        "TC-PG-PUB-001-305",
+        "TC-PG-PUB-001-306",
+        "TC-PG-PUB-001-401",
+        "TC-PG-PUB-001-402",
+        "TC-PG-PUB-001-403",
+        "TC-PG-PUB-001-404",
+        "TC-PG-PUB-001-405",
+        "TC-PG-PUB-001-502",
+        "TC-PG-PUB-001-503",
+        "TC-PG-PUB-001-504"
+      ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
@@ -504,8 +605,14 @@
     },
     {
       "rule_id": "BR-EVT-005",
-      "code_paths": ["apps/web/src/mock/backend/mock-api.ts", "apps/web/src/mock/backend/seed.ts"],
-      "test_case_ids": ["TC-BR-EVT-005-101"],
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/mock/backend/seed.ts",
+        "apps/web/src/presentation/layout/sponsor-area-model.ts",
+        "apps/web/src/presentation/layout/sponsor-logos.tsx",
+        "apps/web/src/features/shell/site-footer.tsx"
+      ],
+      "test_case_ids": ["TC-BR-EVT-005-101", "TC-PG-PUB-001-212", "TC-PG-PUB-001-402"],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
@@ -698,9 +805,82 @@
     },
     {
       "rule_id": "AR-SES-009",
-      "code_paths": ["apps/web/src/mock/backend/mock-auth.ts"],
-      "test_case_ids": ["TC-AR-SES-009-101"],
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-auth.ts",
+        "apps/web/src/auth/session-provider.tsx",
+        "apps/web/src/presentation/layout/account-menu.tsx",
+        "apps/web/src/features/shell/site-header.tsx"
+      ],
+      "test_case_ids": ["TC-AR-SES-009-101", "TC-PG-PUB-001-304"],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
+    },
+    {
+      "rule_id": "FR-CRT-001",
+      "code_paths": [
+        "apps/web/src/features/cart/cart-count.ts",
+        "apps/web/src/features/cart/use-cart-count.ts"
+      ],
+      "test_case_ids": ["TC-PG-CRT-001-201", "TC-PG-CRT-001-301"],
+      "notes": "implementation mapping only: UI mock shell (not API/DB/provider coverage)"
+    },
+    {
+      "rule_id": "FR-CRT-003",
+      "code_paths": ["apps/web/src/features/cart/cart-count.ts"],
+      "test_case_ids": ["TC-PG-CRT-001-202", "TC-PG-CRT-001-301"],
+      "notes": "implementation mapping only: UI mock shell (not API/DB/provider coverage)"
+    },
+    {
+      "rule_id": "SEC-WEB-016",
+      "code_paths": ["apps/web/src/presentation/layout/sponsor-area-model.ts"],
+      "test_case_ids": ["TC-PG-PUB-001-213"],
+      "notes": "implementation mapping only: UI mock shell (not API/DB/provider coverage)"
+    },
+    {
+      "rule_id": "PG-XFN-002",
+      "code_paths": [
+        "apps/web/app/not-found.tsx",
+        "apps/web/app/error.tsx",
+        "apps/web/app/dev/error-probe/page.tsx"
+      ],
+      "test_case_ids": [
+        "TC-PG-XFN-002-201",
+        "TC-PG-XFN-002-202",
+        "TC-PG-XFN-002-301",
+        "TC-SEC-WEB-012-101"
+      ],
+      "notes": "implementation mapping only: UI mock shell (not API/DB/provider coverage)"
+    },
+    {
+      "rule_id": "SEC-WEB-012",
+      "code_paths": ["apps/web/app/error.tsx", "apps/web/app/dev/error-probe/page.tsx"],
+      "test_case_ids": ["TC-PG-XFN-002-202", "TC-SEC-WEB-012-101"],
+      "notes": "implementation mapping only: UI mock shell (not API/DB/provider coverage)"
+    },
+    {
+      "rule_id": "DEV-AUTH-009",
+      "code_paths": ["apps/web/src/api-client/index.ts", "apps/web/src/auth/index.ts"],
+      "test_case_ids": ["TC-DEV-WEB-011-101"],
+      "notes": "implementation mapping only: UI mock shell (not API/DB/provider coverage)"
+    },
+    {
+      "rule_id": "DEV-WEB-001",
+      "code_paths": [
+        "apps/web/app/layout.tsx",
+        "apps/web/app/not-found.tsx",
+        "apps/web/app/error.tsx",
+        "apps/web/src/api-client/provider.tsx",
+        "apps/web/src/auth/session-provider.tsx",
+        "apps/web/src/auth/use-session.ts",
+        "apps/web/src/features/shell",
+        "apps/web/src/features/cart/use-cart-count.ts"
+      ],
+      "test_case_ids": [
+        "TC-DEV-WEB-001-201",
+        "TC-DEV-WEB-001-202",
+        "TC-DEV-WEB-001-203",
+        "TC-PG-XFN-002-202"
+      ],
+      "notes": "implementation mapping only: UI mock shell (not API/DB/provider coverage)"
     }
   ]
 }
