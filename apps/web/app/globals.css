@@ -1,0 +1,20 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand: #1d4ed8;
+  --color-brand-foreground: #ffffff;
+  --color-tone-success-bg: #dcfce7;
+  --color-tone-success-fg: #14532d;
+  --color-tone-pending-bg: #fef9c3;
+  --color-tone-pending-fg: #713f12;
+  --color-tone-failure-bg: #fee2e2;
+  --color-tone-failure-fg: #7f1d1d;
+  --color-tone-neutral-bg: #f1f5f9;
+  --color-tone-neutral-fg: #0f172a;
+  --color-tone-review-bg: #ede9fe;
+  --color-tone-review-fg: #4c1d95;
+  --radius-base: 0.5rem;
+  --font-sans:
+    system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Yu Gothic UI", "Noto Sans JP", Meiryo,
+    sans-serif;
+}
