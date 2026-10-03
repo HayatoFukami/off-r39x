@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-170
 title: Test Specification
-version: 1.1.0
+version: 1.2.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -568,6 +568,8 @@ Unit TestはDB / Browser / external networkを使わず、pure decisionとserial
 - HMAC correlation fingerprint deterministic behavior
 
 **TST-UNT-001:** Unit Testでconstraint / transaction / Provider acceptanceを「保証済み」としない。
+
+**TST-UNT-004:** UIの状態対応（Order / Ticket / Reservation / Slot / Goods / Notification state → 利用者向け表示）、Cart保存、Continuation Intentの検証、金額・日時のformatなど、`SPEC-050` が定める表示規則を実装する純粋関数はUnit Testで検証する。このTest CaseのIDは、`TC-<test-rule-id-without-TST-prefix>-<3-digit-sequence>` の `<test-rule-id>` に代えて、対象の `SPEC-050` Page ID（例: `PG-CRT-001`）またはRule IDを使用してよい。
 
 **TST-UNT-002:** HMAC correlation fingerprintは同一key/version/inputで同じ32文字lowercase hexとなり、domain separationが異なれば異なることをTestする。HMAC-SHA-256、先頭16 bytes truncationをknown vectorで検証する。
 
@@ -1556,6 +1558,10 @@ E2EはPlaywright-compatible browser automation contractを使用し、production
 
 **TST-E2E-001:** Stripe hosted pageやResend mailboxを常時external network越しに自動操作することを標準E2E suiteにしない。
 
+**TST-E2E-003:** `SPEC-050 §31` のPage Acceptance各項目は、E2E Test Caseへ追跡できなければならない。Test CaseのIDは `TST-UNT-004` と同じ規則でPage IDを使用してよい。
+
+**TST-E2E-004:** `DEV-WEB-010〜013` のUI mockを対象にしたbrowser suite（UI mock suite）は、`SPEC-050` の画面表示・導線・Accessibility確認を目的とする補助suiteである。UI mock suiteは本書 §7 のG8（production相当のWeb + Hono API + Business Database）の代替にならず、G8を実行したと報告してはならない。UI mock suiteのTest Caseはmanifestで `critical: false` とし、`api_operation_ids` と `db_constraint_names` を空にし、API / DB / Providerのcoverageへ算入しない。Test runnerのretryは0とする。
+
 ## 66. Mandatory journeys
 
 - signup/login gate
@@ -1850,6 +1856,8 @@ SPEC-170に準拠したTest implementationは、少なくとも次をすべて�
 48. Authoritative admin read / filterはZod allowlist strict、canonical sort、`DRAFT|PUBLISHED|ARCHIVED` / current counter / Slot・Scope current state、public API代用不可をTestする。
 49. `API-ADM-REC-003〜007` はoperation-specific precondition、same Business Cause / Provider key、unknown非成功、post-verification、Audit correlation、secret / raw provider body / full Email非返却をTestする。
 50. 全canonical Operation IDにAPI contract Testがあり、UCR-only IDをactive featureとして登録しない。
+51. `SPEC-050` が定める表示規則の純粋関数（`TST-UNT-004`）と、`SPEC-050 §31` のPage Acceptance（`TST-E2E-003`）がTest Caseへ追跡できる。
+52. UI mock suiteが補助suiteとして扱われ、G8、API / DB / Providerのcoverageとして報告されていない（`TST-E2E-004`）。
 
 ---
 
