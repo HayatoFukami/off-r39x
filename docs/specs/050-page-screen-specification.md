@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-050
 title: Page and Screen Specification
-version: 1.0.0
+version: 1.1.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -40,6 +40,7 @@ related_specs:
 - Page間Navigation
 - 各Pageの目的、対象Actor、認証要否
 - 各Pageの主要Section、表示Fieldの論理的意味、主要Action
+- Cart画面と、共通Header / Footer（Sponsor Logo表示領域を含む）の表示仕様
 - ActionのEnabled / Disabled / Hidden条件
 - Loading / Empty / Error / Pending / Success / Recoveryの画面表現
 - Order、Ticket、Reservation、Karaoke Slot / Hold、Goods Order Item / HandoffのCanonical Stateに対応する利用者向け表示
@@ -57,9 +58,11 @@ related_specs:
 
 - 公開Event情報
 - Announcement
-- Entry Ticket販売・購入開始
+- Entry Ticket販売・Cartへの追加
 - Karaoke販売案内、対象日、1時間単位空き状況、Slot選択、購入開始
-- Goods一覧、Goods購入判断、購入開始
+- Goods一覧、Goods購入判断、Cartへの追加
+- Cart（Entry TicketとGoodsの内容確認・編集と、1回の支払いへの購入手続き）
+- 共通Header / Footer、Sponsor Logo表示
 - Account登録、Email確認、Login、Logout、Password reset
 - 外部決済へ進む購入試行とBrowser Return後のOrder状態確認
 - Mypage Overview、Business Profile、Order、Entry Ticket / QR、Karaoke Reservation / Ticket / QR、Goods / Handoff
@@ -90,6 +93,10 @@ Administrator / Staff向け個別運用画面は `SPEC-130` がCanonical Owner�
 | Browser Return | 外部決済からBrowserが戻った事実。Business Confirmationではない |
 | Ownership-safe Detail | 対象識別子だけで表示せず、認証IdentityとOwner関係のServer-side検証を通過した場合だけ表示する詳細Page |
 | Inline Failure | Page全体ではなく、取得失敗またはAction失敗したSection内で示す失敗状態 |
+| Cart | Entry Ticket OfferingとGoodsの参照と数量だけをBrowserに保持する購入前の補助。Business Databaseには保存せず、販売確保も行わない（`SPEC-030` §11.9） |
+| Cart Item | Cartに含まれる1件のEntry Ticket種別またはGoodsと数量 |
+| Global Header / Global Footer | 全一般利用者向けPageで共通に表示するHeaderとFooter |
+| Sponsor Logo | 運営が公開対象とした協賛ロゴ。共通Footerに表示する |
 
 ## 5. URL / Route設計原則
 
@@ -101,6 +108,7 @@ Administrator / Staff向け個別運用画面は `SPEC-130` がCanonical Owner�
 - Entry Ticket: `/entry`
 - Karaoke: `/karaoke/*`
 - Goods: `/goods/*`
+- Cart: `/cart`
 - Authentication / Account: `/account/*`
 - 購入状態: `/purchase/orders/*`
 - Mypage: `/mypage/*`
@@ -114,6 +122,7 @@ Administrator / Staff向け個別運用画面は `SPEC-130` がCanonical Owner�
 - Owner限定EntityのReferenceは推測困難性だけに依存せず、Server-side Ownership検証を必須とする。
 - 内部DB主キーをそのまま公開するかどうか、Referenceの具体形式は `SPEC-100` / `SPEC-110` と整合させるが、本書のRoute意味は変更しない。
 - URL QueryやContinuation IntentにSecret、Credential、QR Token、支払機微情報を含めない。
+- Cartが保持するEntry Ticket OfferingおよびGoodsの参照は公開対象の参照であり、権限根拠にならない。
 
 ### 5.3 RouteとAPIの分離
 
@@ -128,6 +137,7 @@ Administrator / Staff向け個別運用画面は `SPEC-130` がCanonical Owner�
 | `PG-TKT-*` | Entry Ticket販売 |
 | `PG-KRK-*` | Karaoke販売・Slot選択 |
 | `PG-GDS-*` | Goods販売 |
+| `PG-CRT-*` | Cart |
 | `PG-MYP-*` | Mypage / Owner限定Data |
 | `PG-XFN-*` | Purchase status / Cross-functional / System failure |
 
@@ -140,18 +150,19 @@ Administrator / Staff向け個別運用画面は `SPEC-130` がCanonical Owner�
 | `PG-PUB-001` | Event Home | `/` | Guest / Authenticated User | 不要 | `UF-PUB-001` |
 | `PG-PUB-002` | Announcement List | `/announcements` | Guest / Authenticated User | 不要 | `UF-PUB-001` |
 | `PG-PUB-003` | Announcement Detail | `/announcements/{announcement_ref}` | Guest / Authenticated User | 不要 | `UF-PUB-001` |
-| `PG-TKT-001` | Entry Ticket Sales | `/entry` | Guest / Authenticated User | 閲覧不要、購入開始は必要 | `UF-PUB-001`, `UF-PUB-002`, `UF-TKT-001` |
+| `PG-TKT-001` | Entry Ticket Sales | `/entry` | Guest / Authenticated User | 閲覧・Cart追加は不要 | `UF-PUB-001`, `UF-CRT-001`, `UF-TKT-001` |
 | `PG-KRK-001` | Karaoke Sales Guide | `/karaoke` | Guest / Authenticated User | 閲覧不要 | `UF-PUB-001`, `UF-KRK-001` |
 | `PG-KRK-002` | Karaoke Day Schedule | `/karaoke/schedule/{date}` | Guest / Authenticated User | 閲覧不要 | `UF-KRK-001` |
 | `PG-KRK-003` | Karaoke Slot Detail | `/karaoke/slots/{slot_ref}` | Guest / Authenticated User | 閲覧不要、購入開始は必要 | `UF-PUB-002`, `UF-KRK-001`, `UF-KRK-002` |
 | `PG-GDS-001` | Goods List | `/goods` | Guest / Authenticated User | 閲覧不要 | `UF-PUB-001`, `UF-GDS-001` |
-| `PG-GDS-002` | Goods Detail / Purchase | `/goods/{goods_ref}` | Guest / Authenticated User | 閲覧不要、購入開始は必要 | `UF-PUB-002`, `UF-GDS-001` |
+| `PG-GDS-002` | Goods Detail / Cart追加 | `/goods/{goods_ref}` | Guest / Authenticated User | 閲覧・Cart追加は不要 | `UF-CRT-001`, `UF-GDS-001` |
+| `PG-CRT-001` | Cart | `/cart` | Guest / Authenticated User | 閲覧・編集は不要、購入手続きは必要 | `UF-CRT-001`, `UF-PUB-002`, `UF-TKT-001`, `UF-GDS-001` |
 | `PG-AUTH-001` | Account Registration | `/account/register` | Guest | 不要 | `UF-AUTH-001`, `UF-PUB-002` |
 | `PG-AUTH-002` | Email Verification | `/account/email-verification` | Account登録済みUser | 条件依存 | `UF-AUTH-002` |
 | `PG-AUTH-003` | Login | `/account/login` | Guest | 不要 | `UF-AUTH-003`, `UF-PUB-002`, `UF-AUTH-007` |
 | `PG-AUTH-004` | Password Reset Request | `/account/password-reset` | Guest / Login不能User | 不要 | `UF-AUTH-005`, `UF-AUTH-007` |
 | `PG-AUTH-005` | Password Reset Completion | `/account/password-reset/complete` | Reset Flow中User | 認証基盤の正規reset contextを必要とする | `UF-AUTH-005` |
-| `PG-XFN-001` | Purchase Status | `/purchase/orders/{order_ref}` | Authenticated User / Customer | 必要 | `UF-TKT-001`, `UF-KRK-002`, `UF-GDS-001`, `UF-XFN-001`, `UF-XFN-003`, `UF-XFN-004` |
+| `PG-XFN-001` | Purchase Status | `/purchase/orders/{order_ref}` | Authenticated User / Customer | 必要 | `UF-TKT-001`, `UF-KRK-002`, `UF-GDS-001`, `UF-CRT-001`, `UF-XFN-001`, `UF-XFN-003`, `UF-XFN-004` |
 | `PG-MYP-001` | Mypage Overview | `/mypage` | Authenticated User / Customer | 必要 | `UF-MYP-001` |
 | `PG-MYP-002` | Business Profile | `/mypage/profile` | Authenticated User | 必要 | `UF-AUTH-006`, `UF-MYP-001`, `UF-MYP-002` |
 | `PG-MYP-003` | Order List | `/mypage/orders` | Authenticated User | 必要 | `UF-MYP-001` |
@@ -177,6 +188,7 @@ Administrator / Staff向け個別運用画面は `SPEC-130` がCanonical Owner�
 - Entry Ticket: `PG-TKT-001`
 - Karaoke: `PG-KRK-001`
 - Goods: `PG-GDS-001`
+- Cart: `PG-CRT-001`
 - AccountまたはMypage
 
 ### 8.2 Guest表示
@@ -187,6 +199,7 @@ Guestには以下を表示する。
 - Entry Ticket
 - Karaoke
 - Goods
+- Cart
 - Login
 - Account登録
 
@@ -200,6 +213,7 @@ Authenticated Userには以下を表示する。
 - Entry Ticket
 - Karaoke
 - Goods
+- Cart
 - Mypage
 - Account menu: Profile、Order、Entry Ticket、Karaoke、Goods、Logout
 
@@ -208,6 +222,32 @@ Customerは独立Roleではないため、「Customer roleを持つからNavigat
 ### 8.4 Administrator / Staff境界
 
 一般利用者Navigationに高権限操作を埋め込まない。Administrator / Staff用の運用領域へのEntry Pointを提供する場合、Server-sideで権限が確認されたActorにだけ補助Linkを表示してよいが、運用領域のRoute・画面・Field・Actionは `SPEC-130` が定義する。Link非表示だけをアクセス制御に使用してはならない。
+
+### 8.5 Global Header / Global Footer
+
+**Global Header**
+
+- 全一般利用者向けPageで表示し、Pageをscrollしても到達できる固定表示とする。
+- 少なくとも以下を含む: サイト名（`PG-PUB-001` へのLink）、Primary Navigation（§8.1）、Cart、Account / Login。
+- 主要CTA「チケットを購入する」を常時表示し、`PG-TKT-001` へ遷移する。GuestとAuthenticated Userの両方に同じCTAを表示する。
+- Cartには、Cart内の合計数量を数字（テキスト）で示す。0件のときは数字を表示しない。数字は色や形状だけに依存せず、アクセシブルな名称でも伝える。
+- Mobileでは、Primary Navigationを折りたたみ（Drawer等）にしてよい。ただしCart、主要CTA、Login / Mypageは折りたたみ内に隠さず、Flow完遂に必要な到達性を失わせない。Drawerを使用する場合は§25のDialog / Drawer要件を満たす。
+
+**Global Footer**
+
+- 全一般利用者向けPageで表示する。
+- 少なくとも以下を含む: Event名称、Primary Navigation相当のLink、Sponsor Logo領域。
+- Administrator / Staffの運用領域へのEntry Pointは§8.4に従う。
+
+**Sponsor Logo領域**
+
+- `PUBLISHED` のSponsor Logoだけを、運営が設定した表示順に表示する（`BR-EVT-005`）。
+- 各Logoは表示名称をアクセシブルな名称（代替テキスト）として持つ。リンク先が設定されている場合は、外部へ遷移するLinkであることが利用者に分かるようにする。
+- 公開対象が0件の場合、Sponsor Logo領域を表示しない。
+- 取得に失敗した場合、Sponsor Logo領域を表示せず、「協賛なし」等の0件を示す表示にしない。他のContentとNavigationの表示・操作を妨げない。
+- Logo画像が読み込めない場合は表示名称をテキストで表示する。
+
+Trace: `FR-PUB-011`, `FR-PUB-014〜015`, `FR-CRT-001`, `BR-EVT-005`, `UF-PUB-001`, `UF-CRT-001`.
 
 ## 9. 共通Page State仕様
 
@@ -268,7 +308,7 @@ Button labelと処理意味を混同してはならない。
 
 ### 10.1 Guestが認証必須Actionを開始した場合
 
-GuestがEntry / Karaoke / Goods購入、Mypage等の認証必須Actionを開始した場合、`PG-AUTH-003` Loginまたは `PG-AUTH-001` Account Registrationへ遷移する。
+GuestがCartからの購入手続き、Karaoke購入、Mypage等の認証必須Actionを開始した場合、`PG-AUTH-003` Loginまたは `PG-AUTH-001` Account Registrationへ遷移する。Cartへの追加・数量変更・削除・閲覧はGuestにも許可する認証不要のActionであり、認証要求の対象ではない。
 
 認証要求UIは次を明示する。
 
@@ -282,9 +322,8 @@ GuestがEntry / Karaoke / Goods購入、Mypage等の認証必須Actionを開始�
 
 例:
 
-- Entry Ticket購入 → `PG-TKT-001` の対象Offering選択へ復帰
+- Cartの購入手続き（Entry Ticket / Goods） → `PG-CRT-001` へ復帰。Cart内容（参照と数量）はBrowser側のCartに保持され、Continuation Intentには含めない
 - Karaoke Slot購入 → `PG-KRK-003` の対象Slotへ復帰
-- Goods購入 → `PG-GDS-002` の対象Goodsへ復帰
 - Mypage → `PG-MYP-001` へ復帰
 
 認証完了後も、販売状態、在庫、Slot、Purchase Limitは再検証する。認証前の表示を購入保証として扱わない。
@@ -294,6 +333,7 @@ GuestがEntry / Karaoke / Goods購入、Mypage等の認証必須Actionを開始�
 Continuation Intentに以下を保存して復元してはならない。
 
 - Clientが決めた決済金額
+- Cartに保持された価格・在庫・販売可否
 - Clientが決めたOwner
 - 支払成功結果
 - 期限切れHoldを復活させる情報
@@ -310,33 +350,42 @@ Continuation Intentに以下を保存して復元してはならない。
 - **Purpose:** Event参加判断に必要な公開情報と主要機能への起点を提供する。
 - **Entry Condition:** なし。
 
-**Main Content**
+**Main Content（上から順に配置する）**
 
-1. Event概要Section
+1. Hero Section
    - Event名称
-   - 概要
-2. 開催日時Section
-   - 設定済み開催日時または開催期間
-   - 表示Timezoneは `Asia/Tokyo`
-3. 会場・アクセスSection
+   - 開催日時の要約（設定済み開催日時または開催期間。表示Timezoneは `Asia/Tokyo`）
    - 会場名称
-   - 会場案内
-   - アクセス情報
-4. 注意事項Section
-   - 公開中の注意事項
-5. FAQ Section
-   - `PUBLISHED` FAQのみ
-   - 質問と回答
-6. 最新Announcement Section
-   - `PUBLISHED` Announcementの新しいものを抜粋
-   - `PG-PUB-002` への導線
-7. Sales Shortcut
+   - 主要CTA「チケットを購入する」 → `PG-TKT-001`
+   - Key Visual等の装飾画像はデザイン素材であり、任意とする。素材が未設定または取得できない場合も、文字情報だけでHero Sectionが成立する。
+2. 最新Announcement Section（NEWS）
+   - `PUBLISHED` Announcementの新しいものを、公開日付き、少数件で抜粋
+   - 「すべて見る」 → `PG-PUB-002`
+3. Sales Shortcut
    - Entry Ticket
    - Karaoke
    - Goods
+4. Event概要Section
+   - Event名称
+   - 概要
+5. 開催日時Section
+   - 設定済み開催日時または開催期間
+   - 表示Timezoneは `Asia/Tokyo`
+6. 会場・アクセスSection
+   - 会場名称
+   - 会場案内
+   - アクセス情報
+7. 注意事項Section
+   - 公開中の注意事項
+8. FAQ Section
+   - `PUBLISHED` FAQのみ
+   - 質問と回答
+
+Sponsor Logoは共通Footer（§8.5）に表示し、本Page固有のSectionとして重複配置しない。Section順序と必須要素は本書で固定し、色・書体・余白・装飾等の視覚表現は固定しない（§24.3）。
 
 **Primary Action**
 
+- チケットを購入する → `PG-TKT-001`（Hero Section。Global Headerの主要CTAと同じ遷移先）
 - Entry Ticketを見る → `PG-TKT-001`
 - Karaokeを見る → `PG-KRK-001`
 - Goodsを見る → `PG-GDS-001`
@@ -345,14 +394,14 @@ Continuation Intentに以下を保存して復元してはならない。
 
 - Loading: Sectionごとに未取得表示。
 - Empty: FAQ / Announcementが正常に0件の場合のみ「現在公開中の情報はありません」。
-- Error: Event基本情報取得FailureはPage-level error。FAQ / Announcement等の部分取得失敗はSection-level errorにして他の正常Sectionを保持してよい。
+- Error: Event基本情報取得FailureはPage-level error。FAQ / Announcement等の部分取得失敗はSection-level errorにして他の正常Sectionを保持してよい。Sponsor Logoの取得失敗は§8.5に従う。
 - 未設定外部事実: 未設定値を推測表示しない。該当Sectionを「未設定」と断定せず、公開対象として返されていない場合は非表示または運営設定に基づく案内にする。
 
 **Navigation In:** すべての一般利用者向けGlobal Navigation。
 
 **Security Boundary:** `DRAFT` / `ARCHIVED` FAQ / Announcementを表示しない。
 
-**Trace:** `FR-PUB-001〜006`, `FR-PUB-011`, `FR-PUB-013〜014`, `BR-EVT-001〜004`, `BR-XFN-001`, `UF-PUB-001`, `INV-010-08`.
+**Trace:** `FR-PUB-001〜006`, `FR-PUB-011`, `FR-PUB-013〜015`, `BR-EVT-001〜005`, `BR-XFN-001`, `UF-PUB-001`, `INV-010-08`.
 
 ### 11.2 `PG-PUB-002` Announcement List
 
@@ -392,9 +441,9 @@ Continuation Intentに以下を保存して復元してはならない。
 
 - **Route:** `/entry`
 - **Actor:** Guest / Authenticated User
-- **Auth:** 閲覧不要、購入開始はAuthenticated Userのみ
-- **対応UF:** `UF-PUB-001`, `UF-PUB-002`, `UF-TKT-001`
-- **Purpose:** Entry Ticketの購入判断、種別・数量選択、購入開始を行う。
+- **Auth:** 閲覧・Cart追加は不要。購入手続きは `PG-CRT-001` でAuthenticated Userのみ
+- **対応UF:** `UF-PUB-001`, `UF-CRT-001`, `UF-TKT-001`
+- **Purpose:** Entry Ticketの購入判断、種別・数量選択、Cartへの追加を行う。
 
 **Main Content / Fields**
 
@@ -410,10 +459,10 @@ Continuation Intentに以下を保存して復元してはならない。
 
 **Canonical State / Condition別表示**
 
-| 条件 | 利用者向け表示 | Purchase Action |
+| 条件 | 利用者向け表示 | Cart追加Action |
 |---|---|---|
 | Sales Period開始前 | 販売開始前 + 設定済み開始日時 | Disabled |
-| Sales Period内 + `ENABLED` + capacityあり | 販売中 | GuestはLoginへ、Authenticated UserはEnabled |
+| Sales Period内 + `ENABLED` + capacityあり | 販売中 | Guest・Authenticated UserともEnabled |
 | Sales Period終了 | 販売終了 | Disabled |
 | Sale Control `SUSPENDED` | 販売停止 | Disabled |
 | capacity不足 | 売り切れ / 選択数量を確保不可 | Disabledまたは数量変更を要求 |
@@ -422,29 +471,21 @@ Continuation Intentに以下を保存して復元してはならない。
 
 **Primary Action**
 
-- `購入手続きへ進む`
-  - Guest: `PG-AUTH-003` へ。Continuation IntentとしてEntry購入へ戻す。
-  - Authenticated User: Server-side再検証とAllocation / Order作成を開始する。
+- `Cartに追加`: 選択した種別・数量をBrowser側のCartへ追加する。GuestもAuthenticated Userも利用できる。
+- `Cartを見る` → `PG-CRT-001`
 
-**Action実行中**
+**Cart追加の結果**
 
-- Buttonを処理中状態にする。
-- 「購入条件を確認しています」「購入試行を作成しています」等、未確定表示を行う。
-- reload / double clickで複数Orderが無条件に作られない前提でUIも重複送信を抑止する。
-
-**Purchase start result**
-
-- 成功してOrder `PREPARED` が作成された場合、`PG-XFN-001` へ遷移するか、そのOrderに対応するCheckout開始へ進む。外部Checkoutへ移る直前は「支払い画面を準備中」であり、購入成功表示をしない。
-- Sales Period / Sale Control / capacity / Purchase Limit再検証失敗: 同Pageで現在結果を表示し、選択を更新可能にする。
-- Allocation競合 / 売り切れ: 「表示後に販売可能数が変わった」ことを識別できるFailure。再読込または数量変更。
-- Checkout開始前のOrder作成Failure: 外部Checkoutへ進めない。
-- Checkout開始失敗かつOrder `PREPARED` が存在: `PG-XFN-001` で同一Order retryを提供する。
+- Cart追加はBrowser側のCartへの追加であり、販売確保も購入成立も意味しない。成功時は「Cartに追加しました。購入はまだ確定していません」と示し、Cartを見る導線を提供する。追加結果は状態変化の通知として支援技術にも伝える（§25）。
+- 購入可否・容量・Purchase Limitは、購入手続き（`PG-CRT-001`）でServer-sideが再検証する。本Pageの表示を購入保証として扱わない。
+- 数量Selectorの入力検証（正の整数、案内された上限を超えない）は本Pageで行ってよいが、最終判定はServer-sideである。
+- 購入手続きと、Allocation / Orderの作成、Checkout開始、その失敗表示は `PG-CRT-001` と `PG-XFN-001` が扱う。
 
 **Success導線**
 
 本Page自体は購入成功を確定表示しない。成功後は `PG-XFN-001` または `PG-MYP-004` からEntry Ticket / QRへ進む。
 
-**Trace:** `FR-PUB-007`, `FR-PUB-010`, `FR-PUB-012`, `FR-TKT-001〜010`, `FR-TKT-025〜026`, `FR-XFN-001〜003`, `FR-XFN-016`, `FR-XFN-026〜027`, `BR-SAL-001〜007`, `BR-ORD-001〜004`, `BR-TKT-001〜004`, `DI-030-001`, `DI-030-004`, `DI-030-010〜012`, `UF-PUB-002`, `UF-TKT-001`, `INV-010-01`, `INV-010-08〜10`.
+**Trace:** `FR-PUB-007`, `FR-PUB-010`, `FR-CRT-001`, `FR-CRT-003〜005`, `FR-TKT-001〜010`, `FR-TKT-025〜026`, `FR-XFN-001〜003`, `FR-XFN-016`, `FR-XFN-026〜027`, `BR-SAL-001〜007`, `BR-ORD-001〜004`, `BR-TKT-001〜004`, `DI-030-001`, `DI-030-004`, `DI-030-010〜012`, `UF-CRT-001`, `UF-TKT-001`, `INV-010-01`, `INV-010-08〜10`.
 
 ## 13. Karaoke Page
 
@@ -586,13 +627,13 @@ Hold具体秒数、残り秒数の厳密な算出方法は本書で定義しな�
 
 **Trace:** `FR-PUB-009〜010`, `FR-GDS-001〜002`, `BR-GDS-001`, `BR-SAL-003〜005`, `UF-PUB-001`, `UF-GDS-001`, `INV-010-09`.
 
-### 14.2 `PG-GDS-002` Goods Detail / Purchase
+### 14.2 `PG-GDS-002` Goods Detail / Cart追加
 
 - **Route:** `/goods/{goods_ref}`
 - **Actor:** Guest / Authenticated User
-- **Auth:** 閲覧不要、購入開始は必要
-- **対応UF:** `UF-PUB-002`, `UF-GDS-001`
-- **Purpose:** Goods詳細、数量選択、購入開始を行う。
+- **Auth:** 閲覧・Cart追加は不要。購入手続きは `PG-CRT-001` でAuthenticated Userのみ
+- **対応UF:** `UF-CRT-001`, `UF-GDS-001`
+- **Purpose:** Goods詳細、数量選択、Cartへの追加を行う。
 
 **Fields**
 
@@ -609,23 +650,100 @@ Hold具体秒数、残り秒数の厳密な算出方法は本書で定義しな�
 
 **State / Action**
 
-| 条件 | 表示 | Purchase Action |
+| 条件 | 表示 | Cart追加Action |
 |---|---|---|
-| 販売中 + 在庫確保可能 | 購入可能 | Guest: Login、Authenticated: Enabled |
+| 販売中 + 在庫確保可能 | 購入可能 | Guest・Authenticated UserともEnabled |
 | Sales Period外 | 販売期間外 | Disabled |
 | Sale Control `SUSPENDED` | 販売停止 | Disabled |
 | 在庫0 / 選択数量不足 | 売り切れ / 在庫不足 | Disabledまたは数量変更 |
 | 取得Failure | 購入可否を確認できない | Disabled |
 
-**Purchase start / Conflict**
+**Primary Action**
 
-- 購入開始時にServer-sideで販売条件とInventoryを再検証する。
-- Inventory競合でAllocationを取得できなければ、「在庫状況が変わり、選択数量を確保できない」と表示する。
-- Allocation `HELD` + Order `PREPARED` 後にCheckout開始する。
-- Checkout開始失敗は同一 `PREPARED` Orderを `PG-XFN-001` で扱う。
+- `Cartに追加`: 選択した数量をBrowser側のCartへ追加する。GuestもAuthenticated Userも利用できる。
+- `Cartを見る` → `PG-CRT-001`
+
+**Cart追加の結果**
+
+- Cart追加はBrowser側のCartへの追加であり、在庫確保も購入成立も意味しない。成功時は「Cartに追加しました。購入はまだ確定していません」と示し、Cartを見る導線を提供する。追加結果は支援技術にも伝える（§25）。
+- 販売条件とInventoryは、購入手続き（`PG-CRT-001`）でServer-sideが再検証する。Inventory競合でAllocationを取得できない場合の表示は `PG-CRT-001` が扱う。
 - `PENDING_PAYMENT` Goods Order Itemを受け取り可能と表示しない。
 
-**Trace:** `FR-GDS-001〜008`, `FR-GDS-011`, `FR-GDS-016〜017`, `FR-XFN-001〜003`, `FR-XFN-016`, `FR-XFN-026〜027`, `BR-SAL-001〜008`, `BR-ORD-001〜004`, `BR-GDS-001〜006`, `BR-GDS-009`, `DI-030-001`, `DI-030-006`, `DI-030-010〜012`, `UF-GDS-001`, `INV-010-01`, `INV-010-08〜10`.
+**Trace:** `FR-GDS-001〜008`, `FR-GDS-011`, `FR-GDS-016〜017`, `FR-CRT-001`, `FR-CRT-003〜005`, `FR-XFN-001〜003`, `FR-XFN-016`, `FR-XFN-026〜027`, `BR-SAL-001〜008`, `BR-ORD-001〜004`, `BR-GDS-001〜006`, `BR-GDS-009`, `DI-030-001`, `DI-030-006`, `DI-030-010〜012`, `UF-GDS-001`, `INV-010-01`, `INV-010-08〜10`.
+
+## 14A. Cart Page
+
+### 14A.1 `PG-CRT-001` Cart
+
+- **Route:** `/cart`
+- **Actor:** Guest / Authenticated User
+- **Auth:** Cartの閲覧・編集は不要。購入手続きはAuthenticated Userのみ
+- **対応UF:** `UF-CRT-001`, `UF-PUB-002`, `UF-TKT-001`, `UF-GDS-001`
+- **Purpose:** Browser側に保持したEntry TicketとGoodsの内容を確認・編集し、1回の支払いへ購入手続きを開始する。
+
+**Fields per Cart Item**
+
+- 種別（Entry Ticket / Goods）
+- 名称
+- Server-sideで取得した現在の単価と通貨
+- 数量Selector
+- 明細小計（表示用）
+- 現在の販売状態と購入不可理由
+- 削除Action
+
+**Summary**
+
+- 表示用の合計金額。「購入時の金額はServer-sideで再計算される」ことを示す。
+- Entry TicketとGoodsは1回の支払いにまとめられること。
+
+**Karaoke案内**
+
+Karaokeはカートに入れられず、Slotごとに別の購入・別の支払いになることを示し、`PG-KRK-001` への導線を提供する。Karaoke SlotをCartへ追加するActionを提供しない。
+
+**Cart Itemの購入不可理由**
+
+| 条件 | 表示 | Itemの扱い |
+|---|---|---|
+| Sales Period開始前 | 販売開始前 | 購入不可 |
+| Sales Period終了 | 販売終了 | 購入不可 |
+| Sale Control `SUSPENDED` | 販売停止 | 購入不可 |
+| capacity / 在庫0 | 売り切れ | 購入不可 |
+| 選択数量を確保できない | 数量不足。数量変更を促す | 購入不可 |
+| Purchase Limit超過 | 購入上限により購入不可 | 購入不可 |
+| 現在状態の取得Failure | 状態を確認できない | 購入不可。購入可能と表示しない |
+
+**Actions**
+
+- 数量変更: 同Page内で行う。Business effectを作らない。数量の下限は1とし、数量を0にする代わりに削除Actionを使う。
+- 削除: Cart ItemをCartから除く。Business effectを作らない。
+- `購入手続きへ進む`
+  - Enabled条件: Cartが1件以上で、全Itemが購入可能と表示されている。購入不可Itemがある間はDisabledとし、理由と削除または数量変更の案内を周辺Textで示す。
+  - Guest: `PG-AUTH-003` へ。Continuation Intentとして `PG-CRT-001` へ戻す。Cart内容は保持する。
+  - Authenticated User: Server-sideで全Itemを再検証し、全Itemが成立した場合のみAllocation確保とOrder `PREPARED` の作成を行う（`BR-ORD-014`）。
+- 商品へ戻る → `PG-TKT-001` / `PG-GDS-001`
+
+**State**
+
+- Loading: 各Itemの現在状態を取得中であることを示す。確定値に見える金額を仮表示しない。
+- Empty: Cartが0件のときだけ「カートは空です」と表示し、`PG-TKT-001` / `PG-GDS-001` への導線を提供する。現在状態の取得Failureを空のCartとして表示しない。
+- Failure: 現在状態を取得できないことを示し、Itemを購入可能と表示せず、再取得を提供する。
+
+**Purchase start result**
+
+- 成功してOrder `PREPARED` が作成された場合、当該OrderのItemをCartから除去し、`PG-XFN-001` へ遷移するか、そのOrderに対応するCheckout開始へ進む。外部Checkoutへ移る直前は「支払い画面を準備中」であり、購入成功表示をしない。
+- 一部のItemが成立しない場合（販売終了、停止、売り切れ、数量不足、Purchase Limit超過、Allocation競合）: Orderは作成されていないこと、「購入は開始されていません」、成立しなかったItemと理由を示す。Cart内容を保持し、数量変更・削除を可能にする。
+- Checkout開始前のOrder作成Failure: 外部Checkoutへ進めない。Cart内容を保持する。
+- Checkout開始失敗かつOrder `PREPARED` が存在: `PG-XFN-001` で同一Order retryを提供する。
+- Action実行中: Buttonを処理中状態にし、「購入条件を確認しています」「購入試行を作成しています」等、未確定表示を行う。reload / double clickで複数Orderが無条件に作られない前提でUIも重複送信を抑止する。
+
+**Cartの保持**
+
+- CartはBrowserに保持され、Accountに紐づかない。Browserのデータ消去等で失われ得るが、作成済みのOrder・Allocation・権利には影響しない。
+- Cartには参照と数量だけを保持し、価格・在庫・販売可否・Owner・個人情報・Secretを保持しない（`FR-CRT-003`）。
+
+**Security Boundary:** Cartの内容と表示金額は権威値ではない。購入手続きの認可・再検証・金額決定はServer-sideで行う。
+
+**Trace:** `FR-CRT-001〜012`, `FR-PUB-012`, `FR-XFN-001〜003`, `FR-XFN-016`, `FR-XFN-026〜027`, `BR-SAL-001〜007`, `BR-ORD-001〜004`, `BR-ORD-013〜020`, `DI-030-001`, `DI-030-004`, `DI-030-006`, `DI-030-011〜013`, `UF-CRT-001`, `UF-PUB-002`, `INV-010-01`, `INV-010-07`, `INV-010-09〜10`.
 
 ## 15. Authentication Page
 
@@ -775,7 +893,7 @@ Trace: `FR-AUTH-006`, `UF-AUTH-004`, `INV-010-01`, `INV-010-08`.
 
 ### 16.2 Main Fields
 
-- Order purpose: Entry / Karaoke / Goods
+- Order purpose: Entry / Karaoke / Goods / Entry + Goods（複合）
 - 購入対象の表示名と数量またはSlot日時
 - Server-side価格Snapshotに基づく合計金額・通貨
 - Canonical Order State
@@ -808,6 +926,8 @@ Trace: `FR-AUTH-006`, `UF-AUTH-004`, `INV-010-01`, `INV-010-08`.
 | `EXPIRED` | 購入手続き失効 | 有効権利なし | 「もう一度購入する」。Karaokeは新Slot / Hold取得から |
 | `REVIEW_REQUIRED` | 購入状態を確認中 | 通常成功と表示しない。未確定権利を有効表示しない | 「状態を再確認」。新権利生成につながるretryを出さない |
 
+Entry Ticket、Goods、またはその複合Orderの `PAYMENT_FAILED` / `CANCELED` / `EXPIRED` における「もう一度購入する」は、Orderに含まれていたItemの参照と数量をCartへ再投入して `PG-CRT-001` へ遷移する。再投入は新Orderを作らず、価格・販売状態・在庫は現在状態で表示し直す。Karaokeの「もう一度購入する」は新Slot / Hold取得（Slot選択）から開始する。
+
 ### 16.5 Domain-specific `CONFIRMED` content
 
 **Entry**
@@ -830,6 +950,12 @@ Trace: `FR-AUTH-006`, `UF-AUTH-004`, `INV-010-01`, `INV-010-08`.
 - Goods Handoff state
 - 会場受け取り導線
 
+**Entry + Goods（複合）**
+
+- Order `CONFIRMED`
+- Entry Ticket（購入数量分）へのLinkと、Goods Order Item（`FULFILLABLE`）およびGoods Handoff stateを同じ画面で区別して表示する。
+- Entry TicketとGoodsの両方が成立している場合だけ表示する。一部のItemだけを有効権利として表示しない（`BR-ORD-015`）。`CONFIRMED` 以外では、どのItemも有効権利として表示しない。
+
 ### 16.6 Checkout開始失敗
 
 Orderが `PREPARED` のままでCheckout開始だけが失敗した場合:
@@ -851,7 +977,7 @@ Order `CONFIRMED` かつNotificationが `FAILED_RETRYABLE` の場合:
 
 他者の `{order_ref}` を指定した場合、Order内容・State・購入者・存在有無の詳細を表示せず `PG-XFN-003` 相当へ遷移する。
 
-**Trace:** `FR-TKT-010〜023`, `FR-KRK-015〜027`, `FR-GDS-007〜015`, `FR-MYP-007〜010`, `FR-EML-002〜011`, `FR-XFN-009〜013`, `FR-XFN-017`, `FR-XFN-019〜021`, `FR-XFN-027〜029`, `FR-XFN-032`, `BR-ORD-001〜012`, `BR-TKT-005〜010`, `BR-KRK-007〜024`, `BR-GDS-004〜013`, `BR-NTF-001〜006`, `DI-030-001〜003`, `DI-030-007〜012`, `UF-XFN-001〜004`, `INV-010-01〜10` のうち当該Purposeに適用されるもの。
+**Trace:** `FR-TKT-010〜023`, `FR-KRK-015〜027`, `FR-GDS-007〜015`, `FR-CRT-007〜011`, `FR-MYP-007〜010`, `FR-EML-002〜011`, `FR-XFN-009〜013`, `FR-XFN-017`, `FR-XFN-019〜021`, `FR-XFN-027〜029`, `FR-XFN-032`, `BR-ORD-001〜012`, `BR-TKT-005〜010`, `BR-KRK-007〜024`, `BR-GDS-004〜013`, `BR-NTF-001〜006`, `DI-030-001〜003`, `DI-030-007〜012`, `UF-XFN-001〜004`, `INV-010-01〜10` のうち当該Purposeに適用されるもの。
 
 ## 17. Mypage共通仕様
 
@@ -970,7 +1096,7 @@ Desktopでは常設Navigation、Mobileでは折りたたみ可能なNavigation�
 **Fields**
 
 - Purpose
-- 購入対象明細
+- 購入対象明細（複合Orderでは、Entry TicketとGoodsの明細を区別して表示する）
 - 数量またはKaraoke予約対象Slot
 - 購入時価格Snapshotに基づく金額
 - Order State
@@ -1314,6 +1440,10 @@ Entry QRと同じPage title、同じ権利名称、同じ補助説明だけに�
 | Slot競合 | Slot取得失敗 | scheduleへ戻る | 同Slotを購入可能表示 |
 | Inventory競合 | 在庫確保失敗 | 数量/商品再選択 | 未確保Checkout |
 | Purchase Limit超過 | 上限到達 | 購入内容見直し | 並行retryで回避 |
+| Cart内Itemが購入不可 | Item単位の購入不可理由 | 数量変更 / 削除 | 購入可能と表示、購入手続きを有効化 |
+| Cart購入開始で一部Item不成立 | 購入開始未成立（Order未作成） + 不成立Itemと理由 | Item見直し / 再試行 | 一部のItemだけのOrder作成、確保途中のAllocation |
+| Cart現在状態の取得Failure | 状態を確認できない | 再取得 | 空のCart表示、購入可能と表示 |
+| Cartが空 | カートは空です | 商品選択へ | 取得失敗との混同 |
 | Hold期限切れ | Slot確保失効 | Slotを選び直す | 同Hold再利用 |
 | Email failure | 購入は確定、Email未達 | Mypageで確認 | 購入failure化 |
 | `REVIEW_REQUIRED` | 状態確認中 | 同Order状態再確認 | Success表示、新権利生成retry |
@@ -1326,6 +1456,7 @@ Entry QRと同じPage title、同じ権利名称、同じ補助説明だけに�
 - Ticket / QR Pageのreloadは既存Ticketを再取得し、新Ticketを発行しない。
 - Karaoke Reservation Pageのreloadは既存Reservation / Ticketを再取得し、新Hold / Reservationを作らない。
 - Goods Pageの購入Action以前のreloadはread only。購入開始後はOrder Referenceに基づく既存状態へ復帰できる。
+- `PG-CRT-001` のreloadはBrowser側のCartを再取得し、現在の価格・販売状態を表示し直す。新Orderを作らない。
 - Browser backで古い「購入可能」「空きあり」「在庫あり」表示へ戻っても、次のwrite operationではServer-side current stateを再検証する。
 
 Trace: `FR-XFN-012`, `FR-XFN-026`, `BR-SAL-005〜007`, `BR-ORD-006〜009`, `DI-030-012`, `INV-010-10`.
@@ -1355,12 +1486,22 @@ Receipt linkがまだ利用可能でない場合、Receiptの存在を捏造し�
 - Karaoke 1時間bucketはMobileでも対象時刻とSlot選択可能数を識別可能にする。
 - QR PageはMobile会場提示をPrimary use caseとして、QRを十分な大きさで表示できる領域を確保する。
 - Mobile NavigationでMypage各領域へ到達可能にする。
+- Cart内容の確認、数量変更、削除、購入手続き、購入不可理由の確認を完遂可能。
+- Global Headerの主要CTAとCartをMobileでも到達可能にする（§8.5）。
 
 ### 24.2 QR表示
 
 - QRの周辺に十分な余白を確保する。
 - QR自体だけで権利種別を判断させず、Entry / KaraokeのテキストLabelを併記する。
 - 画面狭小時でもReservation日時やTicket StateをQRと同時に確認可能にする。
+
+### 24.3 表示表現の差し替え容易性
+
+視覚表現は、本書が定めるPage構成、Section順序、Canonical State、Actionの意味を変えずに差し替えられなければならない。
+
+- 色、書体、余白、角丸、装飾、Hero背景やKey Visualなどのデザイン素材を変更しても、Page構成、Section順序、Canonical Stateに対応する表示の意味、Action、Accessibility要件（§25）は変わらない。
+- デザイン素材（装飾画像、ロゴ、背景等）はBusiness Domain Dataではない。素材が未設定または取得できない場合も、情報Sectionと購入Flowを表示・完遂できる。
+- Canonical Stateの表示意味（例: Order State、Ticket State）は、色や形状だけに依存せずText labelを併用する（§25）。
 
 ## 25. Accessibility仕様
 
@@ -1396,6 +1537,12 @@ Owner限定PageではData payload取得前にOwnership検証が成立してい�
 - 他者のBusiness Profile情報
 - Administrator / Staff専用の内部運用情報
 
+### 26.4 Cart
+
+- Cartには参照と数量だけを保持し、価格・金額・在庫・販売可否・Owner・Role・個人情報・Secretを保持しない。
+- Cartに表示する金額は表示用であり、購入時の金額はServer-sideで再計算される。
+- Cartの内容を知っていること、またはCartの内容をそのまま送信することを、購入成立・権限・販売可否の根拠にしない。
+
 ## 27. Administrator / Staff画面との境界
 
 SPEC-050では以下だけをCanonicalに定義する。
@@ -1411,17 +1558,19 @@ SPEC-050では以下だけをCanonicalに定義する。
 | Page | User Flow |
 |---|---|
 | `PG-PUB-001〜003` | `UF-PUB-001` |
-| `PG-TKT-001` | `UF-PUB-001`, `UF-PUB-002`, `UF-TKT-001` |
+| `PG-TKT-001` | `UF-PUB-001`, `UF-CRT-001`, `UF-TKT-001` |
 | `PG-KRK-001〜002` | `UF-KRK-001` |
 | `PG-KRK-003` | `UF-PUB-002`, `UF-KRK-001〜002` |
 | `PG-GDS-001` | `UF-PUB-001`, `UF-GDS-001` |
-| `PG-GDS-002` | `UF-PUB-002`, `UF-GDS-001` |
+| `PG-GDS-002` | `UF-CRT-001`, `UF-GDS-001` |
+| `PG-CRT-001` | `UF-CRT-001`, `UF-PUB-002`, `UF-TKT-001`, `UF-GDS-001` |
+| Global Header / Footer | `UF-PUB-001`, `UF-CRT-001` |
 | `PG-AUTH-001` | `UF-AUTH-001`, `UF-PUB-002` |
 | `PG-AUTH-002` | `UF-AUTH-002`, `UF-AUTH-007` |
 | `PG-AUTH-003` | `UF-AUTH-003`, `UF-PUB-002`, `UF-AUTH-007` |
 | `PG-AUTH-004〜005` | `UF-AUTH-005`, `UF-AUTH-007` |
 | Logout Action | `UF-AUTH-004` |
-| `PG-XFN-001` | `UF-TKT-001`, `UF-KRK-002`, `UF-GDS-001`, `UF-XFN-001`, `UF-XFN-003〜004` |
+| `PG-XFN-001` | `UF-TKT-001`, `UF-KRK-002`, `UF-GDS-001`, `UF-CRT-001`, `UF-XFN-001`, `UF-XFN-003〜004` |
 | `PG-MYP-001〜012` | `UF-MYP-001`; detail ownership failureは `UF-MYP-002` |
 | `PG-MYP-006〜007` | `UF-CHK-001` のCustomer側提示 |
 | `PG-MYP-008〜010` | `UF-KRK-003`; `PG-MYP-009〜010` は `UF-CHK-002` のCustomer側提示 |
@@ -1433,6 +1582,7 @@ SPEC-050では以下だけをCanonicalに定義する。
 ### 29.1 Public
 
 - `FR-PUB-001〜006`, `FR-PUB-011`, `FR-PUB-013〜014` → `PG-PUB-001〜003`
+- `FR-PUB-014〜015` → Global Header / Footer（§8.5）
 - `FR-PUB-007`, `FR-PUB-010`, `FR-PUB-012` → `PG-TKT-001`
 - `FR-PUB-008`, `FR-PUB-010` → `PG-KRK-001〜003`
 - `FR-PUB-009〜010` → `PG-GDS-001〜002`
@@ -1447,7 +1597,8 @@ SPEC-050では以下だけをCanonicalに定義する。
 
 ### 29.3 Entry Ticket
 
-- `FR-TKT-001〜010`, `FR-TKT-025〜026` → `PG-TKT-001`
+- `FR-TKT-001〜006`, `FR-TKT-025〜026` → `PG-TKT-001`、`PG-CRT-001`
+- `FR-TKT-007〜010` → `PG-CRT-001`、`PG-XFN-001`
 - `FR-TKT-011〜018` → `PG-XFN-001`
 - `FR-TKT-019〜024` → `PG-MYP-004〜007`
 - `BR-SAL-*`, `BR-ORD-*`, `BR-TKT-*`, `DI-030-001〜004`, `DI-030-009〜012` → Entry purchase / status / ticket pages
@@ -1484,6 +1635,14 @@ SPEC-050では以下だけをCanonicalに定義する。
 - `FR-ADM-021` → `REVIEW_REQUIRED` のCustomer側表示だけ
 - `FR-STF-001〜016` → Entry / Karaoke QRのCustomer提示側まで。本書はStaff個別画面を所有しない
 
+### 29.8 Cart / 複合購入
+
+- `FR-CRT-001〜005`, `FR-CRT-012` → `PG-CRT-001`、`PG-TKT-001`、`PG-GDS-002`、Global Header（§8.5）
+- `FR-CRT-006` → `PG-CRT-001`、`PG-AUTH-003`（Continuation Intent）
+- `FR-CRT-007〜008`, `FR-CRT-011` → `PG-CRT-001`
+- `FR-CRT-009〜010` → `PG-XFN-001`、`PG-MYP-004`
+- `BR-ORD-013〜020`, `DI-030-013` → `PG-CRT-001`、`PG-XFN-001`
+
 ## 30. System Invariant UI Coverage
 
 | Invariant | SPEC-050でのUI具体化 |
@@ -1494,9 +1653,9 @@ SPEC-050では以下だけをCanonicalに定義する。
 | `INV-010-04` Karaoke Slotを二重販売しない | `HELD` / `SOLD` を購入不可表示し、競合時に選び直しへ戻す |
 | `INV-010-05` QR Ticketを二重利用させない | `USED` / `CANCELED` / `EXPIRED` QRを受付可能表示にしない |
 | `INV-010-06` Email失敗で購入確定をRollbackしない | `CONFIRMED` を維持しEmail failureを非阻害Bannerとして表示する |
-| `INV-010-07` 決済確定と権利発行を中途半端に残さない | `AWAITING_PAYMENT` / `REVIEW_REQUIRED` をSuccessにしない |
+| `INV-010-07` 決済確定と権利発行を中途半端に残さない | `AWAITING_PAYMENT` / `REVIEW_REQUIRED` をSuccessにしない。複合Orderの一部Itemだけを有効権利として表示しない |
 | `INV-010-08` 所有権と権限をServer-sideで検証する | Mypage / Purchase StatusでOwnership-safe Detailを必須化する |
-| `INV-010-09` 金額をClient入力だけで確定しない | UI合計は表示用であり購入時Server-side金額を再取得する |
+| `INV-010-09` 金額をClient入力だけで確定しない | UI合計・Cart小計は表示用であり購入時Server-side金額を再取得する |
 | `INV-010-10` 外部処理の再送に耐える | 状態確認retry、Checkout retry、新規購入をUI上でも分離する |
 
 ## 31. E2E観点の最低Page Acceptance
@@ -1526,6 +1685,12 @@ SPEC-050では以下だけをCanonicalに定義する。
 21. Mobile / Desktop両方で主要Flowを完遂できる。
 22. Keyboard操作、Form error関連付け、非色依存State表示、状態変化通知を満たす。
 23. 一般利用者PageにAdministrator / Staff専用操作を混在させない。
+24. GuestがEntry TicketとGoodsをCartへ追加し、数量変更・削除でき、購入手続きでLoginへ進み、認証後にCartへ復帰して内容が保持される。
+25. Cartが各Itemの購入不可理由を区別して表示し、購入不可Itemがある間は購入手続きを有効にしない。
+26. Cartの購入開始でいずれかのItemが成立しない場合、Orderが作成されず、Cart内容が保持され、成立しなかったItemと理由が示される。
+27. Entry TicketとGoodsを含む複合Orderの `CONFIRMED` で、Entry TicketとGoodsの両方を確認できる。`AWAITING_PAYMENT` / `REVIEW_REQUIRED` ではどちらも有効権利として表示しない。
+28. Karaoke SlotをCartへ追加できず、Cartに「Karaokeは別購入・別支払い」の案内が表示される。
+29. Global Headerの主要CTAとCartが全Pageから到達でき、Sponsor Logoは `PUBLISHED` のみ表示され、0件なら領域が表示されず、取得失敗でも他のContentが操作できる。
 
 ## 32. 下流Canonical Ownerとの境界
 
@@ -1563,6 +1728,13 @@ SPEC-050では以下だけをCanonicalに定義する。
 - Karaoke Ticket `USED / CANCELED / EXPIRED` に通常受付用QRを表示する
 - Reservation `CANCELED` を予約有効として表示する
 - Goods `PENDING_PAYMENT` を会場受け取り可能と表示する
+- Cartの金額・在庫・販売可否・Ownerを権威値として購入開始する
+- Cartへの追加・変更・削除をもって、販売確保または購入成立と表示する
+- Karaoke SlotをCartへ追加できるUIを提供する、またはKaraokeをEntry Ticket / Goodsと同じOrderにまとめる
+- Cart購入開始で一部のItemだけのOrderを作る、または確保途中のAllocationを残す
+- 複合Orderで一部のItemだけを有効権利として表示する
+- Cartの現在状態の取得Failureを空のCartとして表示する、またはItemを購入可能と表示する
+- Sponsor Logoの取得失敗を理由に他の公開Contentの表示・操作を妨げる、または公開対象でないSponsor Logoを表示する
 - Goods Handoff `COMPLETED` を未受け取りへ通常UIから戻す
 - Email failureを購入failureとして表示する
 - Notification retryを購入再試行Buttonとして扱う
@@ -1579,7 +1751,7 @@ SPEC-050では以下だけをCanonicalに定義する。
 4. Karaoke対象日、1時間単位空き状況、個別Slot選択がPageへ割り当てられている。
 5. Account登録、Email確認、Login、Password reset開始・完了、Logout後Navigationが定義されている。
 6. Guestから認証必須Actionへの遷移と、認証後Continuationが定義されている。
-7. Entry Ticket購入の販売条件、数量、購入開始、Checkout開始失敗、Browser Return、7つのOrder State、Ticket / QR、Order / Receipt導線がPageへ対応している。
+7. Entry Ticket購入の販売条件、数量、Cart追加、購入手続き（`PG-CRT-001`）での購入開始、Checkout開始失敗、Browser Return、7つのOrder State、Ticket / QR、Order / Receipt導線がPageへ対応している。
 8. Karaoke購入のSlot 4状態、Hold期限切れ、競合、Purchase Limit、Checkout失敗、Browser Return、Reservation / Ticket state、QR、Order / Receipt導線がPageへ対応している。
 9. Goods購入の販売状態、在庫競合、`PENDING_PAYMENT / FULFILLABLE / CANCELED`、Handoff `PENDING / COMPLETED / VOID`、Order / Receipt導線がPageへ対応している。
 10. MypageにOverview、Profile、Order一覧 / 詳細、Entry Ticket / QR、Karaoke Reservation / QR、Goods / Handoffがある。
@@ -1598,6 +1770,11 @@ SPEC-050では以下だけをCanonicalに定義する。
 23. `FR-*`, `BR-*`, `DI-030-*`, `UF-*`, `INV-010-*` へ追跡可能である。
 24. 長期運用される完成システムを対象とし、MVP / Step等でPage仕様を分断していない。
 25. `SPEC-000` のCanonical Owner / `depends_on` / Upstream Change Request規則に従っている。
+26. Cart Page（`PG-CRT-001`）があり、Entry TicketとGoodsの追加、数量変更、削除、現在状態の表示、購入不可理由、購入手続きが定義されている。
+27. Entry TicketとGoodsの購入開始がCart経由であり、Karaokeはカートに入らず別Orderとして購入する。
+28. Cart購入開始の一部Item不成立でOrderを作らず、Cart内容を保持する表示が定義されている。
+29. 複合Orderの `CONFIRMED` 内容と、`CONFIRMED` 以外で一部ItemだけをSuccessにしない表示が定義されている。
+30. Global Header / Footer、主要CTA、Sponsor Logo表示、デザイン表現の差し替え容易性（§24.3）が定義されている。
 
 ## 35. 上流仕様変更要求
 
