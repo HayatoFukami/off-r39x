@@ -1,9 +1,6 @@
-import { SITE_NAME } from "../src/config/site";
+import { HomePage } from "../src/features/public/home-page";
 
-export default function HomePage() {
-  return (
-    <div className="rounded-base bg-hero-gradient px-4 py-12 text-brand-foreground">
-      <h1 className="text-2xl font-bold">{SITE_NAME}</h1>
-    </div>
-  );
+// PG-PUB-001. The title stays the site name (layout default).
+export default function Page() {
+  return <HomePage />;
 }

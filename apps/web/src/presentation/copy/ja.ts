@@ -1,6 +1,49 @@
 // Japanese UI copy dictionary (SPEC-050 section 24.3 / 27). Leaves are strings or templates.
 
 export const copy = {
+  pageTitle: {
+    announcements: "お知らせ",
+    announcementDetail: "お知らせ詳細",
+    karaoke: "Karaoke販売案内",
+    karaokeDay: "Karaoke空き状況",
+    goods: "Goods",
+  },
+  pageState: {
+    loading: "読み込み中です",
+    empty: "現在公開中の情報はありません",
+    unavailable: (subject: string): string => `${subject}を取得できません`,
+    retry: "再読み込み",
+  },
+  home: {
+    fallbackHeading: "Event Home",
+    subject: "Event情報",
+    sections: {
+      news: "お知らせ",
+      salesShortcut: "販売のご案内",
+      overview: "Event概要",
+      schedule: "開催日時",
+      venue: "会場・アクセス",
+      notices: "注意事項",
+      faq: "FAQ",
+    },
+    news: { viewAll: "すべて見る" },
+    shortcut: {
+      entry: "Entry Ticketを見る",
+      karaoke: "Karaokeを見る",
+      goods: "Goodsを見る",
+    },
+    period: {
+      range: (start: string, end: string): string => `${start} 〜 ${end}`,
+      from: (start: string): string => `${start} から`,
+      until: (end: string): string => `${end} まで`,
+    },
+  },
+  announcements: {
+    heading: "お知らせ",
+    subject: "お知らせ",
+    backToList: "お知らせ一覧へ戻る",
+    backHome: "Event Homeへ戻る",
+  },
   order: {
     state: {
       PREPARED: "支払い手続き未開始 / 準備済み",
@@ -108,6 +151,43 @@ export const copy = {
       CANCELED: "取消済みのためQRは表示できません。",
       EXPIRED: "失効済みのためQRは表示できません。",
     },
+    guide: {
+      heading: "Karaoke 販売案内",
+      subject: "Karaoke販売案内",
+      intro: "Karaokeは、開催期間中の販売対象日から枠を選んで購入する、時間枠単位の販売です。",
+      usageUnit: "1回の購入で、1つの枠を1組で利用できます。",
+      duration:
+        "利用時間は1枠あたり15分です。枠と枠のあいだには整備時間5分を設けて運用しますが、表示される利用時刻は利用時間を基準にしています。",
+      purchaseLimit:
+        "購入できる枠数には上限があります。上限を超える場合は、購入手続きの前にお知らせします。",
+      priceLabel: "価格",
+      periodLabel: "販売期間",
+      statusLabel: "販売状態",
+      datesHeading: "販売対象日",
+      datesEmpty: "現在、販売対象日はありません",
+      dateLink: (dateText: string): string => `${dateText}の空き状況を見る`,
+    },
+    saleStatus: {
+      description: {
+        ON_SALE: "現在販売中です。販売対象日を選んで、空き状況を確認してください。",
+        BEFORE_SALES: "販売開始前のため、現在は購入できません。販売期間をご確認ください。",
+        SALES_ENDED: "販売は終了しました。新しく購入することはできません。",
+        SUSPENDED: "現在、販売を一時停止しています。既存の予約は取り消されません。",
+      },
+    },
+    day: {
+      heading: "Karaoke 空き状況",
+      subject: "空き状況",
+      previous: "前の販売日",
+      next: "次の販売日",
+      reload: "空き状況を再読み込み",
+      empty: "この日に販売対象の枠はありません",
+      unavailable: "空き状況を取得できません",
+      bucketCount: (available: number, total: number): string =>
+        `空き ${available} / 全 ${total} 枠`,
+      slotLink: (timeText: string): string => `${timeText}の枠を選ぶ`,
+      backToGuide: "販売案内へ戻る",
+    },
   },
   goods: {
     item: {
@@ -127,6 +207,7 @@ export const copy = {
       completed: "このGoodsはすでに受け渡し済みです。",
       awaiting: "会場で受け取ってください。",
     },
+    list: { heading: "Goods", subject: "Goods一覧" },
   },
   notification: {
     PENDING: {

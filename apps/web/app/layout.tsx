@@ -9,8 +9,9 @@ import { MockModeBadge } from "../src/mock/dev-ui/mock-mode-badge";
 import { copy } from "../src/presentation/copy/ja";
 import "./globals.css";
 
+// Pages set `title`; Home keeps the site name (SPEC-050 7).
 export const metadata: Metadata = {
-  title: SITE_NAME,
+  title: { default: SITE_NAME, template: `%s | ${SITE_NAME}` },
 };
 
 // The root layout owns the single main landmark: pages must not render their own <main>.
