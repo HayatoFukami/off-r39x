@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-070
 title: Order and Payment Specification
-version: 1.0.0
+version: 1.1.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -62,8 +62,9 @@ related_specs:
 - `ENTRY_TICKET_PURCHASE`
 - `KARAOKE_PURCHASE`
 - `GOODS_PURCHASE`
+- `ENTRY_GOODS_PURCHASE`（Entry TicketとGoodsを含む複合Order。`SPEC-030` §11.9）
 
-本書のPaymentはStripe Checkoutによる一回払いだけを対象とする。Subscription、分割払い、Cross-domain cart、独自カード入力画面、Browser側でのPayment confirmationは対象外である。
+本書のPaymentはStripe Checkoutによる一回払いだけを対象とする。Subscription、分割払い、Karaokeを含むCross-domain cart、独自カード入力画面、Browser側でのPayment confirmationは対象外である。
 
 上流仕様に追加のPayment Method要件が存在しないため、本仕様のStripe Checkoutは**card paymentのみ**をCanonicalとする。Payment Method追加は本書の単なる実装設定変更ではなく、Payment failure / pending / refund semanticsへの影響を確認する仕様変更として扱う。
 
@@ -141,7 +142,7 @@ related_specs:
 
 **PAY-ORD-003:** Purchase開始RequestごとにHono APIは `SPEC-060` に従いIdentityをServer-sideで検証し、一意に解決したBusiness ProfileをOrder Customerとする。Client指定 `user_id` / `profile_id` / owner / Customer flagをOrder Customerへ採用してはならない。
 
-**PAY-ORD-004:** Order Purposeは作成時に `ENTRY_TICKET_PURCHASE` / `KARAOKE_PURCHASE` / `GOODS_PURCHASE` のいずれか1つとして確定し、作成後に変更しない。
+**PAY-ORD-004:** Order Purposeは作成時にServer-sideが含まれるOrder Itemから決定し、`ENTRY_TICKET_PURCHASE` / `KARAOKE_PURCHASE` / `GOODS_PURCHASE` / `ENTRY_GOODS_PURCHASE` のいずれか1つとして確定し、作成後に変更しない。Clientが指定したPurposeを採用してはならない。`KARAOKE_PURCHASE` のOrderはEntry Ticket / Goods Order Itemを含まない。
 
 **PAY-ORD-005:** Payment amountはOrder ItemのServer-side購入時価格Snapshotと数量から算出する。Clientから受け取るprice、subtotal、total、currency、discount、payment resultを権威値にしない。
 
@@ -159,7 +160,7 @@ related_specs:
 - Payment Methodはcardのみ
 - Line item金額・数量・currencyはOrder Item SnapshotからServer-sideで生成
 - Stripe側に存在する価格値、Browser input、query parameterをBusiness DatabaseのOrder amountより優先しない
-- promotion code、subscription、installment、cross-domain cartは本仕様のPayment capabilityに含めない
+- promotion code、subscription、installment、Karaokeを含むcross-domain cartは本仕様のPayment capabilityに含めない
 - `success_url` / `cancel_url` は `SPEC-050` の既存Page / Routeへ接続するだけであり、Order stateの権威入力にはしない
 
 **PAY-ORD-009:** Stripe Checkout Sessionの `amount_total` / currencyがOrder Snapshotと一致しない場合、支払確定を行わずConsistency Failureとして扱う。
@@ -452,6 +453,16 @@ Payment successのBusiness Causeは **`(Order, authoritative Stripe payment resu
 **PAY-CFM-010:** 在庫不足・Allocation不整合がある場合、支払済みであっても在庫を負数にしたりGoods Order Itemを無条件で `FULFILLABLE` にせずRecoveryへ送る。
 
 **PAY-CFM-011:** retryでInventory committed quantityを二重増加させない。
+
+### 24.1 Entry TicketとGoodsの複合Order confirmation
+
+`ENTRY_GOODS_PURCHASE` のBusiness Confirmationでは、§22の全項目（対象Entry Ticket Order Itemの数だけ）と§24の全項目（対象Goods Order Itemの数だけ）を、同一のtransaction境界で一貫して成立させ、最後にOrder `AWAITING_PAYMENT -> CONFIRMED` または `REVIEW_REQUIRED -> CONFIRMED` とする。
+
+**PAY-CFM-012:** 複合OrderでEntry Ticket側またはGoods側のいずれかが§22または§24の条件を満たせない場合、他方だけを通常成功として確定せず、Order全体を通常 `CONFIRMED` にしない。支払済みの場合はRecoveryへ送る（PAY-CFM-004、PAY-CFM-006、PAY-CFM-010の適用）。
+
+**PAY-CFM-013:** 複合Orderが支払前に取消、失効、支払不成立となる場合、当該Orderに属する全てのEntry Sales AllocationとGoods Sales Allocationを一括して解放する。一部のAllocationだけを `HELD` のまま残してはならない（`BR-ORD-016`）。
+
+**PAY-CFM-014:** 複合Orderでも、Stripe Checkoutのline itemはOrder Item Snapshotから生成し、`amount_total` はEntry TicketとGoodsの全Order Itemの合計と一致しなければならない（PAY-ORD-009）。
 
 # Part VI — Failure / Cancel / Expiration
 
@@ -829,6 +840,7 @@ CSRF / CORS / CSP / rate limit / secret rotation / key management等の詳細は
 | `PAY-CFM-006〜007` | `FR-TKT-014〜016`, `FR-TKT-025〜026`, `BR-TKT-003〜007`, `UF-TKT-001`, `PG-TKT-001`, `DI-030-003〜004`, `DI-030-009`, `INV-010-03`, `INV-010-07` |
 | `PAY-CFM-008〜009` | `FR-KRK-017〜023`, `BR-KRK-004〜009`, `BR-KRK-013〜020`, `UF-KRK-002`, `PG-KRK-003`, `DI-030-003`, `DI-030-005`, `DI-030-009`, `INV-010-03〜04`, `INV-010-07` |
 | `PAY-CFM-010〜011` | `FR-GDS-009〜017`, `BR-GDS-003〜007`, `UF-GDS-001`, `PG-GDS-002`, `DI-030-006`, `DI-030-009`, `INV-010-07`, `INV-010-10` |
+| `PAY-CFM-012〜014` | `FR-CRT-007〜010`, `BR-ORD-013〜018`, `UF-CRT-001`, `PG-CRT-001`, `DI-030-009`, `DI-030-013`, `INV-010-07`, `INV-010-10` |
 | `PAY-FLR-001〜008` | `BR-ORD-008〜010`, `BR-TKT-002〜003`, `BR-KRK-006〜007`, `BR-GDS-006`, `UF-TKT-001`, `UF-KRK-002`, `UF-GDS-001`, `UF-XFN-001`, `UF-XFN-003〜004`, `FR-XFN-027〜029`, `INV-010-01`, `INV-010-04`, `INV-010-07`, `INV-010-10` |
 | `PAY-IDM-001〜009` | `FR-TKT-013〜015`, `FR-KRK-020〜023`, `FR-GDS-010〜011`, `FR-XFN-012〜014`, `BR-SAL-007`, `BR-ORD-006`, `BR-TKT-006`, `BR-KRK-014`, `BR-KRK-020`, `BR-GDS-003`, `DI-030-002〜006`, `DI-030-012`, `INV-010-02〜04`, `INV-010-10` |
 | `PAY-RFD-001〜007` | `FR-TKT-024`, `FR-MYP-007〜010`, `FR-ADM-002〜006`, `FR-ADM-020〜021`, `BR-TKT-010〜011`, `BR-KRK-017〜018`, `BR-GDS-007`, `BR-ORD-011`, `DI-030-009`, `DI-030-012`, `INV-010-01`, `INV-010-07`, `INV-010-10`, `AR-ROLE-002〜005`, `AR-ROLE-014` |
@@ -874,7 +886,7 @@ CSRF / CORS / CSP / rate limit / secret rotation / key management等の詳細は
 
 1. Entry / Karaoke / Goodsの全購入でStripe Checkout前に `PREPARED` Orderが存在する。
 2. Order CustomerはRequestごとに検証したIdentityから解決したBusiness Profileである。
-3. Order Purposeは作成後不変である。
+3. Order PurposeはServer-sideが決定し、4値のいずれかであり、作成後不変である。
 4. Payment amount / currencyはOrder Item SnapshotからServer-sideで決まり、Client priceを信用しない。
 5. Checkout Session作成に失敗してもOrderを削除しない。
 6. Checkout生成結果不明時に別Sessionを無条件生成せず、同一Attempt / idempotency keyで回復する。
@@ -887,7 +899,7 @@ CSRF / CORS / CSP / rate limit / secret rotation / key management等の詳細は
 13. Payment success時にamount / currency / Session correlationをServer-sideで再検証する。
 14. 同一PaymentからOrderを二重確定しない。
 15. Entry Ticket / Karaoke Reservation / Karaoke Ticket / Goods Inventory effectを重複生成しない。
-16. Order `CONFIRMED` とPurpose必須Domain effectが一貫して成立する。
+16. Order `CONFIRMED` とPurpose必須Domain effectが一貫して成立する。複合Orderでは、Entry TicketとGoodsの両方のDomain effectが全て成立するか、いずれも通常確定として成立しない。
 17. Payment failure / cancel / expiry時に対応Allocation / Holdを上流Ruleに従って解放する。
 18. Terminal failure後の再購入は新Orderであり、同じOrderを `PREPARED` へ戻さない。
 19. `AWAITING_PAYMENT` status readで新Orderを作らない。
