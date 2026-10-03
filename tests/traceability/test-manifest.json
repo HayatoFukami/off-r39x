@@ -370,6 +370,30 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": false
+    },
+    {
+      "test_case_id": "TC-SEC-WEB-009-001",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": ["SEC-WEB-009", "TST-E2E-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; headers asserted regardless of body (404 allowed); both viewports run the same request-level check",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "/mypage, /purchase/anything and /account/login responses carry Cache-Control containing no-store and private, and Pragma no-cache",
+        "GET / is not marked private"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
     }
   ]
 }
