@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "rule_id": "DEV-DEP-006",
+      "code_paths": ["scripts/check-import-boundaries.mts"],
+      "test_case_ids": [
+        "TC-DEV-DEP-006-001",
+        "TC-DEV-DEP-006-002",
+        "TC-DEV-DEP-006-003",
+        "TC-DEV-DEP-006-004"
+      ],
+      "notes": "implementation mapping only"
+    },
+    {
+      "rule_id": "DEV-DEP-002",
+      "code_paths": ["scripts/check-import-boundaries.mts"],
+      "test_case_ids": ["TC-DEV-DEP-002-001"],
+      "notes": "implementation mapping only: web-no-db edge"
+    },
+    {
+      "rule_id": "DEV-DEP-004",
+      "code_paths": ["scripts/check-import-boundaries.mts", "packages/domain/src"],
+      "test_case_ids": ["TC-DEV-DEP-004-001"],
+      "notes": "implementation mapping only: domain-no-external edge"
+    },
+    {
+      "rule_id": "DEV-DEP-005",
+      "code_paths": ["scripts/check-import-boundaries.mts"],
+      "test_case_ids": ["TC-DEV-DEP-005-001"],
+      "notes": "implementation mapping only: workspace-cycle"
+    },
+    {
+      "rule_id": "DEV-REP-004",
+      "code_paths": ["scripts/check-import-boundaries.mts"],
+      "test_case_ids": ["TC-DEV-REP-004-001"],
+      "notes": "implementation mapping only: production-no-tests"
+    },
+    {
+      "rule_id": "DEV-WEB-012",
+      "code_paths": ["scripts/check-import-boundaries.mts"],
+      "test_case_ids": ["TC-DEV-WEB-012-001"],
+      "notes": "implementation mapping only: mock-allowlist"
+    },
+    {
+      "rule_id": "DEV-WEB-011",
+      "code_paths": ["apps/web/src/config/ui-mock.ts", "apps/web/next.config.ts"],
+      "test_case_ids": ["TC-DEV-WEB-011-001", "TC-DEV-WEB-011-002"],
+      "notes": "implementation mapping only"
+    },
+    {
+      "rule_id": "DEV-TS-010",
+      "code_paths": ["packages/domain/src/assert-never.ts", "packages/domain/src/states.ts"],
+      "test_case_ids": ["TC-DEV-TS-010-001", "TC-DEV-TS-010-002"],
+      "notes": "implementation mapping only"
+    },
+    {
+      "rule_id": "SEC-WEB-009",
+      "code_paths": ["apps/web/next.config.ts"],
+      "test_case_ids": [],
+      "notes": "implementation mapping only: no-store headers; E2E header check is a later slice"
+    },
+    {
+      "rule_id": "SEC-WEB-004",
+      "code_paths": ["apps/web/app/globals.css"],
+      "test_case_ids": [],
+      "notes": "implementation mapping only: system font stack, no external fonts"
+    }
+  ]
+}
