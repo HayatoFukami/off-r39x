@@ -39,7 +39,7 @@ describe("TC-SEC-AUTH-017-101 no trim and no composition rule (SEC-AUTH-016/017,
   it("does not trim: surrounding whitespace counts toward the length", () => {
     expect(validatePassword(`${"a".repeat(10)}  `)).toEqual({ ok: true });
     expect(validatePassword(`  ${"a".repeat(10)}`)).toEqual({ ok: true });
-    expect(validatePassword(`  ${"a".repeat(9)}  `)).toEqual({ ok: false, reason: "too_short" });
+    expect(validatePassword(`  ${"a".repeat(7)}  `)).toEqual({ ok: false, reason: "too_short" });
   });
 
   it("accepts whitespace only when it reaches the length (no trimming to empty)", () => {

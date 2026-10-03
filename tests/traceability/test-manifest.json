@@ -2341,6 +2341,52 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": false
+    },
+    {
+      "test_case_id": "TC-BR-ORD-014-110",
+      "level": "Unit",
+      "suite": "unit",
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "fixture_ids": ["MOCK-SEED-DEMO"],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "upstream_rule_ids": ["BR-ORD-014", "SPEC-050-14A.1", "TST-UNT-004"],
+      "preconditions": "Cart with duplicate lines of one item; UI mock test double (not API/DB coverage)",
+      "expected_domain_postconditions": [
+        "no Order created and no inventory change when combined quantity exceeds stock"
+      ]
+    },
+    {
+      "test_case_id": "TC-DEV-TS-013-101",
+      "level": "Unit",
+      "suite": "unit",
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "upstream_rule_ids": ["DEV-TS-013", "TST-UNT-004"],
+      "preconditions": "Static scan of apps/web/src api-client, auth, mock",
+      "expected_domain_postconditions": [
+        "no direct Date.now/Math.random/console/any outside injectable defaults; no Hold TTL literals"
+      ]
     }
   ]
 }
