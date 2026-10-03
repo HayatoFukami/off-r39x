@@ -29,3 +29,9 @@ coverage/
 
 # Reference information
 ref/
+
+# Test and generated artifacts
+test-results/
+playwright-report/
+blob-report/
+generated/

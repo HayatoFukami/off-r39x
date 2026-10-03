@@ -1,0 +1,36 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.0.0/schema.json",
+  "files": {
+    "includes": [
+      "**",
+      "!ref",
+      "!docs",
+      "!**/.next",
+      "!**/node_modules",
+      "!generated",
+      "!**/test-results",
+      "!**/playwright-report",
+      "!**/next-env.d.ts",
+      "!pnpm-lock.yaml"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "suspicious": {
+        "noConsole": "error",
+        "noExplicitAny": "error"
+      },
+      "security": {
+        "noDangerouslySetInnerHtml": "error"
+      }
+    }
+  }
+}
