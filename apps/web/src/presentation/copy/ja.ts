@@ -172,4 +172,47 @@ export const copy = {
     insufficientQuantity: (max: string): string =>
       `在庫が不足しています。数量を${max}以下に変更してください。`,
   },
+  layout: {
+    skipLink: "メインコンテンツへ移動",
+    nav: {
+      primaryLabel: "メインナビゲーション",
+      footerLabel: "フッターナビゲーション",
+      items: {
+        event: "Event",
+        entry: "Entry Ticket",
+        karaoke: "Karaoke",
+        goods: "Goods",
+        cart: "カート",
+      },
+    },
+    cta: { buyTickets: "チケットを購入する" },
+    cart: { label: "カート", labelWithCount: (count: number): string => `カート（${count}点）` },
+    account: {
+      login: "ログイン",
+      register: "アカウント登録",
+      mypage: "マイページ",
+      menuButton: "アカウントメニュー",
+      menuLabel: "アカウント",
+      profile: "プロフィール",
+      orders: "注文",
+      entryTickets: "Entry Ticket",
+      karaoke: "Karaoke",
+      goods: "Goods",
+      logout: "ログアウト",
+    },
+    drawer: { open: "メニューを開く", close: "メニューを閉じる", title: "メニュー" },
+    sponsors: { regionLabel: "協賛", externalSuffix: "（外部サイト）" },
+    mockBadge: "UIモック表示中",
+  },
+  notFound: {
+    title: "ページを表示できません",
+    description: "お探しのページは存在しないか、現在表示できません。",
+    homeLink: "Event Homeへ戻る",
+  },
+  errorPage: {
+    title: "問題が発生しました",
+    description: "ページを表示できませんでした。時間をおいて、もう一度お試しください。",
+    retry: "再試行",
+    homeLink: "Event Homeへ戻る",
+  },
 } as const;

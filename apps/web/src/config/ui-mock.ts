@@ -10,3 +10,8 @@ export function assertUiMockNotInProductionBuild(env: Env): void {
     throw new Error("UI mock mode must not be enabled in a production build");
   }
 }
+
+/** DEV-WEB-012: the /dev/* area exists only while mock mode is on and never in a production deployment. */
+export function isDevAreaEnabled(env: Env): boolean {
+  return isUiMockEnabled(env) && env.VERCEL_ENV !== "production";
+}
