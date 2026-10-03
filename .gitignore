@@ -26,3 +26,6 @@ coverage/
 
 # OpenCode local artifacts
 .slim/deepwork/
+
+# Reference information
+ref/
