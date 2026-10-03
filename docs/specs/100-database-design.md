@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-100
 title: Database Design
-version: 1.0.0
+version: 1.0.1
 status: provisional
 depends_on:
   - SPEC-000
@@ -2237,3 +2237,16 @@ Retry count、backoff、reconciliation、Review Case解消Runbookを定義する
 なし。
 
 本書の物理設計は、添付された `SPEC-000`, `SPEC-010`, `SPEC-020`, `SPEC-030`, `SPEC-060`, `SPEC-070`, `SPEC-080`, `SPEC-090` のState、Cardinality、期限、System Boundary、Business Ruleを変更せず具体化できる。
+
+### 未反映のUCR（`SPEC-050` v1.1.0 に伴う要求）
+
+以下は本書へ未反映の上流仕様変更要求であり、`DEV-GEN-001` に従い、本書のCanonical Owner本文へ反映されるまで実装契約として扱わない。
+
+### UCR-100-001
+
+- 対象: SPEC-100（関連: SPEC-110）
+- 現在の仕様: Business Profileに利用者が編集できるFieldが列挙されていない（§14.1）。一方、`SPEC-050` §18.2 `PG-MYP-002` はDisplay nameを更新可能な項目としている。
+- 要求する変更: Business ProfileのDisplay nameの物理表現（Column、制約、更新可否）と、対応するAPI contract（`API-AUTH-004`）を定義する。
+- 理由: `PG-MYP-002` の更新Actionを実装するため。
+- 変更しない場合の影響: Display nameの更新をBusiness Databaseへ永続化できない。UI mockは必須入力のチェックだけを行い、最大文字数を定めない。
+- 影響を受ける可能性がある仕様書: SPEC-110
