@@ -50,21 +50,157 @@
     },
     {
       "rule_id": "DEV-TS-010",
-      "code_paths": ["packages/domain/src/assert-never.ts", "packages/domain/src/states.ts"],
-      "test_case_ids": ["TC-DEV-TS-010-001", "TC-DEV-TS-010-002"],
+      "code_paths": [
+        "packages/domain/src/assert-never.ts",
+        "packages/domain/src/states.ts",
+        "apps/web/src/presentation/state-mapping/order.ts",
+        "apps/web/src/presentation/state-mapping/purpose.ts",
+        "apps/web/src/presentation/state-mapping/entry-ticket.ts",
+        "apps/web/src/presentation/state-mapping/karaoke.ts",
+        "apps/web/src/presentation/state-mapping/goods.ts",
+        "apps/web/src/presentation/state-mapping/notification.ts",
+        "apps/web/src/presentation/state-mapping/availability.ts"
+      ],
+      "test_case_ids": ["TC-DEV-TS-010-001", "TC-DEV-TS-010-002", "TC-PG-XFN-001-001"],
       "notes": "implementation mapping only"
     },
     {
       "rule_id": "SEC-WEB-009",
       "code_paths": ["apps/web/next.config.ts"],
-      "test_case_ids": [],
-      "notes": "implementation mapping only: no-store headers; E2E header check is a later slice"
+      "test_case_ids": ["TC-SEC-WEB-009-001"],
+      "notes": "implementation mapping only: no-store headers; verified by TC-SEC-WEB-009-001 (E2E header check)"
     },
     {
       "rule_id": "SEC-WEB-004",
       "code_paths": ["apps/web/app/globals.css"],
       "test_case_ids": [],
       "notes": "implementation mapping only: system font stack, no external fonts"
+    },
+    {
+      "rule_id": "PG-XFN-001",
+      "code_paths": [
+        "apps/web/src/presentation/state-mapping/order.ts",
+        "apps/web/src/presentation/state-mapping/purpose.ts",
+        "apps/web/src/presentation/state-mapping/entry-ticket.ts",
+        "apps/web/src/presentation/state-mapping/karaoke.ts",
+        "apps/web/src/presentation/state-mapping/goods.ts",
+        "apps/web/src/presentation/state-mapping/notification.ts",
+        "apps/web/src/presentation/state-mapping/availability.ts",
+        "apps/web/src/presentation/copy/ja.ts"
+      ],
+      "test_case_ids": [
+        "TC-PG-XFN-001-001",
+        "TC-PG-XFN-001-002",
+        "TC-PG-XFN-001-003",
+        "TC-PG-XFN-001-004"
+      ],
+      "notes": "implementation mapping only: state to presentation mapping and copy dictionary"
+    },
+    {
+      "rule_id": "PG-MYP-003",
+      "code_paths": [
+        "apps/web/src/presentation/state-mapping/order.ts",
+        "apps/web/src/presentation/state-mapping/purpose.ts"
+      ],
+      "test_case_ids": ["TC-PG-XFN-001-001", "TC-PG-MYP-003-001"],
+      "notes": "implementation mapping only: order state and purpose presentation"
+    },
+    {
+      "rule_id": "PG-MYP-004",
+      "code_paths": ["apps/web/src/presentation/state-mapping/order.ts"],
+      "test_case_ids": ["TC-PG-XFN-001-001", "TC-PG-XFN-001-002"],
+      "notes": "implementation mapping only: order presentation actions"
+    },
+    {
+      "rule_id": "BR-ORD-013",
+      "code_paths": ["apps/web/src/presentation/state-mapping/purpose.ts"],
+      "test_case_ids": ["TC-PG-MYP-003-001"],
+      "notes": "implementation mapping only: purchase-again target by purpose"
+    },
+    {
+      "rule_id": "SEC-QR-012",
+      "code_paths": [
+        "apps/web/src/presentation/state-mapping/entry-ticket.ts",
+        "apps/web/src/presentation/state-mapping/karaoke.ts",
+        "apps/web/src/presentation/state-mapping/purpose.ts"
+      ],
+      "test_case_ids": ["TC-PG-MYP-010-001", "TC-PG-MYP-006-001"],
+      "notes": "implementation mapping only: QR presentable only for valid ticket; purpose titles"
+    },
+    {
+      "rule_id": "PG-KRK-002",
+      "code_paths": [
+        "apps/web/src/presentation/state-mapping/karaoke.ts",
+        "apps/web/src/presentation/format/datetime.ts"
+      ],
+      "test_case_ids": ["TC-PG-KRK-002-001", "TC-PG-KRK-002-002"],
+      "notes": "implementation mapping only: slot presentation and JST date formatting"
+    },
+    {
+      "rule_id": "PG-KRK-003",
+      "code_paths": ["apps/web/src/presentation/state-mapping/karaoke.ts"],
+      "test_case_ids": ["TC-PG-KRK-003-001"],
+      "notes": "implementation mapping only: hold presentation"
+    },
+    {
+      "rule_id": "PG-MYP-009",
+      "code_paths": ["apps/web/src/presentation/state-mapping/goods.ts"],
+      "test_case_ids": ["TC-PG-MYP-009-001"],
+      "notes": "implementation mapping only: goods presentation"
+    },
+    {
+      "rule_id": "PG-MYP-011",
+      "code_paths": ["apps/web/src/presentation/state-mapping/notification.ts"],
+      "test_case_ids": ["TC-PG-MYP-012-001"],
+      "notes": "implementation mapping only: notification presentation"
+    },
+    {
+      "rule_id": "PG-MYP-012",
+      "code_paths": ["apps/web/src/presentation/state-mapping/notification.ts"],
+      "test_case_ids": ["TC-PG-MYP-012-001"],
+      "notes": "implementation mapping only: notification presentation"
+    },
+    {
+      "rule_id": "FR-CRT-005",
+      "code_paths": ["apps/web/src/presentation/state-mapping/availability.ts"],
+      "test_case_ids": ["TC-PG-CRT-001-001", "TC-PG-CRT-001-002"],
+      "notes": "implementation mapping only: distinct purchase unavailable reasons"
+    },
+    {
+      "rule_id": "PG-CRT-001",
+      "code_paths": [
+        "apps/web/src/presentation/state-mapping/availability.ts",
+        "apps/web/src/presentation/format/money.ts"
+      ],
+      "test_case_ids": ["TC-PG-CRT-001-001", "TC-PG-CRT-001-002", "TC-PG-CRT-001-003"],
+      "notes": "implementation mapping only: availability and money formatting"
+    },
+    {
+      "rule_id": "DEV-TS-006",
+      "code_paths": [
+        "apps/web/src/presentation/format/money.ts",
+        "apps/web/src/api-client/types.ts"
+      ],
+      "test_case_ids": ["TC-PG-CRT-001-003"],
+      "notes": "implementation mapping only: decimal string money"
+    },
+    {
+      "rule_id": "DEV-TS-007",
+      "code_paths": ["apps/web/src/presentation/format/money.ts"],
+      "test_case_ids": ["TC-PG-CRT-001-003"],
+      "notes": "implementation mapping only: bigint money arithmetic"
+    },
+    {
+      "rule_id": "TST-DAT-007",
+      "code_paths": ["apps/web/src/presentation/format/datetime.ts"],
+      "test_case_ids": ["TC-PG-KRK-002-002"],
+      "notes": "implementation mapping only: JST day boundary"
+    },
+    {
+      "rule_id": "TST-DAT-008",
+      "code_paths": ["apps/web/src/presentation/format/datetime.ts"],
+      "test_case_ids": ["TC-PG-KRK-002-002"],
+      "notes": "implementation mapping only: JST day boundary"
     }
   ]
 }
