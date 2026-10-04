@@ -361,7 +361,7 @@ test.describe("TC-PG-CRT-001-614 a rejected purchase start creates nothing, keep
     await proceedButton(page).click();
     await expect(alertOf(page)).toHaveCount(1);
     await expect(alertOf(page)).toContainText(copy.cart.purchase.unavailable);
-    await expect(alertOf(page)).not.toContainText(copy.cart.purchase.rejectedTitle);
+    await expect(alertOf(page)).not.toContainText(copy.cart.purchase.rejectedBody);
     expect(urlOf(page).pathname).toBe("/cart");
     expect(await readCartRaw(page)).toBe(cartBefore);
     expect(parsed(await readDbRaw(page))).toEqual(dbBefore);

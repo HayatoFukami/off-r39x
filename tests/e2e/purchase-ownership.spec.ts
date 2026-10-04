@@ -118,7 +118,10 @@ test.describe("TC-PG-XFN-001-682 Purchase Status is behind the AuthGate and retu
   test("a guest is sent to Login with the purchase-order intent, never sees the Order, and returns to it after Login", async ({
     page,
   }) => {
-    await watchTexts(page, [copy.order.state.PREPARED, copy.purchase.heading]);
+    await watchTexts(page, [
+      copy.order.state.PREPARED,
+      seedOrder(ORDER.prepared).items[0]?.name ?? "unknown-item",
+    ]);
     await openAs(page, `/purchase/orders/${ORDER.prepared}`, { session: null });
     await expect(page).toHaveURL(
       new RegExp(`/account/login\\?continue=purchase-order%3A${ORDER.prepared}$`),

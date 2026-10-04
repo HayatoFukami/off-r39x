@@ -243,7 +243,7 @@ export type CartPurchasePhase =
 
 DOM（`CartPurchaseFeedback`。`ready` / `unavailable` の Cart で表示）:
 
-- **live region**: `<div role="status">` を Cart の ready / unavailable のとき**常に 1 つ**描画し、通常は空。`verifying` のとき `copy.cart.purchase.verifying`、`preparing` のとき `copy.cart.purchase.preparing` を入れる。
+- **live region**: `<div role="status">` を、購入開始の処理中（`verifying` / `preparing`）だけ 1 つ描画する（通常時は描画しない。S5 の TC-PG-CRT-001-541 が Cart ページの `role="status"` 0 件を要求するため、検証で訂正）。`verifying` のとき `copy.cart.purchase.verifying`、`preparing` のとき `copy.cart.purchase.preparing` を入れる。
 - **不成立の error summary**（`rejected`）: `<div role="alert" tabindex="-1">`。`copy.cart.purchase.rejectedTitle`、`copy.cart.purchase.rejectedBody`、**不成立の line だけ**を 1 件ずつ `<p>`（`<li>` を使わない）に「名称 + `label` + `description`」で並べる。表示後に**この要素へ focus** を移す。次の購入試行を始めたら消える。`main` 内の `role="alert"` はこれ 1 つ。
 - **`unavailable`**: `<div role="alert">` + `copy.cart.purchase.unavailable`。Cart・DB は変わらない。
 - 購入手続き button の `disabled` / 理由の結び付け（S5）は変えない。`rejected` / `unavailable` のあと、button は再び（`canProceed` が許すなら）有効になり、再試行できる。
@@ -326,3 +326,4 @@ S5 の以下のテストは S7a の結線に合わせて**更新済み**（購�
 10. **`/dev/mock-checkout` が存在しない Order ref を受けたとき**: 仕様に定めがない。mock Checkout は Stripe の代替で port を呼ばないため、形式が正しい ref なら Order の有無を問わず同じ画面を表示する（PG-XFN-001 側が not found を扱う）。形式が不正な ref だけ 404。
 11. **OrderOutcome の置き場所**: Design §6 は PG-XFN-001 / PG-MYP-004 の共有部品とする。→ `features/purchase/order-outcome.tsx`（presentation から features への import は禁止のため）。S8 の Mypage feature が import する（features → features は禁止 edge に無い）。
 12. **E2E 7 の「Mypage の注文一覧」**: S7a は Mypage 一覧 UI を持たない。→ mock DB の `orders` の件数と内容（同じ Order が 1 件、重複なし）で確認する。一覧 UI での確認は S8 の E2E 15 が担う。
+12. **検証 round 1 の訂正**: (a) `copy.cart.purchase.unavailable` は `rejectedTitle`（「購入は開始されていません」）を部分文字列として含むため、`unavailable` の alert が `rejectedTitle` を含まないという期待は誤りだった。区別は `rejectedBody` を含まないことで行う。(b) Login 画面の継続案内「購入状況の確認」が `copy.purchase.heading`（購入状況）を含むため、ゲストの保護 Content 監視の対象を seed Order の明細名に改めた（`copy.purchase.outcomeHeading`「現在の状態」も Login の revalidate 文に含まれるため不可）。(c) Cart の live region は処理中だけ描画する（§4 を訂正。SPEC-050 §25 が要求するのは AWAITING_PAYMENT → CONFIRMED の通知領域であり、Cart の常設は要求していない）。
