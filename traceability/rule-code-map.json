@@ -16,7 +16,9 @@
         "apps/web/src/features/karaoke/karaoke-purchase-flow.ts",
         "apps/web/src/features/karaoke/use-karaoke-purchase.ts",
         "apps/web/src/features/karaoke/karaoke-slot-page.tsx",
-        "apps/web/src/features/public/route-params.ts"
+        "apps/web/src/features/public/route-params.ts",
+        "apps/web/src/features/mypage",
+        "apps/web/src/config/mypage-routes.ts"
       ],
       "test_case_ids": [
         "TC-DEV-DEP-006-001",
@@ -28,9 +30,10 @@
         "TC-DEV-WEB-001-701",
         "TC-DEV-WEB-001-702",
         "TC-DEV-WEB-001-703",
-        "TC-DEV-WEB-001-704"
+        "TC-DEV-WEB-001-704",
+        "TC-DEV-WEB-001-807"
       ],
-      "notes": "implementation mapping only"
+      "notes": "implementation mapping only; S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "DEV-DEP-002",
@@ -114,10 +117,17 @@
         "apps/web/src/presentation/state-mapping/karaoke.ts",
         "apps/web/src/presentation/state-mapping/goods.ts",
         "apps/web/src/presentation/state-mapping/notification.ts",
-        "apps/web/src/presentation/state-mapping/availability.ts"
+        "apps/web/src/presentation/state-mapping/availability.ts",
+        "apps/web/src/features/mypage/qr-model.ts",
+        "apps/web/src/features/mypage/overview-model.ts"
       ],
-      "test_case_ids": ["TC-DEV-TS-010-001", "TC-DEV-TS-010-002", "TC-PG-XFN-001-001"],
-      "notes": "implementation mapping only"
+      "test_case_ids": [
+        "TC-DEV-TS-010-001",
+        "TC-DEV-TS-010-002",
+        "TC-PG-XFN-001-001",
+        "TC-DEV-WEB-001-804"
+      ],
+      "notes": "implementation mapping only; S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "SEC-WEB-009",
@@ -125,21 +135,45 @@
         "apps/web/next.config.ts",
         "apps/web/app/account",
         "apps/web/app/(self)/mypage/page.tsx",
-        "apps/web/app/(self)/purchase/orders/[orderRef]/page.tsx"
+        "apps/web/app/(self)/purchase/orders/[orderRef]/page.tsx",
+        "apps/web/app/(self)/mypage/layout.tsx",
+        "apps/web/app/(self)/mypage/profile/page.tsx",
+        "apps/web/app/(self)/mypage/orders/page.tsx",
+        "apps/web/app/(self)/mypage/orders/[orderRef]/page.tsx",
+        "apps/web/app/(self)/mypage/entry-tickets/page.tsx",
+        "apps/web/app/(self)/mypage/entry-tickets/[ticketRef]/page.tsx",
+        "apps/web/app/(self)/mypage/entry-tickets/[ticketRef]/qr/page.tsx",
+        "apps/web/app/(self)/mypage/karaoke/page.tsx",
+        "apps/web/app/(self)/mypage/karaoke/[reservationRef]/page.tsx",
+        "apps/web/app/(self)/mypage/karaoke/[reservationRef]/qr/page.tsx",
+        "apps/web/app/(self)/mypage/goods/page.tsx",
+        "apps/web/app/(self)/mypage/goods/[goodsItemRef]/page.tsx"
       ],
       "test_case_ids": [
         "TC-SEC-WEB-009-001",
         "TC-SEC-WEB-009-602",
         "TC-SEC-WEB-009-701",
-        "TC-SEC-WEB-009-711"
+        "TC-SEC-WEB-009-711",
+        "TC-PG-XFN-003-704",
+        "TC-SEC-WEB-009-721"
       ],
-      "notes": "implementation mapping only: no-store headers; verified by TC-SEC-WEB-009-001 (E2E header check)"
+      "notes": "implementation mapping only: no-store headers; verified by TC-SEC-WEB-009-001 (E2E header check); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "SEC-WEB-004",
-      "code_paths": ["apps/web/app/globals.css", "apps/web/app/layout.tsx"],
-      "test_case_ids": ["TC-DEV-WEB-001-203", "TC-SEC-WEB-004-101", "TC-PG-CRT-001-533"],
-      "notes": "implementation mapping only: system font stack, no external fonts"
+      "code_paths": [
+        "apps/web/app/globals.css",
+        "apps/web/app/layout.tsx",
+        "apps/web/src/features/mypage/mypage-nav.tsx",
+        "apps/web/app/(self)/mypage/layout.tsx"
+      ],
+      "test_case_ids": [
+        "TC-DEV-WEB-001-203",
+        "TC-SEC-WEB-004-101",
+        "TC-PG-CRT-001-533",
+        "TC-PG-MYP-001-731"
+      ],
+      "notes": "implementation mapping only: system font stack, no external fonts; S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "PG-XFN-001",
@@ -213,25 +247,54 @@
       "code_paths": [
         "apps/web/src/presentation/state-mapping/order.ts",
         "apps/web/src/presentation/state-mapping/purpose.ts",
-        "apps/web/src/mock/backend/mock-api.ts"
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/features/mypage/order-list-model.ts",
+        "apps/web/src/features/mypage/order-list-page.tsx",
+        "apps/web/src/features/mypage/order-row.tsx",
+        "apps/web/app/(self)/mypage/orders/page.tsx"
       ],
-      "test_case_ids": ["TC-PG-XFN-001-001", "TC-PG-MYP-003-001", "TC-PG-MYP-003-102"],
-      "notes": "implementation mapping only: order state and purpose presentation; S2 mock backend"
+      "test_case_ids": [
+        "TC-PG-XFN-001-001",
+        "TC-PG-MYP-003-001",
+        "TC-PG-MYP-003-102",
+        "TC-PG-MYP-003-601",
+        "TC-PG-MYP-003-621",
+        "TC-PG-MYP-003-622",
+        "TC-PG-MYP-003-701",
+        "TC-PG-MYP-003-702",
+        "TC-PG-MYP-003-703"
+      ],
+      "notes": "implementation mapping only: order state and purpose presentation; S2 mock backend; S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "PG-MYP-004",
       "code_paths": [
         "apps/web/src/presentation/state-mapping/order.ts",
         "apps/web/src/mock/backend/mock-api.ts",
-        "apps/web/src/features/purchase/order-outcome.tsx"
+        "apps/web/src/features/purchase/order-outcome.tsx",
+        "apps/web/src/features/mypage/order-detail-model.ts",
+        "apps/web/src/features/mypage/order-detail-page.tsx",
+        "apps/web/src/features/purchase/purchase-status-page.tsx",
+        "apps/web/src/presentation/components/external-link.tsx",
+        "apps/web/app/(self)/mypage/orders/[orderRef]/page.tsx"
       ],
       "test_case_ids": [
         "TC-PG-XFN-001-001",
         "TC-PG-XFN-001-002",
         "TC-PG-MYP-004-101",
-        "TC-PG-XFN-001-613"
+        "TC-PG-XFN-001-613",
+        "TC-PG-MYP-004-601",
+        "TC-PG-MYP-004-621",
+        "TC-PG-MYP-004-622",
+        "TC-PG-MYP-001-724",
+        "TC-PG-MYP-004-701",
+        "TC-PG-MYP-004-702",
+        "TC-PG-MYP-004-703",
+        "TC-PG-MYP-004-704",
+        "TC-PG-MYP-004-705",
+        "TC-PG-MYP-004-706"
       ],
-      "notes": "implementation mapping only: order presentation actions; S2 mock backend"
+      "notes": "implementation mapping only: order presentation actions; S2 mock backend; S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "BR-ORD-013",
@@ -256,15 +319,28 @@
         "apps/web/src/presentation/state-mapping/entry-ticket.ts",
         "apps/web/src/presentation/state-mapping/karaoke.ts",
         "apps/web/src/presentation/state-mapping/purpose.ts",
-        "apps/web/src/mock/backend/mock-api.ts"
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/features/mypage/qr-model.ts",
+        "apps/web/src/features/mypage/entry-qr-page.tsx",
+        "apps/web/src/features/mypage/karaoke-qr-page.tsx"
       ],
       "test_case_ids": [
         "TC-PG-MYP-010-001",
         "TC-PG-MYP-006-001",
         "TC-PG-MYP-007-101",
-        "TC-PG-MYP-010-101"
+        "TC-PG-MYP-010-101",
+        "TC-PG-MYP-007-601",
+        "TC-SEC-QR-013-601",
+        "TC-PG-MYP-007-621",
+        "TC-PG-MYP-007-622",
+        "TC-PG-MYP-010-622",
+        "TC-PG-MYP-007-702",
+        "TC-PG-MYP-007-703",
+        "TC-PG-MYP-010-702",
+        "TC-PG-MYP-010-703",
+        "TC-SEC-QR-013-701"
       ],
-      "notes": "implementation mapping only: QR presentable only for valid ticket; purpose titles; S2 mock backend"
+      "notes": "implementation mapping only: QR presentable only for valid ticket; purpose titles; S2 mock backend; S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "PG-KRK-002",
@@ -373,28 +449,65 @@
       "rule_id": "PG-MYP-009",
       "code_paths": [
         "apps/web/src/presentation/state-mapping/goods.ts",
-        "apps/web/src/mock/backend/mock-api.ts"
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/features/mypage/reservation-model.ts",
+        "apps/web/src/features/mypage/reservation-detail-page.tsx",
+        "apps/web/src/features/mypage/receipt-link.tsx",
+        "apps/web/app/(self)/mypage/karaoke/[reservationRef]/page.tsx"
       ],
-      "test_case_ids": ["TC-PG-MYP-009-001", "TC-PG-MYP-008-101"],
-      "notes": "implementation mapping only: goods presentation; S2 mock backend"
+      "test_case_ids": [
+        "TC-PG-MYP-009-001",
+        "TC-PG-MYP-008-101",
+        "TC-PG-MYP-009-621",
+        "TC-PG-MYP-009-622",
+        "TC-PG-MYP-009-701",
+        "TC-PG-MYP-009-702",
+        "TC-PG-MYP-009-703"
+      ],
+      "notes": "implementation mapping only: goods presentation; S2 mock backend; S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "PG-MYP-011",
       "code_paths": [
         "apps/web/src/presentation/state-mapping/notification.ts",
-        "apps/web/src/mock/backend/mock-api.ts"
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/features/mypage/goods-item-model.ts",
+        "apps/web/src/features/mypage/goods-item-list-page.tsx",
+        "apps/web/app/(self)/mypage/goods/page.tsx"
       ],
-      "test_case_ids": ["TC-PG-MYP-012-001", "TC-PG-MYP-011-101"],
-      "notes": "implementation mapping only: notification presentation; S2 mock backend"
+      "test_case_ids": [
+        "TC-PG-MYP-012-001",
+        "TC-PG-MYP-011-101",
+        "TC-PG-MYP-004-601",
+        "TC-PG-MYP-011-621",
+        "TC-PG-MYP-011-701",
+        "TC-PG-MYP-011-702",
+        "TC-PG-MYP-012-704"
+      ],
+      "notes": "implementation mapping only: notification presentation; S2 mock backend; S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "PG-MYP-012",
       "code_paths": [
         "apps/web/src/presentation/state-mapping/notification.ts",
-        "apps/web/src/mock/backend/mock-api.ts"
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/features/mypage/goods-item-model.ts",
+        "apps/web/src/features/mypage/goods-item-detail-page.tsx",
+        "apps/web/src/features/mypage/receipt-link.tsx",
+        "apps/web/app/(self)/mypage/goods/[goodsItemRef]/page.tsx"
       ],
-      "test_case_ids": ["TC-PG-MYP-012-001", "TC-PG-MYP-011-101"],
-      "notes": "implementation mapping only: notification presentation; S2 mock backend"
+      "test_case_ids": [
+        "TC-PG-MYP-012-001",
+        "TC-PG-MYP-011-101",
+        "TC-PG-MYP-004-601",
+        "TC-PG-MYP-012-621",
+        "TC-PG-MYP-012-622",
+        "TC-PG-MYP-012-701",
+        "TC-PG-MYP-012-702",
+        "TC-PG-MYP-012-703",
+        "TC-PG-MYP-012-704"
+      ],
+      "notes": "implementation mapping only: notification presentation; S2 mock backend; S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "FR-CRT-005",
@@ -655,16 +768,20 @@
       "code_paths": [
         "apps/web/src/mock/backend/mock-api.ts",
         "apps/web/src/features/purchase/purchase-status-model.ts",
-        "apps/web/src/features/purchase/order-outcome.tsx"
+        "apps/web/src/features/purchase/order-outcome.tsx",
+        "apps/web/src/features/mypage/order-detail-model.ts",
+        "apps/web/src/features/mypage/overview-model.ts"
       ],
       "test_case_ids": [
         "TC-BR-ORD-015-101",
         "TC-PG-MYP-004-101",
         "TC-PG-XFN-001-623",
         "TC-PG-XFN-001-662",
-        "TC-PG-XFN-001-666"
+        "TC-PG-XFN-001-666",
+        "TC-PG-MYP-004-622",
+        "TC-PG-MYP-004-702"
       ],
-      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
+      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "BR-ORD-016",
@@ -700,9 +817,26 @@
     },
     {
       "rule_id": "AR-AZ-011",
-      "code_paths": ["apps/web/src/mock/backend/mock-api.ts"],
-      "test_case_ids": ["TC-AR-AZ-011-101", "TC-AR-AZ-011-102", "TC-PG-XFN-001-106"],
-      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/features/mypage/entry-ticket-model.ts",
+        "apps/web/src/features/mypage/reservation-model.ts",
+        "apps/web/src/features/mypage/goods-item-model.ts",
+        "apps/web/src/features/mypage/qr-model.ts",
+        "apps/web/app/(self)/mypage/orders/[orderRef]/page.tsx",
+        "apps/web/app/(self)/mypage/entry-tickets/[ticketRef]/page.tsx",
+        "apps/web/app/(self)/mypage/entry-tickets/[ticketRef]/qr/page.tsx",
+        "apps/web/app/(self)/mypage/karaoke/[reservationRef]/page.tsx",
+        "apps/web/app/(self)/mypage/karaoke/[reservationRef]/qr/page.tsx",
+        "apps/web/app/(self)/mypage/goods/[goodsItemRef]/page.tsx"
+      ],
+      "test_case_ids": [
+        "TC-AR-AZ-011-101",
+        "TC-AR-AZ-011-102",
+        "TC-PG-XFN-001-106",
+        "TC-PG-XFN-003-702"
+      ],
+      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "PAY-BRW-001",
@@ -748,7 +882,8 @@
         "apps/web/src/features/karaoke/karaoke-purchase-flow.ts",
         "apps/web/src/features/karaoke/use-karaoke-purchase.ts",
         "apps/web/src/features/karaoke/karaoke-slot-page.tsx",
-        "apps/web/src/features/public/route-params.ts"
+        "apps/web/src/features/public/route-params.ts",
+        "apps/web/src/features/mypage/order-detail-page.tsx"
       ],
       "test_case_ids": [
         "TC-PAY-BRW-001-101",
@@ -757,9 +892,10 @@
         "TC-PAY-BRW-001-601",
         "TC-PAY-BRW-001-612",
         "TC-PAY-BRW-001-613",
-        "TC-PG-KRK-003-653"
+        "TC-PG-KRK-003-653",
+        "TC-PG-MYP-004-705"
       ],
-      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
+      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "PAY-BRW-003",
@@ -799,10 +935,25 @@
       "code_paths": [
         "apps/web/src/mock/backend/mock-api.ts",
         "apps/web/src/presentation/components/access-denied-view.tsx",
-        "apps/web/src/presentation/copy/ja.ts"
+        "apps/web/src/presentation/copy/ja.ts",
+        "apps/web/src/config/mypage-routes.ts",
+        "apps/web/app/(self)/mypage/orders/[orderRef]/page.tsx",
+        "apps/web/app/(self)/mypage/entry-tickets/[ticketRef]/page.tsx",
+        "apps/web/app/(self)/mypage/entry-tickets/[ticketRef]/qr/page.tsx",
+        "apps/web/app/(self)/mypage/karaoke/[reservationRef]/page.tsx",
+        "apps/web/app/(self)/mypage/karaoke/[reservationRef]/qr/page.tsx",
+        "apps/web/app/(self)/mypage/goods/[goodsItemRef]/page.tsx"
       ],
-      "test_case_ids": ["TC-PG-XFN-003-101", "TC-PG-XFN-003-601"],
-      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
+      "test_case_ids": [
+        "TC-PG-XFN-003-101",
+        "TC-PG-XFN-003-601",
+        "TC-PG-MYP-004-601",
+        "TC-PG-XFN-003-701",
+        "TC-PG-XFN-003-702",
+        "TC-PG-XFN-003-703",
+        "TC-PG-XFN-003-704"
+      ],
+      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "BR-KRK-008",
@@ -820,7 +971,8 @@
         "apps/web/src/auth/index.ts",
         "apps/web/src/config/browser-storage.ts",
         "apps/web/src/api-client/provider.tsx",
-        "apps/web/src/auth/session-provider.tsx"
+        "apps/web/src/auth/session-provider.tsx",
+        "apps/web/src/presentation/copy/ja.ts"
       ],
       "test_case_ids": [
         "TC-DEV-WEB-010-101",
@@ -828,9 +980,10 @@
         "TC-DEV-WEB-010-103",
         "TC-DEV-WEB-010-111",
         "TC-DEV-WEB-013-111",
-        "TC-DEV-WEB-013-112"
+        "TC-DEV-WEB-013-112",
+        "TC-DEV-WEB-001-802"
       ],
-      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
+      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "DEV-WEB-013",
@@ -1167,7 +1320,13 @@
       "code_paths": [
         "apps/web/src/mock/backend/mock-api.ts",
         "apps/web/src/features/public/announcement-model.ts",
-        "apps/web/src/features/public/home-model.ts"
+        "apps/web/src/features/public/home-model.ts",
+        "apps/web/src/features/mypage/use-read.ts",
+        "apps/web/src/features/mypage/entry-ticket-model.ts",
+        "apps/web/src/features/mypage/reservation-model.ts",
+        "apps/web/src/features/mypage/goods-item-model.ts",
+        "apps/web/src/features/mypage/qr-model.ts",
+        "apps/web/src/features/mypage/order-detail-model.ts"
       ],
       "test_case_ids": [
         "TC-PG-PUB-002-101",
@@ -1177,9 +1336,15 @@
         "TC-PG-PUB-001-603",
         "TC-PG-PUB-001-605",
         "TC-PG-PUB-002-611",
-        "TC-PG-PUB-003-612"
+        "TC-PG-PUB-003-612",
+        "TC-PG-MYP-004-622",
+        "TC-PG-MYP-001-624",
+        "TC-PG-MYP-003-703",
+        "TC-PG-MYP-005-702",
+        "TC-PG-MYP-008-702",
+        "TC-PG-MYP-011-702"
       ],
-      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
+      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "SEC-WEB-017",
@@ -1188,16 +1353,19 @@
         "apps/web/src/mock/backend/seed.ts",
         "apps/web/src/presentation/components/plain-text.tsx",
         "apps/web/src/features/public/home-page.tsx",
-        "apps/web/src/features/public/announcement-detail-page.tsx"
+        "apps/web/src/features/public/announcement-detail-page.tsx",
+        "apps/web/src/presentation/components/external-link.tsx",
+        "apps/web/src/features/mypage/receipt-link.tsx"
       ],
       "test_case_ids": [
         "TC-PG-PUB-003-101",
         "TC-PG-PUB-001-613",
         "TC-PG-PUB-003-601",
         "TC-PG-PUB-003-611",
-        "TC-SEC-WEB-017-601"
+        "TC-SEC-WEB-017-601",
+        "TC-DEV-WEB-001-801"
       ],
-      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
+      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "SEC-WEB-018",
@@ -1342,63 +1510,208 @@
       "code_paths": [
         "apps/web/src/mock/backend/mock-api.ts",
         "apps/web/src/features/purchase/purchase-status-model.ts",
-        "apps/web/src/features/purchase/order-outcome.tsx"
+        "apps/web/src/features/purchase/order-outcome.tsx",
+        "apps/web/src/features/mypage/overview-model.ts",
+        "apps/web/src/features/mypage/goods-item-model.ts",
+        "apps/web/src/features/mypage/order-detail-model.ts",
+        "apps/web/src/features/mypage/order-row.tsx"
       ],
       "test_case_ids": [
         "TC-BR-ORD-015-101",
         "TC-PG-MYP-004-101",
         "TC-PG-MYP-011-101",
-        "TC-PG-XFN-001-623"
+        "TC-PG-XFN-001-623",
+        "TC-DEV-WEB-001-805",
+        "TC-PG-MYP-004-622",
+        "TC-PG-MYP-012-622",
+        "TC-PG-MYP-001-701",
+        "TC-PG-MYP-004-702"
       ],
-      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
+      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "PG-MYP-001",
-      "code_paths": ["apps/web/src/mock/backend/mock-api.ts"],
-      "test_case_ids": ["TC-AR-AZ-011-102"],
-      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/features/mypage/overview-model.ts",
+        "apps/web/src/features/mypage/mypage-overview-page.tsx",
+        "apps/web/src/features/mypage/mypage-nav.tsx",
+        "apps/web/src/features/mypage/order-row.tsx",
+        "apps/web/src/features/mypage/reservation-row.tsx",
+        "apps/web/src/features/mypage/use-read.ts",
+        "apps/web/src/config/mypage-routes.ts",
+        "apps/web/app/(self)/mypage/layout.tsx",
+        "apps/web/app/(self)/mypage/page.tsx"
+      ],
+      "test_case_ids": [
+        "TC-AR-AZ-011-102",
+        "TC-PG-MYP-001-601",
+        "TC-DEV-WEB-001-806",
+        "TC-PG-MYP-001-611",
+        "TC-PG-MYP-001-612",
+        "TC-PG-MYP-001-621",
+        "TC-PG-MYP-001-622",
+        "TC-PG-MYP-001-623",
+        "TC-PG-MYP-001-624",
+        "TC-PG-MYP-001-701",
+        "TC-PG-MYP-001-702",
+        "TC-PG-MYP-001-703",
+        "TC-PG-MYP-001-704",
+        "TC-PG-MYP-001-705",
+        "TC-PG-MYP-001-711",
+        "TC-PG-MYP-001-712",
+        "TC-PG-MYP-001-713",
+        "TC-PG-MYP-001-714",
+        "TC-PG-MYP-001-721",
+        "TC-PG-MYP-001-722",
+        "TC-PG-MYP-001-723",
+        "TC-PG-MYP-001-724",
+        "TC-PG-MYP-001-731",
+        "TC-PG-MYP-001-732",
+        "TC-PG-MYP-001-733",
+        "TC-SEC-WEB-009-721"
+      ],
+      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "PG-MYP-002",
-      "code_paths": ["apps/web/src/mock/backend/mock-api.ts"],
-      "test_case_ids": ["TC-PG-MYP-002-101"],
-      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/features/mypage/profile-model.ts",
+        "apps/web/src/features/mypage/profile-page.tsx",
+        "apps/web/app/(self)/mypage/profile/page.tsx"
+      ],
+      "test_case_ids": [
+        "TC-PG-MYP-002-101",
+        "TC-PG-MYP-002-601",
+        "TC-PG-MYP-002-621",
+        "TC-PG-MYP-002-622",
+        "TC-PG-MYP-001-723",
+        "TC-PG-MYP-002-701",
+        "TC-PG-MYP-002-702",
+        "TC-PG-MYP-002-703",
+        "TC-PG-MYP-002-704",
+        "TC-PG-MYP-002-705"
+      ],
+      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "PG-MYP-005",
-      "code_paths": ["apps/web/src/mock/backend/mock-api.ts"],
-      "test_case_ids": ["TC-PG-MYP-005-101"],
-      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/features/mypage/entry-ticket-model.ts",
+        "apps/web/src/features/mypage/entry-ticket-list-page.tsx",
+        "apps/web/app/(self)/mypage/entry-tickets/page.tsx"
+      ],
+      "test_case_ids": [
+        "TC-PG-MYP-005-101",
+        "TC-PG-MYP-004-601",
+        "TC-PG-MYP-005-621",
+        "TC-PG-MYP-005-701",
+        "TC-PG-MYP-005-702"
+      ],
+      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "PG-MYP-006",
-      "code_paths": ["apps/web/src/mock/backend/mock-api.ts"],
-      "test_case_ids": ["TC-PG-MYP-005-101"],
-      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/features/mypage/entry-ticket-model.ts",
+        "apps/web/src/features/mypage/entry-ticket-detail-page.tsx",
+        "apps/web/app/(self)/mypage/entry-tickets/[ticketRef]/page.tsx"
+      ],
+      "test_case_ids": [
+        "TC-PG-MYP-005-101",
+        "TC-PG-MYP-004-601",
+        "TC-PG-MYP-006-621",
+        "TC-PG-MYP-006-622",
+        "TC-PG-MYP-006-701",
+        "TC-PG-MYP-006-702",
+        "TC-PG-MYP-006-703"
+      ],
+      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "PG-MYP-007",
-      "code_paths": ["apps/web/src/mock/backend/mock-api.ts"],
-      "test_case_ids": ["TC-PG-MYP-007-101"],
-      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/features/mypage/qr-model.ts",
+        "apps/web/src/features/mypage/entry-qr-page.tsx",
+        "apps/web/src/presentation/components/qr-placeholder.tsx",
+        "apps/web/app/(self)/mypage/entry-tickets/[ticketRef]/qr/page.tsx"
+      ],
+      "test_case_ids": [
+        "TC-PG-MYP-007-101",
+        "TC-PG-MYP-007-601",
+        "TC-SEC-QR-013-601",
+        "TC-PG-MYP-007-621",
+        "TC-PG-MYP-007-622",
+        "TC-PG-MYP-007-701",
+        "TC-PG-MYP-007-702",
+        "TC-PG-MYP-007-703",
+        "TC-PG-MYP-007-704",
+        "TC-SEC-QR-013-701"
+      ],
+      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "PG-MYP-008",
-      "code_paths": ["apps/web/src/mock/backend/mock-api.ts"],
-      "test_case_ids": ["TC-PG-MYP-008-101"],
-      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/features/mypage/reservation-model.ts",
+        "apps/web/src/features/mypage/reservation-list-page.tsx",
+        "apps/web/src/features/mypage/reservation-row.tsx",
+        "apps/web/app/(self)/mypage/karaoke/page.tsx"
+      ],
+      "test_case_ids": [
+        "TC-PG-MYP-008-101",
+        "TC-PG-MYP-004-601",
+        "TC-PG-MYP-008-621",
+        "TC-PG-MYP-008-701",
+        "TC-PG-MYP-008-702"
+      ],
+      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "PG-MYP-010",
-      "code_paths": ["apps/web/src/mock/backend/mock-api.ts"],
-      "test_case_ids": ["TC-PG-MYP-010-101"],
-      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/features/mypage/qr-model.ts",
+        "apps/web/src/features/mypage/karaoke-qr-page.tsx",
+        "apps/web/src/presentation/components/qr-placeholder.tsx",
+        "apps/web/app/(self)/mypage/karaoke/[reservationRef]/qr/page.tsx"
+      ],
+      "test_case_ids": [
+        "TC-PG-MYP-010-101",
+        "TC-PG-MYP-007-601",
+        "TC-SEC-QR-013-601",
+        "TC-PG-MYP-010-621",
+        "TC-PG-MYP-010-622",
+        "TC-PG-MYP-010-701",
+        "TC-PG-MYP-010-702",
+        "TC-PG-MYP-010-703",
+        "TC-PG-MYP-010-704",
+        "TC-SEC-QR-013-701"
+      ],
+      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "SEC-QR-013",
-      "code_paths": ["apps/web/src/mock/backend/mock-api.ts"],
-      "test_case_ids": ["TC-PG-MYP-007-101"],
-      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/features/mypage/qr-model.ts",
+        "apps/web/src/features/mypage/entry-qr-page.tsx",
+        "apps/web/src/features/mypage/karaoke-qr-page.tsx",
+        "apps/web/src/presentation/components/qr-placeholder.tsx",
+        "apps/web/src/config/mypage-routes.ts"
+      ],
+      "test_case_ids": [
+        "TC-PG-MYP-007-101",
+        "TC-SEC-QR-013-601",
+        "TC-PG-MYP-001-612",
+        "TC-SEC-QR-013-701"
+      ],
+      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "PG-AUTH-001",
@@ -1548,10 +1861,17 @@
         "apps/web/src/features/auth/register-page.tsx",
         "apps/web/src/features/auth/email-verification-page.tsx",
         "apps/web/src/features/auth/password-reset-complete-page.tsx",
-        "apps/web/src/features/auth/context-param.ts"
+        "apps/web/src/features/auth/context-param.ts",
+        "apps/web/src/features/mypage/profile-page.tsx",
+        "apps/web/src/features/mypage/profile-model.ts"
       ],
-      "test_case_ids": ["TC-SEC-AUTH-018-101", "TC-SEC-AUTH-018-501", "TC-SEC-AUTH-018-701"],
-      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
+      "test_case_ids": [
+        "TC-SEC-AUTH-018-101",
+        "TC-SEC-AUTH-018-501",
+        "TC-SEC-AUTH-018-701",
+        "TC-DEV-WEB-001-801"
+      ],
+      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "AR-SES-007",
@@ -1563,16 +1883,18 @@
         "apps/web/src/auth/logout-signal.ts",
         "apps/web/app/(self)/layout.tsx",
         "apps/web/app/(self)/mypage/page.tsx",
-        "apps/web/app/(self)/purchase/orders/[orderRef]/page.tsx"
+        "apps/web/app/(self)/purchase/orders/[orderRef]/page.tsx",
+        "apps/web/app/(self)/mypage/layout.tsx"
       ],
       "test_case_ids": [
         "TC-AR-SES-007-101",
         "TC-AR-SES-007-111",
         "TC-AR-SES-007-301",
         "TC-AR-SES-007-302",
-        "TC-PG-XFN-001-682"
+        "TC-PG-XFN-001-682",
+        "TC-PG-MYP-001-714"
       ],
-      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
+      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "AR-SES-008",
@@ -1768,7 +2090,23 @@
         "apps/web/src/features/karaoke/karaoke-slot-model.ts",
         "apps/web/src/features/karaoke/karaoke-purchase-flow.ts",
         "apps/web/src/features/karaoke/use-karaoke-purchase.ts",
-        "apps/web/src/features/karaoke/karaoke-slot-page.tsx"
+        "apps/web/src/features/karaoke/karaoke-slot-page.tsx",
+        "apps/web/src/features/mypage",
+        "apps/web/src/config/mypage-routes.ts",
+        "apps/web/src/presentation/components/qr-placeholder.tsx",
+        "apps/web/app/(self)/mypage/layout.tsx",
+        "apps/web/app/(self)/mypage/page.tsx",
+        "apps/web/app/(self)/mypage/profile/page.tsx",
+        "apps/web/app/(self)/mypage/orders/page.tsx",
+        "apps/web/app/(self)/mypage/orders/[orderRef]/page.tsx",
+        "apps/web/app/(self)/mypage/entry-tickets/page.tsx",
+        "apps/web/app/(self)/mypage/entry-tickets/[ticketRef]/page.tsx",
+        "apps/web/app/(self)/mypage/entry-tickets/[ticketRef]/qr/page.tsx",
+        "apps/web/app/(self)/mypage/karaoke/page.tsx",
+        "apps/web/app/(self)/mypage/karaoke/[reservationRef]/page.tsx",
+        "apps/web/app/(self)/mypage/karaoke/[reservationRef]/qr/page.tsx",
+        "apps/web/app/(self)/mypage/goods/page.tsx",
+        "apps/web/app/(self)/mypage/goods/[goodsItemRef]/page.tsx"
       ],
       "test_case_ids": [
         "TC-DEV-WEB-001-201",
@@ -1793,9 +2131,14 @@
         "TC-DEV-WEB-001-701",
         "TC-DEV-WEB-001-702",
         "TC-DEV-WEB-001-703",
-        "TC-DEV-WEB-001-704"
+        "TC-DEV-WEB-001-704",
+        "TC-DEV-WEB-001-801",
+        "TC-DEV-WEB-001-802",
+        "TC-DEV-WEB-001-803",
+        "TC-DEV-WEB-001-804",
+        "TC-DEV-WEB-001-807"
       ],
-      "notes": "implementation mapping only: UI mock shell (not API/DB/provider coverage)"
+      "notes": "implementation mapping only: UI mock shell (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "SEC-WEB-020",
@@ -1830,9 +2173,14 @@
     },
     {
       "rule_id": "INV-010-10",
-      "code_paths": ["apps/web/src/features/karaoke/karaoke-day-model.ts"],
-      "test_case_ids": ["TC-PG-KRK-002-602"],
-      "notes": "implementation mapping only: S4 public pages (UI mock, not API/DB/provider coverage)"
+      "code_paths": [
+        "apps/web/src/features/karaoke/karaoke-day-model.ts",
+        "apps/web/src/features/mypage/goods-item-model.ts",
+        "apps/web/src/features/mypage/goods-item-list-page.tsx",
+        "apps/web/src/features/mypage/goods-item-detail-page.tsx"
+      ],
+      "test_case_ids": ["TC-PG-KRK-002-602", "TC-PG-MYP-001-733", "TC-PG-MYP-012-704"],
+      "notes": "implementation mapping only: S4 public pages (UI mock, not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "INV-010-09",
@@ -1893,10 +2241,13 @@
       "code_paths": [
         "apps/web/src/features/goods/goods-list-model.ts",
         "apps/web/src/features/goods/goods-list-page.tsx",
-        "apps/web/src/features/karaoke/karaoke-day-model.ts"
+        "apps/web/src/features/karaoke/karaoke-day-model.ts",
+        "apps/web/src/features/mypage/use-read.ts",
+        "apps/web/src/features/mypage/profile-model.ts",
+        "apps/web/src/features/mypage/profile-page.tsx"
       ],
-      "test_case_ids": ["TC-PG-PUB-001-696"],
-      "notes": "implementation mapping only: S4 public pages (UI mock, not API/DB/provider coverage)"
+      "test_case_ids": ["TC-PG-PUB-001-696", "TC-DEV-WEB-001-805", "TC-PG-MYP-002-622"],
+      "notes": "implementation mapping only: S4 public pages (UI mock, not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "FR-CRT-011",
@@ -1971,10 +2322,12 @@
         "apps/web/src/features/purchase/use-cart-purchase.ts",
         "apps/web/src/features/purchase/cart-purchase-feedback.tsx",
         "apps/web/src/features/purchase/order-outcome.tsx",
-        "apps/web/src/features/purchase/purchase-status-page.tsx"
+        "apps/web/src/features/purchase/purchase-status-page.tsx",
+        "apps/web/src/features/mypage",
+        "apps/web/src/config/mypage-routes.ts"
       ],
-      "test_case_ids": ["TC-DEV-WEB-001-401", "TC-DEV-WEB-001-601"],
-      "notes": "implementation mapping only: S5 cart / entry sales / goods detail (UI mock, not API/DB/provider coverage)"
+      "test_case_ids": ["TC-DEV-WEB-001-401", "TC-DEV-WEB-001-601", "TC-DEV-WEB-001-802"],
+      "notes": "implementation mapping only: S5 cart / entry sales / goods detail (UI mock, not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "BR-ORD-017",
@@ -1997,7 +2350,9 @@
         "apps/web/src/features/karaoke/karaoke-purchase-flow.ts",
         "apps/web/src/features/karaoke/use-karaoke-purchase.ts",
         "apps/web/src/features/karaoke/karaoke-slot-page.tsx",
-        "apps/web/src/features/public/route-params.ts"
+        "apps/web/src/features/public/route-params.ts",
+        "apps/web/app/(self)/mypage/layout.tsx",
+        "apps/web/src/config/mypage-routes.ts"
       ],
       "test_case_ids": [
         "TC-AR-CONT-001-101",
@@ -2008,9 +2363,10 @@
         "TC-PG-CRT-001-611",
         "TC-PG-XFN-001-682",
         "TC-PG-KRK-003-621",
-        "TC-PG-KRK-003-651"
+        "TC-PG-KRK-003-651",
+        "TC-PG-MYP-001-714"
       ],
-      "notes": "implementation mapping only: S6 authentication (UI mock, not API/DB/provider coverage)"
+      "notes": "implementation mapping only: S6 authentication (UI mock, not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "AR-CONT-002",
@@ -2060,6 +2416,22 @@
       ],
       "test_case_ids": ["TC-DEV-WEB-001-603"],
       "notes": "implementation mapping only: S7a purchase start / mock Checkout / Purchase Status (UI mock, not API/DB/provider coverage)"
+    },
+    {
+      "rule_id": "INV-010-06",
+      "code_paths": [
+        "apps/web/src/features/mypage/overview-model.ts",
+        "apps/web/src/features/mypage/goods-item-model.ts",
+        "apps/web/src/features/mypage/order-detail-model.ts"
+      ],
+      "test_case_ids": ["TC-PG-MYP-001-704", "TC-PG-MYP-004-704", "TC-PG-MYP-012-703"],
+      "notes": "S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
+    },
+    {
+      "rule_id": "DEV-DEP-001",
+      "code_paths": ["apps/web/src/features/mypage", "apps/web/src/config/mypage-routes.ts"],
+      "test_case_ids": ["TC-DEV-WEB-001-805"],
+      "notes": "S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     }
   ]
 }
