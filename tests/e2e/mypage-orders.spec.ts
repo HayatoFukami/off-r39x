@@ -394,7 +394,11 @@ test.describe("TC-PG-MYP-004-706 retrying the Checkout of a PREPARED Order uses 
     const before = await ordersOf(page);
     await mainButton(page, act.retry_checkout).click();
     await page.waitForURL(new RegExp(`/dev/mock-checkout/${ORDER.prepared}$`), { timeout: 30_000 });
-    expect(await ordersOf(page)).toEqual(before);
+    // The same Order only: no new Order. Starting the Checkout legitimately moves PREPARED to AWAITING_PAYMENT
+    // (the Browser Return never confirms; SPEC-050 16.6, PAY-BRW-001 / 002), so the states are not compared.
+    const after = await ordersOf(page);
+    expect(after.map((o) => o.ref).sort()).toEqual(before.map((o) => o.ref).sort());
+    expect((await orderByRef(page, ORDER.prepared))?.state).toBe("AWAITING_PAYMENT");
   });
 
   test("an Order that does not exist or belongs to another user is denied and the way back is the Orders list", async ({

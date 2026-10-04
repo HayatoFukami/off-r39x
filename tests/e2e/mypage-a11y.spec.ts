@@ -81,8 +81,15 @@ test.describe("TC-PG-MYP-001-721 the Mypage can be operated with the keyboard al
   test("the Mobile menu toggle opens and closes with Enter and Space and keeps its state in aria-expanded", async ({
     page,
   }) => {
-    test.skip(isDesktop(page), "the toggle exists on Mobile only");
     await openAs(page, PATH.overview);
+    if (isDesktop(page)) {
+      // Desktop has no toggle: the navigation is permanent and its links are keyboard-reachable.
+      await expect(navToggle(page)).toBeHidden();
+      await expect(mypageNav(page)).toBeVisible();
+      await navLink(page, "profile").focus();
+      await expect(navLink(page, "profile")).toBeFocused();
+      return;
+    }
     const toggle = navToggle(page);
     await toggle.focus();
     await page.keyboard.press("Enter");

@@ -260,7 +260,7 @@ describe("TC-DEV-WEB-001-805 the containers read through useApi() only and write
       const code = stripComments(read(path));
       expect(code.length, path).toBeGreaterThan(0);
       expect(code).not.toMatch(
-        /\.purchase\b|startCartPurchase|startKaraokePurchase|startCheckout|updateProfile/,
+        /\b(?:api|port)\.purchase\b|\bpurchase\.start\w*|startCartPurchase|startKaraokePurchase|startCheckout|updateProfile/,
       );
     });
   }

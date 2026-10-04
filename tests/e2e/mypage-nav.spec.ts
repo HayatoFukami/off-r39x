@@ -112,11 +112,16 @@ test.describe("TC-PG-MYP-001-712 each area is reachable from the navigation and 
   });
 
   test("on Mobile the menu closes after a link was followed", async ({ page }) => {
-    test.skip(isDesktop(page), "the toggle exists on Mobile only");
     await openAs(page, PATH.overview);
     await revealNav(page);
     await navLink(page, "entryTickets").click();
     await expect(heading1(page)).toHaveText(copy.mypage.entryTickets.heading);
+    if (isDesktop(page)) {
+      // Desktop: the navigation stays permanently visible and has no toggle.
+      await expect(navToggle(page)).toBeHidden();
+      await expect(mypageNav(page)).toBeVisible();
+      return;
+    }
     await expect(navToggle(page)).toHaveAttribute("aria-expanded", "false");
   });
 });
