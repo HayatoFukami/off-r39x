@@ -130,11 +130,13 @@ describe("TC-DEV-WEB-001-403 the S5 containers read through the port after mount
   });
 });
 
-describe("TC-PG-CRT-001-461 S5 starts no purchase and writes no business state (FR-CRT-001, BR-ORD-020, SPEC-050 14A.1 / 33)", () => {
+describe("TC-PG-CRT-001-461 the Entry / Goods detail UI and the Cart store start no purchase and write no business state (FR-CRT-001, BR-ORD-020, SPEC-050 14A.1 / 33)", () => {
   const forbidden =
     /startCartPurchase|startCheckout|startKaraokePurchase|\.purchase\b|Idempotency|idempotencyKey|createOrder|location\.assign|router\.(push|replace)/i;
+  // The Cart page itself is excluded since S7a (tests/contracts/s7a-purchase.md section 4): the purchase start
+  // is wired there through the single handleProceed seam, which delegates to features/purchase (checked in
+  // tests/unit/web/purchase/s7a-static.test.ts). Adding to the Cart is still free of any purchase operation.
   for (const path of [
-    "src/features/cart/cart-page.tsx",
     "src/features/cart/add-to-cart-form.tsx",
     "src/features/entry/entry-page.tsx",
     "src/features/goods/goods-detail-page.tsx",
@@ -145,7 +147,7 @@ describe("TC-PG-CRT-001-461 S5 starts no purchase and writes no business state (
     });
   }
 
-  it("the Cart page keeps a single seam for S7a: handleProceed", () => {
+  it("the Cart page keeps a single seam for the purchase start: handleProceed", () => {
     expect(stripComments(read("src/features/cart/cart-page.tsx"))).toMatch(/handleProceed/);
   });
 });
