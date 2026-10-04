@@ -12,6 +12,10 @@
     "format": "biome format --write .",
     "typecheck": "pnpm -r --if-present typecheck",
     "check:boundaries": "node scripts/check-import-boundaries.mts",
+    "validate:traceability": "node scripts/validate-traceability.mts",
+    "secret-scan": "node scripts/secret-scan.mts",
+    "build:mock": "node scripts/mock-web.mts build",
+    "start:mock": "node scripts/mock-web.mts start",
     "test:unit": "pnpm --filter @off-r39x/tests test:unit",
     "test:e2e": "pnpm --filter @off-r39x/tests test:e2e"
   },
