@@ -188,7 +188,7 @@ export const specDocs = (extraText = ""): Record<string, string> => ({
 // ---- secret-scan fixture ------------------------------------------------------------------
 
 const at = "@";
-const rand43 = "k3Jf9sLq2Zm8Vx1Bn7Cw4Dt6Gy0Hp5Rj3Ke8Ua2Lc"; // 43 chars of base64url alphabet
+const rand43 = "k3Jf9sLq2Zm8Vx1Bn7Cw4Dt6Gy0Hp5Rj3Ke8Ua2LcQ7"; // 43 chars of base64url alphabet
 const rand24 = "A1b2C3d4E5f6G7h8I9j0K1L2";
 
 /** Synthetic secret-looking values, assembled at run time. None of them is real. */
@@ -203,7 +203,7 @@ export const SAMPLE = {
     "c3ludGhldGljLXNpZ25hdHVyZS12YWx1ZQ",
   ].join("."),
   privateKeyHeader: ["-----BEGIN", "PRIVATE KEY-----"].join(" "),
-  databaseUrl: ["postgres", "://app:hunter2hunter2", "db.internal:5432/app"].join(at),
+  databaseUrl: ["postgres://app:hunter2hunter2", "db.internal:5432/app"].join(at),
   rawQr: ["r39x1", "ent", rand43].join("."),
   rawQrKaraoke: ["r39x1", "krk", rand43].join("."),
   envSecret: ["STRIPE_SECRET_KEY", "AbCdEfGh12345678"].join("="),

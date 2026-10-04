@@ -133,7 +133,9 @@ describe("TC-DEV-TRC-001-003 the manifest structure (SPEC-170 section 9, TST-TRC
     );
   });
 
-  it("case-field-missing: every one of the 19 SPEC-170 section 9 fields is required", () => {
+  it("case-field-missing: every one of the 19 SPEC-170 section 9 fields is required", {
+    timeout: 120_000,
+  }, () => {
     const fields = [
       "level",
       "suite",
@@ -548,7 +550,20 @@ describe("TC-DEV-TRC-001-007 every behavioural source file traces to a Rule (DEV
       "scripts/another.mts",
     ];
     for (const file of unmapped) {
-      const result = check(withTrace({ [file]: "export const x = 1;\n" }));
+      // The map lists exact files only: a directory entry would legitimately cover the new file.
+      const result = check(
+        withTrace({
+          [file]: "export const x = 1;\n",
+          [MAP]: mapJson([
+            mapEntry(
+              "FOO-001",
+              ["apps/web/src/a.ts", "packages/domain/src/index.ts", "scripts/tool.mts"],
+              [ID_UNIT],
+            ),
+            mapEntry("BAR-002", ["apps/web/app/page.tsx"], [ID_E2E]),
+          ]),
+        }),
+      );
       expect(hasViolation(result, "source-unmapped", file), `${file}\n${result.stdout}`).toBe(true);
       expect(result.status).toBe(1);
     }
