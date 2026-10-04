@@ -12,3 +12,7 @@ export function parseAnnouncementRef(raw: string): Ref<"announcement"> | null {
 export function parseBusinessDateParam(raw: string): BusinessDateJst | null {
   return parseBusinessDateJst(raw);
 }
+
+export function parseGoodsRef(raw: string): Ref<"goods"> | null {
+  return CANONICAL_UUID.test(raw) ? (raw as Ref<"goods">) : null;
+}

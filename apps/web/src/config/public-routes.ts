@@ -5,6 +5,11 @@ export const ENTRY_HREF = "/entry";
 export const KARAOKE_HREF = "/karaoke";
 export const GOODS_HREF = "/goods";
 
+/** The Karaoke sales guide (PG-KRK-001), linked from the Cart guidance only. */
+export function karaokeGuideHref(): string {
+  return KARAOKE_HREF;
+}
+
 export function announcementHref(ref: string): string {
   return `${ANNOUNCEMENTS_HREF}/${ref}`;
 }
