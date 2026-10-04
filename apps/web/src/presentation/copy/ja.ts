@@ -6,6 +6,7 @@ export const copy = {
     announcementDetail: "お知らせ詳細",
     karaoke: "Karaoke販売案内",
     karaokeDay: "Karaoke空き状況",
+    karaokeSlot: "Karaoke枠の詳細",
     goods: "Goods",
   },
   pageState: {
@@ -166,6 +167,37 @@ export const copy = {
       datesHeading: "販売対象日",
       datesEmpty: "現在、販売対象日はありません",
       dateLink: (dateText: string): string => `${dateText}の空き状況を見る`,
+    },
+    slotDetail: {
+      heading: "Karaoke 枠の詳細",
+      subject: "Karaoke枠の情報",
+      infoHeading: "枠の情報",
+      actionHeading: "購入手続き",
+      dateLabel: "対象日",
+      timeLabel: "利用時刻",
+      stateLabel: "この枠の状態",
+      purchasableLabel: "予約購入可能",
+      purchasableDescription: "この枠は現在購入できます。購入手続きに進むと、この枠を確保します。",
+      separateNote:
+        "Karaokeの購入はカートを使いません。Entry TicketやGoodsとは別の購入、別の支払いになります。",
+      proceed: "購入手続きへ進む",
+      proceedGuest: "ログインして購入手続きへ",
+      backToDay: "空き状況へ戻る",
+      chooseAgain: "空き状況から選び直す",
+      holding: "枠を確保しています",
+      disabledReason: {
+        HELD: "他の購入試行で確保中のため、購入手続きへ進めません。空き状況から別の枠を選んでください。",
+        SOLD: "この枠は販売済みのため、購入手続きへ進めません。",
+        SALES_STOPPED: "この枠は販売停止のため、購入手続きへ進めません。",
+        NOT_ON_SALE: "現在は販売期間外または販売停止中のため、購入手続きへ進めません。",
+      },
+      failure: {
+        conflict: "他の利用者が先に確保したため購入を開始できません",
+        limit: "購入上限に達しているため、この枠の購入を開始できません",
+        notOnSale: "現在は販売期間外または販売停止中のため、購入を開始できません",
+        expired: "枠の確保期限が切れたため選び直してください",
+        unavailable: "枠の購入条件を確認できませんでした。時間をおいて、もう一度お試しください",
+      },
     },
     saleStatus: {
       description: {
