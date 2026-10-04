@@ -7,14 +7,18 @@
         "scripts/check-import-boundaries.mts",
         "apps/web/src/features/cart",
         "apps/web/src/features/entry",
-        "apps/web/src/features/goods"
+        "apps/web/src/features/goods",
+        "apps/web/src/mock/dev-ui/mock-checkout-screen.tsx",
+        "apps/web/src/features/purchase/purchase-status-page.tsx",
+        "apps/web/src/features/purchase/use-cart-purchase.ts"
       ],
       "test_case_ids": [
         "TC-DEV-DEP-006-001",
         "TC-DEV-DEP-006-002",
         "TC-DEV-DEP-006-003",
         "TC-DEV-DEP-006-004",
-        "TC-DEV-WEB-001-403"
+        "TC-DEV-WEB-001-403",
+        "TC-DEV-WEB-001-604"
       ],
       "notes": "implementation mapping only"
     },
@@ -52,7 +56,9 @@
         "apps/web/app/dev/error-probe/page.tsx",
         "apps/web/src/mock/dev-ui/mock-mode-badge.tsx",
         "apps/web/app/layout.tsx",
-        "apps/web/src/config/site.ts"
+        "apps/web/src/config/site.ts",
+        "apps/web/src/mock/dev-ui/mock-checkout-screen.tsx",
+        "apps/web/app/dev/mock-checkout/[orderRef]/page.tsx"
       ],
       "test_case_ids": [
         "TC-DEV-WEB-012-001",
@@ -63,7 +69,11 @@
         "TC-PG-PUB-001-202",
         "TC-PG-PUB-001-501",
         "TC-PG-PUB-001-693",
-        "TC-PG-CRT-001-532"
+        "TC-PG-CRT-001-532",
+        "TC-DEV-WEB-001-602",
+        "TC-PAY-BRW-001-601",
+        "TC-PAY-BRW-001-611",
+        "TC-DEV-WEB-012-611"
       ],
       "notes": "implementation mapping only: mock-allowlist"
     },
@@ -104,9 +114,15 @@
       "code_paths": [
         "apps/web/next.config.ts",
         "apps/web/app/account",
-        "apps/web/app/(self)/mypage/page.tsx"
+        "apps/web/app/(self)/mypage/page.tsx",
+        "apps/web/app/(self)/purchase/orders/[orderRef]/page.tsx"
       ],
-      "test_case_ids": ["TC-SEC-WEB-009-001", "TC-SEC-WEB-009-602", "TC-SEC-WEB-009-701"],
+      "test_case_ids": [
+        "TC-SEC-WEB-009-001",
+        "TC-SEC-WEB-009-602",
+        "TC-SEC-WEB-009-701",
+        "TC-SEC-WEB-009-711"
+      ],
       "notes": "implementation mapping only: no-store headers; verified by TC-SEC-WEB-009-001 (E2E header check)"
     },
     {
@@ -127,7 +143,14 @@
         "apps/web/src/presentation/state-mapping/availability.ts",
         "apps/web/src/presentation/copy/ja.ts",
         "apps/web/src/mock/backend/mock-api.ts",
-        "apps/web/src/features/cart/cart-model.ts"
+        "apps/web/src/features/cart/cart-model.ts",
+        "apps/web/src/config/purchase-routes.ts",
+        "apps/web/src/features/purchase/cart-purchase-flow.ts",
+        "apps/web/src/features/purchase/purchase-status-model.ts",
+        "apps/web/src/features/purchase/purchase-again.ts",
+        "apps/web/src/features/purchase/order-outcome.tsx",
+        "apps/web/src/features/purchase/purchase-status-page.tsx",
+        "apps/web/app/(self)/purchase/orders/[orderRef]/page.tsx"
       ],
       "test_case_ids": [
         "TC-PG-XFN-001-001",
@@ -141,7 +164,37 @@
         "TC-PG-XFN-001-104",
         "TC-PG-XFN-001-105",
         "TC-PG-XFN-001-106",
-        "TC-PG-CRT-001-405"
+        "TC-PG-CRT-001-405",
+        "TC-PG-XFN-001-611",
+        "TC-PG-XFN-001-612",
+        "TC-PG-XFN-001-613",
+        "TC-PG-XFN-001-621",
+        "TC-PG-XFN-001-622",
+        "TC-PG-XFN-001-623",
+        "TC-PG-XFN-001-624",
+        "TC-PG-XFN-001-625",
+        "TC-PG-XFN-001-626",
+        "TC-PG-XFN-001-627",
+        "TC-PG-XFN-001-631",
+        "TC-PG-XFN-001-632",
+        "TC-PG-XFN-001-641",
+        "TC-PG-XFN-001-642",
+        "TC-PG-XFN-001-651",
+        "TC-PG-XFN-001-655",
+        "TC-PG-XFN-001-661",
+        "TC-PG-XFN-001-662",
+        "TC-PG-XFN-001-663",
+        "TC-PG-XFN-001-664",
+        "TC-PG-XFN-001-665",
+        "TC-PG-XFN-001-666",
+        "TC-PG-XFN-001-667",
+        "TC-PG-XFN-001-668",
+        "TC-PG-XFN-001-671",
+        "TC-PG-XFN-001-672",
+        "TC-PG-XFN-001-673",
+        "TC-PG-XFN-001-681",
+        "TC-PG-XFN-001-682",
+        "TC-PG-XFN-001-691"
       ],
       "notes": "implementation mapping only: state to presentation mapping and copy dictionary; S2 mock backend"
     },
@@ -159,9 +212,15 @@
       "rule_id": "PG-MYP-004",
       "code_paths": [
         "apps/web/src/presentation/state-mapping/order.ts",
-        "apps/web/src/mock/backend/mock-api.ts"
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/features/purchase/order-outcome.tsx"
       ],
-      "test_case_ids": ["TC-PG-XFN-001-001", "TC-PG-XFN-001-002", "TC-PG-MYP-004-101"],
+      "test_case_ids": [
+        "TC-PG-XFN-001-001",
+        "TC-PG-XFN-001-002",
+        "TC-PG-MYP-004-101",
+        "TC-PG-XFN-001-613"
+      ],
       "notes": "implementation mapping only: order presentation actions; S2 mock backend"
     },
     {
@@ -169,9 +228,16 @@
       "code_paths": [
         "apps/web/src/presentation/state-mapping/purpose.ts",
         "apps/web/src/mock/backend/purpose.ts",
-        "apps/web/src/mock/backend/mock-api.ts"
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/features/purchase/use-cart-purchase.ts",
+        "apps/web/src/features/purchase/cart-purchase-flow.ts"
       ],
-      "test_case_ids": ["TC-PG-MYP-003-001", "TC-BR-ORD-013-101", "TC-BR-ORD-013-102"],
+      "test_case_ids": [
+        "TC-PG-MYP-003-001",
+        "TC-BR-ORD-013-101",
+        "TC-BR-ORD-013-102",
+        "TC-PG-CRT-001-612"
+      ],
       "notes": "implementation mapping only: purchase-again target by purpose; S2 mock backend"
     },
     {
@@ -292,7 +358,8 @@
         "apps/web/src/presentation/state-mapping/availability.ts",
         "apps/web/src/mock/backend/mock-api.ts",
         "apps/web/src/features/cart/can-proceed.ts",
-        "apps/web/src/features/cart/cart-view-model.ts"
+        "apps/web/src/features/cart/cart-view-model.ts",
+        "apps/web/src/features/purchase/cart-purchase-flow.ts"
       ],
       "test_case_ids": [
         "TC-PG-CRT-001-001",
@@ -313,7 +380,8 @@
         "TC-PG-CRT-001-503",
         "TC-PG-CRT-001-505",
         "TC-PG-CRT-001-507",
-        "TC-PG-CRT-001-508"
+        "TC-PG-CRT-001-508",
+        "TC-PG-CRT-001-623"
       ],
       "notes": "implementation mapping only: distinct purchase unavailable reasons; S2 mock backend"
     },
@@ -336,7 +404,10 @@
         "apps/web/src/features/cart/use-cart.ts",
         "apps/web/app/cart/page.tsx",
         "apps/web/src/presentation/copy/ja.ts",
-        "apps/web/src/presentation/components/ui/input.tsx"
+        "apps/web/src/presentation/components/ui/input.tsx",
+        "apps/web/src/features/purchase/cart-purchase-flow.ts",
+        "apps/web/src/features/purchase/use-cart-purchase.ts",
+        "apps/web/src/features/purchase/cart-purchase-feedback.tsx"
       ],
       "test_case_ids": [
         "TC-PG-CRT-001-001",
@@ -394,7 +465,16 @@
         "TC-PG-CRT-001-533",
         "TC-PG-CRT-001-534",
         "TC-PG-CRT-001-535",
-        "TC-SEC-WEB-009-602"
+        "TC-SEC-WEB-009-602",
+        "TC-PG-CRT-001-621",
+        "TC-PG-CRT-001-622",
+        "TC-PG-CRT-001-623",
+        "TC-PG-XFN-001-641",
+        "TC-PG-CRT-001-651",
+        "TC-PG-CRT-001-611",
+        "TC-PG-CRT-001-612",
+        "TC-PG-CRT-001-613",
+        "TC-PG-CRT-001-614"
       ],
       "notes": "implementation mapping only: availability and money formatting; S2 mock backend"
     },
@@ -472,14 +552,17 @@
         "apps/web/src/mock/backend/purpose.ts",
         "apps/web/src/api-client/types.ts",
         "apps/web/src/features/cart/cart-model.ts",
-        "apps/web/src/features/cart/cart-page.tsx"
+        "apps/web/src/features/cart/cart-page.tsx",
+        "apps/web/src/features/purchase/purchase-again.ts"
       ],
       "test_case_ids": [
         "TC-BR-ORD-013-101",
         "TC-PG-CRT-001-403",
         "TC-PG-CRT-001-405",
         "TC-PG-CRT-001-462",
-        "TC-PG-CRT-001-509"
+        "TC-PG-CRT-001-509",
+        "TC-PG-XFN-001-631",
+        "TC-PG-XFN-001-672"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
@@ -500,14 +583,36 @@
     },
     {
       "rule_id": "BR-ORD-014",
-      "code_paths": ["apps/web/src/mock/backend/mock-api.ts"],
-      "test_case_ids": ["TC-AR-AZ-011-101", "TC-BR-ORD-014-101", "TC-BR-ORD-014-102"],
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/features/purchase/use-cart-purchase.ts",
+        "apps/web/src/features/purchase/cart-purchase-flow.ts",
+        "apps/web/src/features/purchase/cart-purchase-feedback.tsx"
+      ],
+      "test_case_ids": [
+        "TC-AR-AZ-011-101",
+        "TC-BR-ORD-014-101",
+        "TC-BR-ORD-014-102",
+        "TC-PG-CRT-001-622",
+        "TC-PG-CRT-001-612",
+        "TC-PG-CRT-001-614"
+      ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
       "rule_id": "BR-ORD-015",
-      "code_paths": ["apps/web/src/mock/backend/mock-api.ts"],
-      "test_case_ids": ["TC-BR-ORD-015-101", "TC-PG-MYP-004-101"],
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/features/purchase/purchase-status-model.ts",
+        "apps/web/src/features/purchase/order-outcome.tsx"
+      ],
+      "test_case_ids": [
+        "TC-BR-ORD-015-101",
+        "TC-PG-MYP-004-101",
+        "TC-PG-XFN-001-623",
+        "TC-PG-XFN-001-662",
+        "TC-PG-XFN-001-666"
+      ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
@@ -542,37 +647,81 @@
     },
     {
       "rule_id": "PAY-BRW-001",
-      "code_paths": ["apps/web/src/mock/backend/mock-api.ts"],
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/mock/dev-ui/mock-checkout-screen.tsx",
+        "apps/web/app/dev/mock-checkout/[orderRef]/page.tsx",
+        "apps/web/src/features/purchase/purchase-status-page.tsx",
+        "apps/web/src/features/purchase/cart-purchase-flow.ts",
+        "apps/web/src/presentation/copy/ja.ts"
+      ],
       "test_case_ids": [
         "TC-PAY-BRW-001-101",
         "TC-PAY-BRW-001-102",
         "TC-PG-KRK-003-105",
-        "TC-PG-XFN-001-105"
+        "TC-PG-XFN-001-105",
+        "TC-SEC-WEB-005-601",
+        "TC-PG-XFN-001-642",
+        "TC-PAY-BRW-001-601",
+        "TC-PG-XFN-001-655",
+        "TC-PAY-BRW-001-611",
+        "TC-PAY-BRW-001-612",
+        "TC-PAY-BRW-001-613",
+        "TC-PG-XFN-001-661"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
       "rule_id": "PAY-BRW-002",
-      "code_paths": ["apps/web/src/mock/backend/mock-api.ts"],
-      "test_case_ids": ["TC-PAY-BRW-001-101", "TC-PAY-BRW-002-101"],
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/mock/dev-ui/mock-checkout-screen.tsx",
+        "apps/web/src/features/purchase/purchase-status-page.tsx"
+      ],
+      "test_case_ids": [
+        "TC-PAY-BRW-001-101",
+        "TC-PAY-BRW-002-101",
+        "TC-PG-XFN-001-651",
+        "TC-PAY-BRW-001-601",
+        "TC-PAY-BRW-001-612",
+        "TC-PAY-BRW-001-613"
+      ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
       "rule_id": "PAY-BRW-003",
-      "code_paths": ["apps/web/src/mock/backend/mock-api.ts"],
-      "test_case_ids": ["TC-PAY-BRW-001-101", "TC-PAY-BRW-001-102"],
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/mock/dev-ui/mock-checkout-screen.tsx",
+        "apps/web/src/features/purchase/purchase-status-page.tsx"
+      ],
+      "test_case_ids": ["TC-PAY-BRW-001-101", "TC-PAY-BRW-001-102", "TC-PAY-BRW-001-613"],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
       "rule_id": "SEC-WEB-005",
-      "code_paths": ["apps/web/src/mock/backend/mock-api.ts"],
-      "test_case_ids": ["TC-PG-XFN-001-105"],
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/features/purchase/cart-purchase-flow.ts",
+        "apps/web/src/features/purchase/use-cart-purchase.ts",
+        "apps/web/src/features/purchase/purchase-status-page.tsx"
+      ],
+      "test_case_ids": [
+        "TC-PG-XFN-001-105",
+        "TC-SEC-WEB-005-601",
+        "TC-SEC-WEB-005-602",
+        "TC-SEC-WEB-005-611"
+      ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
       "rule_id": "PG-XFN-003",
-      "code_paths": ["apps/web/src/mock/backend/mock-api.ts"],
-      "test_case_ids": ["TC-PG-XFN-003-101"],
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/presentation/components/access-denied-view.tsx",
+        "apps/web/src/presentation/copy/ja.ts"
+      ],
+      "test_case_ids": ["TC-PG-XFN-003-101", "TC-PG-XFN-003-601"],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
@@ -1110,8 +1259,17 @@
     },
     {
       "rule_id": "INV-010-07",
-      "code_paths": ["apps/web/src/mock/backend/mock-api.ts"],
-      "test_case_ids": ["TC-BR-ORD-015-101", "TC-PG-MYP-004-101", "TC-PG-MYP-011-101"],
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/features/purchase/purchase-status-model.ts",
+        "apps/web/src/features/purchase/order-outcome.tsx"
+      ],
+      "test_case_ids": [
+        "TC-BR-ORD-015-101",
+        "TC-PG-MYP-004-101",
+        "TC-PG-MYP-011-101",
+        "TC-PG-XFN-001-623"
+      ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
@@ -1295,9 +1453,10 @@
       "rule_id": "SEC-AUTH-017",
       "code_paths": [
         "apps/web/src/auth/password-policy.ts",
-        "apps/web/src/features/auth/form-validation.ts"
+        "apps/web/src/features/auth/form-validation.ts",
+        "apps/web/src/features/purchase/cart-purchase-flow.ts"
       ],
-      "test_case_ids": ["TC-SEC-AUTH-017-101", "TC-PG-AUTH-001-303"],
+      "test_case_ids": ["TC-SEC-AUTH-017-101", "TC-PG-AUTH-001-303", "TC-PG-CRT-001-621"],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
@@ -1323,13 +1482,15 @@
         "apps/web/src/auth/gate-decision.ts",
         "apps/web/src/auth/logout-signal.ts",
         "apps/web/app/(self)/layout.tsx",
-        "apps/web/app/(self)/mypage/page.tsx"
+        "apps/web/app/(self)/mypage/page.tsx",
+        "apps/web/app/(self)/purchase/orders/[orderRef]/page.tsx"
       ],
       "test_case_ids": [
         "TC-AR-SES-007-101",
         "TC-AR-SES-007-111",
         "TC-AR-SES-007-301",
-        "TC-AR-SES-007-302"
+        "TC-AR-SES-007-302",
+        "TC-PG-XFN-001-682"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
@@ -1365,7 +1526,8 @@
         "apps/web/src/features/cart/cart-store.ts",
         "apps/web/src/features/cart/cart-model.ts",
         "apps/web/src/features/cart/add-to-cart-form.tsx",
-        "apps/web/src/features/cart/cart-page.tsx"
+        "apps/web/src/features/cart/cart-page.tsx",
+        "apps/web/src/features/purchase/use-cart-purchase.ts"
       ],
       "test_case_ids": [
         "TC-PG-CRT-001-201",
@@ -1378,7 +1540,8 @@
         "TC-PG-GDS-002-503",
         "TC-PG-CRT-001-501",
         "TC-PG-CRT-001-504",
-        "TC-PG-CRT-001-535"
+        "TC-PG-CRT-001-535",
+        "TC-PG-CRT-001-651"
       ],
       "notes": "implementation mapping only: UI mock shell (not API/DB/provider coverage)"
     },
@@ -1388,7 +1551,9 @@
         "apps/web/src/features/cart/cart-count.ts",
         "apps/web/src/features/cart/cart-model.ts",
         "apps/web/src/features/cart/cart-store.ts",
-        "apps/web/src/features/cart/add-to-cart-form.tsx"
+        "apps/web/src/features/cart/add-to-cart-form.tsx",
+        "apps/web/src/features/purchase/purchase-again.ts",
+        "apps/web/src/features/purchase/purchase-status-page.tsx"
       ],
       "test_case_ids": [
         "TC-PG-CRT-001-202",
@@ -1406,7 +1571,8 @@
         "TC-PG-GDS-002-503",
         "TC-PG-CRT-001-510",
         "TC-PG-CRT-001-512",
-        "TC-PG-CRT-001-523"
+        "TC-PG-CRT-001-523",
+        "TC-PG-XFN-001-632"
       ],
       "notes": "implementation mapping only: UI mock shell (not API/DB/provider coverage)"
     },
@@ -1415,9 +1581,16 @@
       "code_paths": [
         "apps/web/src/presentation/layout/sponsor-area-model.ts",
         "apps/web/src/presentation/components/safe-url.ts",
-        "apps/web/src/presentation/components/external-link.tsx"
+        "apps/web/src/presentation/components/external-link.tsx",
+        "apps/web/src/features/purchase/purchase-status-model.ts",
+        "apps/web/src/features/purchase/order-outcome.tsx"
       ],
-      "test_case_ids": ["TC-PG-PUB-001-213", "TC-SEC-WEB-016-601", "TC-SEC-WEB-017-601"],
+      "test_case_ids": [
+        "TC-PG-PUB-001-213",
+        "TC-SEC-WEB-016-601",
+        "TC-SEC-WEB-017-601",
+        "TC-PG-XFN-001-626"
+      ],
       "notes": "implementation mapping only: UI mock shell (not API/DB/provider coverage)"
     },
     {
@@ -1498,7 +1671,19 @@
         "apps/web/app/account",
         "apps/web/app/(self)",
         "apps/web/src/presentation/components/form-field.tsx",
-        "apps/web/src/presentation/components/error-summary.tsx"
+        "apps/web/src/presentation/components/error-summary.tsx",
+        "apps/web/src/config/purchase-routes.ts",
+        "apps/web/src/features/purchase/cart-purchase-flow.ts",
+        "apps/web/src/features/purchase/purchase-status-model.ts",
+        "apps/web/src/features/purchase/purchase-again.ts",
+        "apps/web/src/features/purchase/use-cart-purchase.ts",
+        "apps/web/src/features/purchase/cart-purchase-feedback.tsx",
+        "apps/web/src/features/purchase/order-outcome.tsx",
+        "apps/web/src/features/purchase/purchase-status-page.tsx",
+        "apps/web/src/presentation/components/access-denied-view.tsx",
+        "apps/web/src/mock/dev-ui/mock-checkout-screen.tsx",
+        "apps/web/app/(self)/purchase/orders/[orderRef]/page.tsx",
+        "apps/web/app/dev/mock-checkout/[orderRef]/page.tsx"
       ],
       "test_case_ids": [
         "TC-DEV-WEB-001-201",
@@ -1516,7 +1701,10 @@
         "TC-DEV-WEB-001-502",
         "TC-DEV-WEB-001-503",
         "TC-DEV-WEB-001-504",
-        "TC-DEV-WEB-001-505"
+        "TC-DEV-WEB-001-505",
+        "TC-DEV-WEB-001-601",
+        "TC-DEV-WEB-001-602",
+        "TC-DEV-WEB-001-603"
       ],
       "notes": "implementation mapping only: UI mock shell (not API/DB/provider coverage)"
     },
@@ -1609,9 +1797,18 @@
       "rule_id": "FR-CRT-011",
       "code_paths": [
         "apps/web/src/features/cart/cart-model.ts",
-        "apps/web/src/features/cart/cart-store.ts"
+        "apps/web/src/features/cart/cart-store.ts",
+        "apps/web/src/features/purchase/purchase-again.ts",
+        "apps/web/src/features/purchase/purchase-status-page.tsx",
+        "apps/web/src/features/purchase/use-cart-purchase.ts"
       ],
-      "test_case_ids": ["TC-PG-CRT-001-404", "TC-PG-CRT-001-405"],
+      "test_case_ids": [
+        "TC-PG-CRT-001-404",
+        "TC-PG-CRT-001-405",
+        "TC-PG-XFN-001-631",
+        "TC-PG-XFN-001-632",
+        "TC-PG-XFN-001-671"
+      ],
       "notes": "implementation mapping only: S5 cart / entry sales / goods detail (UI mock, not API/DB/provider coverage)"
     },
     {
@@ -1661,9 +1858,17 @@
       "code_paths": [
         "apps/web/src/features/cart",
         "apps/web/src/features/entry",
-        "apps/web/src/features/goods"
+        "apps/web/src/features/goods",
+        "apps/web/src/config/purchase-routes.ts",
+        "apps/web/src/features/purchase/cart-purchase-flow.ts",
+        "apps/web/src/features/purchase/purchase-status-model.ts",
+        "apps/web/src/features/purchase/purchase-again.ts",
+        "apps/web/src/features/purchase/use-cart-purchase.ts",
+        "apps/web/src/features/purchase/cart-purchase-feedback.tsx",
+        "apps/web/src/features/purchase/order-outcome.tsx",
+        "apps/web/src/features/purchase/purchase-status-page.tsx"
       ],
-      "test_case_ids": ["TC-DEV-WEB-001-401"],
+      "test_case_ids": ["TC-DEV-WEB-001-401", "TC-DEV-WEB-001-601"],
       "notes": "implementation mapping only: S5 cart / entry sales / goods detail (UI mock, not API/DB/provider coverage)"
     },
     {
@@ -1679,13 +1884,18 @@
       "rule_id": "AR-CONT-001",
       "code_paths": [
         "apps/web/src/auth/continuation.ts",
-        "apps/web/src/features/auth/continuation-view.ts"
+        "apps/web/src/features/auth/continuation-view.ts",
+        "apps/web/src/features/purchase/cart-purchase-flow.ts",
+        "apps/web/app/(self)/purchase/orders/[orderRef]/page.tsx"
       ],
       "test_case_ids": [
         "TC-AR-CONT-001-101",
         "TC-AR-CONT-001-102",
         "TC-AR-CONT-001-103",
-        "TC-AR-CONT-001-501"
+        "TC-AR-CONT-001-501",
+        "TC-PG-CRT-001-621",
+        "TC-PG-CRT-001-611",
+        "TC-PG-XFN-001-682"
       ],
       "notes": "implementation mapping only: S6 authentication (UI mock, not API/DB/provider coverage)"
     },
@@ -1714,9 +1924,29 @@
     },
     {
       "rule_id": "SEC-WEB-013",
-      "code_paths": ["apps/web/src/auth/continuation.ts"],
-      "test_case_ids": ["TC-SEC-WEB-013-101", "TC-SEC-WEB-013-102"],
+      "code_paths": [
+        "apps/web/src/auth/continuation.ts",
+        "apps/web/src/config/purchase-routes.ts",
+        "apps/web/src/features/purchase/cart-purchase-flow.ts"
+      ],
+      "test_case_ids": [
+        "TC-SEC-WEB-013-101",
+        "TC-SEC-WEB-013-102",
+        "TC-PG-XFN-001-612",
+        "TC-SEC-WEB-005-602"
+      ],
       "notes": "implementation mapping only: S6 authentication (UI mock, not API/DB/provider coverage)"
+    },
+    {
+      "rule_id": "DEV-TS-001",
+      "code_paths": [
+        "apps/web/src/config/purchase-routes.ts",
+        "apps/web/src/features/purchase/cart-purchase-flow.ts",
+        "apps/web/src/features/purchase/purchase-status-model.ts",
+        "apps/web/src/features/purchase/purchase-again.ts"
+      ],
+      "test_case_ids": ["TC-DEV-WEB-001-603"],
+      "notes": "implementation mapping only: S7a purchase start / mock Checkout / Purchase Status (UI mock, not API/DB/provider coverage)"
     }
   ]
 }
