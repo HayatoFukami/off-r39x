@@ -1,8 +1,10 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { continuationForPath } from "./continuation";
 import { createAuthPort } from "./index";
+import { beginLogout, endLogout } from "./logout-signal";
 import type { AuthPort } from "./port";
 import { SessionContext, type SessionState } from "./use-session";
 
@@ -35,12 +37,27 @@ export function SessionProvider({ children, port }: { children: ReactNode; port?
     };
   }, [auth]);
 
+  // A new route ends the Logout hand-off (the protected page's gate is gone by then).
+  const pathname = usePathname();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs on every path change
+  useEffect(() => {
+    endLogout();
+  }, [pathname]);
+
   const signOut = useCallback(async (): Promise<void> => {
-    // The local session is discarded even when the provider fails (AR-SES-009).
-    await auth.signOut();
+    // On a protected page the gate sees the Guest session before Home is shown: it must not
+    // redirect to Login then (the final URL is Home).
+    if (continuationForPath(window.location.pathname) !== null) beginLogout();
+    try {
+      // The local session is discarded even when the provider fails (AR-SES-009).
+      await auth.signOut();
+    } catch (error) {
+      endLogout();
+      throw error;
+    }
     router.push("/");
   }, [auth, router]);
 
-  const value = useMemo(() => ({ state, signOut }), [state, signOut]);
+  const value = useMemo(() => ({ state, signOut, auth }), [state, signOut, auth]);
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
