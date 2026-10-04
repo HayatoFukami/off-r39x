@@ -96,12 +96,15 @@
         "apps/web/src/config/ui-mock.ts",
         "apps/web/next.config.ts",
         "apps/web/src/api-client/index.ts",
-        "apps/web/src/auth/index.ts"
+        "apps/web/src/auth/index.ts",
+        "scripts/mock-web.mts"
       ],
       "test_case_ids": [
         "TC-DEV-WEB-011-001",
         "TC-DEV-WEB-011-002",
         "TC-DEV-WEB-011-101",
+        "TC-DEV-WEB-011-201",
+        "TC-DEV-WEB-011-203",
         "TC-DEV-WEB-012-101"
       ],
       "notes": "implementation mapping only"
@@ -2432,6 +2435,24 @@
       "code_paths": ["apps/web/src/features/mypage", "apps/web/src/config/mypage-routes.ts"],
       "test_case_ids": ["TC-DEV-WEB-001-805"],
       "notes": "S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
+    },
+    {
+      "rule_id": "TST-FLK-001",
+      "code_paths": ["apps/web/src/presentation/components/hydration-marker.tsx"],
+      "test_case_ids": ["TC-TST-FLK-001-001", "TC-TST-FLK-001-002"],
+      "notes": "implementation mapping only: token-free hydration readiness signal for tests (UI mock)"
+    },
+    {
+      "rule_id": "DEV-TRC-001",
+      "code_paths": ["scripts/validate-traceability.mts"],
+      "test_case_ids": ["TC-DEV-TRC-001-001", "TC-DEV-TRC-001-002", "TC-DEV-TRC-001-009"],
+      "notes": "implementation mapping only: mechanical traceability gate"
+    },
+    {
+      "rule_id": "DEV-SEC-004",
+      "code_paths": ["scripts/secret-scan.mts"],
+      "test_case_ids": ["TC-DEV-SEC-004-001", "TC-DEV-SEC-004-002", "TC-DEV-SEC-004-009"],
+      "notes": "implementation mapping only: secret / raw QR / PII scan; matched values are never printed"
     }
   ]
 }
