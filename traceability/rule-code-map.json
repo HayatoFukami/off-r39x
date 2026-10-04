@@ -10,7 +10,13 @@
         "apps/web/src/features/goods",
         "apps/web/src/mock/dev-ui/mock-checkout-screen.tsx",
         "apps/web/src/features/purchase/purchase-status-page.tsx",
-        "apps/web/src/features/purchase/use-cart-purchase.ts"
+        "apps/web/src/features/purchase/use-cart-purchase.ts",
+        "apps/web/app/karaoke/slots/[slotRef]/page.tsx",
+        "apps/web/src/features/karaoke/karaoke-slot-model.ts",
+        "apps/web/src/features/karaoke/karaoke-purchase-flow.ts",
+        "apps/web/src/features/karaoke/use-karaoke-purchase.ts",
+        "apps/web/src/features/karaoke/karaoke-slot-page.tsx",
+        "apps/web/src/features/public/route-params.ts"
       ],
       "test_case_ids": [
         "TC-DEV-DEP-006-001",
@@ -18,7 +24,11 @@
         "TC-DEV-DEP-006-003",
         "TC-DEV-DEP-006-004",
         "TC-DEV-WEB-001-403",
-        "TC-DEV-WEB-001-604"
+        "TC-DEV-WEB-001-604",
+        "TC-DEV-WEB-001-701",
+        "TC-DEV-WEB-001-702",
+        "TC-DEV-WEB-001-703",
+        "TC-DEV-WEB-001-704"
       ],
       "notes": "implementation mapping only"
     },
@@ -312,7 +322,13 @@
       "rule_id": "PG-KRK-003",
       "code_paths": [
         "apps/web/src/presentation/state-mapping/karaoke.ts",
-        "apps/web/src/mock/backend/mock-api.ts"
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/app/karaoke/slots/[slotRef]/page.tsx",
+        "apps/web/src/features/karaoke/karaoke-slot-model.ts",
+        "apps/web/src/features/karaoke/karaoke-purchase-flow.ts",
+        "apps/web/src/features/karaoke/use-karaoke-purchase.ts",
+        "apps/web/src/features/karaoke/karaoke-slot-page.tsx",
+        "apps/web/src/features/public/route-params.ts"
       ],
       "test_case_ids": [
         "TC-PG-KRK-003-001",
@@ -321,7 +337,35 @@
         "TC-PG-KRK-003-103",
         "TC-PG-KRK-003-104",
         "TC-PG-KRK-003-105",
-        "TC-PG-KRK-003-106"
+        "TC-PG-KRK-003-106",
+        "TC-PG-KRK-003-601",
+        "TC-PG-KRK-003-602",
+        "TC-PG-KRK-003-603",
+        "TC-PG-KRK-003-604",
+        "TC-PG-KRK-003-611",
+        "TC-PG-KRK-003-612",
+        "TC-PG-KRK-003-613",
+        "TC-PG-KRK-003-614",
+        "TC-PG-KRK-003-621",
+        "TC-PG-KRK-003-622",
+        "TC-PG-KRK-003-623",
+        "TC-DEV-WEB-001-701",
+        "TC-DEV-WEB-001-702",
+        "TC-DEV-WEB-001-703",
+        "TC-DEV-WEB-001-704",
+        "TC-PG-KRK-003-641",
+        "TC-PG-KRK-003-642",
+        "TC-PG-KRK-003-643",
+        "TC-PG-KRK-003-644",
+        "TC-PG-KRK-003-645",
+        "TC-PG-KRK-003-651",
+        "TC-PG-KRK-003-652",
+        "TC-PG-KRK-003-653",
+        "TC-PG-KRK-003-654",
+        "TC-PG-KRK-003-661",
+        "TC-PG-KRK-003-662",
+        "TC-PG-KRK-003-663",
+        "TC-PG-KRK-003-664"
       ],
       "notes": "implementation mapping only: hold presentation; S2 mock backend"
     },
@@ -553,7 +597,13 @@
         "apps/web/src/api-client/types.ts",
         "apps/web/src/features/cart/cart-model.ts",
         "apps/web/src/features/cart/cart-page.tsx",
-        "apps/web/src/features/purchase/purchase-again.ts"
+        "apps/web/src/features/purchase/purchase-again.ts",
+        "apps/web/app/karaoke/slots/[slotRef]/page.tsx",
+        "apps/web/src/features/karaoke/karaoke-slot-model.ts",
+        "apps/web/src/features/karaoke/karaoke-purchase-flow.ts",
+        "apps/web/src/features/karaoke/use-karaoke-purchase.ts",
+        "apps/web/src/features/karaoke/karaoke-slot-page.tsx",
+        "apps/web/src/features/public/route-params.ts"
       ],
       "test_case_ids": [
         "TC-BR-ORD-013-101",
@@ -562,7 +612,8 @@
         "TC-PG-CRT-001-462",
         "TC-PG-CRT-001-509",
         "TC-PG-XFN-001-631",
-        "TC-PG-XFN-001-672"
+        "TC-PG-XFN-001-672",
+        "TC-PG-KRK-003-652"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
@@ -629,8 +680,16 @@
     },
     {
       "rule_id": "BR-ORD-019",
-      "code_paths": ["apps/web/src/mock/backend/mock-api.ts"],
-      "test_case_ids": ["TC-PG-KRK-003-102"],
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/app/karaoke/slots/[slotRef]/page.tsx",
+        "apps/web/src/features/karaoke/karaoke-slot-model.ts",
+        "apps/web/src/features/karaoke/karaoke-purchase-flow.ts",
+        "apps/web/src/features/karaoke/use-karaoke-purchase.ts",
+        "apps/web/src/features/karaoke/karaoke-slot-page.tsx",
+        "apps/web/src/features/public/route-params.ts"
+      ],
+      "test_case_ids": ["TC-PG-KRK-003-102", "TC-PG-KRK-003-652"],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
@@ -653,7 +712,13 @@
         "apps/web/app/dev/mock-checkout/[orderRef]/page.tsx",
         "apps/web/src/features/purchase/purchase-status-page.tsx",
         "apps/web/src/features/purchase/cart-purchase-flow.ts",
-        "apps/web/src/presentation/copy/ja.ts"
+        "apps/web/src/presentation/copy/ja.ts",
+        "apps/web/app/karaoke/slots/[slotRef]/page.tsx",
+        "apps/web/src/features/karaoke/karaoke-slot-model.ts",
+        "apps/web/src/features/karaoke/karaoke-purchase-flow.ts",
+        "apps/web/src/features/karaoke/use-karaoke-purchase.ts",
+        "apps/web/src/features/karaoke/karaoke-slot-page.tsx",
+        "apps/web/src/features/public/route-params.ts"
       ],
       "test_case_ids": [
         "TC-PAY-BRW-001-101",
@@ -667,7 +732,8 @@
         "TC-PAY-BRW-001-611",
         "TC-PAY-BRW-001-612",
         "TC-PAY-BRW-001-613",
-        "TC-PG-XFN-001-661"
+        "TC-PG-XFN-001-661",
+        "TC-PG-KRK-003-653"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
@@ -676,7 +742,13 @@
       "code_paths": [
         "apps/web/src/mock/backend/mock-api.ts",
         "apps/web/src/mock/dev-ui/mock-checkout-screen.tsx",
-        "apps/web/src/features/purchase/purchase-status-page.tsx"
+        "apps/web/src/features/purchase/purchase-status-page.tsx",
+        "apps/web/app/karaoke/slots/[slotRef]/page.tsx",
+        "apps/web/src/features/karaoke/karaoke-slot-model.ts",
+        "apps/web/src/features/karaoke/karaoke-purchase-flow.ts",
+        "apps/web/src/features/karaoke/use-karaoke-purchase.ts",
+        "apps/web/src/features/karaoke/karaoke-slot-page.tsx",
+        "apps/web/src/features/public/route-params.ts"
       ],
       "test_case_ids": [
         "TC-PAY-BRW-001-101",
@@ -684,7 +756,8 @@
         "TC-PG-XFN-001-651",
         "TC-PAY-BRW-001-601",
         "TC-PAY-BRW-001-612",
-        "TC-PAY-BRW-001-613"
+        "TC-PAY-BRW-001-613",
+        "TC-PG-KRK-003-653"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
@@ -704,13 +777,20 @@
         "apps/web/src/mock/backend/mock-api.ts",
         "apps/web/src/features/purchase/cart-purchase-flow.ts",
         "apps/web/src/features/purchase/use-cart-purchase.ts",
-        "apps/web/src/features/purchase/purchase-status-page.tsx"
+        "apps/web/src/features/purchase/purchase-status-page.tsx",
+        "apps/web/app/karaoke/slots/[slotRef]/page.tsx",
+        "apps/web/src/features/karaoke/karaoke-slot-model.ts",
+        "apps/web/src/features/karaoke/karaoke-purchase-flow.ts",
+        "apps/web/src/features/karaoke/use-karaoke-purchase.ts",
+        "apps/web/src/features/karaoke/karaoke-slot-page.tsx",
+        "apps/web/src/features/public/route-params.ts"
       ],
       "test_case_ids": [
         "TC-PG-XFN-001-105",
         "TC-SEC-WEB-005-601",
         "TC-SEC-WEB-005-602",
-        "TC-SEC-WEB-005-611"
+        "TC-SEC-WEB-005-611",
+        "TC-PG-KRK-003-623"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
@@ -1683,7 +1763,12 @@
         "apps/web/src/presentation/components/access-denied-view.tsx",
         "apps/web/src/mock/dev-ui/mock-checkout-screen.tsx",
         "apps/web/app/(self)/purchase/orders/[orderRef]/page.tsx",
-        "apps/web/app/dev/mock-checkout/[orderRef]/page.tsx"
+        "apps/web/app/dev/mock-checkout/[orderRef]/page.tsx",
+        "apps/web/app/karaoke/slots/[slotRef]/page.tsx",
+        "apps/web/src/features/karaoke/karaoke-slot-model.ts",
+        "apps/web/src/features/karaoke/karaoke-purchase-flow.ts",
+        "apps/web/src/features/karaoke/use-karaoke-purchase.ts",
+        "apps/web/src/features/karaoke/karaoke-slot-page.tsx"
       ],
       "test_case_ids": [
         "TC-DEV-WEB-001-201",
@@ -1704,7 +1789,11 @@
         "TC-DEV-WEB-001-505",
         "TC-DEV-WEB-001-601",
         "TC-DEV-WEB-001-602",
-        "TC-DEV-WEB-001-603"
+        "TC-DEV-WEB-001-603",
+        "TC-DEV-WEB-001-701",
+        "TC-DEV-WEB-001-702",
+        "TC-DEV-WEB-001-703",
+        "TC-DEV-WEB-001-704"
       ],
       "notes": "implementation mapping only: UI mock shell (not API/DB/provider coverage)"
     },
@@ -1719,8 +1808,24 @@
     },
     {
       "rule_id": "INV-010-04",
-      "code_paths": ["apps/web/src/features/karaoke/karaoke-day-model.ts"],
-      "test_case_ids": ["TC-PG-KRK-002-601", "TC-PG-KRK-002-602", "TC-PG-KRK-002-612"],
+      "code_paths": [
+        "apps/web/src/features/karaoke/karaoke-day-model.ts",
+        "apps/web/app/karaoke/slots/[slotRef]/page.tsx",
+        "apps/web/src/features/karaoke/karaoke-slot-model.ts",
+        "apps/web/src/features/karaoke/karaoke-purchase-flow.ts",
+        "apps/web/src/features/karaoke/use-karaoke-purchase.ts",
+        "apps/web/src/features/karaoke/karaoke-slot-page.tsx",
+        "apps/web/src/features/public/route-params.ts"
+      ],
+      "test_case_ids": [
+        "TC-PG-KRK-002-601",
+        "TC-PG-KRK-002-602",
+        "TC-PG-KRK-002-612",
+        "TC-PG-KRK-003-613",
+        "TC-PG-KRK-003-614",
+        "TC-PG-KRK-003-642",
+        "TC-PG-KRK-003-662"
+      ],
       "notes": "implementation mapping only: S4 public pages (UI mock, not API/DB/provider coverage)"
     },
     {
@@ -1886,7 +1991,13 @@
         "apps/web/src/auth/continuation.ts",
         "apps/web/src/features/auth/continuation-view.ts",
         "apps/web/src/features/purchase/cart-purchase-flow.ts",
-        "apps/web/app/(self)/purchase/orders/[orderRef]/page.tsx"
+        "apps/web/app/(self)/purchase/orders/[orderRef]/page.tsx",
+        "apps/web/app/karaoke/slots/[slotRef]/page.tsx",
+        "apps/web/src/features/karaoke/karaoke-slot-model.ts",
+        "apps/web/src/features/karaoke/karaoke-purchase-flow.ts",
+        "apps/web/src/features/karaoke/use-karaoke-purchase.ts",
+        "apps/web/src/features/karaoke/karaoke-slot-page.tsx",
+        "apps/web/src/features/public/route-params.ts"
       ],
       "test_case_ids": [
         "TC-AR-CONT-001-101",
@@ -1895,7 +2006,9 @@
         "TC-AR-CONT-001-501",
         "TC-PG-CRT-001-621",
         "TC-PG-CRT-001-611",
-        "TC-PG-XFN-001-682"
+        "TC-PG-XFN-001-682",
+        "TC-PG-KRK-003-621",
+        "TC-PG-KRK-003-651"
       ],
       "notes": "implementation mapping only: S6 authentication (UI mock, not API/DB/provider coverage)"
     },
