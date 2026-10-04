@@ -13,6 +13,8 @@ import { StatusBadge } from "../../presentation/components/status-badge";
 import { Button } from "../../presentation/components/ui/button";
 import { Input } from "../../presentation/components/ui/input";
 import { copy } from "../../presentation/copy/ja";
+import { CartPurchaseFeedback } from "../purchase/cart-purchase-feedback";
+import { useCartPurchase } from "../purchase/use-cart-purchase";
 import { buildCartPageModel, type CartRow } from "./cart-view-model";
 import { parseQuantityInput } from "./quantity";
 import { useCart } from "./use-cart";
@@ -106,7 +108,7 @@ function CartRowView({
 }
 
 // PG-CRT-001 container. The Cart is read from the browser store; names, prices and states are read
-// through the port after mount. S5 starts no purchase: `handleProceed` is the seam S7a wires.
+// through the port after mount. `handleProceed` hands the purchase start to `useCartPurchase` (S7a).
 export function CartPage() {
   const api = useApi();
   const cart = useCart();
@@ -136,6 +138,11 @@ export function CartPage() {
     };
   }, [api, lines, attempt]);
 
+  // After a rejected purchase start the lines are read again, without a loading flash.
+  const refreshLines = useCallback((): void => {
+    setAttempt((count) => count + 1);
+  }, []);
+
   const retry = useCallback((): void => {
     setResolution({ signature: null, value: { kind: "loading" } });
     setAttempt((count) => count + 1);
@@ -145,15 +152,32 @@ export function CartPage() {
     lines !== null && resolution.signature !== null && resolution.signature !== signatureOf(lines);
   const model = buildCartPageModel({ cart: cart.state, resolutions: resolution.value, refreshing });
 
-  // S7a: a Guest goes to the login page, an Authenticated User starts the purchase. S5 does nothing on purpose.
+  const names = new Map<string, string | null>(
+    model.kind === "ready" || model.kind === "unavailable"
+      ? model.rows.map((row) => [row.lineKey, row.name])
+      : [],
+  );
+  const purchase = useCartPurchase({ names, onRejected: refreshLines });
+
+  // A Guest goes to Login, an Authenticated User starts the purchase (the server decides every outcome).
   const handleProceed = (): void => {
-    // Intentionally empty in S5 (no Order, no navigation, no Cart or mock database change).
+    purchase.start();
   };
 
   const setQuantity = (lineKey: string, quantity: number): boolean =>
     cart.setQuantity(lineKey, quantity).kind === "ok";
 
   const showRows = model.kind === "ready" || model.kind === "unavailable";
+
+  // The Order exists and the lines have left the Cart: show progress only, never "empty".
+  if (purchase.phase.kind === "preparing") {
+    return (
+      <div className="flex flex-col gap-4">
+        <h1 className="text-2xl font-bold">{copy.cart.heading}</h1>
+        <CartPurchaseFeedback phase={purchase.phase} />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -233,13 +257,15 @@ export function CartPage() {
           <div>
             <Button
               type="button"
-              disabled={!model.proceed.canProceed}
+              disabled={!model.proceed.canProceed || purchase.busy}
+              aria-busy={purchase.busy ? true : undefined}
               aria-describedby={model.proceed.canProceed ? undefined : reasonId}
               onClick={handleProceed}
             >
               {copy.cart.proceed.label}
             </Button>
           </div>
+          <CartPurchaseFeedback phase={purchase.phase} />
         </section>
       ) : null}
 
