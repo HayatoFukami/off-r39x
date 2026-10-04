@@ -101,8 +101,12 @@
     },
     {
       "rule_id": "SEC-WEB-009",
-      "code_paths": ["apps/web/next.config.ts"],
-      "test_case_ids": ["TC-SEC-WEB-009-001", "TC-SEC-WEB-009-602"],
+      "code_paths": [
+        "apps/web/next.config.ts",
+        "apps/web/app/account",
+        "apps/web/app/(self)/mypage/page.tsx"
+      ],
+      "test_case_ids": ["TC-SEC-WEB-009-001", "TC-SEC-WEB-009-602", "TC-SEC-WEB-009-701"],
       "notes": "implementation mapping only: no-store headers; verified by TC-SEC-WEB-009-001 (E2E header check)"
     },
     {
@@ -1160,32 +1164,109 @@
     },
     {
       "rule_id": "PG-AUTH-001",
-      "code_paths": ["apps/web/src/mock/backend/mock-auth.ts", "apps/web/src/auth/port.ts"],
-      "test_case_ids": ["TC-PG-AUTH-001-101"],
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-auth.ts",
+        "apps/web/src/auth/port.ts",
+        "apps/web/src/features/auth/register-page.tsx",
+        "apps/web/app/account/register/page.tsx",
+        "apps/web/src/features/auth/form-validation.ts",
+        "apps/web/src/presentation/components/form-field.tsx",
+        "apps/web/src/presentation/components/error-summary.tsx",
+        "apps/web/src/features/auth/use-error-summary-focus.ts",
+        "apps/web/src/features/auth/service-failure.tsx",
+        "apps/web/src/features/auth/continuation-notice.tsx",
+        "apps/web/src/features/auth/continuation-view.ts",
+        "apps/web/src/auth/use-auth.ts"
+      ],
+      "test_case_ids": [
+        "TC-PG-AUTH-001-101",
+        "TC-PG-AUTH-001-201",
+        "TC-PG-AUTH-001-202",
+        "TC-PG-AUTH-001-301",
+        "TC-PG-AUTH-001-302",
+        "TC-PG-AUTH-001-303",
+        "TC-PG-AUTH-001-304"
+      ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
       "rule_id": "PG-AUTH-002",
-      "code_paths": ["apps/web/src/mock/backend/mock-auth.ts", "apps/web/src/auth/port.ts"],
-      "test_case_ids": ["TC-PG-AUTH-002-101"],
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-auth.ts",
+        "apps/web/src/auth/port.ts",
+        "apps/web/src/features/auth/email-verification-page.tsx",
+        "apps/web/src/features/auth/context-param.ts",
+        "apps/web/app/account/email-verification/page.tsx"
+      ],
+      "test_case_ids": ["TC-PG-AUTH-002-101", "TC-PG-AUTH-002-301"],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
       "rule_id": "PG-AUTH-003",
-      "code_paths": ["apps/web/src/mock/backend/mock-auth.ts", "apps/web/src/auth/port.ts"],
-      "test_case_ids": ["TC-AR-SES-009-101", "TC-PG-AUTH-003-101"],
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-auth.ts",
+        "apps/web/src/auth/port.ts",
+        "apps/web/src/features/auth/login-page.tsx",
+        "apps/web/src/features/auth/login-notice.ts",
+        "apps/web/src/features/auth/continuation-notice.tsx",
+        "apps/web/src/features/auth/continuation-view.ts",
+        "apps/web/app/account/login/page.tsx",
+        "apps/web/src/features/auth/form-validation.ts",
+        "apps/web/src/presentation/components/form-field.tsx",
+        "apps/web/src/presentation/components/error-summary.tsx",
+        "apps/web/src/features/auth/use-error-summary-focus.ts",
+        "apps/web/src/features/auth/service-failure.tsx"
+      ],
+      "test_case_ids": [
+        "TC-AR-SES-009-101",
+        "TC-PG-AUTH-003-101",
+        "TC-PG-AUTH-003-201",
+        "TC-PG-AUTH-003-301",
+        "TC-PG-AUTH-003-302",
+        "TC-PG-AUTH-003-303",
+        "TC-PG-AUTH-003-304",
+        "TC-PG-AUTH-003-311",
+        "TC-PG-AUTH-003-312",
+        "TC-PG-AUTH-003-401",
+        "TC-PG-AUTH-003-501",
+        "TC-PG-AUTH-003-502",
+        "TC-PG-AUTH-003-503",
+        "TC-PG-AUTH-003-504",
+        "TC-PG-AUTH-003-511"
+      ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
       "rule_id": "PG-AUTH-004",
-      "code_paths": ["apps/web/src/mock/backend/mock-auth.ts"],
-      "test_case_ids": ["TC-SEC-API-027-101"],
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-auth.ts",
+        "apps/web/src/features/auth/password-reset-request-page.tsx",
+        "apps/web/app/account/password-reset/page.tsx",
+        "apps/web/src/features/auth/form-validation.ts",
+        "apps/web/src/presentation/components/form-field.tsx",
+        "apps/web/src/presentation/components/error-summary.tsx",
+        "apps/web/src/features/auth/use-error-summary-focus.ts",
+        "apps/web/src/features/auth/service-failure.tsx"
+      ],
+      "test_case_ids": ["TC-SEC-API-027-101", "TC-PG-AUTH-004-201", "TC-PG-AUTH-004-301"],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
       "rule_id": "PG-AUTH-005",
-      "code_paths": ["apps/web/src/mock/backend/mock-auth.ts", "apps/web/src/auth/port.ts"],
-      "test_case_ids": ["TC-PG-AUTH-005-101"],
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-auth.ts",
+        "apps/web/src/auth/port.ts",
+        "apps/web/src/features/auth/password-reset-complete-page.tsx",
+        "apps/web/src/features/auth/context-param.ts",
+        "apps/web/src/features/auth/login-notice.ts",
+        "apps/web/app/account/password-reset/complete/page.tsx",
+        "apps/web/src/features/auth/form-validation.ts",
+        "apps/web/src/presentation/components/form-field.tsx",
+        "apps/web/src/presentation/components/error-summary.tsx",
+        "apps/web/src/features/auth/use-error-summary-focus.ts",
+        "apps/web/src/features/auth/service-failure.tsx"
+      ],
+      "test_case_ids": ["TC-PG-AUTH-005-101", "TC-PG-AUTH-005-201", "TC-PG-AUTH-005-301"],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
@@ -1198,38 +1279,58 @@
       "rule_id": "SEC-AUTH-016",
       "code_paths": [
         "apps/web/src/auth/password-policy.ts",
-        "apps/web/src/mock/backend/mock-auth.ts"
+        "apps/web/src/mock/backend/mock-auth.ts",
+        "apps/web/src/features/auth/form-validation.ts"
       ],
       "test_case_ids": [
         "TC-SEC-AUTH-016-101",
         "TC-SEC-AUTH-017-101",
         "TC-PG-AUTH-001-101",
-        "TC-PG-AUTH-005-101"
+        "TC-PG-AUTH-005-101",
+        "TC-PG-AUTH-001-303"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
       "rule_id": "SEC-AUTH-017",
-      "code_paths": ["apps/web/src/auth/password-policy.ts"],
-      "test_case_ids": ["TC-SEC-AUTH-017-101"],
+      "code_paths": [
+        "apps/web/src/auth/password-policy.ts",
+        "apps/web/src/features/auth/form-validation.ts"
+      ],
+      "test_case_ids": ["TC-SEC-AUTH-017-101", "TC-PG-AUTH-001-303"],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
       "rule_id": "SEC-AUTH-018",
       "code_paths": [
         "apps/web/src/mock/backend/mock-auth.ts",
-        "apps/web/src/mock/backend/session-store.ts"
+        "apps/web/src/mock/backend/session-store.ts",
+        "apps/web/src/features/auth/login-page.tsx",
+        "apps/web/src/features/auth/register-page.tsx",
+        "apps/web/src/features/auth/email-verification-page.tsx",
+        "apps/web/src/features/auth/password-reset-complete-page.tsx",
+        "apps/web/src/features/auth/context-param.ts"
       ],
-      "test_case_ids": ["TC-SEC-AUTH-018-101"],
+      "test_case_ids": ["TC-SEC-AUTH-018-101", "TC-SEC-AUTH-018-501", "TC-SEC-AUTH-018-701"],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
       "rule_id": "AR-SES-007",
       "code_paths": [
         "apps/web/src/mock/backend/mock-auth.ts",
-        "apps/web/src/mock/backend/session-store.ts"
+        "apps/web/src/mock/backend/session-store.ts",
+        "apps/web/src/auth/auth-gate.tsx",
+        "apps/web/src/auth/gate-decision.ts",
+        "apps/web/src/auth/logout-signal.ts",
+        "apps/web/app/(self)/layout.tsx",
+        "apps/web/app/(self)/mypage/page.tsx"
       ],
-      "test_case_ids": ["TC-AR-SES-007-101"],
+      "test_case_ids": [
+        "TC-AR-SES-007-101",
+        "TC-AR-SES-007-111",
+        "TC-AR-SES-007-301",
+        "TC-AR-SES-007-302"
+      ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
@@ -1244,9 +1345,16 @@
         "apps/web/src/mock/backend/mock-auth.ts",
         "apps/web/src/auth/session-provider.tsx",
         "apps/web/src/presentation/layout/account-menu.tsx",
-        "apps/web/src/features/shell/site-header.tsx"
+        "apps/web/src/features/shell/site-header.tsx",
+        "apps/web/src/auth/logout-signal.ts",
+        "apps/web/src/auth/auth-gate.tsx"
       ],
-      "test_case_ids": ["TC-AR-SES-009-101", "TC-PG-PUB-001-304"],
+      "test_case_ids": [
+        "TC-AR-SES-009-101",
+        "TC-PG-PUB-001-304",
+        "TC-PG-AUTH-003-311",
+        "TC-PG-AUTH-003-312"
+      ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
@@ -1384,7 +1492,13 @@
         "apps/web/app/goods/[goodsRef]/page.tsx",
         "apps/web/src/features/cart/cart-page.tsx",
         "apps/web/src/features/entry/entry-page.tsx",
-        "apps/web/src/features/goods/goods-detail-page.tsx"
+        "apps/web/src/features/goods/goods-detail-page.tsx",
+        "apps/web/src/auth",
+        "apps/web/src/features/auth",
+        "apps/web/app/account",
+        "apps/web/app/(self)",
+        "apps/web/src/presentation/components/form-field.tsx",
+        "apps/web/src/presentation/components/error-summary.tsx"
       ],
       "test_case_ids": [
         "TC-DEV-WEB-001-201",
@@ -1397,7 +1511,12 @@
         "TC-DEV-WEB-001-401",
         "TC-DEV-WEB-001-402",
         "TC-DEV-WEB-001-403",
-        "TC-DEV-WEB-001-404"
+        "TC-DEV-WEB-001-404",
+        "TC-DEV-WEB-001-501",
+        "TC-DEV-WEB-001-502",
+        "TC-DEV-WEB-001-503",
+        "TC-DEV-WEB-001-504",
+        "TC-DEV-WEB-001-505"
       ],
       "notes": "implementation mapping only: UI mock shell (not API/DB/provider coverage)"
     },
@@ -1555,6 +1674,49 @@
       ],
       "test_case_ids": ["TC-PG-CRT-001-503"],
       "notes": "implementation mapping only: S5 cart / entry sales / goods detail (UI mock, not API/DB/provider coverage)"
+    },
+    {
+      "rule_id": "AR-CONT-001",
+      "code_paths": [
+        "apps/web/src/auth/continuation.ts",
+        "apps/web/src/features/auth/continuation-view.ts"
+      ],
+      "test_case_ids": [
+        "TC-AR-CONT-001-101",
+        "TC-AR-CONT-001-102",
+        "TC-AR-CONT-001-103",
+        "TC-AR-CONT-001-501"
+      ],
+      "notes": "implementation mapping only: S6 authentication (UI mock, not API/DB/provider coverage)"
+    },
+    {
+      "rule_id": "AR-CONT-002",
+      "code_paths": ["apps/web/src/auth/continuation.ts", "apps/web/src/auth/gate-decision.ts"],
+      "test_case_ids": ["TC-AR-CONT-002-101"],
+      "notes": "implementation mapping only: S6 authentication (UI mock, not API/DB/provider coverage)"
+    },
+    {
+      "rule_id": "AR-CONT-003",
+      "code_paths": ["apps/web/src/auth/continuation.ts"],
+      "test_case_ids": ["TC-AR-CONT-003-301", "TC-AR-CONT-001-102"],
+      "notes": "implementation mapping only: S6 authentication (UI mock, not API/DB/provider coverage)"
+    },
+    {
+      "rule_id": "AR-CONT-004",
+      "code_paths": [
+        "apps/web/src/auth/continuation.ts",
+        "apps/web/src/features/auth/continuation-view.ts",
+        "apps/web/src/features/auth/continuation-notice.tsx",
+        "apps/web/src/features/auth/login-page.tsx"
+      ],
+      "test_case_ids": ["TC-AR-CONT-004-101", "TC-PG-AUTH-003-302"],
+      "notes": "implementation mapping only: S6 authentication (UI mock, not API/DB/provider coverage)"
+    },
+    {
+      "rule_id": "SEC-WEB-013",
+      "code_paths": ["apps/web/src/auth/continuation.ts"],
+      "test_case_ids": ["TC-SEC-WEB-013-101", "TC-SEC-WEB-013-102"],
+      "notes": "implementation mapping only: S6 authentication (UI mock, not API/DB/provider coverage)"
     }
   ]
 }
