@@ -260,7 +260,10 @@ describe("TC-DEV-WEB-001-505 S6 copy, colour and dependency direction (SPEC-050 
 });
 
 describe("TC-PG-AUTH-003-511 forms follow SPEC-050 25 (error summary, aria-invalid, no browser validation)", () => {
-  const forms = CONTAINERS.map((p) => [p, stripComments(read(p))] as const);
+  // PG-AUTH-002 has no input field (SPEC-050 15.2, contract 6.3), so it is not a form container.
+  const forms = CONTAINERS.filter((p) => !p.includes("email-verification")).map(
+    (p) => [p, stripComments(read(p))] as const,
+  );
   it("every form is noValidate and links its error summary to the fields", () => {
     for (const [path, code] of forms) {
       expect(code, path).toMatch(/noValidate/);

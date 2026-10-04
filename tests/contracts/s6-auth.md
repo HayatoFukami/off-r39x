@@ -375,3 +375,4 @@ export function describeContinuation(intent: ContinuationIntent | null): Continu
 8. **S6 の placeholder `/mypage`**: PG-MYP-001 は S8 の範囲だが、Login 成功の既定の遷移先（SPEC-050 §15.3）と AuthGate / Logout back の E2E に実在する保護 route が要る。S6 は h1 と固定の一文だけの placeholder とし、S8 が置き換える。`/purchase/orders/{ref}` の route は S7a の範囲（S6 では作らない。key と gate の純粋ロジックだけ検証する）。
 10. **`?notice=password-updated`**: Password reset 完了後の通知のための、このモックの内部 query である（Secret を含まない固定値。SPEC-050 §15.5 は成功後に PG-AUTH-003 へ遷移するとだけ定める）。
 9. **pageshow**: bfcache 復帰時の再確認は `window.location.reload()` とする（再取得を確実にするため）。E2E は `PageTransitionEvent("pageshow", { persisted: true })` を dispatch して検証する（Chromium は headless で bfcache を無効にするため、実際の bfcache 復帰は再現できない）。
+11. **検証 round 1 の訂正**: `email-verification-page.tsx`（PG-AUTH-002、SPEC-050 §15.2）は入力欄を持たないため、`noValidate` / `ErrorSummary` / `aria-busy` の form 要件（TC-PG-AUTH-003-511）の対象外とする（テスト側の誤りだった。対象は login / register / password-reset の2ページ）。
