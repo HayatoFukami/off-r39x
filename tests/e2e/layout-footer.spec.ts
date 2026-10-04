@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { copy } from "../../apps/web/src/presentation/copy/ja.ts";
+import { gotoHydrated } from "../harness/browser/hydration.ts";
 import {
   cartJson,
   KEYS,
@@ -39,7 +40,7 @@ test.describe("TC-PG-PUB-001-401 Global Footer content (SPEC-050 8.5)", () => {
     await seedLocalStorage(page, {
       [KEYS.cart]: cartJson([{ kind: "GOODS", quantity: 2 }]),
     });
-    await page.goto("/");
+    await gotoHydrated(page, "/");
     await expect(footer(page)).toHaveCount(1);
     await expect(footer(page)).toContainText(SITE_NAME);
     const nav = footer(page).getByRole("navigation", {
@@ -61,7 +62,7 @@ test.describe("TC-PG-PUB-001-401 Global Footer content (SPEC-050 8.5)", () => {
   });
 
   test("the footer comes after the main landmark in the DOM", async ({ page }) => {
-    await page.goto("/");
+    await gotoHydrated(page, "/");
     const order = await page.evaluate(() => {
       const main = document.querySelector("main");
       const foot = document.querySelector("footer");
@@ -80,7 +81,7 @@ test.describe("TC-PG-PUB-001-402 sponsors: PUBLISHED only, in display order (SPE
   }) => {
     const runtime = watchRuntimeErrors(page);
     await seedLocalStorage(page, sponsorScenario("published"));
-    await page.goto("/");
+    await gotoHydrated(page, "/");
     await footer(page).scrollIntoViewIfNeeded();
     await expect(region(page)).toBeVisible();
 
@@ -121,7 +122,7 @@ test.describe("TC-PG-PUB-001-402 sponsors: PUBLISHED only, in display order (SPE
   });
 
   test("renders in the same order on the Not Found page (footer is global)", async ({ page }) => {
-    await page.goto("/no-such-route-for-footer");
+    await gotoHydrated(page, "/no-such-route-for-footer");
     await footer(page).scrollIntoViewIfNeeded();
     await expect(region(page)).toBeVisible();
     await expect(region(page).getByRole("listitem")).toHaveCount(3);
@@ -131,7 +132,7 @@ test.describe("TC-PG-PUB-001-402 sponsors: PUBLISHED only, in display order (SPE
 test.describe("TC-PG-PUB-001-403 sponsors: 0 items hides the area (SPEC-050 8.5, 31 item 29)", () => {
   test("renders no sponsor area and no 'none' wording", async ({ page }) => {
     await seedLocalStorage(page, sponsorScenario("none"));
-    await page.goto("/");
+    await gotoHydrated(page, "/");
     await settle(page);
     await expect(region(page)).toHaveCount(0);
     await expect(footer(page)).not.toContainText(/協賛|スポンサー|sponsor|なし|0件/i);
@@ -144,7 +145,7 @@ test.describe("TC-PG-PUB-001-404 sponsors: fetch failure hides the area and keep
     page,
   }) => {
     await seedLocalStorage(page, sponsorScenario("fail"));
-    await page.goto("/");
+    await gotoHydrated(page, "/");
     await settle(page);
     await expect(region(page)).toHaveCount(0);
     await expect(footer(page)).not.toContainText(/協賛|スポンサー|sponsor|なし|0件|取得/i);
@@ -173,7 +174,7 @@ test.describe("TC-PG-PUB-001-404 sponsors: fetch failure hides the area and keep
 test.describe("TC-PG-PUB-001-405 sponsors: a broken image falls back to the display name text (SPEC-050 8.5)", () => {
   test("shows each name as text and leaves no broken image behind", async ({ page }) => {
     await seedLocalStorage(page, sponsorScenario("image_broken"));
-    await page.goto("/");
+    await gotoHydrated(page, "/");
     await footer(page).scrollIntoViewIfNeeded();
     await expect(region(page)).toBeVisible();
     for (const name of ["Sponsor Alpha", "Sponsor Bravo", "Sponsor Charlie"]) {

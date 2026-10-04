@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { copy } from "../../apps/web/src/presentation/copy/ja.ts";
+import { gotoHydrated } from "../harness/browser/hydration.ts";
 import {
   dbJson,
   expectedGoods,
@@ -97,7 +98,7 @@ async function load(
 ): Promise<void> {
   await fixClock(page);
   await seedLocalStorage(page, entries);
-  await page.goto(route);
+  await gotoHydrated(page, route);
 }
 
 test.describe("TC-PG-PUB-001-691 every public page has a metadata title (SPEC-050 7, 25)", () => {
@@ -208,7 +209,7 @@ test.describe("TC-PG-PUB-001-695 no horizontal scroll at 390px and the primary a
 test.describe("TC-SEC-WEB-009-601 public pages are not served as private / no-store (SEC-WEB-009 applies to protected routes only)", () => {
   for (const route of ["/", "/announcements", "/karaoke", "/goods"]) {
     test(`${route} has no private / no-store Cache-Control`, async ({ page }) => {
-      const response = await page.goto(route);
+      const response = await gotoHydrated(page, route);
       expect(response?.status()).toBe(200);
       const cacheControl = (response?.headers()["cache-control"] ?? "").toLowerCase();
       expect(cacheControl).not.toContain("private");

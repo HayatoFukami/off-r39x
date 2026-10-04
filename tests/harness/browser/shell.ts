@@ -19,13 +19,24 @@ export const OFFERING_REGULAR = "e0000000-0000-4000-8000-000000000001";
 export const GOODS_TSHIRT = "a0000000-0000-4000-8000-000000000001";
 export const GOODS_TOWEL = "a0000000-0000-4000-8000-000000000002";
 
-/** Preseeds localStorage once per tab (a reload does not overwrite later changes). */
+const seedCalls = new WeakMap<Page, number>();
+
+/**
+ * Preseeds localStorage once per call and tab: a reload does not overwrite later changes, and a later
+ * call on the same page (for example a loop that visits several scenarios) seeds again on its next
+ * navigation. Each call has its own sessionStorage flag, so an earlier call never masks a later one.
+ */
 export async function seedLocalStorage(page: Page, entries: Record<string, string>): Promise<void> {
-  await page.addInitScript((payload: Record<string, string>) => {
-    if (window.sessionStorage.getItem("__r39x_seeded__") === "1") return;
-    window.sessionStorage.setItem("__r39x_seeded__", "1");
-    for (const [key, value] of Object.entries(payload)) window.localStorage.setItem(key, value);
-  }, entries);
+  const callId = (seedCalls.get(page) ?? 0) + 1;
+  seedCalls.set(page, callId);
+  await page.addInitScript(
+    ({ payload, flag }: { payload: Record<string, string>; flag: string }) => {
+      if (window.sessionStorage.getItem(flag) === "1") return;
+      window.sessionStorage.setItem(flag, "1");
+      for (const [key, value] of Object.entries(payload)) window.localStorage.setItem(key, value);
+    },
+    { payload: entries, flag: `__r39x_seeded_${callId}__` },
+  );
 }
 
 export function sessionJson(

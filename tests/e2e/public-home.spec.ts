@@ -5,6 +5,7 @@ import {
   formatJstDate,
   formatJstDateTime,
 } from "../../apps/web/src/presentation/format/datetime.ts";
+import { gotoHydrated } from "../harness/browser/hydration.ts";
 import {
   expectedAnnouncements,
   expectedEvent,
@@ -26,7 +27,7 @@ const h1 = (page: Page) => main(page).getByRole("heading", { level: 1 });
 async function openHome(page: Page, entries: Record<string, string> = {}): Promise<void> {
   await fixClock(page);
   await seedLocalStorage(page, entries);
-  await page.goto("/");
+  await gotoHydrated(page, "/");
 }
 
 function expected() {

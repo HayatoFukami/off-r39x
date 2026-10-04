@@ -16,6 +16,7 @@ import {
   type StoredLine,
   writeStorage,
 } from "../harness/browser/cart.ts";
+import { gotoHydrated } from "../harness/browser/hydration.ts";
 import { fixClock } from "../harness/browser/public.ts";
 import { authenticatedSession, KEYS, seedLocalStorage } from "../harness/browser/shell.ts";
 import { GOODS, OFFERING } from "../harness/mock-seed.ts";
@@ -30,7 +31,7 @@ const stored = (lines: StoredLine[]) => ({ version: 1, lines });
 async function openCart(page: Page, lines: StoredLine[], entries: Record<string, string> = {}) {
   await fixClock(page);
   await seedLocalStorage(page, { ...cartEntries(lines), ...entries });
-  await page.goto("/cart");
+  await gotoHydrated(page, "/cart");
   await expect(rows(page)).toHaveCount(lines.length);
 }
 
@@ -56,7 +57,7 @@ test.describe("TC-PG-CRT-001-521 the Header count follows every change in the sa
   }) => {
     await fixClock(page);
     await seedLocalStorage(page, {});
-    await page.goto("/entry");
+    await gotoHydrated(page, "/entry");
     const row = rowByHeading(page, offeringName(OFFERING.regular));
     await addButton(row).click();
     await expect(headerCartLink(page, 1)).toBeVisible();
@@ -128,7 +129,7 @@ test.describe("TC-PG-CRT-001-522 another tab's change reaches this tab, includin
   }) => {
     await fixClock(page);
     await seedLocalStorage(page, cartEntries([goodsLine(GOODS.tshirt, 3)]));
-    await page.goto("/");
+    await gotoHydrated(page, "/");
     await expect(headerCartLink(page, 3)).toBeVisible();
     const other = await openSecondTab(context);
     await other.goto("/");
@@ -174,7 +175,7 @@ test.describe("TC-PG-CRT-001-523 Login state never changes the Cart and the Cart
   test("adding as an authenticated user stores no account, email or role", async ({ page }) => {
     await fixClock(page);
     await seedLocalStorage(page, { [KEYS.session]: authenticatedSession() });
-    await page.goto("/entry");
+    await gotoHydrated(page, "/entry");
     await addButton(rowByHeading(page, offeringName(OFFERING.regular))).click();
     await expect.poll(() => readCartRaw(page)).not.toBeNull();
     const raw = (await readCartRaw(page)) ?? "";
@@ -185,11 +186,11 @@ test.describe("TC-PG-CRT-001-523 Login state never changes the Cart and the Cart
   test("the Cart written as a guest is the same Cart after a session appears", async ({ page }) => {
     await fixClock(page);
     await seedLocalStorage(page, {});
-    await page.goto("/entry");
+    await gotoHydrated(page, "/entry");
     await addButton(rowByHeading(page, offeringName(OFFERING.regular))).click();
     await expect.poll(() => readCart(page)).toEqual(stored([entryLine(OFFERING.regular, 1)]));
     await writeStorage(page, KEYS.session, authenticatedSession());
-    await page.goto("/cart");
+    await gotoHydrated(page, "/cart");
     await expect(rows(page)).toHaveCount(1);
     expect(await readCart(page)).toEqual(stored([entryLine(OFFERING.regular, 1)]));
   });

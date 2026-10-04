@@ -3,6 +3,7 @@ import type { UtcInstant } from "../../apps/web/src/api-client/types.ts";
 import { copy } from "../../apps/web/src/presentation/copy/ja.ts";
 import { formatJstDateTime } from "../../apps/web/src/presentation/format/datetime.ts";
 import { formatMoney } from "../../apps/web/src/presentation/format/money.ts";
+import { gotoHydrated } from "../harness/browser/hydration.ts";
 import {
   expectedGoods,
   fixClock,
@@ -21,7 +22,7 @@ const h1 = (page: Page) => main(page).getByRole("heading", { level: 1 });
 async function open(page: Page, entries: Record<string, string> = {}): Promise<number | undefined> {
   await fixClock(page);
   await seedLocalStorage(page, entries);
-  const response = await page.goto("/goods");
+  const response = await gotoHydrated(page, "/goods");
   return response?.status();
 }
 

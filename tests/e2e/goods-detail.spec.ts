@@ -17,6 +17,7 @@ import {
   readDbRaw,
   writeStorage,
 } from "../harness/browser/cart.ts";
+import { gotoHydrated, reloadHydrated } from "../harness/browser/hydration.ts";
 import { dbJson, fixClock, LOADING_FORBIDDEN, publicScenario } from "../harness/browser/public.ts";
 import {
   authenticatedSession,
@@ -44,7 +45,7 @@ async function open(
 ): Promise<number | undefined> {
   await fixClock(page);
   await seedLocalStorage(page, entries);
-  const response = await page.goto(`/goods/${ref}`);
+  const response = await gotoHydrated(page, `/goods/${ref}`);
   return response?.status();
 }
 
@@ -224,7 +225,7 @@ test.describe("TC-PG-GDS-002-503 adding Goods stores a reference and a quantity 
     await openReady(page, GOODS.towel);
     await addButton(main(page)).click();
     await expect(headerCartLink(page, 2)).toBeVisible();
-    await page.reload();
+    await reloadHydrated(page);
     await expect(headerCartLink(page, 2)).toBeVisible();
     await expect
       .poll(() => readCart(page))
@@ -331,7 +332,7 @@ test.describe("TC-PG-GDS-002-504 an unknown or non-public Goods is Not Found wit
   }) => {
     for (const bad of ["not-a-uuid", GOODS.tshirt.toUpperCase(), "1", "abc%20def"]) {
       await fixClock(page);
-      const response = await page.goto(`/goods/${bad}`);
+      const response = await gotoHydrated(page, `/goods/${bad}`);
       expect(response?.status(), bad).toBe(404);
       await expect(h1(page), bad).toHaveText(copy.notFound.title);
     }
@@ -346,7 +347,7 @@ test.describe("TC-PG-GDS-002-504 an unknown or non-public Goods is Not Found wit
     await expect(main(page)).not.toContainText(/非公開/);
     await expect(addButton(main(page))).toHaveCount(0);
     const hidden = await main(page).innerText();
-    await page.goto("/goods/a0000000-0000-4000-8000-0000000000ff");
+    await gotoHydrated(page, "/goods/a0000000-0000-4000-8000-0000000000ff");
     await expect(h1(page)).toHaveText(copy.notFound.title);
     expect(await main(page).innerText()).toBe(hidden);
   });
@@ -396,7 +397,7 @@ test.describe("TC-PG-GDS-002-506 the Goods list links resolve to the detail page
   test("opens a detail page from the list, adds, and returns to the list", async ({ page }) => {
     await fixClock(page);
     await seedLocalStorage(page, {});
-    await page.goto("/goods");
+    await gotoHydrated(page, "/goods");
     const goods = detail(GOODS.tshirt);
     await expect(main(page).getByRole("listitem")).toHaveCount(6);
     await main(page).getByRole("link", { name: goods.name, exact: true }).click();

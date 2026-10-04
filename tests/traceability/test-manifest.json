@@ -6529,6 +6529,121 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-CRT-001-541",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-003"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock mode; localStorage Cart writes forced to fail",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "a failed quantity save is reported; stored Cart and Header count unchanged; a failed removal keeps the row and the stored Cart"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-GDS-002-541",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": ["PG-GDS-002", "FR-CRT-001"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock mode; localStorage Cart writes forced to fail",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "failure alert shown, no success announcement, nothing stored"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-CRT-001-542",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-003"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock mode; localStorage Cart reads forced to fail",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "unreadable store reported as failure, never as an empty Cart; no success on add"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-TST-FLK-001-001",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": ["TST-FLK-001"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Synthetic origin served by a route handler; no application code",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "helper waits for html[data-hydrated] and names the missing signal when absent"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-TST-FLK-001-002",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": ["TST-FLK-001"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Synthetic origin served by a route handler; no application code",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "each seedLocalStorage call seeds once per tab; a reload does not re-seed"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
     }
   ]
 }

@@ -26,6 +26,7 @@ import {
   type StoredLine,
   writeStorage,
 } from "../harness/browser/cart.ts";
+import { gotoHydrated, reloadHydrated } from "../harness/browser/hydration.ts";
 import {
   dbJson,
   fixClock,
@@ -61,7 +62,7 @@ async function open(
 ): Promise<void> {
   await fixClock(page);
   await seedLocalStorage(page, lines === null ? entries : { ...cartEntries(lines), ...entries });
-  await page.goto("/cart");
+  await gotoHydrated(page, "/cart");
 }
 
 async function openRows(
@@ -90,14 +91,14 @@ test.describe("TC-PG-CRT-001-501 a guest adds Entry and Goods, changes the quant
   }) => {
     await fixClock(page);
     await seedLocalStorage(page, {});
-    await page.goto("/entry");
+    await gotoHydrated(page, "/entry");
     const regular = rowByHeading(page, offeringName(OFFERING.regular));
     await expect(regular).toBeVisible();
     await quantityInput(regular).fill("2");
     await addButton(regular).click();
     await expect(headerCartLink(page, 2)).toBeVisible();
 
-    await page.goto(`/goods/${GOODS.tshirt}`);
+    await gotoHydrated(page, `/goods/${GOODS.tshirt}`);
     await expect(h1(page)).toHaveText(expectedGoodsDetail(GOODS.tshirt).name);
     await addButton(main(page)).click();
     await expect(headerCartLink(page, 3)).toBeVisible();
@@ -125,7 +126,7 @@ test.describe("TC-PG-CRT-001-501 a guest adds Entry and Goods, changes the quant
     await expect.poll(() => readCart(page)).toEqual(stored([entryLine(OFFERING.regular, 3)]));
     await expect(headerCartLink(page, 3)).toBeVisible();
 
-    await page.reload();
+    await reloadHydrated(page);
     await expect(rows(page)).toHaveCount(1);
     await expect(quantityInput(rowByHeading(page, offeringName(OFFERING.regular)))).toHaveValue(
       "3",
@@ -630,7 +631,7 @@ test.describe("TC-PG-CRT-001-509 Karaoke cannot be added and the Cart says it is
       ([key, value]) => window.localStorage.setItem(key as string, value as string),
       [KEYS.cart, raw],
     );
-    await page.reload();
+    await reloadHydrated(page);
     await expect(alert(page)).toContainText(copy.cart.corrupted.title);
     await expect(rows(page)).toHaveCount(0);
     expect(await readCartRaw(page)).toBe(raw);
@@ -684,7 +685,7 @@ test.describe("TC-PG-CRT-001-510 a damaged Cart is reported with an explicit res
       await expect(
         page.getByRole("banner").getByRole("link", { name: /カート（\d+点）/ }),
       ).toHaveCount(0);
-      await page.reload();
+      await reloadHydrated(page);
       await expect(alert(page)).toContainText(copy.cart.corrupted.title);
       expect(await readCartRaw(page)).toBe(raw);
     });
@@ -776,7 +777,7 @@ test.describe("TC-PG-CRT-001-512 prices come from the port on every load and nev
       KEYS.db,
       dbJson(priceEdit("offering", OFFERING.regular, "3300"))[KEYS.db] ?? "",
     );
-    await page.reload();
+    await reloadHydrated(page);
     await expect(rows(page)).toHaveCount(1);
     await expect(rows(page).nth(0)).toContainText("¥3,300");
     await expect(rows(page).nth(0)).toContainText("¥6,600");

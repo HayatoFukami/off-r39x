@@ -361,3 +361,20 @@ focus 順は DOM 順と一致させる。Entry / Goods では**数量入力の�
 10. **title**: `copy.pageTitle` は S4 のテストが全 key を固定しているため、S5 の title は `copy.entry` / `copy.cart` / `copy.goods.detail` の `pageTitle` に置く。
 11. **Cache-Control**: `/entry` と `/cart` は静的 route として S4 §4 と同じ扱い（`private` / `no-store` を含まない）。
 12. **Goods 詳細の `not_found`**: S4 の Announcement 詳細と同じく、client が Not Found 表示（HTTP 200）。不正な UUID だけ server の `notFound()`（HTTP 404）。
+
+## 9. Hydration-ready signal（検証 round 1 で追加。SPEC-170 §69 / TST-FLK-001）
+
+mobile-chromium で、React の hydration 完了前に test が操作・DOM 変更・待機を始めると、click が捨てられる、`main` に足した要素が hydration で消える、5 秒の待機が尽きる、といった間欠失敗が起きる（runner retry は 0 なので許されない）。
+
+- Web は root layout（`app/layout.tsx`）の `<body>` 内に、**子の後ろ**へ極小の client component を 1 つ置き、`useEffect`（mount 時 1 回）で `document.documentElement.dataset.hydrated = "true"` を設定する。表示せず（`null` を返す）、business データ・token・storage は読まない。
+- ハーネスは `tests/harness/browser/hydration.ts` の `gotoHydrated` / `reloadHydrated` / `waitForHydration` で `html[data-hydrated="true"]` を最大 15 秒待つ。無ければ「production の signal が無い」と明示するエラーで失敗する。
+- 対象 spec: `layout-*`、`public-*`、`entry-sales`、`goods-detail`、`cart-*`。error boundary を検査する `system-pages` / `layout-runtime-errors` / `dev-scenarios` / `smoke` は対象外（root layout が置き換わる可能性があるため）。
+- `seedLocalStorage` は呼び出しごとに別の sessionStorage flag を使う（同じ page への 2 回目以降の呼び出しも次の navigation で反映される）。
+
+### 9.3 Host stall の扱い（検証 round 2）
+
+Windows dev host の loopback stall（`playwright.config.ts` 参照）が、hydration 待機の間欠失敗として現れる。round 1 後の実測（workers=2、両 project の full run）は、coder 側 3 回中 1 回失敗（public-common:106）、tester 側 round 2 の 1 回目で全 pass、2 回目で 1 回失敗（public-karaoke:306、mobile、SSR 済みで `data-hydrated` 未設定）、diagnostics 導入後の full run 2 回は全 pass、同条件の 4 spec x4 repeat は 464 件中 1 件失敗が 1 回・0 件が 2 回。約 1 run あたり 20〜30% の確率で 1 件の stall が出る。workers=1 の full run は 454 s で全 pass。
+
+- `waitForHydration` は request ledger（`request` / `requestfinished` / `requestfailed`）、`pageerror`、`console.error` を記録する。15 秒で未観測のとき、failed request・pageerror・console error のいずれかがあれば **厳密に失敗**（`APP-DEFECT-SUSPECTED`）。何も無ければ **1 回だけ**さらに 15 秒（合計 30 秒上限）待つ。それでも無ければ `HOST-STALL-SUSPECTED` として pending / failed 一覧（path のみ、query / body は含めない）付きで失敗する。
+- これは retry ではない。test の操作は繰り返さず、runner retry は 0 のまま（SPEC-170 §69）。
+- workers=2 を既定のままにする。workers=1 は不安定が続く場合の逃げ道として `--workers=1` で使う。

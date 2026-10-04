@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { copy } from "../../apps/web/src/presentation/copy/ja.ts";
+import { gotoHydrated, reloadHydrated } from "../harness/browser/hydration.ts";
 import {
   authenticatedSession,
   cartJson,
@@ -32,7 +33,7 @@ const drawer = (page: Page) =>
 
 test.describe("TC-PG-PUB-001-301 Global Header content for a guest (SPEC-050 8.2, 8.5)", () => {
   test("shows site name, CTA, Cart and Login, and no member-only controls", async ({ page }) => {
-    await page.goto("/");
+    await gotoHydrated(page, "/");
     await expect(header(page)).toBeVisible();
     await expect(header(page).getByRole("link", { name: SITE_NAME, exact: true })).toHaveAttribute(
       "href",
@@ -58,7 +59,7 @@ test.describe("TC-PG-PUB-001-301 Global Header content for a guest (SPEC-050 8.2
   test("desktop shows the primary nav and registration in the header; mobile collapses them", async ({
     page,
   }) => {
-    await page.goto("/");
+    await gotoHydrated(page, "/");
     const names = [
       [copy.layout.nav.items.event, "/"],
       [copy.layout.nav.items.entry, "/entry"],
@@ -94,7 +95,7 @@ test.describe("TC-PG-PUB-001-302 Global Header stays fixed while scrolling (SPEC
   test("remains at the top of the viewport with the CTA and Cart reachable after scrolling", async ({
     page,
   }) => {
-    await page.goto("/");
+    await gotoHydrated(page, "/");
     await page.evaluate(() => {
       const spacer = document.createElement("div");
       spacer.style.height = "4000px";
@@ -114,7 +115,7 @@ test.describe("TC-PG-PUB-001-302 Global Header stays fixed while scrolling (SPEC
 test.describe("TC-PG-PUB-001-303 main CTA is the same for guests and authenticated users (SPEC-050 8.5)", () => {
   test("authenticated user sees the same CTA and Mypage instead of Login", async ({ page }) => {
     await seedLocalStorage(page, { [KEYS.session]: authenticatedSession() });
-    await page.goto("/");
+    await gotoHydrated(page, "/");
     await expect(cta(page)).toBeVisible();
     await expect(cta(page)).toHaveAttribute("href", "/entry");
     await expect(cta(page)).toBeInViewport();
@@ -141,7 +142,7 @@ test.describe("TC-PG-CRT-001-301 Cart link shows the total quantity in text and 
         { kind: "GOODS", quantity: 2 },
       ]),
     });
-    await page.goto("/");
+    await gotoHydrated(page, "/");
     const link = cartLink(page, copy.layout.cart.labelWithCount(3));
     await expect(link).toBeVisible();
     await expect(link).toHaveAttribute("href", "/cart");
@@ -172,7 +173,7 @@ test.describe("TC-PG-CRT-001-301 Cart link shows the total quantity in text and 
   ] as const) {
     test(`shows no number for ${label}`, async ({ page }) => {
       await seedLocalStorage(page, entries);
-      await page.goto("/");
+      await gotoHydrated(page, "/");
       const link = cartLink(page);
       await expect(link).toBeVisible();
       await expect(link).not.toContainText(/\d/);
@@ -181,7 +182,7 @@ test.describe("TC-PG-CRT-001-301 Cart link shows the total quantity in text and 
   }
 
   test("follows a change made in another tab (storage event)", async ({ page, context }) => {
-    await page.goto("/");
+    await gotoHydrated(page, "/");
     await expect(cartLink(page)).toBeVisible();
     const other = await context.newPage();
     await other.goto("/");
@@ -199,7 +200,7 @@ test.describe("TC-PG-PUB-001-304 Account area follows the session (SPEC-050 8.2,
     page,
   }) => {
     await seedLocalStorage(page, { [KEYS.session]: authenticatedSession() });
-    await page.goto("/");
+    await gotoHydrated(page, "/");
     const button = page.getByRole("button", {
       name: copy.layout.account.menuButton,
       exact: true,
@@ -234,7 +235,7 @@ test.describe("TC-PG-PUB-001-304 Account area follows the session (SPEC-050 8.2,
     page,
   }) => {
     await seedLocalStorage(page, { [KEYS.session]: authenticatedSession() });
-    await page.goto("/");
+    await gotoHydrated(page, "/");
     await page.getByRole("button", { name: copy.layout.account.menuButton, exact: true }).click();
     await page.getByRole("button", { name: copy.layout.account.logout, exact: true }).click();
     await expect(page).toHaveURL(/\/$/);
@@ -246,7 +247,7 @@ test.describe("TC-PG-PUB-001-304 Account area follows the session (SPEC-050 8.2,
     const session =
       stored === null ? { kind: "guest" } : (JSON.parse(stored) as { session: unknown }).session;
     expect(session).toEqual({ kind: "guest" });
-    await page.reload();
+    await reloadHydrated(page);
     await expect(loginLink(page)).toBeVisible();
   });
 
@@ -267,7 +268,7 @@ test.describe("TC-PG-PUB-001-304 Account area follows the session (SPEC-050 8.2,
         },
       }),
     });
-    await page.goto("/");
+    await gotoHydrated(page, "/");
     await expect(loginLink(page)).toBeVisible();
     await expect(
       page.getByRole("link", { name: copy.layout.account.mypage, exact: true }),
@@ -277,7 +278,7 @@ test.describe("TC-PG-PUB-001-304 Account area follows the session (SPEC-050 8.2,
 
   test("a guest session object is shown as guest", async ({ page }) => {
     await seedLocalStorage(page, { [KEYS.session]: sessionJson() });
-    await page.goto("/");
+    await gotoHydrated(page, "/");
     await expect(loginLink(page)).toBeVisible();
   });
 });
@@ -302,7 +303,7 @@ test.describe("TC-PG-PUB-001-305 keyboard order follows the DOM and starts with 
   test("tabs through skip link, site name, navigation, CTA, Cart and account links in order", async ({
     page,
   }) => {
-    await page.goto("/");
+    await gotoHydrated(page, "/");
     const l = copy.layout;
     const expected = isDesktop(page)
       ? [
@@ -322,7 +323,7 @@ test.describe("TC-PG-PUB-001-305 keyboard order follows the DOM and starts with 
   });
 
   test("the skip link targets the single main landmark and moves focus to it", async ({ page }) => {
-    await page.goto("/");
+    await gotoHydrated(page, "/");
     await page.keyboard.press("Tab");
     const skip = page.getByRole("link", { name: copy.layout.skipLink, exact: true });
     await expect(skip).toBeFocused();
@@ -339,7 +340,7 @@ test.describe("TC-PG-PUB-001-306 Mobile Drawer: focus trap, Escape, focus return
   test("keeps CTA, Cart and Login outside the drawer and inside the viewport without horizontal scroll", async ({
     page,
   }) => {
-    await page.goto("/");
+    await gotoHydrated(page, "/");
     await expect(cta(page)).toBeInViewport();
     await expect(cartLink(page)).toBeInViewport();
     await expect(loginLink(page)).toBeInViewport();
@@ -353,7 +354,7 @@ test.describe("TC-PG-PUB-001-306 Mobile Drawer: focus trap, Escape, focus return
   test("opens as a labelled dialog with the 4 navigation links and registration, without CTA / Cart / Login", async ({
     page,
   }) => {
-    await page.goto("/");
+    await gotoHydrated(page, "/");
     if (isDesktop(page)) {
       await expect(menuTrigger(page)).toHaveCount(0);
       await expect(drawer(page)).toHaveCount(0);
@@ -387,7 +388,7 @@ test.describe("TC-PG-PUB-001-306 Mobile Drawer: focus trap, Escape, focus return
   });
 
   test("traps focus while open (Tab and Shift+Tab never leave the dialog)", async ({ page }) => {
-    await page.goto("/");
+    await gotoHydrated(page, "/");
     if (isDesktop(page)) return;
     await menuTrigger(page).click();
     const dialog = drawer(page);
@@ -408,7 +409,7 @@ test.describe("TC-PG-PUB-001-306 Mobile Drawer: focus trap, Escape, focus return
   });
 
   test("Escape closes the drawer and returns focus to the trigger", async ({ page }) => {
-    await page.goto("/");
+    await gotoHydrated(page, "/");
     if (isDesktop(page)) return;
     await menuTrigger(page).click();
     await expect(drawer(page)).toBeVisible();
@@ -419,7 +420,7 @@ test.describe("TC-PG-PUB-001-306 Mobile Drawer: focus trap, Escape, focus return
   });
 
   test("the close button closes the drawer and returns focus to the trigger", async ({ page }) => {
-    await page.goto("/");
+    await gotoHydrated(page, "/");
     if (isDesktop(page)) return;
     await menuTrigger(page).click();
     await drawer(page).getByRole("button", { name: copy.layout.drawer.close, exact: true }).click();
@@ -428,7 +429,7 @@ test.describe("TC-PG-PUB-001-306 Mobile Drawer: focus trap, Escape, focus return
   });
 
   test("choosing a link navigates and closes the drawer", async ({ page }) => {
-    await page.goto("/");
+    await gotoHydrated(page, "/");
     if (isDesktop(page)) return;
     await menuTrigger(page).click();
     await drawer(page)

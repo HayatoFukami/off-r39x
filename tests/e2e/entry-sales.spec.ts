@@ -20,6 +20,7 @@ import {
   rowByHeading,
   writeStorage,
 } from "../harness/browser/cart.ts";
+import { gotoHydrated, reloadHydrated } from "../harness/browser/hydration.ts";
 import { dbJson, fixClock, LOADING_FORBIDDEN, publicScenario } from "../harness/browser/public.ts";
 import {
   authenticatedSession,
@@ -38,7 +39,7 @@ const h1 = (page: Page) => main(page).getByRole("heading", { level: 1 });
 async function open(page: Page, entries: Record<string, string> = {}): Promise<number | undefined> {
   await fixClock(page);
   await seedLocalStorage(page, entries);
-  const response = await page.goto("/entry");
+  const response = await gotoHydrated(page, "/entry");
   return response?.status();
 }
 
@@ -269,7 +270,7 @@ test.describe("TC-PG-TKT-001-503 adding to the Cart stores only a reference and 
     await openReady(page);
     await addButton(row(page, OFFERING.regular)).click();
     await expect(headerCartLink(page, 1)).toBeVisible();
-    await page.reload();
+    await reloadHydrated(page);
     await expect(main(page).getByRole("listitem")).toHaveCount(6);
     await expect(headerCartLink(page, 1)).toBeVisible();
     await expect

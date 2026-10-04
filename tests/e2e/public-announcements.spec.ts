@@ -1,6 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import { copy } from "../../apps/web/src/presentation/copy/ja.ts";
 import { formatJstDate } from "../../apps/web/src/presentation/format/datetime.ts";
+import { gotoHydrated } from "../harness/browser/hydration.ts";
 import {
   expectedAnnouncements,
   fixClock,
@@ -23,7 +24,7 @@ async function open(
 ): Promise<number | undefined> {
   await fixClock(page);
   await seedLocalStorage(page, entries);
-  const response = await page.goto(route);
+  const response = await gotoHydrated(page, route);
   return response?.status();
 }
 
@@ -186,7 +187,7 @@ test.describe("TC-PG-PUB-003-612 an unpublished, unknown or malformed announceme
       page,
     }) => {
       await expectDetailRouteWorks(page);
-      await page.goto(`/announcements/${ref}`);
+      await gotoHydrated(page, `/announcements/${ref}`);
       await expect(h1(page)).toHaveText(copy.notFound.title);
       await expect(h1(page)).toHaveCount(1);
       await expect(main(page)).toContainText(copy.notFound.description);
@@ -204,10 +205,10 @@ test.describe("TC-PG-PUB-003-612 an unpublished, unknown or malformed announceme
 
   test("is indistinguishable between a draft and an unknown reference", async ({ page }) => {
     await expectDetailRouteWorks(page);
-    await page.goto(`/announcements/${ANNOUNCEMENT.draft}`);
+    await gotoHydrated(page, `/announcements/${ANNOUNCEMENT.draft}`);
     await expect(h1(page)).toHaveText(copy.notFound.title);
     const draft = (await main(page).innerText()).replaceAll(/\s+/g, " ");
-    await page.goto("/announcements/ab000000-0000-4000-8000-0000000000ff");
+    await gotoHydrated(page, "/announcements/ab000000-0000-4000-8000-0000000000ff");
     await expect(h1(page)).toHaveText(copy.notFound.title);
     const unknown = (await main(page).innerText()).replaceAll(/\s+/g, " ");
     expect(draft).toBe(unknown);
@@ -218,7 +219,7 @@ test.describe("TC-PG-PUB-003-612 an unpublished, unknown or malformed announceme
   }) => {
     await expectDetailRouteWorks(page);
     for (const bad of ["not-a-uuid", "12345", ANNOUNCEMENT.latest.toUpperCase()]) {
-      const response = await page.goto(`/announcements/${bad}`);
+      const response = await gotoHydrated(page, `/announcements/${bad}`);
       expect(response?.status(), bad).toBe(404);
       await expect(h1(page), bad).toHaveText(copy.notFound.title);
       await expect(main(page), bad).not.toContainText(bad);

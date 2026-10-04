@@ -6,6 +6,7 @@ import {
   formatJstDateTime,
   formatJstTimeRange,
 } from "../../apps/web/src/presentation/format/datetime.ts";
+import { gotoHydrated } from "../harness/browser/hydration.ts";
 import {
   expectedBuckets,
   expectedSales,
@@ -35,7 +36,7 @@ async function open(
 ): Promise<number | undefined> {
   await fixClock(page);
   await seedLocalStorage(page, entries);
-  const response = await page.goto(route);
+  const response = await gotoHydrated(page, route);
   return response?.status();
 }
 
@@ -432,7 +433,7 @@ test.describe("TC-PG-KRK-002-615 a bad date is Not Found and the page has no pur
     await open(page, dayRoute(D1));
     await expect(bucketRegion(page, 10)).toBeVisible();
     for (const bad of ["2027-02-30", "2027-13-01", "abc", "2027-3-8", "20270308"]) {
-      const response = await page.goto(`/karaoke/schedule/${bad}`);
+      const response = await gotoHydrated(page, `/karaoke/schedule/${bad}`);
       expect(response?.status(), bad).toBe(404);
       await expect(h1(page), bad).toHaveText(copy.notFound.title);
       await expect(main(page), bad).not.toContainText(bad);

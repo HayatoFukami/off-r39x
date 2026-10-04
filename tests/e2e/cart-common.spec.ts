@@ -13,6 +13,7 @@ import {
   resetStorage,
   rowByHeading,
 } from "../harness/browser/cart.ts";
+import { gotoHydrated } from "../harness/browser/hydration.ts";
 import {
   fixClock,
   hasLevelSkip,
@@ -93,7 +94,7 @@ const PAGES: readonly PageCase[] = [
 async function load(page: Page, item: PageCase, extra: Record<string, string> = {}): Promise<void> {
   await fixClock(page);
   await seedLocalStorage(page, { ...item.entries(), ...extra });
-  await page.goto(item.route);
+  await gotoHydrated(page, item.route);
 }
 
 test.describe("TC-PG-CRT-001-531 every S5 page has a metadata title and one logical heading hierarchy with the shell landmarks (SPEC-050 7, 25)", () => {
@@ -152,14 +153,14 @@ test.describe("TC-PG-CRT-001-533 the S5 pages run without runtime or hydration e
     const runtime = watchRuntimeErrors(page);
     await fixClock(page);
     await seedLocalStorage(page, {});
-    await page.goto("/entry");
+    await gotoHydrated(page, "/entry");
     const regular = rowByHeading(page, offeringName(OFFERING.regular));
     await quantityInput(regular).fill("0");
     await quantityInput(regular).fill("2");
     await addButton(regular).click();
-    await page.goto(`/goods/${GOODS.towel}`);
+    await gotoHydrated(page, `/goods/${GOODS.towel}`);
     await addButton(main(page)).click();
-    await page.goto("/cart");
+    await gotoHydrated(page, "/cart");
     await expect(main(page).getByRole("listitem")).toHaveCount(2);
     await quantityInput(main(page).getByRole("listitem").nth(0)).fill("3");
     await removeButton(main(page).getByRole("listitem").nth(1)).click();
@@ -180,11 +181,11 @@ test.describe("TC-PG-CRT-001-533 the S5 pages run without runtime or hydration e
       { [KEYS.cart]: "not-json" },
     ];
     await fixClock(page);
-    await page.goto("/");
+    await gotoHydrated(page, "/");
     for (const extra of variants) {
       for (const item of PAGES) {
         await resetStorage(page, { ...item.entries(), ...extra });
-        await page.goto(item.route);
+        await gotoHydrated(page, item.route);
         await expect(page.getByRole("banner")).toBeVisible();
         await expect(main(page).getByRole("heading", { level: 1 })).toBeVisible();
         await expect(main(page)).not.toContainText(copy.notFound.description);
@@ -211,13 +212,13 @@ test.describe("TC-PG-CRT-001-534 no horizontal scroll at 390px and the primary a
     await page.setViewportSize({ width: 390, height: 844 });
     await fixClock(page);
     await seedLocalStorage(page, cartEntries(CART_LINES));
-    await page.goto("/entry");
+    await gotoHydrated(page, "/entry");
     const regular = rowByHeading(page, offeringName(OFFERING.regular));
     await expect(addButton(regular)).toBeVisible();
     await addButton(regular).scrollIntoViewIfNeeded();
     await expect(addButton(regular)).toBeInViewport();
     await expect(quantityInput(regular)).toBeInViewport();
-    await page.goto("/cart");
+    await gotoHydrated(page, "/cart");
     const first = main(page).getByRole("listitem").nth(0);
     await expect(first).toBeVisible();
     await expect(quantityInput(first)).toBeInViewport();
@@ -229,7 +230,7 @@ test.describe("TC-PG-CRT-001-534 no horizontal scroll at 390px and the primary a
 test.describe("TC-SEC-WEB-009-602 the static S5 routes are not served as private / no-store (informational; SEC-WEB-009 covers protected routes)", () => {
   for (const route of ["/entry", "/cart"]) {
     test(`${route} has no private / no-store Cache-Control`, async ({ page }) => {
-      const response = await page.goto(route);
+      const response = await gotoHydrated(page, route);
       expect(response?.status()).toBe(200);
       const cacheControl = (response?.headers()["cache-control"] ?? "").toLowerCase();
       expect(cacheControl).not.toContain("private");
@@ -242,15 +243,15 @@ test.describe("TC-PG-CRT-001-535 the S5 pages never call the purchase API or wri
   test("a full Cart session leaves the mock database byte-identical", async ({ page }) => {
     await fixClock(page);
     await seedLocalStorage(page, {});
-    await page.goto("/entry");
+    await gotoHydrated(page, "/entry");
     await expect(main(page).getByRole("listitem")).toHaveCount(6);
     const dbBefore = await page.evaluate((key) => window.localStorage.getItem(key), KEYS.db);
     expect(dbBefore).not.toBeNull();
     const regular = rowByHeading(page, offeringName(OFFERING.regular));
     await addButton(regular).click();
-    await page.goto(`/goods/${GOODS.towel}`);
+    await gotoHydrated(page, `/goods/${GOODS.towel}`);
     await addButton(main(page)).click();
-    await page.goto("/cart");
+    await gotoHydrated(page, "/cart");
     await expect(main(page).getByRole("listitem")).toHaveCount(2);
     await quantityInput(main(page).getByRole("listitem").nth(0)).fill("4");
     await removeButton(main(page).getByRole("listitem").nth(1)).click();
