@@ -12,6 +12,7 @@ import {
   heading1,
   linkIn,
   loginWith,
+  MARKER_PROTECTED_TEXT,
   mainOf,
   readSession,
   SENTINEL_PASSWORD,
@@ -71,12 +72,14 @@ test.describe("TC-PG-AUTH-003-301 Login returns to the logical destination: Cart
     expect(urlOf(page).search).toBe("");
   });
 
-  test("continue=mypage and no continue both land on the Mypage placeholder", async ({ page }) => {
+  test("continue=mypage and no continue both land on the Mypage Overview (PG-MYP-001)", async ({
+    page,
+  }) => {
     await openLogin(page, "?continue=mypage");
     await loginWith(page, EMAIL.demo);
     await expect(page).toHaveURL(/\/mypage$/);
     await expect(heading1(page)).toHaveText(copy.mypage.heading);
-    await expect(mainOf(page)).toContainText(copy.mypage.protectedMarker);
+    await expect(mainOf(page)).toContainText(MARKER_PROTECTED_TEXT);
   });
 
   test("no continue: PG-MYP-001 (/mypage), and the Header switches to the member controls", async ({

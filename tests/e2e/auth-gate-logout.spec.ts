@@ -72,7 +72,7 @@ test.describe("TC-AR-SES-007-301 AuthGate keeps protected content from a guest (
     await open(page, "/mypage", { [KEYS.session]: authenticatedSession() });
     await expect(page).toHaveURL(/\/mypage$/);
     await expect(heading1(page)).toHaveText(copy.mypage.heading);
-    await expect(mainOf(page)).toContainText(copy.mypage.protectedMarker);
+    await expect(mainOf(page)).toContainText(MARKER_PROTECTED_TEXT);
     await expect(headerMypage(page)).toBeVisible();
     await expect(accountMenuButton(page)).toBeVisible();
     await expect(headerLogin(page)).toHaveCount(0);
@@ -107,7 +107,7 @@ test.describe("TC-AR-SES-007-301 AuthGate keeps protected content from a guest (
     ).toBeVisible();
     await expect(page).toHaveURL(/\/mypage$/);
     expect(await sawProtectedText(page)).toBe(false);
-    await expect(mainOf(page)).not.toContainText(copy.mypage.protectedMarker);
+    await expect(mainOf(page)).not.toContainText(MARKER_PROTECTED_TEXT);
   });
 
   test("the gate does not wrongly lock a verified user out after a reload", async ({ page }) => {
@@ -155,7 +155,7 @@ test.describe("TC-PG-AUTH-003-311 Logout goes Home, keeps the Cart, and back nev
     await expect(page).toHaveURL(/\/account\/login\?continue=mypage$/);
     await expect(heading1(page)).toHaveText(copy.auth.login.heading);
     expect(await sawProtectedText(page)).toBe(false);
-    await expect(mainOf(page)).not.toContainText(copy.mypage.protectedMarker);
+    await expect(mainOf(page)).not.toContainText(MARKER_PROTECTED_TEXT);
     expect(await readSession(page)).toEqual({ kind: "guest" });
   });
 
@@ -201,7 +201,7 @@ test.describe("TC-AR-SES-007-302 the gate follows session changes made elsewhere
     await gotoHydrated(other, "/");
     await writeStorage(other, KEYS.session, sessionJson({ kind: "guest" }));
     await expect(page).toHaveURL(/\/account\/login\?continue=mypage$/);
-    await expect(mainOf(page)).not.toContainText(copy.mypage.protectedMarker);
+    await expect(mainOf(page)).not.toContainText(MARKER_PROTECTED_TEXT);
   });
 
   test("a restored page (pageshow with persisted=true, as after bfcache) re-checks the session", async ({
@@ -218,7 +218,7 @@ test.describe("TC-AR-SES-007-302 the gate follows session changes made elsewhere
       window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
     });
     await expect(page).toHaveURL(/\/account\/login\?continue=mypage$/, { timeout: 20_000 });
-    await expect(mainOf(page)).not.toContainText(copy.mypage.protectedMarker);
+    await expect(mainOf(page)).not.toContainText(MARKER_PROTECTED_TEXT);
   });
 });
 

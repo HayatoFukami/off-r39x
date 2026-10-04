@@ -110,7 +110,7 @@ describe("TC-DEV-WEB-001-502 the S6 page.tsx files are thin server shells (DEV-W
     });
   }
 
-  it("the (self) layout is a thin shell around AuthGate and the Mypage placeholder keeps its h1 inside it", () => {
+  it("the (self) layout is a thin shell around AuthGate and the Mypage Overview (S8 replaced the S6 placeholder) renders inside it", () => {
     const layout = stripComments(read("app/(self)/layout.tsx"));
     expect(layout).toMatch(/AuthGate/);
     expect(layout).toMatch(/children/);
@@ -118,8 +118,7 @@ describe("TC-DEV-WEB-001-502 the S6 page.tsx files are thin server shells (DEV-W
     const mypage = stripComments(read("app/(self)/mypage/page.tsx"));
     expect(mypage).toMatch(/export\s+const\s+metadata/);
     expect(mypage).toMatch(/copy\.mypage\.pageTitle/);
-    expect(mypage).toMatch(/copy\.mypage\.heading/);
-    expect(mypage).toMatch(/copy\.mypage\.protectedMarker/);
+    expect(mypage).toMatch(/MypageOverviewPage/);
     expect(mypage).not.toMatch(/<main[\s>]/);
   });
 });

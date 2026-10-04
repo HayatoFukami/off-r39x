@@ -5,7 +5,7 @@ import { stringLeaves } from "../../../harness/presentation.ts";
 // Contract: tests/contracts/s6-auth.md section 1 (SPEC-050 15, 25, SPEC-140 SEC-API-027, SPEC-060 AR-CONT-004).
 
 describe("TC-PG-AUTH-003-401 the S6 copy is the contracted wording (SPEC-050 15.1-15.5, 24.3)", () => {
-  it("names the five Pages and the placeholder Mypage", () => {
+  it("names the five Pages and the Mypage", () => {
     expect(copy.auth.register.heading).toBe("アカウント登録");
     expect(copy.auth.register.pageTitle).toBe("アカウント登録");
     expect(copy.auth.verify.heading).toBe("メールアドレスの確認");
@@ -18,7 +18,6 @@ describe("TC-PG-AUTH-003-401 the S6 copy is the contracted wording (SPEC-050 15.
     expect(copy.auth.resetComplete.pageTitle).toBe("新しいパスワードの設定");
     expect(copy.mypage.heading).toBe("マイページ");
     expect(copy.mypage.pageTitle).toBe("マイページ");
-    expect(copy.mypage.protectedMarker).toBe("ログイン中の方だけに表示される内容です");
   });
 
   it("has the field labels, the password hint and the form-level wording literally", () => {
