@@ -438,7 +438,9 @@ export const copy = {
       goods: "Goods",
       logout: "ログアウト",
     },
-    drawer: { open: "メニューを開く", close: "メニューを閉じる", title: "メニュー" },
+    menu: { button: "メニュー" },
+    // Placeholder copy: the final label is defined separately and swapped here.
+    floatingTicket: { label: "入場券を手に入れる" },
     sponsors: { regionLabel: "協賛", externalSuffix: "（外部サイト）" },
     mockBadge: "UIモック表示中",
   },

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import type { PrimaryNavItem } from "../../config/site";
 import { cn } from "../components/ui/cn";
 import { copy } from "../copy/ja";
@@ -9,7 +10,10 @@ type Props = {
   currentPath: string;
   orientation?: "row" | "column";
   className?: string;
+  id?: string;
   onNavigate?: () => void;
+  /** Extra list items after the navigation Links (for example a Link only some visitors need). */
+  extraItems?: ReactNode;
 };
 
 function isCurrent(currentPath: string, href: string): boolean {
@@ -24,10 +28,12 @@ export function PrimaryNav({
   currentPath,
   orientation = "row",
   className,
+  id,
   onNavigate,
+  extraItems,
 }: Props) {
   return (
-    <nav aria-label={label} className={className}>
+    <nav id={id} aria-label={label} className={className}>
       <ul className={cn("flex flex-wrap gap-1", orientation === "column" && "flex-col")}>
         {items.map((item) => (
           <li key={item.key}>
@@ -42,6 +48,7 @@ export function PrimaryNav({
             </Link>
           </li>
         ))}
+        {extraItems}
       </ul>
     </nav>
   );

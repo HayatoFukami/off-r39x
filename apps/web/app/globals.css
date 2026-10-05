@@ -41,3 +41,24 @@
     outline-offset: 2px;
   }
 }
+
+/* Section heading fade-in (SPEC-050 25). pending hides without removing from the DOM; Reduced motion shows every heading at once. */
+[data-reveal] {
+  transition:
+    opacity 500ms ease-out,
+    transform 500ms ease-out;
+}
+
+[data-reveal="pending"] {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-reveal],
+  [data-reveal="pending"] {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
