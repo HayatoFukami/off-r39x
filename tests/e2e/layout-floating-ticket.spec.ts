@@ -262,6 +262,64 @@ test.describe("TC-PG-PUB-001-313 at the end of the page the Floating Ticket Butt
   });
 });
 
+test.describe("TC-PG-PUB-001-313 narrow phone width (390px): button, badge and Footer controls do not overlap (SPEC-050 8.5, 24.1)", () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test("badge (left) and button (right) never meet, and at the page end the button covers no Footer element or control", async ({
+    page,
+  }) => {
+    await gotoHydrated(page, "/");
+    await settle(page);
+    const button = floatingTicket(page);
+    const badge = page.getByText(copy.layout.mockBadge, { exact: true });
+    await expect(button).toBeVisible();
+    await expect(badge).toBeVisible();
+    await expect(
+      page
+        .getByRole("contentinfo")
+        .getByRole("region", { name: copy.layout.sponsors.regionLabel, exact: true }),
+    ).toBeVisible();
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            Math.ceil(window.scrollY + window.innerHeight) >=
+            document.documentElement.scrollHeight - 1,
+        ),
+      )
+      .toBe(true);
+    const b = await button.boundingBox();
+    const g = await badge.boundingBox();
+    expect(b).not.toBeNull();
+    expect(g).not.toBeNull();
+    if (b === null || g === null) return;
+    expect(intersects(b, g)).toBe(false);
+    expect(b.x + b.width).toBeLessThanOrEqual(390);
+    const hits = await page.evaluate((box) => {
+      const out: string[] = [];
+      const own = document.querySelector("[data-testid='floating-ticket-button']");
+      for (const el of Array.from(
+        document.querySelectorAll("footer *, a[href], button, input, select, textarea"),
+      )) {
+        if (own?.contains(el) || (el.closest("footer") !== null && el.children.length > 0))
+          continue;
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 || r.height === 0) continue;
+        if (
+          r.x < box.x + box.width &&
+          box.x < r.x + r.width &&
+          r.y < box.y + box.height &&
+          box.y < r.y + r.height
+        )
+          out.push(el.tagName.toLowerCase());
+      }
+      return out;
+    }, b);
+    expect(hits).toEqual([]);
+  });
+});
+
 test.describe("TC-PG-PUB-001-314 the viewport meta enables safe-area insets for the fixed button (SPEC-050 8.5 Mobile safe area)", () => {
   test("has viewport-fit=cover and keeps width=device-width and initial-scale=1", async ({
     page,
