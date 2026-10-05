@@ -1,5 +1,10 @@
 import { expect, type Page, test } from "@playwright/test";
 import { copy } from "../../apps/web/src/presentation/copy/ja.ts";
+import {
+  openPrimaryMenu,
+  primaryMenuButton,
+  primaryMenuPanel,
+} from "../harness/browser/header-menu.ts";
 import { gotoHydrated, reloadHydrated } from "../harness/browser/hydration.ts";
 import {
   authenticatedSession,
@@ -12,7 +17,8 @@ import {
   sessionJson,
 } from "../harness/browser/shell.ts";
 
-// UI mock suite (TST-E2E-004: auxiliary, not G8). Contract: tests/contracts/s3-layout.md sections 4.2-4.7, 5.
+// UI mock suite (TST-E2E-004: auxiliary, not G8). Contract: tests/contracts/s3-layout.md sections 4.2-4.7, 5;
+// tests/contracts/s10-header-float-reveal.md section 2 (Header menu replaces the desktop nav and the mobile drawer).
 // SPEC-050 8.1-8.3, 8.5, 24.1, 25, 31 item 29. Copy comes from presentation/copy/ja.ts (read inside tests only).
 
 const header = (page: Page) => page.getByRole("banner");
@@ -24,12 +30,6 @@ const loginLink = (page: Page) =>
   header(page).getByRole("link", { name: copy.layout.account.login, exact: true });
 const registerLink = (page: Page) =>
   page.getByRole("link", { name: copy.layout.account.register, exact: true });
-const primaryNav = (page: Page) =>
-  page.getByRole("navigation", { name: copy.layout.nav.primaryLabel, exact: true });
-const menuTrigger = (page: Page) =>
-  header(page).getByRole("button", { name: copy.layout.drawer.open, exact: true });
-const drawer = (page: Page) =>
-  page.getByRole("dialog", { name: copy.layout.drawer.title, exact: true });
 
 test.describe("TC-PG-PUB-001-301 Global Header content for a guest (SPEC-050 8.2, 8.5)", () => {
   test("shows site name, CTA, Cart and Login, and no member-only controls", async ({ page }) => {
@@ -56,37 +56,30 @@ test.describe("TC-PG-PUB-001-301 Global Header content for a guest (SPEC-050 8.2
     ).toHaveCount(0);
   });
 
-  test("desktop shows the primary nav and registration in the header; mobile collapses them", async ({
+  test("the primary navigation is collapsed behind the menu button on both viewports; registration stays in the desktop header", async ({
     page,
   }) => {
     await gotoHydrated(page, "/");
-    const names = [
-      [copy.layout.nav.items.event, "/"],
-      [copy.layout.nav.items.entry, "/entry"],
-      [copy.layout.nav.items.karaoke, "/karaoke"],
-      [copy.layout.nav.items.goods, "/goods"],
-    ] as const;
+    // No Primary Navigation link and no navigation landmark is open in the Header (SPEC-050 8.5).
+    await expect(primaryMenuButton(page)).toBeVisible();
+    await expect(primaryMenuButton(page)).toHaveAttribute("aria-expanded", "false");
+    await expect(primaryMenuPanel(page)).toHaveCount(0);
+    for (const name of [
+      copy.layout.nav.items.event,
+      copy.layout.nav.items.entry,
+      copy.layout.nav.items.karaoke,
+      copy.layout.nav.items.goods,
+    ]) {
+      await expect(header(page).getByRole("link", { name, exact: true })).toHaveCount(0);
+    }
     if (isDesktop(page)) {
-      await expect(primaryNav(page)).toBeVisible();
-      for (const [name, href] of names) {
-        await expect(primaryNav(page).getByRole("link", { name, exact: true })).toHaveAttribute(
-          "href",
-          href,
-        );
-      }
-      await expect(primaryNav(page).getByRole("link")).toHaveCount(4);
       await expect(
         header(page).getByRole("link", { name: copy.layout.account.register, exact: true }),
       ).toHaveAttribute("href", "/account/register");
-      await expect(menuTrigger(page)).toHaveCount(0);
     } else {
-      await expect(primaryNav(page)).toHaveCount(0);
-      await expect(menuTrigger(page)).toBeVisible();
-      await expect(menuTrigger(page)).toHaveAttribute("aria-expanded", "false");
       await expect(
         header(page).getByRole("link", { name: copy.layout.account.register, exact: true }),
       ).toHaveCount(0);
-      await expect(drawer(page)).toHaveCount(0);
     }
   });
 });
@@ -300,7 +293,7 @@ test.describe("TC-PG-PUB-001-305 keyboard order follows the DOM and starts with 
     return names;
   }
 
-  test("tabs through skip link, site name, navigation, CTA, Cart and account links in order", async ({
+  test("tabs through skip link, site name, menu button, CTA, Cart and account links in order", async ({
     page,
   }) => {
     await gotoHydrated(page, "/");
@@ -309,16 +302,13 @@ test.describe("TC-PG-PUB-001-305 keyboard order follows the DOM and starts with 
       ? [
           l.skipLink,
           SITE_NAME,
-          l.nav.items.event,
-          l.nav.items.entry,
-          l.nav.items.karaoke,
-          l.nav.items.goods,
+          l.menu.button,
           l.cta.buyTickets,
           l.cart.label,
           l.account.login,
           l.account.register,
         ]
-      : [l.skipLink, SITE_NAME, l.drawer.open, l.cta.buyTickets, l.cart.label, l.account.login];
+      : [l.skipLink, SITE_NAME, l.menu.button, l.cta.buyTickets, l.cart.label, l.account.login];
     expect(await tabNames(page, expected.length)).toEqual(expected);
   });
 
@@ -336,107 +326,63 @@ test.describe("TC-PG-PUB-001-305 keyboard order follows the DOM and starts with 
   });
 });
 
-test.describe("TC-PG-PUB-001-306 Mobile Drawer: focus trap, Escape, focus return, always-visible actions (SPEC-050 8.5, 24.1, 25)", () => {
-  test("keeps CTA, Cart and Login outside the drawer and inside the viewport without horizontal scroll", async ({
+test.describe("TC-PG-PUB-001-306 Header menu keeps CTA, Cart and Login visible and opens the four navigation links (SPEC-050 8.5, 24.1, 25)", () => {
+  test("keeps CTA, Cart and Login outside the menu and inside the viewport without horizontal scroll", async ({
     page,
   }) => {
     await gotoHydrated(page, "/");
     await expect(cta(page)).toBeInViewport();
     await expect(cartLink(page)).toBeInViewport();
     await expect(loginLink(page)).toBeInViewport();
+    await expect(primaryMenuButton(page)).toBeInViewport();
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
     expect(overflow).toBeLessThanOrEqual(0);
-    if (!isDesktop(page)) await expect(drawer(page)).toHaveCount(0);
+    await expect(primaryMenuPanel(page)).toHaveCount(0);
   });
 
-  test("opens as a labelled dialog with the 4 navigation links and registration, without CTA / Cart / Login", async ({
+  test("opens a labelled navigation of exactly the 4 Links (not ARIA menu items), with CTA / Cart / Login still in the Header", async ({
     page,
   }) => {
     await gotoHydrated(page, "/");
-    if (isDesktop(page)) {
-      await expect(menuTrigger(page)).toHaveCount(0);
-      await expect(drawer(page)).toHaveCount(0);
-      return;
-    }
-    await menuTrigger(page).click();
-    const dialog = drawer(page);
-    await expect(dialog).toBeVisible();
-    await expect(menuTrigger(page)).toHaveAttribute("aria-expanded", "true");
-    expect(await dialog.evaluate((el) => el.contains(document.activeElement))).toBe(true);
-    const nav = dialog.getByRole("navigation", { name: copy.layout.nav.primaryLabel, exact: true });
+    const panel = await openPrimaryMenu(page);
     for (const [name, href] of [
       [copy.layout.nav.items.event, "/"],
       [copy.layout.nav.items.entry, "/entry"],
       [copy.layout.nav.items.karaoke, "/karaoke"],
       [copy.layout.nav.items.goods, "/goods"],
     ] as const) {
-      await expect(nav.getByRole("link", { name, exact: true })).toHaveAttribute("href", href);
+      await expect(panel.getByRole("link", { name, exact: true })).toHaveAttribute("href", href);
     }
-    await expect(nav.getByRole("link")).toHaveCount(4);
-    await expect(
-      dialog.getByRole("link", { name: copy.layout.account.register, exact: true }),
-    ).toHaveAttribute("href", "/account/register");
-    await expect(
-      dialog.getByRole("link", { name: copy.layout.cta.buyTickets, exact: true }),
-    ).toHaveCount(0);
-    await expect(dialog.getByRole("link", { name: /^カート/ })).toHaveCount(0);
-    await expect(
-      dialog.getByRole("link", { name: copy.layout.account.login, exact: true }),
-    ).toHaveCount(0);
-  });
-
-  test("traps focus while open (Tab and Shift+Tab never leave the dialog)", async ({ page }) => {
-    await gotoHydrated(page, "/");
-    if (isDesktop(page)) return;
-    await menuTrigger(page).click();
-    const dialog = drawer(page);
-    await expect(dialog).toBeVisible();
-    for (let i = 0; i < 14; i += 1) {
-      await page.keyboard.press("Tab");
-      expect(await dialog.evaluate((el) => el.contains(document.activeElement)), `Tab ${i}`).toBe(
-        true,
-      );
+    await expect(panel.getByRole("link")).toHaveCount(4 + (isDesktop(page) ? 0 : 1));
+    await expect(panel.getByRole("menuitem")).toHaveCount(0);
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    if (isDesktop(page)) {
+      await expect(
+        panel.getByRole("link", { name: copy.layout.account.register, exact: true }),
+      ).toHaveCount(0);
+    } else {
+      await expect(
+        panel.getByRole("link", { name: copy.layout.account.register, exact: true }),
+      ).toHaveAttribute("href", "/account/register");
     }
-    for (let i = 0; i < 8; i += 1) {
-      await page.keyboard.press("Shift+Tab");
-      expect(
-        await dialog.evaluate((el) => el.contains(document.activeElement)),
-        `Shift+Tab ${i}`,
-      ).toBe(true);
-    }
+    await expect(panel.getByRole("link", { name: copy.layout.cta.buyTickets })).toHaveCount(0);
+    await expect(panel.getByRole("link", { name: /^カート/ })).toHaveCount(0);
+    await expect(panel.getByRole("link", { name: copy.layout.account.login })).toHaveCount(0);
+    // They stay in the Header while the menu is open.
+    await expect(cta(page)).toBeInViewport();
+    await expect(cartLink(page)).toBeInViewport();
+    await expect(loginLink(page)).toBeInViewport();
   });
 
-  test("Escape closes the drawer and returns focus to the trigger", async ({ page }) => {
+  test("choosing a link navigates and closes the menu", async ({ page }) => {
     await gotoHydrated(page, "/");
-    if (isDesktop(page)) return;
-    await menuTrigger(page).click();
-    await expect(drawer(page)).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(drawer(page)).toHaveCount(0);
-    await expect(menuTrigger(page)).toBeFocused();
-    await expect(menuTrigger(page)).toHaveAttribute("aria-expanded", "false");
-  });
-
-  test("the close button closes the drawer and returns focus to the trigger", async ({ page }) => {
-    await gotoHydrated(page, "/");
-    if (isDesktop(page)) return;
-    await menuTrigger(page).click();
-    await drawer(page).getByRole("button", { name: copy.layout.drawer.close, exact: true }).click();
-    await expect(drawer(page)).toHaveCount(0);
-    await expect(menuTrigger(page)).toBeFocused();
-  });
-
-  test("choosing a link navigates and closes the drawer", async ({ page }) => {
-    await gotoHydrated(page, "/");
-    if (isDesktop(page)) return;
-    await menuTrigger(page).click();
-    await drawer(page)
-      .getByRole("link", { name: copy.layout.nav.items.goods, exact: true })
-      .click();
+    const panel = await openPrimaryMenu(page);
+    await panel.getByRole("link", { name: copy.layout.nav.items.goods, exact: true }).click();
     await expect(page).toHaveURL(/\/goods$/);
-    await expect(drawer(page)).toHaveCount(0);
+    await expect(primaryMenuPanel(page)).toHaveCount(0);
+    await expect(primaryMenuButton(page)).toHaveAttribute("aria-expanded", "false");
     await expect(cta(page)).toBeInViewport();
   });
 });

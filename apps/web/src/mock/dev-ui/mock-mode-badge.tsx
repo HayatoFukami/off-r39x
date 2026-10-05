@@ -6,7 +6,7 @@ export function MockModeBadge() {
   // A direct property access lets Next inline NEXT_PUBLIC_UI_MOCK at build time.
   if (!isUiMockEnabled({ NEXT_PUBLIC_UI_MOCK: process.env.NEXT_PUBLIC_UI_MOCK })) return null;
   return (
-    <div className="pointer-events-none fixed right-2 bottom-2 z-30 rounded-base bg-tone-pending-bg px-2 py-1 text-xs font-medium text-tone-pending-fg shadow">
+    <div className="pointer-events-none fixed bottom-2 left-2 z-30 rounded-base bg-tone-pending-bg px-2 py-1 text-xs font-medium text-tone-pending-fg shadow">
       {copy.layout.mockBadge}
     </div>
   );

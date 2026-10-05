@@ -1,8 +1,8 @@
 import { expect, type Page, test } from "@playwright/test";
 import { copy } from "../../apps/web/src/presentation/copy/ja.ts";
+import { openPrimaryMenu, primaryMenuPanel } from "../harness/browser/header-menu.ts";
 import {
   authenticatedSession,
-  isDesktop,
   KEYS,
   scenarioJson,
   seedLocalStorage,
@@ -10,12 +10,12 @@ import {
 } from "../harness/browser/shell.ts";
 
 // UI mock suite (TST-E2E-004: auxiliary, not G8). Verification-phase gap test.
-// Interactions (drawer, account menu, logout, broken sponsor image) must not raise hydration or runtime errors.
+// Interactions (Header menu, account menu, logout, broken sponsor image) must not raise hydration or runtime errors.
 
 const header = (page: Page) => page.getByRole("banner");
 
 test.describe("TC-PG-PUB-001-505 interactions run without runtime or hydration errors (SPEC-050 25, DEV-WEB-001)", () => {
-  test("drawer (mobile), account menu, logout and a broken sponsor image raise no pageerror or console.error", async ({
+  test("Header menu, account menu, logout and a broken sponsor image raise no pageerror or console.error", async ({
     page,
   }) => {
     const runtime = watchRuntimeErrors(page);
@@ -27,18 +27,11 @@ test.describe("TC-PG-PUB-001-505 interactions run without runtime or hydration e
     await expect(header(page)).toBeVisible();
     await page.waitForLoadState("networkidle");
 
-    if (!isDesktop(page)) {
-      await header(page)
-        .getByRole("button", { name: copy.layout.drawer.open, exact: true })
-        .click();
-      await expect(
-        page.getByRole("dialog", { name: copy.layout.drawer.title, exact: true }),
-      ).toBeVisible();
-      await page.keyboard.press("Tab");
-      await page.keyboard.press("Shift+Tab");
-      await page.keyboard.press("Escape");
-      await expect(page.getByRole("dialog")).toHaveCount(0);
-    }
+    await openPrimaryMenu(page);
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Shift+Tab");
+    await page.keyboard.press("Escape");
+    await expect(primaryMenuPanel(page)).toHaveCount(0);
 
     const menuButton = header(page).getByRole("button", {
       name: copy.layout.account.menuButton,

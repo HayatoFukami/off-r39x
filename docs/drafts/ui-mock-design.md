@@ -309,7 +309,7 @@ interface AuthPort {
   - 認証: login・signup・verify・reset・reset context
   - Event field未設定、遅延の長さ
 - 操作: DBリセット、他者refへのリンク一覧。
-- MockModeBadgeは mock mode のときだけ画面右下に出す小さなテキストラベルで、一般のナビゲーションには含めない。
+- MockModeBadgeは mock mode のときだけ画面左下に出す小さなテキストラベル（画面右下は Floating Ticket Button が使う）で、一般のナビゲーションには含めない。
 - E2Eは `page.addInitScript` で同じキーを設定する。
 - scenarioのfailureは mock 内の切替であり、SPEC-170のFault Pointではない（TST-GEN-006。承認済み SPEC-190 DEV-WEB-010〜013 / SPEC-170 TST-E2E-004 に従う）。
 

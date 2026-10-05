@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-050
 title: Page and Screen Specification
-version: 1.1.0
+version: 1.2.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -228,10 +228,21 @@ Customerは独立Roleではないため、「Customer roleを持つからNavigat
 **Global Header**
 
 - 全一般利用者向けPageで表示し、Pageをscrollしても到達できる固定表示とする。
-- 少なくとも以下を含む: サイト名（`PG-PUB-001` へのLink）、Primary Navigation（§8.1）、Cart、Account / Login。
+- 少なくとも以下を含む: サイト名（`PG-PUB-001` へのLink）、Primary Navigation（§8.1）、Cart、Account / Login。Primary Navigationはメニューボタンの操作で開閉する形式で提供する（下記）。
 - 主要CTA「チケットを購入する」を常時表示し、`PG-TKT-001` へ遷移する。GuestとAuthenticated Userの両方に同じCTAを表示する。
 - Cartには、Cart内の合計数量を数字（テキスト）で示す。0件のときは数字を表示しない。数字は色や形状だけに依存せず、アクセシブルな名称でも伝える。
-- Mobileでは、Primary Navigationを折りたたみ（Drawer等）にしてよい。ただしCart、主要CTA、Login / Mypageは折りたたみ内に隠さず、Flow完遂に必要な到達性を失わせない。Drawerを使用する場合は§25のDialog / Drawer要件を満たす。
+- Primary Navigation（Event、Entry Ticket、Karaoke、Goods）は、Mobile・Desktopを問わず、メニューボタンを操作したときに開き、そこから選択できる形式にする。メニューは常時展開しない。
+- メニューボタンは、開閉状態をプログラム上で伝え（`aria-expanded` 相当）、Keyboardで開閉でき、Escape等で閉じられ、閉じた後はメニューボタンへFocusを戻す。選択またはPage遷移でメニューを閉じる。メニューの項目はNavigationであり、Linkとして提供する（§25）。Drawer等のDialogを使用する場合は§25のDialog / Drawer要件を満たす。
+- Cart、主要CTA、Login / Mypageはメニュー内に隠さず、Header上に常時表示する。Flow完遂に必要な到達性を失わせない。
+- サイト名のLinkは `PG-PUB-001` へ遷移する。すでに `PG-PUB-001` を表示している場合は、Pageの先頭へscrollする。
+
+**Floating Ticket Button**
+
+- 全一般利用者向けPageのうち、`PG-TKT-001`、`PG-CRT-001`、Authentication Page（`PG-AUTH-*`）、Mypage（`PG-MYP-*`）、`PG-XFN-001` を除くPageで、画面の右下に固定表示し、Pageをscrollしても追従する。
+- Linkであり、`PG-TKT-001` へ遷移する。Global Headerの主要CTAを置き換えず、補助として併存する。
+- ラベルは主要CTAとは別に定義する。表示の見た目と文言は差し替え可能にし、本書では文言を固定しない。
+- 他のContent・Footer・Sponsor Logo領域・操作要素を覆って到達不能にしない。Mobileではsafe areaを考慮する。
+- Administrator / Staffの運用領域、開発用領域では表示しない。
 
 **Global Footer**
 
@@ -1515,6 +1526,7 @@ Receipt linkがまだ利用可能でない場合、Receiptの存在を捏造し�
 - Disabled Actionは理由を周辺Textで示す。Colorやpointer stateだけに依存しない。
 - Heading hierarchyをPage titleから論理的に構成する。
 - QR状態が無効な場合、QRを隠すだけでなく「使用済み / 取消済み / 失効済み」をTextで明示する。
+- Section見出し（Heading level 2 / 3）は、画面内に表示された際にフェードインしてよい。演出は、JavaScriptが無効でも、動きの軽減を設定した利用者（`prefers-reduced-motion`）でも、見出しを最初から表示する。見出しはDOM上に常に存在し、演出の有無で読み上げ・Focus順序・Heading hierarchyを変えない。
 
 ## 26. Security / Ownership表示境界
 
