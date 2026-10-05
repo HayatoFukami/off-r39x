@@ -1,6 +1,7 @@
 "use client";
 
 import { assertNever } from "@off-r39x/domain";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useApi } from "../../api-client/provider";
@@ -14,12 +15,37 @@ import { useCart } from "../cart/use-cart";
 import { interpretCheckoutStart } from "./cart-purchase-flow";
 import { OrderOutcome, type OrderOutcomePending, type OutcomeButtonAction } from "./order-outcome";
 import { planPurchaseAgain } from "./purchase-again";
-import { buildPurchaseStatusModel, recheckAnnouncement } from "./purchase-status-model";
+import {
+  buildPurchaseStatusModel,
+  type PurchaseStatusModel,
+  recheckAnnouncement,
+} from "./purchase-status-model";
 
 // PG-XFN-001 container (SPEC-050 16, 21, 22, 26.2). The Order is read once per mount and once per
 // "recheck" press; the page creates no Order and confirms nothing: only the server state is shown.
 
-export function PurchaseStatusPage({ orderRef }: { orderRef: Ref<"order"> }) {
+// PG-MYP-004 shows the same outcome with its own heading, subject, model and a way back (SPEC-050 18.4).
+export type PurchaseStatusVariant = {
+  heading: string;
+  subject: string;
+  buildModel: (input: Loadable<OrderDetail>) => PurchaseStatusModel;
+  backLink: { href: string; label: string } | null;
+};
+
+const PURCHASE_VARIANT: PurchaseStatusVariant = {
+  heading: copy.purchase.heading,
+  subject: copy.purchase.subject,
+  buildModel: buildPurchaseStatusModel,
+  backLink: null,
+};
+
+export function PurchaseStatusPage({
+  orderRef,
+  variant = PURCHASE_VARIANT,
+}: {
+  orderRef: Ref<"order">;
+  variant?: PurchaseStatusVariant;
+}) {
   const api = useApi();
   const router = useRouter();
   const cart = useCart();
@@ -124,7 +150,7 @@ export function PurchaseStatusPage({ orderRef }: { orderRef: Ref<"order"> }) {
     }
   };
 
-  const model = buildPurchaseStatusModel(read);
+  const model = variant.buildModel(read);
 
   // Ownership failure: nothing of the Order was rendered before this view (SPEC-050 26.2).
   if (model.kind === "denied") {
@@ -133,12 +159,12 @@ export function PurchaseStatusPage({ orderRef }: { orderRef: Ref<"order"> }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-2xl font-bold">{copy.purchase.heading}</h1>
+      <h1 className="text-2xl font-bold">{variant.heading}</h1>
       {model.kind === "loading" ? <PageState state="loading" /> : null}
       {model.kind === "unavailable" ? (
         <PageState
           state="unavailable"
-          message={copy.pageState.unavailable(copy.purchase.subject)}
+          message={copy.pageState.unavailable(variant.subject)}
           onRetry={reload}
         />
       ) : null}
@@ -150,6 +176,17 @@ export function PurchaseStatusPage({ orderRef }: { orderRef: Ref<"order"> }) {
           pending={pending}
           onAction={handleAction}
         />
+      ) : null}
+      {model.kind === "ready" && variant.backLink !== null ? (
+        <p>
+          <Link
+            href={variant.backLink.href}
+            prefetch={false}
+            className="text-brand underline underline-offset-4"
+          >
+            {variant.backLink.label}
+          </Link>
+        </p>
       ) : null}
     </div>
   );

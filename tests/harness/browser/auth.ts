@@ -11,7 +11,9 @@ import { KEYS, scenarioJson } from "./shell.ts";
 export const SENTINEL_PASSWORD = "Sentinel-Pass-Phrase-9876";
 /** An opaque verification / reset context (mock). It must be removed from the URL and never rendered. */
 export const CONTEXT_VALUE = "ctx-opaque-sentinel-4321";
-export const MARKER_PROTECTED_TEXT = "ログイン中の方だけに表示される内容です";
+// S8: the S6 placeholder marker is replaced by the display name of demo@example.com, which the Mypage Overview
+// shows only to that signed-in user (contract tests/contracts/s8-mypage.md section 10).
+export const MARKER_PROTECTED_TEXT = "デモ太郎";
 
 export { TEST_PASSWORD };
 

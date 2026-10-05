@@ -83,7 +83,7 @@ const PAGES: readonly PageCase[] = [
     heading: () => copy.auth.resetComplete.heading,
   },
   {
-    name: "S6 Mypage placeholder (AuthGate)",
+    name: "PG-MYP-001 Mypage Overview (AuthGate; S8 replaced the S6 placeholder)",
     route: "/mypage",
     session: true,
     title: () => copy.mypage.pageTitle,
