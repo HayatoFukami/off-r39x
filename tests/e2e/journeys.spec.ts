@@ -14,6 +14,7 @@ import {
   readCart,
   rowByHeading,
 } from "../harness/browser/cart.ts";
+import { gotoViaPrimaryMenu } from "../harness/browser/header-menu.ts";
 import { slotRoute, slotStateInDb } from "../harness/browser/karaoke-purchase.ts";
 import { expectNoMatrixSeed, mainLink } from "../harness/browser/mypage.ts";
 import { horizontalOverflow } from "../harness/browser/public.ts";
@@ -44,21 +45,9 @@ function expectProject(page: Page): void {
   expect(isDesktop(page), name).toBe(name === "desktop-chromium");
 }
 
-/** Opens a primary navigation page the way a user does: the Desktop nav, or the Mobile drawer. */
+/** Opens a primary navigation page the way a user does: through the Header menu button (Desktop and Mobile). */
 async function gotoPrimary(page: Page, label: string): Promise<void> {
-  if (isDesktop(page)) {
-    await page
-      .getByRole("navigation", { name: copy.layout.nav.primaryLabel, exact: true })
-      .getByRole("link", { name: label, exact: true })
-      .click();
-    return;
-  }
-  await page
-    .getByRole("banner")
-    .getByRole("button", { name: copy.layout.drawer.open, exact: true })
-    .click();
-  const drawer = page.getByRole("dialog", { name: copy.layout.drawer.title, exact: true });
-  await drawer.getByRole("link", { name: label, exact: true }).click();
+  await gotoViaPrimaryMenu(page, label);
 }
 
 test.describe("TC-SPEC-050-31-21-001 Entry Ticket + Goods purchase journey from guest to QR to logout (SPEC-050 31 items 3, 9, 17, 21, 24)", () => {

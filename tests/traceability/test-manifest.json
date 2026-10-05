@@ -2539,7 +2539,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "copy.layout carries the fixed CTA, cart, account, landmark, drawer, sponsor and mock badge wording"
+        "copy.layout carries the fixed CTA, cart, account, landmark, menu, sponsor and mock badge wording"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -2819,7 +2819,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "all contracted S3 shell files exist; @base-ui/react, clsx and tailwind-merge are declared"
+        "all contracted S3 shell files exist (S10: header-menu, floating-ticket-button and floating-ticket-visibility replace mobile-nav-drawer); @base-ui/react, clsx and tailwind-merge are declared"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -2942,7 +2942,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "guest header shows site name link to /, CTA to /entry, Cart to /cart and Login; desktop shows primary nav and registration, mobile collapses them"
+        "guest header shows site name link to /, CTA to /entry, Cart to /cart and Login; the primary navigation is collapsed behind the Header menu button on both viewports; registration stays in the desktop header only"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -3123,7 +3123,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "CTA, Cart and Login stay in the viewport with no horizontal scroll; mobile drawer traps focus, closes on Escape / close button / navigation and returns focus to the trigger"
+        "CTA, Cart and Login stay in the viewport with no horizontal scroll on both viewports; the Header menu opens a navigation of the 4 Links (S10 replaced the mobile drawer), closes on selection and keeps CTA / Cart / Login in the Header"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -3304,7 +3304,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "no href to /admin or /staff on any route for guest and authenticated, including footer, drawer and account menu; no /dev link outside /dev"
+        "no href to /admin or /staff on any route for guest and authenticated, including footer, Header menu and account menu; no /dev link outside /dev"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -3450,7 +3450,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "MockModeBadge is one fixed bottom-right text label outside every landmark and not interactive; shown on every route"
+        "MockModeBadge is one fixed bottom-left text label (moved from the bottom right in S10) outside every landmark and not interactive; shown on every route"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -3694,7 +3694,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "drawer, account menu (Escape, focus return), logout and a broken sponsor image raise no pageerror or console.error"
+        "Header menu, account menu (Escape, focus return), logout and a broken sponsor image raise no pageerror or console.error"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -12913,6 +12913,414 @@
       "expected_domain_postconditions": [
         "every public page reachable by navigation as a guest with one h1, no login redirect and no horizontal overflow on both projects"
       ]
+    },
+    {
+      "test_case_id": "TC-PG-PUB-001-241",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-PUB-001", "SPEC-050-8.5", "TST-UNT-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Static source inspection / pure function (no browser); contract tests/contracts/s10-header-float-reveal.md",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "isFloatingTicketVisible is false for entry, cart, account, mypage, purchase and dev (whole segments) and true elsewhere including Not Found"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-PUB-001-242",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-PUB-001", "SPEC-050-8.5", "TST-UNT-004", "SPEC-050-25"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Static source inspection / pure function (no browser); contract tests/contracts/s10-header-float-reveal.md",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "copy.layout.menu / floatingTicket exist, there is no drawer copy, and the floating label never collides by substring with the CTA or other shell names"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-PUB-001-243",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "PG-PUB-001",
+        "SPEC-050-8.5",
+        "TST-UNT-004",
+        "DEV-WEB-001",
+        "DEV-DEP-006"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Static source inspection / pure function (no browser); contract tests/contracts/s10-header-float-reveal.md",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Header menu replaces the drawer (disclosure, no dialog), the floating button is fixed with safe-area inset and wired in layout with viewport-fit=cover, the badge is bottom-left, reveal CSS has a reduced-motion override"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-PUB-001-307",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-PUB-001",
+        "SPEC-050-8.5",
+        "SPEC-050-25",
+        "TST-E2E-003",
+        "TST-E2E-004",
+        "DEV-WEB-010"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Header menu button toggles aria-expanded with aria-controls, panel rendered only while open, 4 Links (no menuitems), keyboard operable, current page marked, inside the viewport"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-PUB-001-308",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-PUB-001",
+        "SPEC-050-8.5",
+        "SPEC-050-25",
+        "TST-E2E-003",
+        "TST-E2E-004",
+        "DEV-WEB-010"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Header menu closes on Escape (focus returns to the button), outside press, selecting a link and route change; Back does not reopen it"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-PUB-001-309",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-PUB-001",
+        "SPEC-050-8.5",
+        "SPEC-050-25",
+        "TST-E2E-003",
+        "TST-E2E-004",
+        "DEV-WEB-010"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Site name links to / (client-side), and on / scrolls to the top without reload (click, Enter, reduced motion immediate)"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-PUB-001-311",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-PUB-001",
+        "SPEC-050-8.5",
+        "SPEC-050-25",
+        "TST-E2E-003",
+        "TST-E2E-004",
+        "DEV-WEB-010"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Floating Ticket Button is present on general pages and Not Found, absent on /entry, /cart, /account/*, /mypage/*, /purchase/*, /dev/*, and follows client-side navigation"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-PUB-001-312",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-PUB-001",
+        "SPEC-050-8.5",
+        "SPEC-050-25",
+        "TST-E2E-003",
+        "TST-E2E-004",
+        "DEV-WEB-010",
+        "SPEC-050-24.1"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Floating Ticket Button is a fixed bottom-right Link to /entry with its own visible label, follows scrolling, sits after the Footer, and its name differs from the Header CTA"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-PUB-001-313",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-PUB-001",
+        "SPEC-050-8.5",
+        "SPEC-050-25",
+        "TST-E2E-003",
+        "TST-E2E-004",
+        "DEV-WEB-010",
+        "SPEC-050-24.1"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "At the end of the page the Floating Ticket Button intersects no Footer element, Sponsor Logo or control, and the mock badge (bottom-left) never meets it"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-PUB-001-314",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-PUB-001",
+        "SPEC-050-8.5",
+        "SPEC-050-25",
+        "TST-E2E-003",
+        "TST-E2E-004",
+        "DEV-WEB-010",
+        "SPEC-050-24.1"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "viewport meta has viewport-fit=cover with width=device-width and initial-scale=1"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-SPEC-050-25-001",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "SPEC-050-25",
+        "SPEC-050-24.3",
+        "TST-E2E-003",
+        "TST-E2E-004",
+        "DEV-WEB-010",
+        "TST-FLK-001"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "With prefers-reduced-motion every section heading is opaque with no transition and never pending, before and after scrolling"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-SPEC-050-25-002",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "SPEC-050-25",
+        "SPEC-050-24.3",
+        "TST-E2E-003",
+        "TST-E2E-004",
+        "DEV-WEB-010",
+        "TST-FLK-001"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "A heading below the fold is pending (opacity 0, in DOM and the accessibility tree) with a short opacity transition, becomes revealed (opacity 1) on entering the view and stays revealed; first-screen headings end visible"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-SPEC-050-25-003",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "SPEC-050-25",
+        "SPEC-050-24.3",
+        "TST-E2E-003",
+        "TST-E2E-004",
+        "DEV-WEB-010",
+        "TST-FLK-001"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "With JavaScript disabled a server-rendered section heading (data-reveal=static, spliced into the real server HTML because UI mock pages render sections on the client) is opaque under the real stylesheet and nothing is pending"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-SPEC-050-25-004",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "SPEC-050-25",
+        "SPEC-050-24.3",
+        "TST-E2E-003",
+        "TST-E2E-004",
+        "DEV-WEB-010",
+        "TST-FLK-001"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "data-reveal is only on h2 / h3 section headings (never h1), every main section heading carries it, and the heading outline and aria-hidden state do not change"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
     }
   ]
 }
