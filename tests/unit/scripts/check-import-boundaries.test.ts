@@ -55,12 +55,14 @@ describe("TC-DEV-DEP-006-001 clean fixture", () => {
     const result = check(
       withFiles({
         "apps/web/src/presentation/components/notes.md": 'import "@/mock/backend/db";\n',
-        "apps/web/src/presentation/components/legacy.js": 'import "@/mock/backend/db";\n',
         "apps/web/scripts/tool.ts": 'import "@/mock/backend/db";\n',
-        "apps/web/next.config.ts": 'import "./src/mock/backend/db";\n',
+        "apps/web/scripts/tool.mjs": 'import "../src/mock/backend/db";\n',
+        "apps/web/next-env.d.ts": 'import "@/mock/backend/db";\n',
+        "apps/web/src/types/ambient.d.mts": 'import "@/mock/backend/db";\n',
       }),
     );
     expectClean(result);
+    expect(result.stdout).not.toMatch(/^WARNING /m);
   });
 
   it("accepts import type and re-export forms of allowed edges", () => {
@@ -84,6 +86,7 @@ describe("TC-DEV-DEP-006-002 real repository root", () => {
     expect(result.violations).toEqual([]);
     expect(result.status).toBe(0);
     expect(result.stdout).toMatch(/^OK/m);
+    expect(result.stdout).not.toMatch(/^WARNING /m);
   });
 
   it("defaults --root to the parent of scripts/ regardless of cwd", async () => {
@@ -92,6 +95,7 @@ describe("TC-DEV-DEP-006-002 real repository root", () => {
     expect(result.violations).toEqual([]);
     expect(result.status).toBe(0);
     expect(result.stdout).toMatch(/^OK/m);
+    expect(result.stdout).not.toMatch(/^WARNING /m);
   });
 });
 
@@ -171,6 +175,8 @@ describe("TC-DEV-WEB-012-001 mock-allowlist", () => {
     ["apps/web/app/page.tsx", "@/mock/dev-ui/mock-mode-badge"],
     ["apps/web/app/(public)/cart/page.tsx", "@/mock/backend/db"],
     ["apps/web/app/not-found.tsx", "../src/mock/backend/db"],
+    ["apps/web/next.config.ts", "./src/mock/backend/db"],
+    ["apps/web/next.config.ts", "@/mock/backend/db"],
   ])("rejects %s importing %s", (file, specifier) => {
     const result = check(withFiles({ [file]: imp(specifier) }));
     expectViolation(result, "mock-allowlist", file, LINE, specifier);
@@ -338,5 +344,235 @@ describe("TC-DEV-DEP-005-001 workspace-cycle", () => {
       }),
     );
     expectClean(result);
+  });
+});
+
+describe("TC-DEV-DEP-006-005 AST-recognised specifier forms", () => {
+  const featureFile = "apps/web/src/features/cart/bad.ts";
+
+  it.each([
+    ["template-literal dynamic import", "void import(`@/mock/backend/db`);"],
+    [
+      "dynamic import with import attributes",
+      'void import("@/mock/backend/db", { with: { type: "json" } });',
+    ],
+  ])("rejects %s in features", (_name, statement) => {
+    const result = check(withFiles({ [featureFile]: importAtLine(LINE, statement) }));
+    expectViolation(result, "features-no-mock", featureFile, LINE, "@/mock/backend/db");
+  });
+
+  it("reports the line of the specifier for a multi-line dynamic import", () => {
+    const source = "// filler 1\nvoid import(\n  `@/mock/backend/db`\n);\nexport const used = 1;\n";
+    const result = check(withFiles({ [featureFile]: source }));
+    expectViolation(result, "features-no-mock", featureFile, LINE, "@/mock/backend/db");
+  });
+
+  it.each([
+    [
+      "apps/web/src/other/x.ts",
+      'const db = require("@/mock/backend/db");',
+      "mock-allowlist",
+      "@/mock/backend/db",
+    ],
+    [
+      "apps/web/src/other/x.ts",
+      'import db = require("@/mock/backend/db");',
+      "mock-allowlist",
+      "@/mock/backend/db",
+    ],
+    [
+      "apps/web/src/presentation/components/bad.tsx",
+      'type T = typeof import("@/features/cart/cart-store");',
+      "presentation-no-upward",
+      "@/features/cart/cart-store",
+    ],
+    [
+      "packages/domain/src/bad.ts",
+      'const fs = require("node:fs");',
+      "domain-no-external",
+      "node:fs",
+    ],
+  ])("rejects %s with %s", (file, statement, rule, specifier) => {
+    const result = check(withFiles({ [file]: importAtLine(LINE, statement) }));
+    expectViolation(result, rule, file, LINE, specifier);
+  });
+
+  it.each([
+    ["line comment", "// void import(`@/mock/backend/db`);", "apps/web/src/features/cart/ok.ts"],
+    ["block comment", '/* import "@/mock/backend/db"; */', "apps/web/src/features/cart/ok.ts"],
+    [
+      "string literal",
+      "const s = 'import \"@/mock/backend/db\"';",
+      "apps/web/src/features/cart/ok.ts",
+    ],
+    [
+      "JSX text",
+      'export const C = () => <p>import("@/mock/backend/db")</p>;',
+      "apps/web/src/features/cart/ok.tsx",
+    ],
+    [
+      "allowed edge via template literal",
+      "void import(`@/api-client/port`);",
+      "apps/web/src/features/cart/ok.ts",
+    ],
+  ])("does not flag %s", (_name, statement, file) => {
+    const result = check(withFiles({ [file]: importAtLine(LINE, statement) }));
+    expectClean(result);
+    expect(result.stdout).not.toMatch(/^WARNING /m);
+  });
+});
+
+describe("TC-DEV-DEP-006-006 unresolvable dynamic import is a warning, not a violation", () => {
+  const lazy = "apps/web/src/features/cart/lazy.ts";
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: the fixture source must contain a literal interpolation
+  const lazyTemplate = "export const load = (n: string) => import(`@/mock/${n}`);";
+
+  function expectWarningThenOk(result: CheckResult, warning: string): void {
+    expectClean(result);
+    const lines = result.stdout.split(/\r?\n/);
+    const warnAt = lines.indexOf(warning);
+    const okAt = lines.findIndex((l) => l.startsWith("OK"));
+    expect(warnAt).toBeGreaterThanOrEqual(0);
+    expect(warnAt).toBeLessThan(okAt);
+  }
+
+  it("warns for an interpolated template literal and still exits 0", () => {
+    const result = check(withFiles({ [lazy]: importAtLine(LINE, lazyTemplate) }));
+    expectWarningThenOk(result, `WARNING unresolved-dynamic-import ${lazy}:${LINE}`);
+  });
+
+  it("warns for a non-literal import(expr)", () => {
+    const result = check(
+      withFiles({ [lazy]: importAtLine(LINE, "export const load = (p: string) => import(p);") }),
+    );
+    expectWarningThenOk(result, `WARNING unresolved-dynamic-import ${lazy}:${LINE}`);
+  });
+
+  it("warns for a non-literal require(expr) in a .cjs file", () => {
+    const file = "apps/web/src/lib/dyn.cjs";
+    const result = check(
+      withFiles({ [file]: importAtLine(LINE, "const m = require(process.env.X);") }),
+    );
+    expectWarningThenOk(result, `WARNING unresolved-dynamic-import ${file}:${LINE}`);
+  });
+
+  it("keeps the warning and reports real violations with exit 1 and no OK line", () => {
+    const result = check(
+      withFiles({
+        [lazy]: importAtLine(LINE, lazyTemplate),
+        "apps/web/src/other/x.ts": imp("@/mock/backend/db"),
+      }),
+    );
+    expectViolation(result, "mock-allowlist", "apps/web/src/other/x.ts", LINE, "@/mock/backend/db");
+    expect(result.stdout.split(/\r?\n/)).toContain(
+      `WARNING unresolved-dynamic-import ${lazy}:${LINE}`,
+    );
+    expect(result.stdout).not.toMatch(/^OK/m);
+  });
+});
+
+describe("TC-DEV-DEP-006-007 JS-family files are scanned", () => {
+  it.each([
+    [
+      "apps/web/src/presentation/components/legacy.js",
+      'import "@/mock/backend/db";',
+      "presentation-no-upward",
+      "@/mock/backend/db",
+    ],
+    [
+      "apps/web/src/features/cart/widget.jsx",
+      'import "@/mock/backend/db";',
+      "features-no-mock",
+      "@/mock/backend/db",
+    ],
+    [
+      "apps/web/app/x.mjs",
+      'import "../src/mock/backend/db";',
+      "mock-allowlist",
+      "../src/mock/backend/db",
+    ],
+    [
+      "apps/web/next.config.mjs",
+      'import "./src/mock/backend/db";',
+      "mock-allowlist",
+      "./src/mock/backend/db",
+    ],
+    ["apps/web/src/lib/old.cjs", 'const pg = require("pg");', "web-no-db", "pg"],
+  ])("rejects %s", (file, statement, rule, specifier) => {
+    const result = check(withFiles({ [file]: importAtLine(LINE, statement) }));
+    expectViolation(result, rule, file, LINE, specifier);
+  });
+});
+
+describe("TC-DEV-DEP-005-002 workspace enumeration from pnpm-workspace.yaml includes tests", () => {
+  const cycleLine = /^VIOLATION workspace-cycle (\S+package\.json):0 (\S+)$/;
+
+  function expectCycleOver(result: CheckResult, expected: readonly string[]): void {
+    expect(result.status).toBe(1);
+    const specs = result.violations.flatMap((line) => {
+      const m = cycleLine.exec(line);
+      return m ? [m[2] as string] : [];
+    });
+    expect(specs.length).toBeGreaterThanOrEqual(1);
+    const parts = (specs[0] as string).split("->");
+    expect(parts[0]).toBe(parts[parts.length - 1]);
+    expect(new Set(parts)).toEqual(new Set(expected));
+  }
+
+  const testsDependsOnDomain = {
+    "tests/package.json": packageJson("@off-r39x/tests", ["@off-r39x/domain"]),
+  };
+  const domainDependsOnTests = {
+    "packages/domain/package.json": packageJson("@off-r39x/domain", ["@off-r39x/tests"]),
+  };
+
+  it("detects a cycle through tests with pnpm-workspace.yaml present", () => {
+    const result = check(
+      withFiles({
+        "pnpm-workspace.yaml":
+          "packages:\n  - apps/*\n  - packages/*\n  - tests\nallowBuilds:\n  esbuild: false\n",
+        ...testsDependsOnDomain,
+        ...domainDependsOnTests,
+      }),
+    );
+    expectCycleOver(result, ["@off-r39x/domain", "@off-r39x/tests"]);
+  });
+
+  it("falls back to apps/*, packages/*, tests when pnpm-workspace.yaml is missing", () => {
+    const result = check(withFiles({ ...testsDependsOnDomain, ...domainDependsOnTests }));
+    expectCycleOver(result, ["@off-r39x/domain", "@off-r39x/tests"]);
+  });
+
+  it("parses CRLF, comments and quoted entries, including an exact extra directory", () => {
+    const result = check(
+      withFiles({
+        "pnpm-workspace.yaml":
+          "packages:\r\n  # workspaces\r\n  - apps/*\r\n  - 'packages/*'\r\n  - \"tools/gen\" # extra\r\n",
+        "tools/gen/package.json": packageJson("@off-r39x/gen", ["@off-r39x/domain"]),
+        "packages/domain/package.json": packageJson("@off-r39x/domain", ["@off-r39x/gen"]),
+      }),
+    );
+    expectCycleOver(result, ["@off-r39x/domain", "@off-r39x/gen"]);
+  });
+
+  it("accepts the acyclic tests -> domain graph", () => {
+    expectClean(
+      check(
+        withFiles({
+          "pnpm-workspace.yaml": "packages:\n  - apps/*\n  - packages/*\n  - tests\n",
+          ...testsDependsOnDomain,
+        }),
+      ),
+    );
+  });
+
+  it.each([
+    ["recursive glob", 'packages:\n  - "packages/**"\n'],
+    ["negation", 'packages:\n  - apps/*\n  - "!apps/legacy"\n'],
+  ])("exits 2 with a pnpm-workspace.yaml error for an unsupported pattern (%s)", (_name, yaml) => {
+    const result = check(withFiles({ "pnpm-workspace.yaml": yaml }));
+    expect(result.status).toBe(2);
+    expect(result.stderr).toMatch(/pnpm-workspace\.yaml/);
+    expect(result.stdout).not.toMatch(/^(OK|VIOLATION|WARNING)/m);
   });
 });
