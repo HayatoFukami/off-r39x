@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-040
 title: User Flows
-version: 1.1.0
+version: 1.2.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -253,7 +253,7 @@ Trace: `BR-ORD-006`, `BR-ORD-008〜009`, `BR-SAL-007`, `BR-TKT-006`, `BR-KRK-006
 - Login / Account登録を中止した場合、Guestのまま公開領域へ戻れる。Business operationは成立しない。
 - 認証中に販売終了、売り切れ、Slot競合等が発生した場合、認証前表示を根拠に購入を保証せず、対象購入Flowの現在状態Failureへ分岐する。
 - Auth Serviceが一時障害の場合は `UF-AUTH-007` へ分岐する。
-- Cartから購入手続きへ進んだGuestが認証を求められた場合、Cartの内容（参照と数量）を保持したまま認証へ進み、認証後にCartへ戻る。復帰時の価格・販売状態・在庫は現在状態で再取得する（`UF-CRT-001`）。
+- Cartから購入手続きへ進んだGuestが認証を求められた場合、Cartの内容（参照と数量）を保持したまま認証へ進み、認証後にCartへ戻る。この保持は、一度も認証されていないGuestに適用する（`FR-CRT-012`）。復帰時の価格・販売状態・在庫は現在状態で再取得する（`UF-CRT-001`）。
 
 ### 8.3 Success Postcondition
 
@@ -389,12 +389,13 @@ Email確認がSupabase Auth上で完了している。
 
 1. **Authenticated User** がLogoutを選ぶ。
 2. **System** は現在の認証SessionをLogoutする。
-3. 以後、認証必須FlowをGuestのまま成立させない。
-4. 公開情報は引き続きGuestとして閲覧できる。
+3. **Web** は当該BrowserのCartをclearする（`FR-CRT-012`）。
+4. 以後、認証必須FlowをGuestのまま成立させない。
+5. 公開情報は引き続きGuestとして閲覧できる。
 
 ### 12.2 Postcondition
 
-SessionはLogoutされる。既存Order、Ticket、Reservation、Goods購入等のBusiness Dataは削除・取消されない。
+SessionはLogoutされ、Browser側のCartはclearされる。既存Order、Ticket、Reservation、Goods購入等のBusiness Dataは削除・取消されない。
 
 ### 12.3 Traceability
 
@@ -640,7 +641,7 @@ Cartは参照と数量だけを保持するBrowser側の購入前補助であり
 2. **Web** はBrowser側のCartへ参照と数量だけを保存する。Order、Allocation、Hold、Inventoryは変化しない。
 3. **User** はCartを開く。**Web / API** は各Itemの現在の価格と販売状態をServer-sideの現在値から取得して表示する。小計は表示用であり、購入時の権威値ではない。
 4. **User** は数量変更・削除を行う。購入不可のItemがある場合、Itemごとに購入不可理由が示される。
-5. **User** は「購入手続きへ進む」を選ぶ。Guestなら `UF-PUB-002` へ分岐し、Cart内容は保持される。
+5. **User** は「購入手続きへ進む」を選ぶ。Guest（一度も認証されていない）なら `UF-PUB-002` へ分岐し、Cart内容は保持される（`FR-CRT-012`）。
 6. **API** は認証Identityを検証し、Cart内の全Itemについて、販売期間、Sale Control State、容量または在庫、Purchase Limit、価格をServer-sideの現在状態から再検証する。Cartに保持された価格・在庫・販売可否は採用しない。
 7. 全Itemが成立する場合のみ、**Business Database** は全Entry Sales Allocationと全Goods Sales Allocationを `HELD` として確保し、Order Purposeを決定し（`BR-ORD-013`）、購入時価格Snapshotを持つOrderを `PREPARED` として永続化する。Goods Order Itemは `PENDING_PAYMENT` である。
 8. Order作成後、**Web** は当該OrderのItemをCartから除去する。
