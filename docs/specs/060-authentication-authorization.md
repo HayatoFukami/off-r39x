@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-060
 title: Authentication and Authorization
-version: 1.1.0
+version: 1.2.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -67,7 +67,7 @@ related_specs:
 - Hono APIによるAuthenticated RequestのServer-side identity verification
 - Business Profileの解決
 - 一般利用者向け本人所有Dataの参照・更新
-- Entry / Karaoke / Goods購入開始時の本人認証
+- Cartからの購入手続き開始およびKaraoke購入開始時の本人認証
 - Purchase Status / Mypageの保護
 - Entry / Karaoke Check-inおよびGoods HandoffのStaff authorization
 - Administrator管理Capabilityのauthorization
@@ -134,14 +134,15 @@ Guestは、当該RequestについてServer-sideで有効なAuth Identityを成�
 Guestは以下を行える。
 
 - `PG-PUB-001〜003` の公開閲覧
-- `PG-TKT-001` の閲覧
+- `PG-TKT-001` の閲覧とCartへの追加
 - `PG-KRK-001〜003` の閲覧
-- `PG-GDS-001〜002` の閲覧
+- `PG-GDS-001〜002` の閲覧とCartへの追加（`PG-GDS-002`）
+- `PG-CRT-001` の閲覧とCart編集（数量変更・削除）
 - `PG-AUTH-001〜005` のうち各FlowのPreconditionを満たす認証操作
 
 Guestは以下を成立させてはならない。
 
-- Entry / Karaoke / Goods購入開始
+- Cartからの購入手続き開始、Karaoke購入開始
 - Order作成
 - Karaoke Hold確保
 - Profile参照・更新
@@ -319,7 +320,7 @@ Sessionの具体的な有効時間はSupabase Auth設定および `SPEC-140` / `
 **AR-SES-007:** 保護Pageまたは保護ActionでSessionが期限切れかつ安全にrefreshできない場合、保護Dataを返さず、Authentication Gateへ遷移する。
 
 - Mypage / Purchase Status: `PG-AUTH-003` Loginへ安全なContinuation Intent付きで遷移する。
-- 購入開始Action: 元の公開販売PageをContinuationとして保持しLoginへ遷移する。
+- 購入開始Action: Cartの購入手続きは `PG-CRT-001`、Karaoke購入開始は `PG-KRK-003` をContinuationとして保持しLoginへ遷移する。
 - Staff / Administrator operation: operationを成立させず、運用領域側のAuthentication failureとして扱う。個別画面は `SPEC-130` が定義する。
 
 ### 10.2 Session invalid / revoke相当
@@ -628,7 +629,7 @@ Role Assignment対象は:
 | `tickets.self.read` | 自身のEntry Ticket参照 / QR到達 |
 | `karaoke.self.read` | 自身のReservation / Karaoke Ticket参照 / QR到達 |
 | `goods.self.read` | 自身のGoods購入 / Handoff参照 |
-| `purchase.start` | Entry / Karaoke / Goodsの購入開始 |
+| `purchase.start` | Cartからの購入手続き開始（Entry Ticket / Goods）、Karaokeの購入開始 |
 | `entry_checkin.execute` | Entry QR検証と通常Check-in実行 |
 | `karaoke_checkin.execute` | Karaoke QR検証と通常Check-in実行 |
 | `goods_handoff.execute` | Goods Handoff対象確認と通常完了 |
@@ -738,15 +739,15 @@ Staff Roleだけを根拠にCustomerの全Order履歴、他Ticket、Goods、Kara
 - `PG-TKT-001`
 - `PG-KRK-001〜003`
 - `PG-GDS-001〜002`
+- `PG-CRT-001` の閲覧とCart編集（数量変更・削除）
 - `PG-AUTH-001〜005` の各認証Flow上許可された状態
 
 ただし:
 
-- `PG-TKT-001` の購入開始
+- `PG-CRT-001` の「購入手続きへ進む」
 - `PG-KRK-003` の購入開始
-- `PG-GDS-002` の購入開始
 
-は `purchase.start` を必要とする。
+は `purchase.start` を必要とする。`PG-TKT-001` / `PG-GDS-002` のCartへの追加は、Browser側のCartへの追加であり購入開始ではないため、Guestにも許可し `purchase.start` を要求しない（`FR-CRT-001`）。
 
 **AR-AZ-006:** Public Pageの閲覧可能性を、同Page内のprotected Actionまでpublicである根拠にしてはならない。
 
@@ -799,11 +800,13 @@ Owner限定detailでOwner不一致なら:
 |---|---|---|---|---|
 | `PG-PUB-001〜003` | 閲覧Allow | 閲覧Allow | 閲覧Allow | N/A |
 | `PG-TKT-001` 閲覧 | Allow | Allow | Allow | N/A |
-| `PG-TKT-001` 購入開始 | Login | Email確認 | Login | N/A |
+| `PG-TKT-001` Cart追加 | Allow | Allow | Allow | N/A |
 | `PG-KRK-001〜003` 閲覧 | Allow | Allow | Allow | N/A |
 | `PG-KRK-003` 購入開始 | Login | Email確認 | Login | N/A |
 | `PG-GDS-001〜002` 閲覧 | Allow | Allow | Allow | N/A |
-| `PG-GDS-002` 購入開始 | Login | Email確認 | Login | N/A |
+| `PG-GDS-002` Cart追加 | Allow | Allow | Allow | N/A |
+| `PG-CRT-001` 閲覧・Cart編集 | Allow | Allow | Allow | N/A |
+| `PG-CRT-001` 購入手続き | Login | Email確認 | Login | N/A |
 | `PG-AUTH-001` | Allow | Allow | Guest向けとしてAllow | N/A |
 | `PG-AUTH-002` | Verification contextに応じAllow | Allow | Verification contextに応じAllow | N/A |
 | `PG-AUTH-003` | Allow | Allow | Allow | N/A |
@@ -831,9 +834,8 @@ Continuation Intentは権威情報ではなく、認証成功後の論理的復�
 
 許可例:
 
-- Entry Ticket購入 → `PG-TKT-001`
+- Cartの購入手続き（Entry Ticket / Goods） → `PG-CRT-001`。Cart内容（参照と数量）はContinuation Intentに含めず、復帰後に価格・在庫・販売可否・Purchase Limitを再検証する（`SPEC-050` §10.2）
 - Karaoke Slot購入 → `PG-KRK-003` の公開参照
-- Goods購入 → `PG-GDS-002` の公開参照
 - Mypage → `PG-MYP-001`
 - 自身のPurchase Status / Mypage detail → 認証後にOwner再検証する内部Route intent
 
@@ -980,7 +982,7 @@ Login / Registrationを中止した場合はGuestとして元の公開Pageまた
 
 ## 34. Purchase operation
 
-Entry / Karaoke / Goods購入開始には以下をすべて要求する。
+Cartからの購入手続き開始（Entry Ticket / Goods）およびKaraoke購入開始には以下をすべて要求する。
 
 1. `VERIFIED_SESSION_ACTIVE`
 2. 一意Business Profile
@@ -1084,7 +1086,7 @@ Karaoke Sales Configurationの販売条件管理Operationも同様に、次を�
 | `AR-AZ-001〜016` | `FR-XFN-001〜004`, `FR-XFN-016〜017`, `FR-XFN-025`, `FR-ADM-001`, `FR-ADM-019〜020`, `FR-STF-001`, `BR-USR-002`, `BR-USR-007`, `BR-ORD-002`, `BR-CHK-*`, `DI-030-010`, `UF-MYP-002`, `UF-CHK-001〜002`, `PG-XFN-003`, `INV-010-05`, `INV-010-08` |
 | `AR-OWN-001〜008` | `FR-AUTH-010〜012`, `FR-TKT-023`, `FR-MYP-001〜012`, `FR-XFN-003`, `FR-XFN-017`, `BR-USR-001`, `BR-USR-003〜007`, `BR-TKT-008`, `BR-KRK-015`, `BR-KRK-021`, `BR-GDS-008`, `DI-030-010`, `UF-MYP-001〜002`, `PG-MYP-001〜012`, `PG-XFN-001`, `PG-XFN-003`, `INV-010-08` |
 | `AR-ROLE-001〜018` | `FR-ADM-001〜022`, `FR-STF-001〜016`, `FR-XFN-004`, `FR-XFN-025`, `BR-USR-007`, `BR-CHK-007〜008`, `DI-030-010`, `UF-CHK-001〜002`, `PG-XFN-003`, `INV-010-08` |
-| `AR-CONT-001〜004` | `FR-PUB-012`, `FR-XFN-001〜003`, `FR-XFN-016`, `FR-XFN-026`, `UF-PUB-002`, `UF-AUTH-001〜003`, `PG-AUTH-001`, `PG-AUTH-003`, `PG-TKT-001`, `PG-KRK-003`, `PG-GDS-002`, `PG-MYP-001`, `INV-010-08〜10` |
+| `AR-CONT-001〜004` | `FR-PUB-012`, `FR-CRT-006`, `FR-XFN-001〜003`, `FR-XFN-016`, `FR-XFN-026`, `UF-PUB-002`, `UF-CRT-001`, `UF-AUTH-001〜003`, `PG-AUTH-001`, `PG-AUTH-003`, `PG-TKT-001`, `PG-KRK-003`, `PG-GDS-002`, `PG-CRT-001`, `PG-MYP-001`, `INV-010-08〜10` |
 | `AR-FAIL-001〜006` | `FR-AUTH-005`, `FR-AUTH-014`, `FR-XFN-020`, `FR-XFN-025`, `FR-XFN-032`, `BR-ORD-010`, `DI-030-001`, `DI-030-010`, `DI-030-012`, `UF-AUTH-007`, `UF-MYP-002`, `UF-XFN-004`, `PG-XFN-003`, `INV-010-01`, `INV-010-08`, `INV-010-10` |
 
 ## 40. Page / Flow / Rule Traceability
@@ -1096,9 +1098,8 @@ Karaoke Sales Configurationの販売条件管理Operationも同様に、次を�
 | `PG-AUTH-003` Login | `UF-AUTH-003`, `UF-PUB-002`, `UF-AUTH-007` | `AR-AUTH-008`, `AR-SES-*`, `AR-CONT-*` |
 | Logout action | `UF-AUTH-004` | `AR-SES-009`, `AR-ID-007` |
 | `PG-AUTH-004〜005` Password reset | `UF-AUTH-005`, `UF-AUTH-007` | `AR-AUTH-009〜010`, `AR-ID-007` |
-| Entry purchase start | `UF-PUB-002`, `UF-TKT-001` | `AR-AUTH-003`, `AR-SES-003〜005`, `AR-ID-*`, `AR-AZ-012`, `AR-CONT-*` |
+| Cart purchase start（Entry Ticket / Goods） | `UF-PUB-002`, `UF-CRT-001`, `UF-TKT-001`, `UF-GDS-001` | `AR-AUTH-003`, `AR-SES-003〜005`, `AR-ID-*`, `AR-AZ-012`, `AR-CONT-*` |
 | Karaoke purchase start | `UF-PUB-002`, `UF-KRK-002` | `AR-AUTH-003`, `AR-SES-003〜005`, `AR-ID-*`, `AR-AZ-012`, `AR-CONT-*` |
-| Goods purchase start | `UF-PUB-002`, `UF-GDS-001` | `AR-AUTH-003`, `AR-SES-003〜005`, `AR-ID-*`, `AR-AZ-012`, `AR-CONT-*` |
 | `PG-XFN-001` Purchase Status | `UF-XFN-001`, purchase flows | `AR-SES-*`, `AR-OWN-001〜005`, `AR-AZ-007` |
 | `PG-MYP-001〜012` | `UF-MYP-001〜002` | `AR-SES-*`, `AR-ID-*`, `AR-OWN-*`, `AR-AZ-007` |
 | Entry Staff Check-in | `UF-CHK-001` | `AR-ROLE-*`, `AR-AZ-013` |
@@ -1112,6 +1113,7 @@ Karaoke Sales Configurationの販売条件管理Operationも同様に、次を�
 ### 41.1 Public / Auth
 
 - `FR-PUB-012` → Authentication Gate、`AR-AUTH-001`, `AR-CONT-*`
+- `FR-CRT-006` → Cartの購入手続きに対する認証要件とContinuation、`AR-CONT-*`, `AR-AZ-012`
 - `FR-AUTH-001〜003` → Account registration / Email verification、`AR-AUTH-003〜007`
 - `FR-AUTH-004〜006` → Login / Session / Logout、`AR-AUTH-008`, `AR-SES-*`
 - `FR-AUTH-007〜008` → Password reset、`AR-AUTH-009〜011`
