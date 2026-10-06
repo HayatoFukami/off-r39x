@@ -323,6 +323,8 @@ Sessionの具体的な有効時間はSupabase Auth設定および `SPEC-140` / `
 - 購入開始Action: Cartの購入手続きは `PG-CRT-001`、Karaoke購入開始は `PG-KRK-003` をContinuationとして保持しLoginへ遷移する。
 - Staff / Administrator operation: operationを成立させず、運用領域側のAuthentication failureとして扱う。個別画面は `SPEC-130` が定義する。
 
+Authenticated UserのSessionについて上記の判定を行い、Authentication Gateへ遷移する時点で、当該BrowserのCartをclearする（`FR-CRT-012`）。本書は定期的なSession監視を要求せず、判定は保護Page / 保護Actionのアクセス時に行う。
+
 ### 10.2 Session invalid / revoke相当
 
 **AR-SES-008:** Sessionが無効、改ざん、revoke相当、またはIdentityへ解決不能な場合、当該RequestをAuthenticated Userとして継続しない。
@@ -337,6 +339,7 @@ Logout後:
 
 - ActorはGuestとして扱う。
 - `PG-PUB-001` へ遷移する。
+- Browser側のCartをclearする（`FR-CRT-012`）。
 - Browser back / cached UIから保護Dataを再利用してはならない。
 - 新しい保護Requestは必ず再認証を要求する。
 - Order、Ticket、Reservation、Goods購入、Business ProfileのOwnershipを変更・削除・取消しない。
