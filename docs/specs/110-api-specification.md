@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-110
 title: API Specification
-version: 1.1.0
+version: 1.1.1
 status: provisional
 depends_on:
   - SPEC-000
@@ -2191,3 +2191,21 @@ retry count / backoff / queue / operator RunbookはSPEC-150。本書§48.5はSPE
 - `UCR-150-002`（recovery page wiring）: `SPEC-130` のCanonical Owner範囲。§48.5のoperationがCanonical化された後、`SPEC-130` がcurrent precondition / capability / confirmation付きで接続する。
 
 本書作成時点で、必須上流仕様間にSPEC-110が解消不能な矛盾は確認されなかった。
+
+### 未反映のUCR（`SPEC-050` v1.1.0 / `SPEC-030` v1.1.0 に伴う要求）
+
+以下は本書へ未反映の上流仕様変更要求であり、`DEV-GEN-001` に従い、本書のCanonical Owner本文へ反映されるまで実装契約として扱わない。
+
+### UCR-110-001
+
+- 対象: SPEC-110（関連: SPEC-100）
+- 現在の仕様: 次の項目が定義されていない。
+  1. Cartからの購入開始（複数Item、All-or-Nothing、不成立Itemの識別、Purposeの `ENTRY_GOODS_PURCHASE` を含む決定）。`API-PUR-ENTRY-001` と `API-PUR-GDS-001` はそれぞれ1 ItemのRequestだけを受ける。
+  2. `API-ORD-003` の `purpose` に `ENTRY_GOODS_PURCHASE`（`SPEC-030` §11.2）がない。
+  3. Sponsor Logoの公開取得（`SPEC-030` §8.4、`FR-PUB-015`）。
+  4. 認証済み閲覧者ごとのPurchase Limit到達（`SPEC-050` §12.1 / §13.3 / §14A.1 が購入不可として表示するため）。
+  5. `API-ORD-003` のNotification通知表示（`SPEC-050` §16.2 / §16.7）。
+- 要求する変更: 上記を、Operation IDまたは既存Operationの応答fieldとして定義する。1〜3は `SPEC-030` §26.1 が下流整合事項として既に挙げている。
+- 理由: `SPEC-050` v1.1.0 と `SPEC-030` v1.1.0 の要件をAPIで満たすため。
+- 変更しない場合の影響: UI mockのportのうち該当methodを実api-clientへ置き換えられない。UI mockは該当methodを「Operation IDなし」と明示して実装する。
+- 影響を受ける可能性がある仕様書: SPEC-100, SPEC-120, SPEC-130, SPEC-170

@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-030
 title: Domain Model and Business Rules
-version: 1.0.0
+version: 1.1.1
 status: provisional
 depends_on:
   - SPEC-000
@@ -84,6 +84,9 @@ related_specs:
 | Sales Period | 新規購入を許可する日時範囲。開始を含み終了を含まない半開区間 |
 | Purchase Limit | 同一Business Profileに許可する購入数量上限のRule |
 | Order | 一回の決済対象となる購入取引の内部記録。外部決済へ遷移する前に必ず存在する |
+| 複合Order | Entry Ticket Order ItemとGoods Order Itemの両方を含むOrder。Purposeは `ENTRY_GOODS_PURCHASE` |
+| Cart | Entry Ticket OfferingとGoodsの参照と数量だけをBrowserに一時保持する購入前の利用者補助。Domain Entityではなく、Business Databaseへ保存せず、販売確保も行わない |
+| Sponsor Logo | 協賛者の表示名、画像、任意のリンク先、表示順、公開状態を持つ公開情報Entity |
 | Order Item | Order内の購入対象明細。Entry Ticket、Karaoke、Goodsのいずれか1種類の購入対象へ結び付く |
 | Sales Allocation | 支払確定前に有限数量を排他的に確保する論理的な割当。Entry TicketとGoodsで使用する |
 | Entry Ticket | 1名分のイベント入場権を表す独立した権利Entity |
@@ -144,6 +147,7 @@ Owner / Customerの帰属と、権利が `VALID`、`USED`、`CANCELED` 等のど
 | Event | Aggregate Root | イベント基本情報と公開情報の所属先 |
 | FAQ Item | Entity | 公開FAQの質問・回答・公開状態 |
 | Announcement | Entity | お知らせ本文と公開状態 |
+| Sponsor Logo | Entity | 協賛ロゴの表示情報と公開状態 |
 | Business Profile | Aggregate Root | 認証Identityと業務上の本人・所有者の対応 |
 | Entry Ticket Offering | Aggregate Root | Entry Ticket種別、価格、販売期間、販売数量、購入制限、販売停止 |
 | Order | Aggregate Root | 外部決済前から追跡する購入取引とOrder Itemの整合性 |
@@ -272,12 +276,13 @@ erDiagram
 - 注意事項
 - FAQ Item群
 - Announcement群
+- Sponsor Logo群（§8.4）
 
 開催日時・会場等が未確定の場合、未確定値を推測して公開してはならない。公開可能な情報だけを公開状態へ遷移させる。
 
 ### 8.2 Publication State
 
-FAQ Item、Announcementその他公開/非公開を切り替える独立コンテンツは以下の状態を持つ。
+FAQ Item、Announcement、Sponsor Logoその他公開/非公開を切り替える独立コンテンツは以下の状態を持つ。
 
 - `DRAFT`: 運営編集対象だが一般公開しない
 - `PUBLISHED`: Guestを含む利用者へ公開する
@@ -303,6 +308,19 @@ stateDiagram-v2
 | BR-EVT-002 | Guestへ返すFAQ / Announcementは `PUBLISHED` のものだけとし、`DRAFT` / `ARCHIVED` を公開データとして扱ってはならない。 | FR-PUB-005〜006 | INV-010-08 |
 | BR-EVT-003 | 公開情報の変更は既に成立したOrder、Ticket、Reservation、Goods購入の権利内容を暗黙に変更または取消してはならない。 | FR-XFN-023 | INV-010-01, INV-010-07 |
 | BR-EVT-004 | 開催日時等の変更が既存権利へ影響する場合、通常の公開情報編集だけで権利状態を変更してはならず、対象Domainの明示的な変更Ruleを経由しなければならない。 | FR-ADM-020, FR-XFN-023 | INV-010-07 |
+| BR-EVT-005 | Guestを含む利用者へ返すSponsor Logoは `PUBLISHED` のものだけとし、`DRAFT` / `ARCHIVED` を公開データとして扱ってはならない。表示順は運営が設定した順序に従う。 | FR-PUB-011, FR-PUB-015, FR-ADM-018 | INV-010-08 |
+
+### 8.4 Sponsor Logo
+
+`Sponsor Logo` は少なくとも以下の論理情報を持つ。
+
+- 表示名称（画像の代替テキストを兼ねる）
+- 画像への参照
+- リンク先（任意。運営が設定した公開可能な外部URL）
+- 表示順
+- Publication State
+
+画像そのものの制作・取得元は運営が用意する素材であり、本書は権利関係や画像形式を定義しない。Sponsor Logoの追加・変更・公開状態の変更は、コード変更を前提とせず運営が行える。
 
 ## 9. User / Business Profile / Ownership Domain
 
@@ -463,13 +481,18 @@ Orderは少なくとも次の論理情報を保持する。
 
 Orderは次のいずれか1つのPurposeを持つ。
 
-- `ENTRY_TICKET_PURCHASE`
-- `KARAOKE_PURCHASE`
-- `GOODS_PURCHASE`
+| Purpose | 含むOrder Item |
+|---|---|
+| `ENTRY_TICKET_PURCHASE` | Entry Ticket Order Itemだけ |
+| `KARAOKE_PURCHASE` | 1つのKaraoke Order Item |
+| `GOODS_PURCHASE` | Goods Order Itemだけ |
+| `ENTRY_GOODS_PURCHASE` | Entry Ticket Order ItemとGoods Order Itemの両方 |
 
-1つのOrderに異なるPurposeを混在させるCross-domain cartは本システムのCanonical Domainとして定義しない。
+Purposeは、Order作成時にServer-sideが含まれるOrder Itemから決定し、作成後に変更しない。Clientが指定したPurposeを採用してはならない。
 
-理由は、Entry Ticket容量、Karaoke Slot hold、Goods在庫の解放条件と権利生成が異なり、上流RequirementがCross-domain cartを要求していないためである。同一Purpose内では複数Order Itemを持ってよい。ただしKaraoke Orderは1つの排他的Slot購入を1 Orderとして扱い、1つのOrderに複数Karaoke Slotを混在させない。
+Karaokeを他のPurposeのOrder Itemと混在させるOrderは定義しない。理由は、Karaoke Holdが1つの排他的Slotを時間限定で支払前に確保し、その有効期限が支払期限と連動するため、Entry TicketやGoodsのAllocationと解放条件・失効条件が異なるからである。混在させるとKaraoke Holdの失効がEntry TicketとGoodsの確定まで阻害する。
+
+Entry TicketとGoodsは、どちらも支払前にSales Allocationで確保し、確定・解放の条件が同形であるため、利用者が1回の支払操作で購入できるよう1つの複合Order（§11.9）にまとめてよい。同一Purpose内では複数Order Itemを持ってよい。ただしKaraoke Orderは1つの排他的Slot購入を1 Orderとして扱い、1つのOrderに複数Karaoke Slotを混在させない。
 
 ### 11.3 Order Item subtype
 
@@ -543,7 +566,7 @@ stateDiagram-v2
 | BR-ORD-009 | 支払前に `CANCELED` / `EXPIRED` / `PAYMENT_FAILED` へ遷移するとき、そのOrderに属するEntry / Goods AllocationおよびKaraoke HoldはDomain Ruleに従い解放しなければならない。 | FR-KRK-016, FR-GDS-017, FR-XFN-027〜028 | INV-010-04, INV-010-07 |
 | BR-ORD-010 | 外部支払結果と内部状態を安全に自動解決できない場合、既存確定データを削除せず `REVIEW_REQUIRED` または対応するConsistency Review Caseとして追跡可能にする。 | FR-ADM-021, FR-XFN-020〜021, FR-XFN-032 | INV-010-01, INV-010-07, INV-010-10 |
 | BR-ORD-011 | `CONFIRMED` OrderのOrder Item内容、Customer、購入数量、購入時金額を販売設定変更で遡及的に変更してはならない。 | FR-MYP-007〜010, FR-ADM-002〜006, FR-XFN-023 | INV-010-01 |
-| BR-ORD-012 | Order Purposeは作成後不変であり、Karaoke Orderは1 Orderにつき1排他的Karaoke Slotだけを対象とする。 | FR-KRK-004, FR-KRK-013〜019 | INV-010-04, INV-010-07 |
+| BR-ORD-012 | Order Purposeは作成後不変であり、Karaoke Orderは1 Orderにつき1排他的Karaoke Slotだけを対象とし、他のPurposeのOrder Itemを含まない。 | FR-KRK-004, FR-KRK-013〜019 | INV-010-04, INV-010-07 |
 
 ### 11.8 Orderの禁止遷移
 
@@ -558,6 +581,21 @@ stateDiagram-v2
 - `CONFIRMED` を再確定して新規Ticket / Reservation / Inventory消費を追加する
 
 返金・取消後の業務権利状態はOrder自体を支払前状態へ巻き戻さず、対象Ticket / Reservation / Goods Order Item側の取消状態として表現する。金融上のRefund lifecycleは `SPEC-070` がCanonical Ownerである。
+
+### 11.9 Entry TicketとGoodsの複合Order
+
+Cartを経由した購入開始では、Entry TicketとGoodsを1つのOrderにまとめられる。複合Orderでも、Entry TicketとGoodsそれぞれの販売Rule、Allocation、権利生成のRuleは各Domainの既存Ruleに従う。本節は、複合であることによって追加される整合Ruleだけを定める。
+
+| Rule ID | Precondition / Rule / Result | 関連FR | 関連Invariant |
+|---|---|---|---|
+| BR-ORD-013 | Order PurposeはOrder作成時にServer-sideがOrder Itemから決定する。Entry Ticketだけなら `ENTRY_TICKET_PURCHASE`、Goodsだけなら `GOODS_PURCHASE`、両方を含むなら `ENTRY_GOODS_PURCHASE` とする。Karaoke Order Itemを含むOrderを複合Orderにしてはならない。 | FR-CRT-002, FR-CRT-008 | INV-010-09 |
+| BR-ORD-014 | Cartからの購入開始では、含まれる全Entry Ticket Allocation、全Goods Sales Allocationの確保が成立した場合だけOrderを `PREPARED` として永続化する。1つでも確保できない場合はOrderを作成せず、確保途中の `HELD` Allocationを残してはならない。 | FR-CRT-007, FR-CRT-008, FR-XFN-026 | INV-010-01, INV-010-07 |
+| BR-ORD-015 | 複合OrderのBusiness Confirmationでは、全Entry Ticket Allocationの `COMMITTED` 化とEntry Ticket発行、全Goods Sales Allocationの `COMMITTED` 化とGoods Order Itemの `FULFILLABLE` 化、Order `CONFIRMED` を一貫して成立させなければならない。一部のItemだけの確定を通常結果にしてはならない。 | FR-CRT-009 | INV-010-02, INV-010-07 |
+| BR-ORD-016 | 複合Orderが支払前に `CANCELED` / `EXPIRED` / `PAYMENT_FAILED` になる場合、当該Orderに属する全ての `HELD` AllocationをDomain Ruleに従って解放しなければならない（BR-ORD-009）。一部のItemだけを解放して他を `HELD` のまま残してはならない。 | FR-CRT-010, FR-XFN-027〜028 | INV-010-07, INV-010-10 |
+| BR-ORD-017 | 複合Orderに含まれるEntry Ticket OfferingとGoodsの販売期間、Sale Control State、容量または在庫、Purchase Limitは、それぞれ従来のRule（BR-SAL-*、BR-GDS-*、BR-TKT-*）で判定する。複合であることを理由に判定を緩和してはならない。 | FR-CRT-007, FR-TKT-026 | INV-010-09, INV-010-10 |
+| BR-ORD-018 | Order金額は、複合Orderでも各Order ItemのServer-side価格Snapshotの合計とし、Clientが保持するCart内の金額を権威値にしてはならない（BR-ORD-003）。 | FR-CRT-003, FR-CRT-005, FR-CRT-007 | INV-010-09 |
+| BR-ORD-019 | Karaoke Orderと、Cartから作成するOrderは独立した別Orderであり、状態・支払・失効・Recoveryを共有しない。一方のOrderの失敗が他方の確保や権利を暗黙に変更してはならない。 | FR-CRT-002 | INV-010-04, INV-010-07 |
+| BR-ORD-020 | Cartは参照と数量だけを保持するBrowser側の購入前補助である。Cartへの追加・変更・削除は、Order、Allocation、Hold、Inventoryを変更せず、他の利用者の購入可否にも影響してはならない。購入開始成功後は、当該Orderに含めたItemをCartから除去してよい。 | FR-CRT-001, FR-CRT-004, FR-CRT-011 | INV-010-01, INV-010-09 |
 
 ## 12. Entry Ticket Domain
 
@@ -1183,19 +1221,25 @@ Supports: `INV-010-09`
 
 Supports: `INV-010-10`
 
+### 22.13 DI-030-013 Combined Order Atomicity
+
+Entry TicketとGoodsを含む複合Orderでは、全Itemの支払前確保は全て成立するか何も成立しない。Order確定時も、含まれる全Entry Ticketの発行とAllocation確定、および全Goodsの履行可能化とAllocation確定が全て成立するか、いずれも通常確定として成立しない。支払前の解放も、全Allocationを一括で行う。
+
+Supports: `INV-010-01`, `INV-010-07`, `INV-010-10`
+
 ## 23. SPEC-010 System Invariant Traceability
 
 | SPEC-010 Invariant | 主なEntity / State | 主なBusiness Rule / Domain Invariant |
 |---|---|---|
-| INV-010-01 購入情報を失わない | Order `PREPARED`, Allocation, Consistency Review Case | BR-ORD-001, BR-ORD-010, DI-030-001 |
+| INV-010-01 購入情報を失わない | Order `PREPARED`, Allocation, Consistency Review Case | BR-ORD-001, BR-ORD-010, BR-ORD-014, DI-030-001, DI-030-013 |
 | INV-010-02 Orderを二重確定しない | Order `CONFIRMED` | BR-ORD-005〜006, DI-030-002 |
 | INV-010-03 Ticketを二重発行しない | Entry Ticket, Karaoke Reservation, Karaoke Ticket | BR-TKT-005〜006, BR-KRK-014, BR-KRK-019〜020, DI-030-003 |
 | INV-010-04 Karaoke Slotを二重販売しない | Karaoke Slot `HELD/SOLD`, Karaoke Hold, Reservation | BR-KRK-002〜009, DI-030-005 |
 | INV-010-05 QR Ticketを二重利用させない | Ticket `VALID/USED`, Check-in | BR-TKT-009, BR-KRK-023〜024, BR-CHK-001〜007, DI-030-007 |
 | INV-010-06 Email失敗で購入確定をRollbackしない | Notification Request | BR-NTF-001〜006, DI-030-008 |
-| INV-010-07 決済確定と権利発行を中途半端に残さない | Order `CONFIRMED`, Allocation, Reservation, Ticket | BR-ORD-005〜010, BR-TKT-005, BR-KRK-008, BR-GDS-004, DI-030-009 |
+| INV-010-07 決済確定と権利発行を中途半端に残さない | Order `CONFIRMED`, Allocation, Reservation, Ticket | BR-ORD-005〜010, BR-ORD-013〜016, BR-TKT-005, BR-KRK-008, BR-GDS-004, DI-030-009, DI-030-013 |
 | INV-010-08 所有権と権限をServer-sideで検証する | Business Profile, all owned entities | BR-USR-001〜007, BR-ORD-002, BR-TKT-008, BR-KRK-021, BR-GDS-008, DI-030-010 |
-| INV-010-09 金額をClient入力だけで確定しない | Sales Configuration, Order Item price snapshot | BR-SAL-001〜002, BR-ORD-003, DI-030-011 |
+| INV-010-09 金額をClient入力だけで確定しない | Sales Configuration, Order Item price snapshot | BR-SAL-001〜002, BR-ORD-003, BR-ORD-013, BR-ORD-017〜018, BR-ORD-020, DI-030-011 |
 | INV-010-10 外部処理の再送に耐える | Order, Allocation, Hold, Ticket, Handoff, Notification | BR-ORD-006, BR-TKT-003〜006, BR-KRK-004〜010, BR-GDS-003, BR-GDS-011, BR-CHK-004〜005, BR-NTF-004〜005, DI-030-012 |
 
 ## 24. SPEC-020 Functional Requirement Traceability
@@ -1207,6 +1251,7 @@ Supports: `INV-010-10`
 | Requirement | Domain trace |
 |---|---|
 | FR-PUB-001〜006, FR-PUB-011 | Event, FAQ Item, Announcement, Publication State, BR-EVT-001〜004 |
+| FR-PUB-015 | Sponsor Logo, Publication State, BR-EVT-005 |
 | FR-PUB-007〜010 | Entry Ticket Offering, Karaoke Sales Configuration, Goods, Sale Control State, Sales Availability, BR-SAL-001〜005 |
 | FR-PUB-012 | BR-USR-001, BR-SAL-005。認証UI詳細はSPEC-040/050/060 |
 | FR-PUB-013〜014 | Domain data sourceはEvent / Sales Configuration。Failure UX / NavigationはSPEC-040/050 |
@@ -1255,6 +1300,21 @@ Supports: `INV-010-10`
 | FR-GDS-014〜015 | Goods Handoff, BR-GDS-010〜013 |
 | FR-GDS-016 | BR-GDS-009 |
 
+### 24.4a Cart / 複合購入
+
+| Requirement | Domain trace |
+|---|---|
+| FR-CRT-001, FR-CRT-004 | Cart（Domain Entityではない）, BR-ORD-020 |
+| FR-CRT-002 | §11.2, BR-ORD-012, BR-ORD-013, BR-ORD-019 |
+| FR-CRT-003, FR-CRT-005 | BR-ORD-003, BR-ORD-018, DI-030-011 |
+| FR-CRT-006 | BR-USR-001, BR-SAL-005 |
+| FR-CRT-007 | BR-ORD-014, BR-ORD-017, DI-030-013 |
+| FR-CRT-008 | §11.2, BR-ORD-013 |
+| FR-CRT-009 | BR-ORD-015, DI-030-009, DI-030-013 |
+| FR-CRT-010 | BR-ORD-016, BR-ORD-009 |
+| FR-CRT-011 | BR-ORD-020 |
+| FR-CRT-012 | BR-USR-006, DI-030-010 |
+
 ### 24.5 Mypage / Admin / Staff / Email
 
 | Requirement | Domain trace |
@@ -1265,7 +1325,7 @@ Supports: `INV-010-10`
 | FR-ADM-001, FR-ADM-019〜020 | Domain操作はBR-USR-007と各State Machineを越えられない。Permission詳細はSPEC-060/130 |
 | FR-ADM-002〜008 | Order / Entry Ticketの状態・関係を§§11–12で定義 |
 | FR-ADM-009〜013 | Karaoke Slot / Reservationの状態・編集Ruleを§§13–14で定義 |
-| FR-ADM-014〜016, FR-ADM-018 | Sales Configuration / Event Domainを§§8,10で定義 |
+| FR-ADM-014〜016, FR-ADM-018 | Sales Configuration / Event Domain（Sponsor Logoを含む）を§§8,10で定義 |
 | FR-ADM-017 | Goods Handoff / Goods Item state, BR-GDS-010〜013 |
 | FR-ADM-021 | `REVIEW_REQUIRED`, Consistency Review Case |
 | FR-ADM-022 | 監査可能なDomain event対象。SchemaはSPEC-160 |
@@ -1310,6 +1370,9 @@ Supports: `INV-010-10`
 - `RELEASED -> HELD` を同じAllocationで行わない
 - `COMMITTED -> HELD` を行わない
 - capacity / inventory上限を超える `HELD` を作らない
+- 複合Orderで一部のAllocationだけを `HELD` のまま残して他を解放しない
+- 複合Orderで一部のItemの権利だけを成立させて `CONFIRMED` にしない
+- Karaoke Order ItemをEntry Ticket / Goods Order Itemと同じOrderに含めない
 
 ### 25.3 Karaoke Slot / Hold
 
@@ -1357,6 +1420,20 @@ Supports: `INV-010-10`
 
 下流仕様は、本書のState名・Business Rule ID・Domain Invariantを参照し、同じ概念へ別のCanonical state名を無断で導入してはならない。
 
+### 26.1 SPEC-030 1.1.0により下流仕様で整合が必要な事項
+
+以下の下流仕様は、本改訂時点ではOrder Purposeを3値として記述しており、本書の4値と整合していない。該当仕様は、本書を正として改訂する。改訂が完了するまでの間、複合Orderと協賛ロゴに関しては本書の記述を正とし、下流の旧記述を根拠に複合Orderを禁止または未定義として扱ってはならない。
+
+| SPEC | 整合が必要な事項 |
+|---|---|
+| SPEC-100 | `orders.purpose` の許可値とPurposeとpurchase sourceの組合せ制約、複合Orderの購入時Transaction、Sponsor Logoの物理設計（table、表示名称、画像参照、リンク先、表示順、Publication State、公開取得用のIndex、通常運用でのhard delete禁止。§8.4、`BR-EVT-005`） |
+| SPEC-110 | Cartからの購入開始API（複数ItemのRequest、All-or-Nothingの結果、不成立Itemの識別）、Order Purposeの許可値、Sponsor Logoの公開取得 |
+| SPEC-120 | 複合Orderの確認通知（Entry TicketとGoodsの両方を含む場合の通知内容） |
+| SPEC-130 | Sponsor Logoの管理画面と操作、Order一覧・詳細での複合Order表示 |
+| SPEC-170 / SPEC-200 | 複合Orderの確定・解放、Cart購入開始のAll-or-Nothing、Sponsor Logoの公開制御に対するTest CaseとAcceptance |
+
+SPEC-070のPAY-ORD-004等のPurpose記述は、本改訂と同時にSPEC-070 1.1.0で最小限整合させる。
+
 ## 27. 受入条件
 
 本仕様書は以下をすべて満たす場合に成立する。
@@ -1390,6 +1467,11 @@ Supports: `INV-010-10`
 27. 外部事実を捏造せずConfigurationとして保持する構造が定義されている。
 28. 本書が実装フェーズで分断されていない。
 29. 本書が `SPEC-000` のCanonical Owner、depends_on、Upstream Change Request規則に従っている。
+30. Order Purposeが `ENTRY_TICKET_PURCHASE`、`KARAOKE_PURCHASE`、`GOODS_PURCHASE`、`ENTRY_GOODS_PURCHASE` の4値であり、Server-sideが決定し、作成後不変である。
+31. Karaoke Order ItemがEntry Ticket / Goods Order Itemと同じOrderに含まれない。
+32. 複合Orderの支払前確保、確定、解放が全て成立するか何も成立しないRule（All-or-Nothing）がある。
+33. CartがDomain Entityではなく、販売確保を行わず、金額・在庫を権威値にしないRuleがある。
+34. Sponsor Logoが公開状態を持ち、`PUBLISHED` だけが公開対象になる。
 
 ## 28. 上流仕様変更要求
 

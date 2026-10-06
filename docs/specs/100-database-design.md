@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-100
 title: Database Design
-version: 1.0.0
+version: 1.0.2
 status: provisional
 depends_on:
   - SPEC-000
@@ -2237,3 +2237,38 @@ Retry count、backoff、reconciliation、Review Case解消Runbookを定義する
 なし。
 
 本書の物理設計は、添付された `SPEC-000`, `SPEC-010`, `SPEC-020`, `SPEC-030`, `SPEC-060`, `SPEC-070`, `SPEC-080`, `SPEC-090` のState、Cardinality、期限、System Boundary、Business Ruleを変更せず具体化できる。
+
+### 未反映のUCR（`SPEC-050` v1.1.0 に伴う要求）
+
+以下は本書へ未反映の上流仕様変更要求であり、`DEV-GEN-001` に従い、本書のCanonical Owner本文へ反映されるまで実装契約として扱わない。
+
+### UCR-100-001
+
+- 対象: SPEC-100（関連: SPEC-110）
+- 現在の仕様: Business Profileに利用者が編集できるFieldが列挙されていない（§14.1）。一方、`SPEC-050` §18.2 `PG-MYP-002` はDisplay nameを更新可能な項目としている。
+- 要求する変更: Business ProfileのDisplay nameの物理表現（Column、制約、更新可否）と、対応するAPI contract（`API-AUTH-004`）を定義する。
+- 理由: `PG-MYP-002` の更新Actionを実装するため。
+- 変更しない場合の影響: Display nameの更新をBusiness Databaseへ永続化できない。UI mockは必須入力のチェックだけを行い、最大文字数を定めない。
+- 影響を受ける可能性がある仕様書: SPEC-110
+
+### 未反映のUCR（`SPEC-030` v1.1.0 に伴う要求）
+
+以下は本書へ未反映の上流仕様変更要求であり、`DEV-GEN-001` に従い、本書のCanonical Owner本文へ反映されるまで実装契約として扱わない。`SPEC-030` §26.1 が下流整合事項として挙げている。
+
+### UCR-100-002
+
+- 対象: SPEC-100（関連: SPEC-110, SPEC-130, SPEC-170）
+- 現在の仕様: `SPEC-030` §8.4 はSponsor Logoを、表示名称、画像への参照、リンク先（任意）、表示順、Publication Stateを持つEntityと定めている。本書にはそのtableが定義されていない。`app.faq_items`（§13.2）と `app.announcements`（§13.3）には物理設計がある。
+- 要求する変更: Sponsor Logoのtable、column、型、制約、`state`（`DRAFT` / `PUBLISHED` / `ARCHIVED`）、表示順、公開取得用のIndex、通常運用でのhard delete禁止を定義する。画像参照の保管方式と、リンク先URLの検証の責務の所在も明確にする。
+- 理由: `FR-PUB-015` と `FR-ADM-018` を満たし、運営がコード変更なしでSponsor Logoを管理するため。`BR-EVT-005` が定める公開制御をBusiness Databaseで表現するため。
+- 変更しない場合の影響: Sponsor Logoを永続化できない。公開API（`UCR-110-001` の項目3）と管理操作（`SPEC-130`）の実装に必要な物理表現がない。
+- 影響を受ける可能性がある仕様書: SPEC-110, SPEC-130, SPEC-170
+
+### UCR-100-003
+
+- 対象: SPEC-100（関連: SPEC-110, SPEC-120, SPEC-170）
+- 現在の仕様: `app.orders`（§16）のPurpose CHECKは `ENTRY_TICKET_PURCHASE` / `KARAOKE_PURCHASE` / `GOODS_PURCHASE` の3値であり、Source CHECKはPurposeごとに単一のsourceを要求する。`app.entry_sales_allocations`（§18）の `purpose` と `app.entry_tickets`（§24）の `order_purpose` は `ENTRY_TICKET_PURCHASE` に固定されている。`SPEC-030` §11.2 は `ENTRY_GOODS_PURCHASE` を含む4値を定め、§11.9 は複合Orderを定める。
+- 要求する変更: `orders.purpose` の許可値と、Purposeとpurchase sourceの組合せ制約を更新する。複合Orderに属するEntry Ticket AllocationとEntry Ticketを保持できるよう、§18 / §24 の固定値を見直す。複合Orderの購入時Transaction（全Allocationの確保、または全体の不成立）を定義する。
+- 理由: `FR-CRT-007〜010` と `BR-ORD-013〜018` を実装できるようにするため。
+- 変更しない場合の影響: Cart経由の複合Orderを永続化できず、現行のCHECK制約により拒否される。
+- 影響を受ける可能性がある仕様書: SPEC-110, SPEC-120, SPEC-170

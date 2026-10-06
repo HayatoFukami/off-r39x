@@ -1,94 +1,269 @@
-# Repository Instructions
+# AGENTS.md
 
-## Current State
+**off r39'x in 大阪らへん2027** Webシステムのリポジトリで作業するAIエージェント向けの作業ルール。
 
-- This revision is specification-only. The tracked project content is `docs/specs/` (21 Markdown specifications) plus `LICENSE`; there is no application source, `package.json`, lockfile, test configuration, CI workflow, formatter/linter configuration, or repository-local OpenCode config.
-- No build, lint, typecheck, or test command is currently executable here. Do not invent commands or report the future pipeline described in `SPEC-180` as having run.
-- `SPEC-010`, `SPEC-180`, and `SPEC-190` describe the planned TypeScript/pnpm monorepo and deployment layout; their `apps/`, `packages/`, `tests/`, and `scripts/` paths do not exist yet.
-- The 21 specifications are `provisional` and use mixed semver versions `1.0.0`–`1.3.0` at HEAD `385127c` (for example `SPEC-130` is `1.2.0` and `SPEC-160` is `1.3.0`); pin behavior to the current canonical text rather than assuming a single version. Treat `reviews/specification-review/`, when present, as generated review evidence rather than canonical specification.
+本書は「現在のリポジトリの状態」「誰が・どの順で・何を受け渡すか」「Git運用」「報告の言語」を定める。業務仕様、API contract、DB schema、コーディング規約、テスト契約の中身は正式仕様書がCanonical Ownerであり、本書へ複製しない。本書と正式仕様書が矛盾する場合は正式仕様書を正とする（ただし §7 のユーザー指示による仕様変更を除く）。
 
-## Specification Source Of Truth
+## 1. 現在の状態
 
-- Read `docs/specs/000-specification-governance.md` before editing a specification or starting implementation. It defines source priority, dependencies, Canonical Owners, frontmatter, versioning, and Upstream Change Requests (UCRs).
-- For an implementation task, read `SPEC-000`, the target behavior's Canonical Owner, that owner's `depends_on`, and any explicitly named specifications. Use `SPEC-NNN` identifiers when cross-referencing; do not duplicate another specification's detailed rules.
-- Formal specification filenames use `NNN-kebab-case-name.md` and frontmatter must retain `spec_id`, English `title`, semver `version`, `status`, `depends_on`, and `related_specs`. A feature task must not rewrite specifications unless it explicitly includes a specification revision.
-- Never resolve a specification conflict silently. Record the required change in the affected specification using the UCR format from `SPEC-000` and keep implementation aligned with the current canonical text.
-- UCR status at HEAD `385127c`: `UCR-130-001`, `UCR-130-002`, `UCR-130-003`, `UCR-130-004`, `UCR-130-006`, `UCR-150-001`, `UCR-150-002`, and `UCR-170-001` are incorporated into the canonical specifications and are implementation contracts. `UCR-130-005` remains `DEFERRED_NONBLOCKING` pending actual query plan, selectivity, and data shape; do not add its proposed indexes speculatively.
-- The accepted flows are canonical: capability semantics in `SPEC-060`, handoff and admin semantics in `SPEC-130`, and API, operation-ID, and recovery contracts in `SPEC-110` (with `SPEC-120` for notification recovery). Reference those canonical rules directly; do not copy UCR proposals or add UCR-only endpoints, capabilities, operation IDs, indexes, or recovery commands.
+リポジトリの状態は変化する。特定のcommitやHEADを前提にせず、作業の前に実在するファイルとscriptを確認する。
 
-## Non-Negotiable Boundaries
+- 正式仕様は `docs/specs/` の `SPEC-000`〜`SPEC-200` と `LICENSE` である。仕様書のversionは仕様書ごとに異なるため、単一バージョンを仮定せず、各仕様書のfrontmatterと現行の正式本文に従う。
+- 仕様書以外に、agent定義（`.claude/agents/`）、`CLAUDE.md`、`docs/drafts/`（正式仕様ではない検討資料）、`reviews/specification-review/`（生成されたレビュー証跡）が存在する場合がある。これらは正式仕様ではない。
+- アプリケーションソース、`package.json`、lockfile、テスト設定、CI、formatter / linter設定は、実在を確認してから扱う。`SPEC-010`, `SPEC-180`, `SPEC-190` が定める `apps/`, `packages/`, `tests/`, `scripts/`, `traceability/` も、実在するものだけを対象とする。存在しないものを前提にしない。
+- build / lint / typecheck / testコマンドは、実在するscriptだけを実行する。存在しないコマンドを作り出さない。`SPEC-180` のパイプラインを「実行済み」と報告しない。
+- 実在するscriptを確認したうえで、`SPEC-180` のbuild順序（`corepack enable` → `pnpm install --frozen-lockfile` → `pnpm lint` → `pnpm typecheck` → 該当する `SPEC-170` gate → `pnpm build`）に従う。
+- UI mockが実在する場合の扱いは `SPEC-190` の `DEV-WEB-010`〜`013` に従う。
 
-- Business data flows `Browser -> Next.js Web -> Hono API -> Supabase PostgreSQL`; Browser and Next.js must not access the Business Database directly. Hono is the business mutation and authorization boundary.
-- Supabase Auth is the identity authority, while PostgreSQL is the business system of record. Verify authentication, ownership, and capabilities server-side; client-supplied IDs, roles, prices, and payment results are never authority.
-- Confirm payment from a verified Stripe Webhook/provider authority, not a browser success redirect. Keep external provider calls outside database transactions and reconcile unknown outcomes using the same business cause/provider key rather than blind retries.
-- Do not expose secrets or raw QR values to client bundles, logs, traces, snapshots, screenshots, fixtures, or test artifacts. Entry and Karaoke QR purposes remain separate and check-in must be atomic and single-use.
-- Do not add new domain states, APIs, capabilities, schema, or recovery behavior merely because implementation appears to require them; revise the owning specification first.
+## 2. 仕様書の場所と読み方
 
-## Verification When Code Exists
+- 正式仕様書は [`docs/specs/`](docs/specs/) の `SPEC-000`〜`SPEC-200` である。ファイル名は `NNN-kebab-case-name.md` とする。
+- どのロールも、作業前に次の順で読む（`SPEC-000 §21`）。
+  1. `SPEC-000`（仕様ガバナンス。Canonical Owner、`depends_on`、frontmatter、バージョニング、UCRを定める）
+  2. 対象機能のCanonical Owner仕様書
+  3. その仕様書の `depends_on`
+  4. ユーザーの指示で追加指定された仕様書
+- 変更分類ごとの必読仕様書は `SPEC-190 §33` の表で決める。全仕様書を無条件に読み込まない。
+- 他の仕様書へ言及するときは `SPEC-NNN` 形式のIDを使い、他仕様書の詳細ルールを複製しない。
+- 判断が割れたときの優先順位は `SPEC-000 §8` に従う。最上位はユーザーの最新の明示的指示である。
+- 仕様書frontmatterの `spec_id`、英語の `title`、semverの `version`、`status`、`depends_on`、`related_specs` を維持する。
 
-- Follow `SPEC-190`'s workflow: classify the change, identify Canonical Owner and Rule IDs, check UCR status, add a failing/coverage test, make the smallest compliant change, run focused and affected suites, then run static, security, traceability, and diff checks.
-- `SPEC-170` requires real PostgreSQL semantics for constraints, transactions, locks, and concurrency; provider contract tests use non-production credentials/data. Critical tests are not replaced by unit mocks, retries, or quarantine.
-- The planned build order in `SPEC-180` is `corepack enable`, `pnpm install --frozen-lockfile`, `pnpm lint`, `pnpm typecheck`, applicable `SPEC-170` gates, then `pnpm build`; use it only after executable manifests/scripts exist and verify the actual scripts first.
-- Completion reports should follow the fixed evidence headings in `SPEC-190` (changed scope, rules, files, migrations, tests/groups, security/reliability, traceability, UCRs, and verification exceptions). Never claim an unrun check passed.
+### 2.1 UCRの状況
 
-## Additional Agent Instructions
+- UCRの反映状況は、特定のcommitに固定せず、各Canonical Owner仕様の現行本文（「未反映のUCR」節など）で確認する。
+- 未反映のUCRは、対象Canonical Owner仕様の本文へ反映されるまで実装契約として扱わない（`DEV-GEN-001`）。
+- `UCR-130-005` は `DEFERRED_NONBLOCKING`（実際のquery plan、selectivity、データ形状が判明するまで保留）である。提案されたindexを先回りして追加しない。
+- 反映済みの流れは正式仕様が正である。Capability意味論は `SPEC-060`、handoffと管理操作は `SPEC-130`、API・Operation ID・recovery contractは `SPEC-110`（通知recoveryは `SPEC-120`）を直接参照する。UCR案を複製したり、UCRだけに存在するendpoint / capability / Operation ID / index / recovery commandを追加したりしない。
 
-### Specification Maintenance
+## 3. 全ロール共通の禁止事項と境界
 
-- Every new feature must be documented in the project's specification or in relevant project documentation.
-- Changes to user-visible behavior, public interfaces, system behavior, explicitly defined requirements, or any other behavior governed by the project's specification must be treated as specification changes.
-- Purely internal implementation changes that do not alter specified behavior do not require a specification change unless the existing project rules require one.
-- When a task introduces a specification change, update the specification before making any corresponding changes to the codebase.
-- Specification changes must precede implementation changes.
-- When multiple agents are involved, implementation work that depends on a changed specification must use the updated specification as the source of truth.
+詳細は `SPEC-190 §44` を正とする。特に次を守る。
 
-### Git Commit Policy
+- 正式仕様書を黙って変更しない。既存コードの挙動を仕様へ昇格させない（`DEV-GEN-005`, `DEV-GEN-006`）。仕様の衝突を黙って解消しない。
+- 仕様にないState / API / Capability / schema / recovery動作 / business exceptionを、実装上必要に見えるという理由だけで追加しない。先に該当仕様を改訂する（`DEV-AI-002`）。
+- 仕様書に存在するルールを独自判断で弱めない。
+- データの流れは `Browser → Next.js Web → Hono API → Supabase PostgreSQL` とする。BrowserとNext.jsはBusiness Databaseへ直接アクセスしない。Honoが業務変更と認可の境界である。
+- Supabase Authが認証の権威、PostgreSQLが業務データのsystem of recordである。認証、所有者、Capabilityは必ずサーバー側で検証する。クライアントが送るID、ロール、価格、決済結果を権威として扱わない。
+- 決済の確定は、検証済みのStripe Webhook / provider authorityに基づく。ブラウザの成功リダイレクトでは確定しない。外部provider呼び出しをDB transactionの外に置き、結果が不明な場合は、盲目的なretryではなく同一のbusiness cause / provider keyで照合する。
+- Secret、raw QR、Session credential、raw webhook body、不要なPIIを、client bundle・ソース・fixture・ログ・trace・snapshot・screenshot・テスト成果物・報告文へ出さない。EntryとKaraokeのQR purposeは分離を保ち、check-inはatomicかつsingle-useとする。
+- 実行していないテスト・検証を合格と報告しない（`DEV-AI-005`）。
+- Critical Testをretry / skip / quarantineで合格させない（`SPEC-170 §69`, `§70`）。
+- 実DBの意味論（制約、transaction、lock、並行性）が必要なテストを、Unit mockで代替しない（`SPEC-170`）。Provider contract testは非本番の認証情報・データを使う。
 
-- Make commits frequently and keep them granular.
-- Create separate commits at meaningful feature, fix, refactor, documentation, or other logical work-unit boundaries.
-- Prefer multiple small, focused commits over one large commit containing unrelated or loosely related changes.
-- Each commit must contain only changes belonging to its intended logical work unit.
-- Commit only changes that belong to the current task.
-- Never stage or commit unrelated, pre-existing, or user-authored uncommitted changes unless the user explicitly instructs you to include them.
-- Before creating a commit, inspect the relevant Git diff and ensure that unrelated changes are not included.
-- Before reporting that the requested work is complete, ensure that all completed work belonging to the current task has been committed.
-- Do not send a final completion report while completed task changes remain uncommitted.
+## 4. ロール構成
 
-### Git Ownership in Multi-Agent Workflows
+オーケストレーター（ユーザーと対話するメインエージェント）が、3つのサブエージェントを順に起動する。サブエージェント定義は [`.claude/agents/`](.claude/agents/) の `planner.md`, `tester.md`, `coder.md` に置く。
 
-- Git operations must have a clear owner when multiple agents or sub-agents are working on the same task.
-- Only the agent responsible for Git operations in the current workflow may create commits in the shared working tree.
-- Sub-agents must not create commits unless the orchestrating agent explicitly instructs them to do so.
-- An exception is permitted when a sub-agent has been assigned an isolated Git worktree or equivalent isolated workspace and committing is explicitly part of that sub-agent's assigned responsibility.
-- Agents must not independently create overlapping or competing commits from the same shared working tree.
-- The orchestrating agent is responsible for ensuring that completed work is integrated and committed appropriately before reporting overall task completion.
+| ロール | 定義ファイル | 責務 | 書き込み可能な範囲 |
+|---|---|---|---|
+| プランニング | `planner.md` | 仕様書をもとにユーザーの指示を理解し、設計へ落とし込む | なし（読み取り専用） |
+| テスト | `tester.md` | テストを作成し、実装を検証する。不合格箇所はコーディングへ修正指示を出す | `tests/**` |
+| コーディング | `coder.md` | 設計をもとに実装する。テストからの修正指示に対応する | `apps/**`, `packages/**`, `scripts/**`, `traceability/rule-code-map.json` |
 
-### Commit Failure or Unsafe Repository State
+上記の書き込み範囲のうち、実在しないディレクトリは、`SPEC-190 §6` の構成に従い、必要になった時点で該当ロールが作成してよい。範囲外のパスは作成・変更しない。
 
-- Never claim that a task is complete if a required commit has not succeeded.
-- If a required commit cannot be completed safely because of repository state, merge conflicts, permissions, hooks, signing requirements, unavailable Git configuration, unrelated working-tree changes, or another external constraint, do not force the commit or modify unrelated work to make it succeed.
-- Preserve the user's existing work and repository state whenever possible.
-- Report the task as incomplete or blocked and clearly explain the blocking condition to the user in Japanese.
-- A failure to commit must not prevent reporting the failure itself; it only prevents claiming successful completion.
+境界は次のとおり固定する。
 
-### Conflict Between Existing Specifications and User Instructions
+- コーディングは `tests/**` を変更しない。テストが誤っていると判断した場合は、変更せず根拠（Rule ID）を付けてオーケストレーターへ報告する。
+- テストはProduction source（`apps/**`, `packages/**`）を変更しない。不具合は修正指示として返す。
+- サブエージェントは `docs/specs/**` を変更しない。仕様の変更はオーケストレーターが §7 の手続きで行う。
+- サブエージェントはGit操作（stage / commit / push / branch操作）を行わない。Gitの所有者はオーケストレーターだけである（§6）。
 
-- If the existing specification conflicts with the user's current prompt or instructions, the user's current instructions take precedence.
-- Treat the user's instructions as a specification change when they clearly request behavior or requirements that differ from the existing specification.
-- Do not stop the work merely because such a discrepancy exists.
-- Continue the work according to the user's current instructions.
-- Where necessary, update the specification first so that it reflects the user's requested changes before modifying the codebase.
-- Do not silently preserve outdated specification behavior when the user's current instructions explicitly supersede it.
-- Inform the user that the previous specification and the user's current instructions differed.
-- If multiple specification differences or changes are discovered during the task, do not report them individually as they are found unless immediate user attention is required for safety or to proceed.
-- First identify and compare all relevant specification differences, then report them together in a single consolidated explanation.
+## 5. ワークフロー
 
-### Language Used in Agent-User Communication
+### 5.1 実装タスク
 
-- All content that the user is expected or required to read must be written in Japanese.
-- This rule applies specifically to communication between the development agent and the user during the development process, including progress updates, questions, warnings, explanations, blocked-state reports, completion reports, and other user-facing messages.
-- This communication-language rule must not alter or impose language requirements on the product being developed.
-- The product's own UI, source code, documentation, localization, generated assets, tests, APIs, and other language choices must continue to follow the project's requirements and specifications.
-- Content that the user does not need to read may use languages other than Japanese when doing so is more appropriate or improves quality.
-- Internal agent instructions, reasoning artifacts, implementation notes not shown to the user, and instructions to sub-agents may use English or another language when that is more effective.
-- In particular, instructions to sub-agents do not need to be written in Japanese if another language is expected to produce higher-quality results.
+```text
+ユーザーの指示
+  │
+  ▼
+[0] 仕様変更の要否判定 ── 要なら §7 に従い、実装より先に仕様を改訂してコミット
+  │
+  ▼
+[1] プランニング ── 設計書を出力
+  │
+  ▼
+[2] ユーザー承認 ── 承認されるまで先へ進まない
+  │
+  ▼
+[3] テスト（作成）── 設計に基づき、失敗するテストを先に書く
+  │
+  ▼
+[4] コーディング ── テストを通す最小の実装を行う
+  │
+  ▼
+[5] テスト（検証）── 合格 → [6] ／ 不合格 → 修正指示を付けて [4] へ
+  │                    （差し戻しは最大3回。超えたらユーザーへ報告して停止）
+  ▼
+[6] オーケストレーター ── 完了報告を出力し、devブランチへコミット
+```
+
+`SPEC-190 §35` の17ステップは、次のとおりロールへ割り当てる。
+
+| §35のステップ | 担当 |
+|---|---|
+| 1〜7（scope取得、変更分類、Canonical Owner特定、Rule ID抽出、Canonical status確認、既存コード確認、実装境界の決定） | プランニング |
+| 8（失敗するテスト / coverage Testの作成） | テスト |
+| 9〜11（最小実装、focused tests、static validation） | コーディング |
+| 12〜14（影響範囲のテストグループ実行、Security / Secret / Logレビュー、Migration / Provider / Concurrencyレビュー） | テスト |
+| 15（Traceability更新） | テスト: `tests/traceability/test-manifest.json` ／ コーディング: `traceability/rule-code-map.json` |
+| 16〜17（diff自己レビュー、完了報告） | オーケストレーター |
+
+### 5.2 仕様のみのタスク
+
+仕様書の改訂・追加・UCR記録だけを求めるタスクは、サブエージェントを起動せず、オーケストレーターが §7 に従って直接行ってよい。この場合 §5.1 の [1]〜[5] は適用しない。
+
+### 5.3 現時点でのテスト・検証の扱い
+
+テスト基盤（実在するscript・設定）が存在しない場合は、テスト担当は実行できない項目を実行したと報告しない。実行できなかった項目は `Not executed` へ理由とリリースへの影響を書く。テスト基盤そのもの（`SPEC-180` / `SPEC-190` が定める manifest・script・設定）を整備するタスクでは、設計書でその範囲を明示し、実在するscriptを確認してから実行する。
+
+### 5.4 オーケストレーターの責務
+
+- サブエージェントは前の会話を知らない状態で起動する。起動時のプロンプトへ、ユーザーの指示原文、承認済み設計書の全文、直前ロールの出力全文を必ず含める。要約して渡さない。サブエージェントへの指示は、より高い品質が期待できる言語（英語など）で書いてよい。
+- [2] では設計書をユーザーへ提示し、明示的な承認を得る。修正を求められたらプランニングへ戻す。
+- [5] の不合格のたびに差し戻し回数を数える。3回目の修正後も不合格なら、自動ループを止め、各回の指摘と対応の経緯をまとめてユーザーへ判断を仰ぐ。
+- サブエージェントが §8 の停止条件を報告したら、次のロールを起動せず、その内容をユーザーへ伝える。
+- コミット前に `git diff` を確認し、意図しないファイル、生成物のノイズ、Secret、仕様書の意図しない変更が混ざっていないことを確かめる。
+
+### 5.5 プランニングの出力（設計書）
+
+次の固定見出しで出力する。
+
+```text
+Task scope:
+- <要求 / 変更対象 / 受入条件 / 非対象>
+
+Change classification:
+- <SPEC-190 §33 のcategory。複数可>
+
+Canonical owners read:
+- <SPEC-ID と参照した章>
+
+Canonical rules:
+- <Rule ID と要点>
+
+Canonical status:
+- <SPEC-110 Operation ID等の確認結果。UCRの反映状況（§2.1）。未反映UCRに依存していないこと>
+
+Existing code / tests / migrations:
+- <現状の確認結果。該当なしならその旨>
+
+Implementation boundary:
+- <変更するpackage / layer、守るべき依存方向と禁止edge>
+
+Design:
+- <interface、データの流れ、状態遷移、transaction境界、エラーの扱い>
+
+Test plan:
+- <必要なテストグループ(G1〜G10)、Test Case候補とlevel、critical / concurrency / fault injectionの要否>
+
+Open issues:
+- none | <仕様の矛盾・不足、UCR案、未決事項への依存>
+```
+
+設計は仕様が要求する最小の変更にとどめる。無関係なリファクタリングを含めない。
+
+### 5.6 テストの出力
+
+**作成フェーズ**では、`SPEC-170 §81` の順序でテストを書き、`SPEC-170 §9` のTest Case contractに従って `tests/traceability/test-manifest.json` を更新する。出力には、追加したTest Case ID・パス・対応Rule ID、および実装前に実行して失敗することを確認した結果を含める。
+
+**検証フェーズ**では、`SPEC-190 §33` で決まる全テストグループと `§37` の該当項目を実行し、`§38` の自己レビュー質問をdiffに対して判定する。結果は次の形式で出力する。
+
+```text
+Verdict: PASS | FAIL (round <n>/3)
+
+Test groups executed:
+- <Gx / コマンド / 結果>
+
+Self-review (SPEC-190 §38):
+- <各質問の yes / no>
+
+Findings:
+- none | F-<n>
+  - Test case / command: <TC ID または実行コマンド>
+  - Expected: <期待する挙動と根拠Rule ID>
+  - Actual: <実際の挙動。Secret / raw QR / PIIは含めない>
+  - Suspected location: <ファイルと行>
+  - Required fix: <コーディングへの修正指示>
+
+Not executed:
+- none | <未実行の項目 / 具体的な理由 / リリースへの影響>
+```
+
+テストは、通っている実装に合わせて期待値を書き換えない。実装が仕様と一致しなければ実装の不具合として扱う（`SPEC-170 §81`）。
+
+### 5.7 コーディングの出力
+
+- 承認済み設計書とテストが示す範囲だけを、仕様が要求する最小の変更で実装する。設計から外れる必要が生じたら、実装せずに理由を報告する。
+- 修正指示を受けたときは、指摘（`F-<n>`）ごとに対応内容を示す。指摘に同意できない場合は、変更せず根拠を付けて報告する。
+- 引き渡し前に、focused testsとstatic validation（format / lint / typecheck / import boundary）を実行する。実行できない項目は実行できない理由を書く。
+- 出力には、変更ファイルと目的、migrationの有無、実行したコマンドと結果、`F-<n>` ごとの対応を含める。
+
+## 6. 完了報告とGit
+
+### 6.1 完了報告
+
+- 検証が合格したら、オーケストレーターが `SPEC-190 §39` の固定見出しで完了報告を出力する（変更範囲、Rule、ファイル、migration、テスト / グループ、Security / Reliability、Traceability、UCR、検証の例外）。「tests pass」「done」だけの報告は完了証跡にならない（`DEV-AI-004`）。
+- 未実行の検査を合格と書かない。
+
+### 6.2 コミット方針
+
+- コミットは頻繁に、粒度を細かく行う。機能・修正・リファクタリング・文書など、意味のある論理的な作業単位ごとに別コミットとする。無関係、または緩く関連するだけの変更を1コミットへまとめない。
+- 各コミットには、その作業単位に属する変更だけを含める。コミット対象は現在のタスクの変更だけとし、無関係な既存の未コミット変更やユーザー自身の未コミット変更は、ユーザーが明示しない限りstage / commitしない。
+- コミット前に関連する `git diff` を確認し、無関係な変更が混ざっていないことを確かめる。
+- 仕様変更を伴うタスクでは、仕様変更のコミットを、対応する実装のコミットより先に行う。
+- コミットは `dev` ブランチへ行う。push、Pull Requestの作成は、ユーザーが指示したときだけ行う。`main` へのマージは必ずユーザーが手動で行い、エージェントはマージしない。
+- 完了報告の前に、現在のタスクで完了した作業がすべてコミットされていることを確かめる。完了済みの変更が未コミットのまま、最終の完了報告を出さない。
+- コミットメッセージの末尾には、システムが指定する帰属表記（Co-Authored-By行）がある場合はそれを付ける。
+
+### 6.3 マルチエージェント時のGit所有権
+
+- 共有ワーキングツリーでのGit操作の所有者は、オーケストレーターだけである。サブエージェントはコミットしない。
+- 例外として、サブエージェントに隔離されたGit worktree（またはそれに相当する隔離環境）が割り当てられ、かつコミットがその責務としてオーケストレーターから明示された場合に限り、そのサブエージェントはコミットしてよい。
+- 同じ共有ワーキングツリーから、複数のエージェントが重複または競合するコミットを作らない。
+- オーケストレーターは、完了した作業が統合されコミットされていることを、全体の完了報告の前に確認する。
+
+### 6.4 コミットできない場合・危険な状態
+
+- 必要なコミットが成功していない場合、タスクを完了したと主張しない。
+- リポジトリの状態、merge conflict、権限、hook、署名要件、Git設定の欠如、無関係な作業ツリーの変更などでコミットが安全にできない場合は、強制コミットせず、無関係な作業を変更して回避しない。ユーザーの既存の作業とリポジトリの状態を保全する。
+- その場合、タスクを未完了またはブロックとして、阻害要因をユーザーへ日本語で明確に報告する。コミットの失敗は、失敗そのものの報告を妨げない（完了の主張だけを妨げる）。
+- 差し戻し上限に達した場合や §8 で停止した場合は、未検証の実装をコミットしない。
+
+## 7. 仕様とユーザー指示の関係
+
+### 7.1 ユーザー指示が既存仕様と異なる場合
+
+- 既存仕様とユーザーの現在の指示が矛盾するときは、ユーザーの現在の指示を優先する。
+- 既存仕様と明確に異なる挙動・要件をユーザーが求めている場合は、仕様変更として扱う。矛盾があることだけを理由に作業を止めない。
+- 古い仕様の挙動を黙って維持しない。必要なら、コードを変更する前に、ユーザーの要求を反映するよう仕様を先に更新する。
+- 仕様変更の手続き（Canonical Owner、frontmatter、semver、`depends_on`、影響する他仕様の更新）は `SPEC-000` に従う。仕様の更新は、オーケストレーターまたはその明示的な指示を受けた担当だけが行う。
+- 作業中に複数の仕様差分・変更点を見つけた場合、安全上またはユーザーの即時の判断が必要なときを除き、見つけるたびに個別に報告しない。関連するすべての差分を洗い出して比較したうえで、1回の統合した説明にまとめ、以前の仕様とユーザーの現在の指示が異なっていたことを伝える。
+
+### 7.2 機能追加・仕様変更の記録
+
+- 新機能は、プロジェクトの仕様書または関連文書に記載する。
+- ユーザーに見える挙動、公開インターフェース、システム挙動、明示された要件、その他仕様が規定する挙動の変更は、仕様変更として扱う。
+- 仕様が規定する挙動を変えない純粋な内部実装の変更は、既存のプロジェクトルールが求めない限り、仕様変更を要しない。
+- 機能タスクは、仕様改訂を明示的に含まない限り、仕様書を書き換えない。
+- 仕様変更に依存する実装作業は、更新後の仕様を正とする。
+
+## 8. 仕様の矛盾・不足を見つけたとき
+
+ユーザーの指示に起因しない次のいずれかに、どのロールも気づいた時点で作業を止め、オーケストレーター経由でユーザーへ報告する。
+
+- 仕様書どうしが矛盾している。
+- 指示を満たすために、仕様にないState / API / Capability / schema / recovery動作が必要になる。
+- コードと仕様が矛盾しており、仕様側の変更が必要に見える。
+- 保留中のUCR（現時点では `UCR-130-005`。§2.1）に依存する。
+
+報告には `SPEC-000 §15.2` 形式のUpstream Change Request案を添える。サブエージェントは仕様書本文を変更せず、ユーザーの判断を待つ。ユーザーの判断後、オーケストレーターが影響を受ける仕様書へUCRを `SPEC-000` の形式で記録する。UCRは対象Canonical Ownerの本文へ反映されるまで実装の根拠にしない（`DEV-GEN-001`）。実装は現行の正式本文に合わせたままとする。
+
+ただし、リポジトリ構成や開発手順のように `SPEC-190` 自身の範囲に収まる不足は、プランニングが合理的に決定してよい（`DEV-AI-003`）。その場合も設計書の `Open issues` へ決定内容を記録する。
+
+## 9. 言語
+
+- ユーザーが読むことを期待される、または読む必要がある内容（進捗報告、質問、警告、説明、ブロック報告、完了報告など、開発中のエージェントとユーザーの間の連絡）は、すべて日本語で書く。
+- この規則は、開発対象のプロダクトの言語要件を変更しない。プロダクトのUI、ソースコード、文書、ローカライズ、生成物、テスト、APIの言語は、プロジェクトの要件と仕様に従う。
+- ユーザーが読む必要のない内容（内部指示、サブエージェントへの指示、ユーザーへ提示しない実装メモなど）は、品質が上がるなら日本語以外でもよい。特にサブエージェントへの指示は、より高い品質が期待できるなら英語などで書いてよい。
+- ただし、サブエージェントが出力するRole別の固定見出し（§5.5, §5.6）は、指定の表記を保つ。

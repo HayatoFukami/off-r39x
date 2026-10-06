@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-040
 title: User Flows
-version: 1.0.0
+version: 1.2.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -152,6 +152,7 @@ Trace: `BR-ORD-006`, `BR-ORD-008〜009`, `BR-SAL-007`, `BR-TKT-006`, `BR-KRK-006
 - 販売開始前 / 販売終了 / 販売停止
 - 売り切れ / Slot競合 / Inventory競合
 - Purchase Limit超過
+- Cart内Itemの購入不可（購入開始時の一部Item不成立）
 - Hold期限切れ
 - Authentication failure
 - Authorization / Ownership failure
@@ -171,6 +172,7 @@ Trace: `BR-ORD-006`, `BR-ORD-008〜009`, `BR-SAL-007`, `BR-TKT-006`, `BR-KRK-006
 | `UF-PUB-*` | 公開サイト・公開販売情報 |
 | `UF-AUTH-*` | Account / Authentication / Business Profile |
 | `UF-TKT-*` | Entry Ticket購入 |
+| `UF-CRT-*` | Cart・Entry TicketとGoodsの複合購入 |
 | `UF-KRK-*` | Karaoke販売・購入・Reservation |
 | `UF-GDS-*` | Goods販売・購入・Handoff |
 | `UF-MYP-*` | マイページ・自己所有Data |
@@ -195,7 +197,7 @@ Trace: `BR-ORD-006`, `BR-ORD-008〜009`, `BR-SAL-007`, `BR-TKT-006`, `BR-KRK-006
 1. **User** は公開イベント情報の閲覧を開始する。
 2. **Web** は公開情報取得を要求する。
 3. **API** はBusiness Database上の公開対象情報を取得する。
-4. **System** はEvent概要、開催日時、会場・アクセス、注意事項、`PUBLISHED` のFAQ / Announcementを返す。
+4. **System** はEvent概要、開催日時、会場・アクセス、注意事項、`PUBLISHED` のFAQ / Announcement / Sponsor Logoを返す。
 5. **User** はEntry Ticket販売案内、Karaoke販売案内・対象日・1時間単位の空き状況、Goods販売案内へ進める。
 6. **API** は各販売対象の現在の販売期間、Sale Control State、容量 / 在庫 / Slot availability等から公開上の購入可否を導出する。
 7. **Web** は取得できた値だけを表示し、利用者が「販売開始前 / 販売中 / 販売終了 / 販売停止 / 売り切れ等」を区別できる結果を提示する。
@@ -211,6 +213,7 @@ Trace: `BR-ORD-006`, `BR-ORD-008〜009`, `BR-SAL-007`, `BR-TKT-006`, `BR-KRK-006
 2. 対象領域の取得に失敗したことを利用者が識別できる結果を提示する。
 3. 既に取得済みの別領域まで誤って失敗扱いにする必要はないが、取得できていない情報を推測して補完してはならない。
 4. 再取得が可能であっても、成功データを捏造せず、再試行は新しい購入権利等を作らない単純なread retryとして扱う。
+5. Sponsor Logoの取得に失敗した場合も、他領域の公開情報を失敗扱いにせず、Sponsor Logoを推測して補完しない。公開対象が0件の場合、利用者へSponsor Logoの領域を示さなくてよい。
 
 ### 7.4 Success Postcondition
 
@@ -222,8 +225,8 @@ Trace: `BR-ORD-006`, `BR-ORD-008〜009`, `BR-SAL-007`, `BR-TKT-006`, `BR-KRK-006
 
 ### 7.6 Traceability
 
-- `FR-PUB-001〜011`, `FR-PUB-013〜014`, `FR-KRK-002〜004`
-- `BR-EVT-001〜004`, `BR-SAL-003〜005`, `BR-XFN-001〜004`
+- `FR-PUB-001〜011`, `FR-PUB-013〜015`, `FR-KRK-002〜004`
+- `BR-EVT-001〜005`, `BR-SAL-003〜005`, `BR-XFN-001〜004`
 - `INV-010-08`, `INV-010-09`
 
 ## 8. UF-PUB-002 Guestから認証必須操作への遷移
@@ -250,6 +253,7 @@ Trace: `BR-ORD-006`, `BR-ORD-008〜009`, `BR-SAL-007`, `BR-TKT-006`, `BR-KRK-006
 - Login / Account登録を中止した場合、Guestのまま公開領域へ戻れる。Business operationは成立しない。
 - 認証中に販売終了、売り切れ、Slot競合等が発生した場合、認証前表示を根拠に購入を保証せず、対象購入Flowの現在状態Failureへ分岐する。
 - Auth Serviceが一時障害の場合は `UF-AUTH-007` へ分岐する。
+- Cartから購入手続きへ進んだGuestが認証を求められた場合、Cartの内容（参照と数量）を保持したまま認証へ進み、認証後にCartへ戻る。この保持は、一度も認証されていないGuestに適用する（`FR-CRT-012`）。復帰時の価格・販売状態・在庫は現在状態で再取得する（`UF-CRT-001`）。
 
 ### 8.3 Success Postcondition
 
@@ -261,7 +265,7 @@ Guestのまま認証必須Business operationは成立しない。
 
 ### 8.5 Traceability
 
-- `FR-PUB-012`, `FR-AUTH-004〜005`, `FR-XFN-001〜003`, `FR-XFN-026`
+- `FR-PUB-012`, `FR-AUTH-004〜005`, `FR-CRT-006`, `FR-XFN-001〜003`, `FR-XFN-026`
 - `BR-USR-001`, `BR-SAL-005`
 - `DI-030-010`
 - `INV-010-08`
@@ -385,12 +389,13 @@ Email確認がSupabase Auth上で完了している。
 
 1. **Authenticated User** がLogoutを選ぶ。
 2. **System** は現在の認証SessionをLogoutする。
-3. 以後、認証必須FlowをGuestのまま成立させない。
-4. 公開情報は引き続きGuestとして閲覧できる。
+3. **Web** は当該BrowserのCartをclearする（`FR-CRT-012`）。
+4. 以後、認証必須FlowをGuestのまま成立させない。
+5. 公開情報は引き続きGuestとして閲覧できる。
 
 ### 12.2 Postcondition
 
-SessionはLogoutされる。既存Order、Ticket、Reservation、Goods購入等のBusiness Dataは削除・取消されない。
+SessionはLogoutされ、Browser側のCartはclearされる。既存Order、Ticket、Reservation、Goods購入等のBusiness Dataは削除・取消されない。
 
 ### 12.3 Traceability
 
@@ -501,13 +506,15 @@ SessionはLogoutされる。既存Order、Ticket、Reservation、Goods購入等�
 - **Flow ID:** `UF-TKT-001`
 - **Primary Actor:** Authenticated User / Customer
 - **Secondary Actor / External System:** Hono API / Business Database / Stripe / Notification subsystem
-- **Entry Point:** 公開Entry Ticket販売案内または購入可能なEntry Ticket Offering
+- **Entry Point:** 公開Entry Ticket販売案内から追加したEntry Ticketを含むCartの購入手続き（`UF-CRT-001`）
 - **Precondition:** ActorがAuthenticated Userであり、対象Offeringが公開されている
-- **Trigger:** UserがTicket種別・数量を選択して購入開始する
+- **Trigger:** UserがEntry Ticketを含むCartの購入手続きへ進み、購入開始する
+
+Entry Ticketの購入開始は `UF-CRT-001`（Cart）を起点とする。CartにEntry Ticketだけが含まれる場合は本Flowの全手順が適用される。Goodsも含まれる場合は、本Flowと `UF-GDS-001` の該当手順を `UF-CRT-001` の複合Order規則に従って同一Orderに対して適用する。
 
 ### 16.1 Main Success Flow
 
-1. **User** はEntry Ticket販売情報を確認し、Ticket種別と数量を選択する。
+1. **User** はEntry Ticket販売情報を確認し、Ticket種別と数量を選択してCartへ追加し、Cartから購入手続きへ進む。
 2. **Web / API** は認証状態を確認し、Guestなら `UF-PUB-002` へ分岐する。
 3. **API** はServer-sideでEntry Ticket Offeringの現在状態を再取得する。
 4. **API** はSales Period、Sale Control State、必要数量、Purchase Limitを再検証する。
@@ -614,6 +621,100 @@ SessionはLogoutされる。既存Order、Ticket、Reservation、Goods購入等�
 - **BR:** `BR-USR-001`, `BR-USR-003〜006`, `BR-SAL-001〜007`, `BR-ORD-001〜012`, `BR-TKT-001〜011`, `BR-NTF-001〜006`
 - **DI:** `DI-030-001`, `DI-030-002`, `DI-030-003`, `DI-030-004`, `DI-030-009`, `DI-030-010`, `DI-030-011`, `DI-030-012`
 - **INV:** `INV-010-01`, `INV-010-02`, `INV-010-03`, `INV-010-06`, `INV-010-07`, `INV-010-08`, `INV-010-09`, `INV-010-10`
+
+# Part II-A — Cart・複合購入 Flows
+
+## 16A. UF-CRT-001 Cart・Entry TicketとGoodsの複合購入
+
+- **Flow ID:** `UF-CRT-001`
+- **Primary Actor:** Guest / Authenticated User / Customer
+- **Secondary Actor / External System:** Hono API / Business Database / Stripe / Notification subsystem
+- **Entry Point:** Entry Ticket販売案内、Goods一覧またはGoods詳細の「Cartに追加」、またはGlobal NavigationのCart
+- **Precondition:** 対象のEntry Ticket OfferingまたはGoodsが公開されている。Cartの閲覧・編集はGuestでも可能であり、購入開始にはAuthenticated Userであることが必要である
+- **Trigger:** UserがEntry TicketまたはGoodsをCartへ追加する、またはCartから購入手続きへ進む
+
+Cartは参照と数量だけを保持するBrowser側の購入前補助であり、Domain Entityではない。Cartへの追加・変更・削除はBusiness Transactionを発生させない（`BR-ORD-020`）。Karaokeは本Flowの対象外であり、`UF-KRK-001` / `UF-KRK-002` に従ってSlotごとに独立して購入する（`BR-ORD-019`）。
+
+### 16A.1 Main Success Flow
+
+1. **User** はEntry Ticket種別・数量、またはGoods・数量を選択し、Cartへ追加する。GuestでもCartへ追加できる。
+2. **Web** はBrowser側のCartへ参照と数量だけを保存する。Order、Allocation、Hold、Inventoryは変化しない。
+3. **User** はCartを開く。**Web / API** は各Itemの現在の価格と販売状態をServer-sideの現在値から取得して表示する。小計は表示用であり、購入時の権威値ではない。
+4. **User** は数量変更・削除を行う。購入不可のItemがある場合、Itemごとに購入不可理由が示される。
+5. **User** は「購入手続きへ進む」を選ぶ。Guest（一度も認証されていない）なら `UF-PUB-002` へ分岐し、Cart内容は保持される（`FR-CRT-012`）。
+6. **API** は認証Identityを検証し、Cart内の全Itemについて、販売期間、Sale Control State、容量または在庫、Purchase Limit、価格をServer-sideの現在状態から再検証する。Cartに保持された価格・在庫・販売可否は採用しない。
+7. 全Itemが成立する場合のみ、**Business Database** は全Entry Sales Allocationと全Goods Sales Allocationを `HELD` として確保し、Order Purposeを決定し（`BR-ORD-013`）、購入時価格Snapshotを持つOrderを `PREPARED` として永続化する。Goods Order Itemは `PENDING_PAYMENT` である。
+8. Order作成後、**Web** は当該OrderのItemをCartから除去する。
+9. **API** は外部Checkoutを開始する。成立したらOrderを `AWAITING_PAYMENT` とし、**User** は1回のStripe Checkoutで支払う。
+10. **Browser** が戻った後、**Web** は同じOrderをBusiness Databaseから取得する（`PG-XFN-001`）。`AWAITING_PAYMENT` なら `UF-XFN-001` として待機表示する。
+11. 権威ある支払確定をAPIが検証する。**Business Database** は、`UF-TKT-001` §16.1 の手順14〜16に当たるEntry Ticket側の確定と、`UF-GDS-001` §20.1 の手順14〜15に当たるGoods側の確定を、含まれるItemの全てについて一貫して成立させ、Order `AWAITING_PAYMENT -> CONFIRMED` とする（`BR-ORD-015`, `DI-030-013`）。
+12. **System** はOrder確定後にNotification Requestを生成する。
+13. **User** はマイページ（またはPurchase Status）で同じ `CONFIRMED` Order、Entry Ticket / QR、Goods / Handoff状態、Receipt導線を確認する。
+
+### 16A.2 Alternative Flow — Entry TicketだけまたはGoodsだけのCart
+
+CartにEntry TicketだけまたはGoodsだけが含まれる場合も、同じ購入手続きを使う。Order Purposeは `ENTRY_TICKET_PURCHASE` または `GOODS_PURCHASE` となり、`UF-TKT-001` または `UF-GDS-001` の結果が適用される。
+
+### 16A.3 Failure / Conflict Flow — 購入開始時に一部のItemが成立しない
+
+1. 表示時点で購入可能だったItemが、購入開始時に販売終了、停止、売り切れ、数量不足、Purchase Limit超過、Allocation競合となる場合がある。
+2. 1つでも成立しないItemがある場合、**API** はOrderを作成せず、確保途中のAllocationを `HELD` のまま残さない（`BR-ORD-014`）。
+3. **Web** は成立しなかったItemと理由を識別できる形で示し、Cart内容を保持する。
+4. **User** はItemの数量変更・削除を行い、改めて購入手続きへ進む。この再試行は新しい購入開始であり、既存のAllocationを再利用しない。
+
+### 16A.4 Alternative Flow — 表示後の価格・販売状態の変化
+
+Cartの表示後に価格や販売状態が変化した場合も、購入開始時はServer-sideの現在値を使う。Cartの小計と作成されたOrderの金額が異なる場合、権威はOrderの金額であり、Orderの金額は `PG-XFN-001` で確認できる。
+
+### 16A.5 Failure Flow — Checkout開始失敗
+
+- OrderとAllocationを削除せず、Checkout未成立ならOrderは `PREPARED` に留まる。
+- 全Allocationが有効な間だけ、同一Orderで安全なCheckout開始retryを行える。retryで追加Allocationや新Orderを作らない。
+- Allocationが失効・解放された場合は、同一Orderを支払待ちへ進めず、新規購入として新しいOrder / Allocationを取得する。
+
+### 16A.6 Waiting / Failure / Recovery Flow — 支払未確定・Payment failure・不整合
+
+- `AWAITING_PAYMENT` / `REVIEW_REQUIRED` は成功扱いせず、同一Orderの状態再確認だけを行う。
+- Payment failure、取消、失効となった場合、Orderに属する全てのAllocationを一括して解放する（`BR-ORD-016`）。一部のItemだけを `HELD` のまま残さない。
+- 外部支払成功だがEntry Ticket側またはGoods側のいずれかを安全に確定できない場合、通常成功として表示せず、Order全体を `REVIEW_REQUIRED` またはConsistency Review Caseで追跡する。他方のItemだけを有効権利として提供しない。
+- Terminalな失敗後の再購入は新Orderである。**Web** は、失敗したOrderに含まれていたItemの参照と数量を、Cartへ再投入して購入手続きをやり直せるようにしてよい。再投入はCartへの追加であり、価格・販売状態・在庫は現在状態で再検証する。
+
+### 16A.7 Alternative Flow — Email failure
+
+Order / Allocation / Ticket / Goods Order ItemのBusiness Transactionは `CONFIRMED` のまま維持し、Notificationだけを `FAILED_RETRYABLE` とする（`UF-XFN-002`）。
+
+### 16A.8 Alternative Flow — Karaokeとの併用
+
+- Karaokeは別Orderとして購入し、Entry Ticket / GoodsのOrderとは支払、状態、失効、Recoveryを共有しない（`BR-ORD-019`）。
+- Cartを開いた利用者に、Karaokeはカートに入れられず、Slotごとに別の支払になることを示す。
+- 同じ利用者が、Cartからの購入とKaraokeの購入の両方を行う場合、支払は別々に発生する。一方のOrderの失敗が他方のOrderを変更してはならない。
+
+### 16A.9 Retry / Resume Rule
+
+- Cartの再読込・再訪問: Browser側のCartを再取得し、現在の価格・販売状態を表示し直す。Business effectを作らない。
+- Browser側のデータが失われた場合: Cartの内容は失われるが、既に作成済みのOrder・Allocation・権利には影響しない。
+- Order作成後の再読込・Browser Return: 同一Orderを参照し、新Orderや新Ticketを作らない（`UF-TKT-001` §16.11、`UF-GDS-001` §20.11）。
+- Allocation解放後・Terminal後の再購入: 新Order + 新Allocation群。
+
+### 16A.10 Success Postcondition
+
+- Order: `CONFIRMED`。Purposeは `ENTRY_TICKET_PURCHASE` / `GOODS_PURCHASE` / `ENTRY_GOODS_PURCHASE` のいずれか。
+- Entry Sales Allocation: 全て `COMMITTED`。Entry Ticket: 購入数量分が `VALID`。
+- Goods Sales Allocation: 全て `COMMITTED`。Goods Order Item: `FULFILLABLE`。Goods Handoff: `PENDING`。
+- Customer / Owner: Order Customerと一致。
+- Cart: 当該OrderのItemは除去済み。
+
+### 16A.11 Failure Postcondition
+
+- 購入開始に失敗した場合、Orderは作成されず、Allocationは残らない。Cart内容は保持される。
+- 購入開始後の失敗は、Orderが `PREPARED` / `AWAITING_PAYMENT` / `PAYMENT_FAILED` / `CANCELED` / `EXPIRED` / `REVIEW_REQUIRED` のいずれかで追跡される。`CONFIRMED` でないOrderから有効Entry Ticketまたは受け取り可能なGoodsを提供しない。
+
+### 16A.12 Traceability
+
+- **FR:** `FR-CRT-001〜012`, `FR-TKT-003〜010`, `FR-TKT-025〜026`, `FR-GDS-003〜007`, `FR-GDS-011`, `FR-GDS-017`, `FR-PUB-012`, `FR-XFN-009〜013`, `FR-XFN-016`, `FR-XFN-019〜021`, `FR-XFN-026〜029`, `FR-XFN-032`
+- **BR:** `BR-SAL-001〜008`, `BR-ORD-001〜020`, `BR-TKT-001〜011`, `BR-GDS-001〜013`, `BR-NTF-001〜006`
+- **DI:** `DI-030-001〜004`, `DI-030-006`, `DI-030-009〜013`
+- **INV:** `INV-010-01〜03`, `INV-010-06〜10`
 
 # Part III — Karaoke Flows
 
@@ -829,13 +930,15 @@ Customerは現在のReservation / Ticket stateを誤認せず、取消・失効�
 - **Flow ID:** `UF-GDS-001`
 - **Primary Actor:** Authenticated User / Customer
 - **Secondary Actor / External System:** Hono API / Business Database / Stripe / Notification subsystem
-- **Entry Point:** 公開Goods一覧またはGoods詳細の購入操作
+- **Entry Point:** 公開Goods一覧またはGoods詳細から追加したGoodsを含むCartの購入手続き（`UF-CRT-001`）
 - **Precondition:** Goodsが公開対象である
-- **Trigger:** UserがGoodsと数量を選択して購入開始する
+- **Trigger:** UserがGoodsを含むCartの購入手続きへ進み、購入開始する
+
+Goodsの購入開始は `UF-CRT-001`（Cart）を起点とする。CartにGoodsだけが含まれる場合は本Flowの全手順が適用される。Entry Ticketも含まれる場合は、本Flowと `UF-TKT-001` の該当手順を `UF-CRT-001` の複合Order規則に従って同一Orderに対して適用する。
 
 ### 20.1 Main Success Flow
 
-1. **User** はGoods一覧を閲覧し、商品・数量を選択する。
+1. **User** はGoods一覧を閲覧し、商品・数量を選択してCartへ追加し、Cartから購入手続きへ進む。
 2. **Web / API** は認証状態を確認し、Guestなら `UF-PUB-002` へ分岐する。
 3. **API** はGoodsのSales Period、Sale Control State、現在Inventory、その他販売条件をServer-sideで再検証する。
 4. **API** はClient申告価格・在庫を権威値として使用せず、Server-side販売Configurationから金額を決定する。
@@ -1364,6 +1467,7 @@ Notification `FAILED_RETRYABLE`。元Business Transactionは確定済みのま�
 | Entry | Entry Sales Allocation `HELD` | `COMMITTED` + Entry Ticket `VALID` | Allocation `RELEASED` |
 | Karaoke | Hold `ACTIVE` + Slot `HELD` | Hold `COMMITTED` + Slot `SOLD` + Reservation `CONFIRMED` + Ticket `VALID` | Hold `RELEASED` / `EXPIRED`; Slotは条件を満たせば `AVAILABLE` |
 | Goods | Goods Sales Allocation `HELD` + Item `PENDING_PAYMENT` | Allocation `COMMITTED` + Item `FULFILLABLE` | Allocation `RELEASED`; Itemは確定権利として扱わない |
+| Entry + Goods（複合） | 全Entry Allocation `HELD` + 全Goods Allocation `HELD` + Goods Item `PENDING_PAYMENT`（全て成立するか何も成立しない） | 全Entry Allocation `COMMITTED` + Entry Ticket `VALID` + 全Goods Allocation `COMMITTED` + Goods Item `FULFILLABLE`（全て成立するか何も成立しない） | 全Allocation `RELEASED`（一括） |
 
 ## 31. Retry / Resume Decision Table
 
@@ -1380,6 +1484,9 @@ Notification `FAILED_RETRYABLE`。元Business Transactionは確定済みのま�
 | Karaoke Hold `EXPIRED` / `RELEASED` 後の再購入 | No | 新しいHold + 新Order |
 | Entry Allocation `RELEASED` 後の再購入 | No | 新しいAllocation + 新Order |
 | Goods Allocation `RELEASED` 後の再購入 | No | 新しいAllocation + 新Order |
+| Cartの再読込 / 再訪問 | Yes | Browser側Cartを再取得し、現在の価格・販売状態を表示し直す。Business effectなし |
+| Cart購入開始で一部Itemが不成立となった後の再試行 | No | Orderが作成されていないため新しい購入開始。Allocationは残っていない |
+| 複合Orderの支払前失敗・失効後の再購入 | No | 新しいAllocation群 + 新Order。Cartへの再投入は参照と数量のみで、現在状態で再検証 |
 | Entry / Karaoke QR再Scan | Same check-in cause | 2件目を作らず既存使用済み結果 |
 | Goods Handoff再送 / retry | Same handoff cause | `COMPLETED` なら既存完了結果。2回目を作らない |
 | Notification `FAILED_RETRYABLE` の再送 | Same notification | Notificationのみ再送。Order等を再確定しない |
@@ -1389,7 +1496,7 @@ Notification `FAILED_RETRYABLE`。元Business Transactionは確定済みのま�
 
 | Flow ID | Primary FR | Primary BR | Primary DI | Primary INV |
 |---|---|---|---|---|
-| `UF-PUB-001` | FR-PUB-001〜011, 013〜014 | BR-EVT-001〜004, BR-SAL-003〜005, BR-XFN-001〜004 | - | INV-010-08, 09 |
+| `UF-PUB-001` | FR-PUB-001〜011, 013〜015 | BR-EVT-001〜005, BR-SAL-003〜005, BR-XFN-001〜004 | - | INV-010-08, 09 |
 | `UF-PUB-002` | FR-PUB-012, FR-XFN-001〜003 | BR-USR-001, BR-SAL-005 | DI-030-010 | INV-010-08 |
 | `UF-AUTH-001` | FR-AUTH-001〜003, 008〜009 | BR-USR-001 | DI-030-010 | INV-010-08 |
 | `UF-AUTH-002` | FR-AUTH-002〜003, FR-EML-001 | BR-USR-001 | DI-030-010 | INV-010-08 |
@@ -1399,6 +1506,7 @@ Notification `FAILED_RETRYABLE`。元Business Transactionは確定済みのま�
 | `UF-AUTH-006` | FR-AUTH-010〜012, FR-MYP-011〜012 | BR-USR-001, 006 | DI-030-010 | INV-010-08 |
 | `UF-AUTH-007` | FR-AUTH-014, FR-XFN-020, 032 | BR-ORD-010 | DI-030-001, 012 | INV-010-01, 08, 10 |
 | `UF-TKT-001` | FR-TKT-001〜026 | BR-SAL-001〜007, BR-ORD-001〜012, BR-TKT-001〜011 | DI-030-001〜004, 009〜012 | INV-010-01〜03, 06〜10 |
+| `UF-CRT-001` | FR-CRT-001〜012, FR-PUB-012, FR-XFN-009, 016, 026〜029 | BR-SAL-001〜008, BR-ORD-001〜020, BR-TKT-001〜011, BR-GDS-001〜013 | DI-030-001〜004, 006, 009〜013 | INV-010-01〜03, 06〜10 |
 | `UF-KRK-001` | FR-KRK-001〜007 | BR-KRK-001〜005, 012, BR-XFN-001, 003〜004 | DI-030-005 | INV-010-04 |
 | `UF-KRK-002` | FR-KRK-007〜027, 030 | BR-ORD-001〜012, BR-KRK-003〜024 | DI-030-001〜003, 005, 009〜012 | INV-010-01〜04, 06〜10 |
 | `UF-KRK-003` | FR-KRK-024〜026 | BR-KRK-017〜024 | DI-030-007, 010 | INV-010-05, 08 |
@@ -1471,10 +1579,16 @@ Entry / Karaoke受付の参加者側境界を `UF-CHK-001` / `UF-CHK-002` で扱
 
 認証通知は `UF-AUTH-002` / `UF-AUTH-005`、Business通知とfailure / retryは `UF-XFN-002` で扱う。
 
+### 33.9a `FR-CRT-*`
+
+- Cart、Cartからの購入開始、複合Order、All-or-Nothing: `UF-CRT-001`
+- Cartからの購入開始におけるGuestの認証: `UF-PUB-002`
+- Entry Ticket / Goods側の個別結果: `UF-TKT-001`, `UF-GDS-001`
+
 ### 33.10 `FR-XFN-*`
 
 - Authentication / Ownership: `UF-PUB-002`, `UF-AUTH-*`, `UF-MYP-002`
-- Order / Payment / retry: `UF-TKT-001`, `UF-KRK-002`, `UF-GDS-001`, `UF-XFN-001`, `UF-XFN-003`
+- Order / Payment / retry: `UF-TKT-001`, `UF-KRK-002`, `UF-GDS-001`, `UF-CRT-001`, `UF-XFN-001`, `UF-XFN-003`
 - Check-in: `UF-CHK-001`, `UF-CHK-002`
 - Notification: `UF-XFN-002`
 - 外部Service障害: `UF-XFN-004`
@@ -1485,8 +1599,8 @@ Entry / Karaoke受付の参加者側境界を `UF-CHK-001` / `UF-CHK-002` で扱
 |---|---|
 | `BR-EVT-*` | `UF-PUB-001` |
 | `BR-USR-*` | `UF-PUB-002`, `UF-AUTH-*`, `UF-TKT-001`, `UF-KRK-002`, `UF-GDS-001`, `UF-MYP-*`, `UF-CHK-*` |
-| `BR-SAL-*` | `UF-PUB-001`, `UF-TKT-001`, `UF-KRK-002`, `UF-GDS-001` |
-| `BR-ORD-*` | `UF-TKT-001`, `UF-KRK-002`, `UF-GDS-001`, `UF-XFN-001`, `UF-XFN-003`, `UF-XFN-004` |
+| `BR-SAL-*` | `UF-PUB-001`, `UF-TKT-001`, `UF-KRK-002`, `UF-GDS-001`, `UF-CRT-001` |
+| `BR-ORD-*` | `UF-TKT-001`, `UF-KRK-002`, `UF-GDS-001`, `UF-CRT-001`, `UF-XFN-001`, `UF-XFN-003`, `UF-XFN-004` |
 | `BR-TKT-*` | `UF-TKT-001`, `UF-MYP-001`, `UF-CHK-001` |
 | `BR-KRK-*` | `UF-KRK-001〜003`, `UF-MYP-001`, `UF-CHK-002` |
 | `BR-GDS-*` | `UF-GDS-001〜002`, `UF-MYP-001` |
@@ -1510,21 +1624,22 @@ Entry / Karaoke受付の参加者側境界を `UF-CHK-001` / `UF-CHK-002` で扱
 | `DI-030-010` Ownership Integrity | マイページ / Profile /購入後権利で本人所有だけを返す |
 | `DI-030-011` Server-authoritative Pricing | 購入時価格をServer-sideから再決定 |
 | `DI-030-012` Retry-safe Domain Effects | reload / Webhook / Check-in / Handoff / Notification retryで重複効果を作らない |
+| `DI-030-013` Combined Order Atomicity | Cart購入開始・確定・解放で、複合Orderの全Allocationと権利を全て成立させるか何も成立させない |
 
 ## 36. System Invariant Coverage
 
 | System Invariant | 主なFlow |
 |---|---|
-| `INV-010-01` 購入情報を失わない | `UF-TKT-001`, `UF-KRK-002`, `UF-GDS-001`, `UF-XFN-003〜004` |
-| `INV-010-02` Orderを二重確定しない | 購入3Flow, `UF-XFN-001`, `UF-XFN-003` |
+| `INV-010-01` 購入情報を失わない | `UF-TKT-001`, `UF-KRK-002`, `UF-GDS-001`, `UF-CRT-001`, `UF-XFN-003〜004` |
+| `INV-010-02` Orderを二重確定しない | 購入3Flow, `UF-CRT-001`, `UF-XFN-001`, `UF-XFN-003` |
 | `INV-010-03` Ticketを二重発行しない | `UF-TKT-001`, `UF-KRK-002`, `UF-XFN-002` |
 | `INV-010-04` Karaoke Slotを二重販売しない | `UF-KRK-001〜002` |
 | `INV-010-05` QR Ticketを二重利用させない | `UF-CHK-001〜002`, `UF-KRK-003` |
 | `INV-010-06` Email失敗で購入確定をRollbackしない | `UF-XFN-002` |
-| `INV-010-07` 決済確定と権利発行を中途半端に残さない | 購入3Flow, `UF-XFN-001`, `UF-XFN-003` |
+| `INV-010-07` 決済確定と権利発行を中途半端に残さない | 購入3Flow, `UF-CRT-001`, `UF-XFN-001`, `UF-XFN-003` |
 | `INV-010-08` 所有権と権限をServer-sideで検証する | `UF-PUB-002`, `UF-AUTH-*`, `UF-MYP-*`, `UF-CHK-*` |
-| `INV-010-09` 金額をClient入力だけで確定しない | 購入3Flow |
-| `INV-010-10` 外部処理の再送に耐える | 購入3Flow, `UF-GDS-002`, `UF-CHK-*`, `UF-XFN-*` |
+| `INV-010-09` 金額をClient入力だけで確定しない | 購入3Flow, `UF-CRT-001` |
+| `INV-010-10` 外部処理の再送に耐える | 購入3Flow, `UF-CRT-001`, `UF-GDS-002`, `UF-CHK-*`, `UF-XFN-*` |
 
 ## 37. 下流Canonical Ownerとの境界
 
@@ -1562,6 +1677,11 @@ Entry / Karaoke受付の参加者側境界を `UF-CHK-001` / `UF-CHK-002` で扱
 - Hold `EXPIRED` / `RELEASED` 後に同じHoldを再利用する
 - Karaoke Slot `HELD` 中に別Customerへ購入可能として扱う
 - Goods在庫確保前にCheckoutへ進める
+- Cartの金額・在庫・販売可否・Ownerを権威値として購入開始する
+- Cartへの追加・変更・削除で、Order、Allocation、Hold、Inventoryを変更する
+- Karaoke SlotをCartへ入れる、またはEntry Ticket / GoodsとKaraokeを1つのOrderにまとめる
+- Cart購入開始で一部のItemだけを確保して `PREPARED` Orderを作る、または確保途中のAllocationを残す
+- 複合Orderで一部のItemの権利だけを有効権利として提供する
 - `PENDING_PAYMENT` Goodsを会場Handoff対象にする
 - `COMPLETED` Goods Handoffを通常操作で `PENDING` へ戻す
 - Ticket `USED` 再Scanで2件目のCheck-inを作る
@@ -1604,6 +1724,8 @@ Entry / Karaoke受付の参加者側境界を `UF-CHK-001` / `UF-CHK-002` で扱
 26. URL、Screen Field、Stripe Event、API Endpoint、HTTP Status、QR Token形式、DB物理設計等の下流Canonical Ownerを侵食していない。
 27. 長期運用される完成システムとして記述され、MVP / Step等でFlowを分断していない。
 28. `SPEC-000` のCanonical Owner、depends_on、Upstream Change Request規則に従っている。
+29. Cart、Cartからの購入開始、Entry TicketとGoodsの複合Order、Karaokeの別Orderを扱うFlow（`UF-CRT-001`）があり、Cart購入開始のAll-or-Nothing、複合Orderの確定・解放、一部Item不成立時の扱いを区別している。
+30. 公開情報閲覧でSponsor Logoを扱い、その取得失敗が他の公開情報を失敗扱いにしない。
 
 ## 40. 上流仕様変更要求
 

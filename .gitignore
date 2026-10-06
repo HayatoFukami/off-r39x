@@ -26,3 +26,9 @@ coverage/
 
 # OpenCode local artifacts
 .slim/deepwork/
+
+# Reference information
+ref/
+
+# Superseded agent instructions (merged into AGENTS.md)
+AGENTS_old.md

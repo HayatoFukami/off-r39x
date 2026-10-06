@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-020
 title: Functional Requirements
-version: 1.0.0
+version: 1.2.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -46,6 +46,7 @@ related_specs:
 - 入場チケット販売・購入後利用
 - Karaoke予約販売・購入後利用
 - Goods販売・会場受け渡し
+- Cart・Entry TicketとGoodsの複合購入
 - マイページ
 - Administrator向け管理機能
 - Staff向け受付機能
@@ -80,6 +81,10 @@ related_specs:
 | Karaoke Ticket | Karaoke Reservationの当日受付に使用する電子チケット |
 | Goods Order Item | 会場受け取りを基本とするGoods購入明細 |
 | Check-in | 権利の有効性を確認し、利用済み状態へ移す受付処理 |
+| Cart | Entry Ticket OfferingとGoodsの参照と数量だけをBrowserに一時保持する購入前の利用者補助機能。業務データでも販売確保でもない |
+| 購入開始 | Authenticated Userの操作により、Server-sideで販売条件を再検証し、Business Databaseへ `PREPARED` Orderを永続化する業務操作。Cartへの追加・数量変更・削除は購入開始ではない |
+| 複合Order | Entry Ticket Order ItemとGoods Order Itemの両方を含む1つのOrder。1回の外部決済へ対応する |
+| Sponsor Logo | 協賛者の表示名、画像、任意のリンク先、表示順、公開状態を持つ公開情報 |
 | Business Database | Supabase PostgreSQL上の業務データストア |
 
 Karaokeの時間構造では、参加者が実際に利用できる時間を**利用時間**、次の利用に備える非販売利用区間を**整備時間**と呼ぶ。
@@ -97,6 +102,7 @@ Karaokeの時間構造では、参加者が実際に利用できる時間を**�
 | `FR-TKT` | 入場チケット |
 | `FR-KRK` | Karaoke予約 |
 | `FR-GDS` | Goods |
+| `FR-CRT` | Cart・複合購入 |
 | `FR-MYP` | マイページ |
 | `FR-ADM` | Administrator機能 |
 | `FR-STF` | Staff受付 |
@@ -135,10 +141,11 @@ Role Permission Matrix、Role細分化、Session詳細は `SPEC-060`、Admin/Sta
 | FR-PUB-008 | 利用者は、Karaokeの販売案内、対象日、利用単位、価格その他予約判断に必要な公開情報を閲覧できなければならない。 |
 | FR-PUB-009 | 利用者は、Goodsの名称、販売状態、価格その他購入判断に必要な公開情報を閲覧できなければならない。 |
 | FR-PUB-010 | システムは、販売開始前、販売中、販売終了、販売停止、在庫または販売可能数不足等の公開上区別すべき状態を、利用者が購入可否を判断できる形で表現できなければならない。状態名称のCanonical定義は後続Domain仕様へ委譲する。 |
-| FR-PUB-011 | 公開情報のうち開催日時、会場、注意事項、FAQ、お知らせ、販売案内等の運営変更対象情報は、コード変更を前提とせず業務データまたは運用設定として更新可能でなければならない。 |
+| FR-PUB-011 | 公開情報のうち開催日時、会場、注意事項、FAQ、お知らせ、協賛ロゴ、販売案内等の運営変更対象情報は、コード変更を前提とせず業務データまたは運用設定として更新可能でなければならない。 |
 | FR-PUB-012 | 公開画面は、認証が必要な操作をGuestが開始した場合、認証が必要であることを識別できる結果を返し、未認証のまま業務操作を成立させてはならない。 |
 | FR-PUB-013 | 公開情報の取得に一時的な障害がある場合、システムは取得失敗を成功データとして偽装せず、利用者が正常取得できていないことを識別できなければならない。 |
 | FR-PUB-014 | 公開サイトから、Account、Entry Ticket、Karaoke、Goodsの各利用領域へ到達可能なNavigationを提供しなければならない。詳細なURL・画面構成は `SPEC-050` が定義する。 |
+| FR-PUB-015 | システムは、運営側が公開対象とした協賛ロゴを公開画面へ表示できなければならない。公開対象でない協賛ロゴを表示してはならず、公開対象が0件の場合は協賛ロゴ表示領域を表示しなくてよい。協賛ロゴの取得失敗は他の公開情報の表示を妨げてはならない。 |
 
 ## 8. アカウント・認証 Functional Requirements
 
@@ -249,6 +256,25 @@ Role Permission Matrix、Role細分化、Session詳細は `SPEC-060`、Admin/Sta
 | FR-GDS-016 | 配送先住所管理、配送業者連携、配送追跡等の配送物流を標準必須機能として要求しない。 |
 | FR-GDS-017 | 在庫に上限があるGoodsについて、並行購入・retryを含め、確定済み販売数量が販売可能在庫を超えて成立してはならない。購入中の在庫確保を含む具体的な競合・解放方式は `SPEC-030` / `SPEC-070` / `SPEC-100` が定義する。 |
 
+## 11A. Cart・複合購入 Functional Requirements
+
+Entry TicketとGoodsは、Cartを経由して1回の外部決済へまとめて購入できる。Karaokeは排他的な時間枠と支払前Holdの制約が異なるため、Cartへ入れず、Slotごとに独立して購入する。
+
+| Requirement ID | Functional Requirement |
+|---|---|
+| FR-CRT-001 | GuestおよびAuthenticated Userは、公開対象のEntry Ticket OfferingとGoodsをCartへ追加し、Cart内の数量変更・削除・内容確認ができなければならない。これらの操作は購入開始ではなく、Order、Allocation、Hold、Inventory変更を発生させてはならない。 |
+| FR-CRT-002 | Karaoke SlotをCartへ追加できてはならない。Karaokeの購入開始はSlotごとに独立して行い、1 Orderは1つのKaraoke Slotだけを対象とする。 |
+| FR-CRT-003 | Cartは、対象の参照と数量だけを保持しなければならない。価格、金額、通貨、在庫、販売可否、支払結果、Owner、Role、個人情報、Secretを保持してはならず、保持値を権威値として採用してはならない。 |
+| FR-CRT-004 | CartはBrowser側の購入前補助であり、Business Databaseへ保存してはならない。Cartへの追加は容量、在庫、Slotを確保せず、他の利用者の購入可否に影響してはならない。 |
+| FR-CRT-005 | Cart表示は、各Itemの現在の価格と販売状態をServer-sideの現在値から表示し、販売開始前、販売終了、販売停止、売り切れ、数量不足、Purchase Limit超過等の購入不可理由をItem単位で識別できなければならない。取得に失敗したItemを購入可能として表示してはならない。 |
+| FR-CRT-006 | Cartからの購入開始はAuthenticated Userだけが実行できなければならない。GuestがCartから購入開始を選んだ場合、認証が必要であることを識別できる結果を返し、認証後もCart内容を保持して再開できなければならない。この保持は、一度も認証されていないGuestのCartに適用する（`FR-CRT-012`）。 |
+| FR-CRT-007 | Cartからの購入開始では、APIはCart内の全Itemについて販売期間、販売状態、容量または在庫、Purchase Limit、価格をServer-sideで再検証し、1件でも成立しない場合は、Orderを作成せず、Allocationを確保した状態を残してはならない。成功した場合は全Itemを同一の購入開始として成立させなければならない。 |
+| FR-CRT-008 | Cart内のItemの種類に応じて、システムはEntry Ticketだけ、Goodsだけ、またはEntry TicketとGoodsの両方を含む単一のOrderを作成し、単一の外部決済へ対応させなければならない。Order Purposeの決定はServer-sideで行い、Clientが指定してはならない。 |
+| FR-CRT-009 | 複合Orderの支払確定では、含まれるEntry Ticketの発行とAllocation確定、およびGoodsのAllocation確定と履行可能化を、中途半端な確定状態を残さない一貫した業務更新として成立させなければならない。いずれかが成立しない場合は、Orderを通常の `CONFIRMED` として扱ってはならない。 |
+| FR-CRT-010 | 複合Orderが支払前に取消、失効または支払不成立となった場合、当該Orderに属する全てのAllocationを同一Order内で一貫して解放しなければならない。 |
+| FR-CRT-011 | 購入開始が成功しOrderが作成された時点で、当該Orderに含めたItemをCartから除去できなければならない。購入開始失敗時は、Cart内容を失わず利用者が内容を見直せなければならない。 |
+| FR-CRT-012 | Cart内容は特定のAccountの所有権や権利を発生させてはならない。CartはBrowser側の購入前補助でありAuth Subjectを保持しないため、「他者のCart内容」は「直前にAuthenticated Userとして利用していた者がCartへ追加した内容」と定め、認証状態の遷移に応じて次のとおり扱う。Guest → 初回Login（Continuationを含む）ではCartを保持する（`FR-CRT-006`）。Authenticated User → Logoutでは、当該BrowserのCartをclearする。Authenticated UserのSessionが期限切れまたは無効で、安全にrefreshできないと保護Page / 保護Actionで判定され、Authentication Gateへ遷移する場合も、判定時点で当該BrowserのCartをclearする。本Requirementは定期的なSession監視を要求しない。LoginまたはLogoutによって他者のCart内容や購入済み権利が表示されてはならない。Cartのclearは、既存のOrder、Ticket、Reservation、Goods購入、Allocationを変更・削除・取消してはならない。 |
+
 ## 12. マイページ Functional Requirements
 
 | Requirement ID | Functional Requirement |
@@ -287,7 +313,7 @@ Role Permission Matrix、Role細分化、Session詳細は `SPEC-060`、Admin/Sta
 | FR-ADM-015 | Administratorは、Karaokeの価格、販売期間、購入制限その他運用変更可能な販売条件を管理できなければならない。 |
 | FR-ADM-016 | Administratorは、Goodsの公開情報、価格、販売状態およびInventoryを管理できなければならない。 |
 | FR-ADM-017 | Administratorは、Goodsの会場受け渡し状況を確認し、後続仕様で認可された運用更新を実行できなければならない。 |
-| FR-ADM-018 | Administratorは、イベント開催日時、会場情報、注意事項、FAQ、お知らせ等、運営側が決定する公開情報を変更できるCapabilityを持たなければならない。具体的な管理対象と画面は `SPEC-130` が定義する。 |
+| FR-ADM-018 | Administratorは、イベント開催日時、会場情報、注意事項、FAQ、お知らせ、協賛ロゴ等、運営側が決定する公開情報を変更できるCapabilityを持たなければならない。具体的な管理対象と画面は `SPEC-130` が定義する。 |
 | FR-ADM-019 | Administrator操作は、Clientから送信されたRole申告やUI表示状態だけを根拠に許可してはならない。 |
 | FR-ADM-020 | Administratorの操作要求が現在のBusiness RuleまたはSystem Invariantに違反する場合、システムは通常の管理操作として確定させてはならない。例外操作が必要な場合は `SPEC-060` / `SPEC-130` で個別に認可・定義する。 |
 | FR-ADM-021 | Administratorは、外部Service障害や非同期反映待ちにより確認が必要なOrder・通知等を、後続のReliability/Observability仕様で追跡可能な形で識別できなければならない。 |
@@ -402,6 +428,7 @@ Role Permission Matrix、Role細分化、Session詳細は `SPEC-060`、Admin/Sta
 |---|---|---|
 | 認証失敗 | 認証必須操作を成立させず、認証が成立していない結果を返す | FR-AUTH-005, FR-XFN-001, FR-XFN-002 |
 | 販売終了・売り切れ | 新規購入を成立させず、現在購入不可である結果を返す | FR-TKT-006, FR-GDS-006 |
+| Cart購入開始時の一部Item不成立 | Orderを作成せず、確保済みAllocationを残さず、不成立Itemを識別できる結果を返す | FR-CRT-005, FR-CRT-007 |
 | Karaoke Slot競合 | 最大1件だけを確保へ進め、競合した他要求を失敗させる | FR-KRK-012, FR-XFN-014 |
 | Checkout開始失敗 | 支払済みにせず、購入試行を追跡可能に保持する | FR-TKT-010, FR-XFN-027 |
 | 決済未完了 | Ticket / Reservation / Goods権利を支払済みとして有効化しない | FR-TKT-017, FR-XFN-028 |
@@ -418,15 +445,15 @@ Role Permission Matrix、Role細分化、Session詳細は `SPEC-060`、Admin/Sta
 
 | SPEC-010 Invariant | 主な追跡先Requirement |
 |---|---|
-| INV-010-01 購入情報を失わない | FR-TKT-007, FR-KRK-013, FR-GDS-007, FR-XFN-009 |
+| INV-010-01 購入情報を失わない | FR-TKT-007, FR-KRK-013, FR-GDS-007, FR-CRT-011, FR-XFN-009 |
 | INV-010-02 Orderを二重確定しない | FR-TKT-013, FR-KRK-020, FR-GDS-010, FR-XFN-012 |
 | INV-010-03 Ticketを二重発行しない | FR-TKT-015, FR-KRK-023, FR-XFN-013 |
 | INV-010-04 カラオケ枠を二重販売しない | FR-KRK-010, FR-KRK-011, FR-KRK-012, FR-KRK-021, FR-XFN-014 |
 | INV-010-05 QR Ticketを二重利用させない | FR-STF-004, FR-STF-005, FR-STF-006, FR-STF-007, FR-STF-010, FR-STF-011, FR-STF-012, FR-STF-013, FR-XFN-015 |
 | INV-010-06 Email失敗で購入確定をRollbackしない | FR-EML-006, FR-EML-007, FR-EML-008, FR-EML-009, FR-EML-010, FR-XFN-019 |
-| INV-010-07 決済確定と権利発行を中途半端に残さない | FR-TKT-016, FR-KRK-017, FR-KRK-018, FR-KRK-019, FR-KRK-020, FR-KRK-021, FR-KRK-022, FR-KRK-023, FR-XFN-021 |
+| INV-010-07 決済確定と権利発行を中途半端に残さない | FR-TKT-016, FR-CRT-007, FR-CRT-009, FR-CRT-010, FR-KRK-017, FR-KRK-018, FR-KRK-019, FR-KRK-020, FR-KRK-021, FR-KRK-022, FR-KRK-023, FR-XFN-021 |
 | INV-010-08 所有権と権限をServer-sideで検証する | FR-AUTH-009, FR-MYP-002, FR-MYP-012, FR-XFN-002, FR-XFN-003, FR-XFN-004, FR-XFN-017 |
-| INV-010-09 金額をClient入力だけで確定しない | FR-TKT-004, FR-KRK-014, FR-GDS-005, FR-XFN-016 |
+| INV-010-09 金額をClient入力だけで確定しない | FR-TKT-004, FR-KRK-014, FR-GDS-005, FR-CRT-003, FR-CRT-007, FR-XFN-016 |
 | INV-010-10 外部処理の再送に耐える | FR-TKT-013, FR-KRK-020, FR-GDS-010, FR-EML-008, FR-EML-009, FR-XFN-012, FR-XFN-013, FR-XFN-014, FR-XFN-015 |
 
 下流仕様は上記InvariantとRequirementを同時に満たす具体設計を定義しなければならない。
@@ -481,6 +508,10 @@ Role Permission Matrix、Role細分化、Session詳細は `SPEC-060`、Admin/Sta
 17. 状態遷移、DB、API、Screen、Stripe Event、QR Token、hold時間等の詳細Canonical Ownerを侵食していない。
 18. 各Requirementが後続 `SPEC-170` / `SPEC-200` で成立・不成立を判定できる断定文になっている。
 19. 本書が `SPEC-000` の依存関係、Canonical Owner、情報源優先順位、Upstream Change Request規則に従っている。
+20. Entry TicketとGoodsをCartへ入れて1回の外部決済へまとめて購入でき、Karaokeは別Orderとして購入する要件がある。
+21. Cartが参照と数量だけを保持するBrowser側の補助であり、金額・在庫・販売可否・Ownerを権威値にしない要件がある。
+22. Cartからの購入開始がAll-or-Nothingであり、複合Orderの確定・解放が一貫して成立する要件がある。
+23. 協賛ロゴを公開対象だけ表示し、運営が変更できる要件がある。
 
 ## 22. 上流仕様変更要求
 

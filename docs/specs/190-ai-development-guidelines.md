@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-190
 title: AI Development Guidelines
-version: 1.1.0
+version: 1.2.1
 status: provisional
 depends_on:
   - SPEC-000
@@ -204,7 +204,7 @@ Rule IDはrepository内で一意とし、別意味へ再利用しない。
 
 **DEV-REP-003:** React Email templateは `packages/email/templates/` に配置し、Notification rendering以外のbusiness decisionを持たせない。
 
-**DEV-REP-004:** Test fixture / fake provider / fault injector / deterministic admin hookは `tests/fixtures` または `tests/harness` にのみ置き、Production route table / worker public endpointへ登録しない。
+**DEV-REP-004:** Test fixture / fake provider / fault injector / deterministic admin hookは `tests/fixtures` または `tests/harness` にのみ置き、Production route table / worker public endpointへ登録しない。UI mock（DEV-WEB-010〜013）だけが、そこで定める条件の下で `apps/web/src/mock/` に置ける例外である。
 
 **DEV-REP-005:** `generated/` は再生成可能なreportだけに使用し、handwritten type、migration、spec、business rule、secret、provider credentialのauthorityにしない。
 
@@ -348,6 +348,14 @@ apps/web/app/
 
 **DEV-WEB-009:** pending / retry / failure UIはAPIが返すauthoritative outcomeを表示するだけであり、Browser側でOrder/Payment/Ticket/Reservation stateを確定しない。
 
+**DEV-WEB-010:** Hono API clientが未実装の間に限り、`apps/web/src/mock/` にUI mock（api-client portとauth portのmock実装、合成data、開発用scenario切替）を置いてよい。UI mockはSPEC-050の画面確認だけを目的とし、API contract、DB制約、Provider動作の検証根拠として扱わない。
+
+**DEV-WEB-011:** UI mockは `NEXT_PUBLIC_UI_MOCK=1` のときだけ選択する。それ以外では実api-client portを使い、実装が存在しない場合はfail closedとする。本番deploy用のbuildで `NEXT_PUBLIC_UI_MOCK=1` が有効な場合、buildを失敗させなければならない。
+
+**DEV-WEB-012:** `apps/web/src/mock/` をimportしてよいのは、port factory（`apps/web/src/api-client/index.ts`、`apps/web/src/auth/index.ts`）、`apps/web/app/dev/**`、およびMock Mode表示の差し込みに限る。許可listは `scripts/check-import-boundaries.mts` で機械検査し、`presentation` / `features` からのimportを禁止する。`/dev/*` はUI mock無効時に `notFound` を返し、一般利用者向けNavigationからLinkしない。
+
+**DEV-WEB-013:** UI mockの認証、合成data、scenario切替は本番の認証・業務dataとして扱わない。実api-client / Supabase Auth integrationを導入する際は、`apps/web/src/mock/` と `apps/web/app/dev/**` を削除でき、画面側の変更を必要としないportの形を維持する。UI mockにpassword、Secret、実QR Token、実個人情報を保存・記録してはならない。
+
 # Part V — Hono / API
 
 ## 15. API source flow
@@ -452,7 +460,7 @@ Authentication/validation orderingでSecurity上必要な先行処理がSPEC-110
 
 **DEV-AUTH-008:** Security Configuration failureをwarning-onlyにせずFail Closedする。
 
-**DEV-AUTH-009:** test用auth bypassをProduction code pathへ残さない。
+**DEV-AUTH-009:** test用auth bypassをProduction code pathへ残さない。DEV-WEB-010〜013のUI mockが提供するmock認証は、`DEV-WEB-011` の条件（`NEXT_PUBLIC_UI_MOCK=1`）のときだけ選択され、本番の認証経路として扱わない。
 
 ## 22. Authorization source ownership
 
@@ -926,6 +934,7 @@ SPEC-190は以下を全て満たすとき受入可能である。
 29. 長期運用される完成システムを対象とする。
 30. 未確定表現を残さない。
 31. Canonical化済みoperation family（sales management / Handoff / authoritative read・filter / `API-ADM-REC-003〜007`）は `SPEC-110` canonical Operation ID / capability / recovery contractへtraceされ、deferred `UCR-130-005` とfuture proposalのみが未反映として扱われる。
+32. UI mock（DEV-WEB-010〜013）が `NEXT_PUBLIC_UI_MOCK=1` のときだけ選択され、許可listからのみimportされ、本番buildで無効であり、API contract / DB / Providerの検証根拠として扱われていない。
 
 # Part XXIII — Upstream Change Requests
 
