@@ -226,7 +226,7 @@ interface AuthPort {
 }
 ```
 - `src/api-client/index.ts` の `createApiPort()` は `UI_MOCK_ENABLED` のときだけ mock を返す。それ以外は「実クライアント未実装」として例外を投げる（fail closed）。
-- `UI_MOCK_ENABLED` は `NEXT_PUBLIC_UI_MOCK === "1"` で判定する。`next.config.ts` で既定値を与え、`next dev` では "1"、build では明示指定されたときだけ有効にする。本番deployで有効なまま build したら失敗させる（DEV-WEB-011）。
+- `UI_MOCK_ENABLED` は `NEXT_PUBLIC_UI_MOCK === "1"` で判定する。`next.config.ts` で既定値を与え、`next dev` では "1"、build では明示指定されたときだけ有効にする。本番deployで有効なまま build したら失敗させる（DEV-WEB-011）。【注記: `UI_MOCK_ENABLED` は実装内の導出変数名であり、仕様の識別子ではない。有効化の条件は `SPEC-190` `DEV-WEB-011`（`NEXT_PUBLIC_UI_MOCK=1`）に従う。】
 - mockはパスワードを保存・記録しない（SEC-AUTH-018）。
 
 4. 状態モデル

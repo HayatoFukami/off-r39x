@@ -3,6 +3,8 @@
 > 状態: **検討資料（正式仕様ではない）**。`docs/specs/` は変更していない。
 > 作成日: 2026-10-04 / 対象仕様のHEAD: `385127c` 時点の内容 + 以降のdevブランチ
 > 目的: コンビニ払い導入の可否・方式を開発チームが判断するための、現時点の整理と論点の保存。結論は出していない。
+>
+> **PR #1 以降の更新（注記）:** 本書の記述は PR #1 以前の仕様を対象とした検討時点の記録である。Cart（`PG-CRT-001`）、複合Order（`ENTRY_GOODS_PURCHASE`）、Sponsor Logo は、現在 `SPEC-020`〜`SPEC-070` へ反映済みである（Sponsor Logo の物理設計は `SPEC-100` の `UCR-100-002`、`orders.purpose` と複合Orderの物理表現は `UCR-100-003` として未反映）。コンビニ払いは正式仕様に反映されていない。判断には現行の `docs/specs/` を参照する。以下の本文は記録として改訂していない。
 
 ## 1. 背景と前提
 
@@ -40,7 +42,7 @@
 
 | 領域 | 現行の規定 | 参照 |
 |---|---|---|
-| Order の Purpose | 3 値のいずれか 1 つ。作成後不変 | SPEC-030 §11.2、BR-ORD-012、SPEC-070 PAY-ORD-004 |
+| Order の Purpose | 3 値のいずれか 1 つ。作成後不変。【現在は4値（`ENTRY_GOODS_PURCHASE` を含む）。`SPEC-030` §11.2】 | SPEC-030 §11.2、BR-ORD-012、SPEC-070 PAY-ORD-004 |
 | 支払い方法 | カードのみ。追加は仕様変更として扱う | SPEC-070 §3、§8 |
 | Payment Deadline | Session 作成 + 30 分 | SPEC-070 §210〜214 |
 | Karaoke Hold | 取得から 45 分。Payment Deadline（30 分）+ 5 分の Safety Buffer。`payment_deadline <= usage_end` | SPEC-090 KRK-HLD-007、§12、KRK-PAY-001〜003 |
@@ -94,7 +96,7 @@
 ### 4.5 SPEC-050 / 020 / 030 / 040 / 120 / 140 / 200
 
 - SPEC-050: PG-XFN-001 に、コンビニの入金待ち（`hosted_voucher_url` の案内、期限表示）の表現が必要。Browser Return が `success_url` ではなく voucher ページになる。
-- SPEC-020 / 030 / 040 / 200: カート的な複数 Domain 購入（Entry + Goods）、支払い方法に関する FR / BR / UF / 受入基準の追加。
+- SPEC-020 / 030 / 040 / 200: カート的な複数 Domain 購入（Entry + Goods）、支払い方法に関する FR / BR / UF / 受入基準の追加。【注記: カート・複数Domain購入（Entry + Goods）は現在反映済み。支払い方法は未反映。】
 - SPEC-120: 支払番号（voucher リンク）の通知メールを追加するか。
 - SPEC-140: voucher URL / 支払番号を機微情報として扱うか（ログ・URL への出力禁止など）。
 
@@ -118,7 +120,7 @@
 
 ### 5.3 Entry + Goods 同一 Order の表現
 
-- 新しい Purpose 値（Entry と Goods の複合）を追加するか、複数 Purpose の Order Item の混在を許可するか。
+- 新しい Purpose 値（Entry と Goods の複合）を追加するか、複数 Purpose の Order Item の混在を許可するか。【注記: 現在は `ENTRY_GOODS_PURCHASE` を含む4値として反映済み（`SPEC-030` §11.2）。】
 - SPEC-100 の `UNIQUE(id, purpose)` 系の制約と SPEC-030 の BR-ORD-012 が変わる。
 - Entry と Goods はどちらも DB 内の Allocation で確保でき、Karaoke のような時間枠の競争がないため、部分失敗のリスクは小さい。
 
@@ -152,7 +154,7 @@
 
 - 画面は SPEC-050 の PG-XFN-001 を基本とし、コンビニの `AWAITING_PAYMENT` では voucher 案内と期限を表示する。
 - カードとコンビニの切り替えは Stripe Checkout 側で行う想定（独自の入力画面は作らない）。
-- 仕様改訂が済むまで、`/cart`、コンビニ払いの実装には着手しない。
+- 仕様改訂が済むまで、`/cart`、コンビニ払いの実装には着手しない。【注記: `/cart` は仕様改訂済み（`PG-CRT-001`）で、UI mock に実装されている。コンビニ払いは引き続き未反映・未着手。】
 
 ## 8. 次のステップ
 
