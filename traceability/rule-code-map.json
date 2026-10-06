@@ -8,26 +8,29 @@
         "TC-DEV-DEP-006-001",
         "TC-DEV-DEP-006-002",
         "TC-DEV-DEP-006-003",
-        "TC-DEV-DEP-006-004"
+        "TC-DEV-DEP-006-004",
+        "TC-DEV-DEP-006-005",
+        "TC-DEV-DEP-006-006",
+        "TC-DEV-DEP-006-007"
       ],
       "notes": "implementation mapping only"
     },
     {
       "rule_id": "DEV-DEP-002",
       "code_paths": ["scripts/check-import-boundaries.mts"],
-      "test_case_ids": ["TC-DEV-DEP-002-001"],
+      "test_case_ids": ["TC-DEV-DEP-002-001", "TC-DEV-DEP-006-007"],
       "notes": "implementation mapping only: web-no-db edge"
     },
     {
       "rule_id": "DEV-DEP-004",
       "code_paths": ["scripts/check-import-boundaries.mts", "packages/domain/src"],
-      "test_case_ids": ["TC-DEV-DEP-004-001"],
+      "test_case_ids": ["TC-DEV-DEP-004-001", "TC-DEV-DEP-006-005"],
       "notes": "implementation mapping only: domain-no-external edge"
     },
     {
       "rule_id": "DEV-DEP-005",
       "code_paths": ["scripts/check-import-boundaries.mts"],
-      "test_case_ids": ["TC-DEV-DEP-005-001"],
+      "test_case_ids": ["TC-DEV-DEP-005-001", "TC-DEV-DEP-005-002"],
       "notes": "implementation mapping only: workspace-cycle"
     },
     {
@@ -50,6 +53,9 @@
       ],
       "test_case_ids": [
         "TC-DEV-WEB-012-001",
+        "TC-DEV-DEP-006-005",
+        "TC-DEV-DEP-006-006",
+        "TC-DEV-DEP-006-007",
         "TC-DEV-WEB-012-101",
         "TC-DEV-WEB-012-102",
         "TC-DEV-WEB-012-201",

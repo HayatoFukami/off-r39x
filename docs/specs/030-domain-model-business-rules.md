@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-030
 title: Domain Model and Business Rules
-version: 1.1.0
+version: 1.1.1
 status: provisional
 depends_on:
   - SPEC-000
@@ -1426,7 +1426,7 @@ Supports: `INV-010-01`, `INV-010-07`, `INV-010-10`
 
 | SPEC | 整合が必要な事項 |
 |---|---|
-| SPEC-100 | `orders.purpose` の許可値とPurposeとpurchase sourceの組合せ制約、複合Orderの購入時Transaction |
+| SPEC-100 | `orders.purpose` の許可値とPurposeとpurchase sourceの組合せ制約、複合Orderの購入時Transaction、Sponsor Logoの物理設計（table、表示名称、画像参照、リンク先、表示順、Publication State、公開取得用のIndex、通常運用でのhard delete禁止。§8.4、`BR-EVT-005`） |
 | SPEC-110 | Cartからの購入開始API（複数ItemのRequest、All-or-Nothingの結果、不成立Itemの識別）、Order Purposeの許可値、Sponsor Logoの公開取得 |
 | SPEC-120 | 複合Orderの確認通知（Entry TicketとGoodsの両方を含む場合の通知内容） |
 | SPEC-130 | Sponsor Logoの管理画面と操作、Order一覧・詳細での複合Order表示 |
