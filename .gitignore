@@ -29,3 +29,6 @@ coverage/
 
 # Reference information
 ref/
+
+# Superseded agent instructions (merged into AGENTS.md)
+AGENTS_old.md
