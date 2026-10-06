@@ -2417,6 +2417,29 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-PG-XFN-001-107",
+      "level": "Unit",
+      "suite": "unit",
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "fixture_ids": ["MOCK-SEED-PUBLIC"],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "upstream_rule_ids": ["PG-XFN-001", "FR-XFN-012", "TST-UNT-004"],
+      "preconditions": "Same user reuses a Checkout idempotencyKey for another Order; the real API answers 409 IDEMPOTENCY_KEY_REUSED (SPEC-110 18) but the mock simplifies to key-only replay (contract 11.3); UI mock test double (not API/DB/Provider coverage)",
+      "expected_domain_postconditions": [
+        "same user + same key on another Order replays the first redirect; no new idempotency record, no transition, Order B stays PREPARED"
+      ]
+    },
+    {
       "test_case_id": "TC-PG-XFN-003-101",
       "level": "Unit",
       "suite": "unit",
@@ -2452,7 +2475,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "fixture_ids": ["MOCK-SEED-DEMO"],
+      "fixture_ids": ["MOCK-SEED-PUBLIC"],
       "clock_instant": "2027-03-01T03:00:00Z",
       "concurrency_seed": null,
       "fault_points": [],
@@ -2462,10 +2485,39 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": false,
-      "upstream_rule_ids": ["BR-ORD-014", "SPEC-050-14A.1", "TST-UNT-004"],
-      "preconditions": "Cart with duplicate lines of one item; UI mock test double (not API/DB coverage)",
+      "upstream_rule_ids": [
+        "BR-ORD-014",
+        "BR-ORD-017",
+        "FR-CRT-007",
+        "SPEC-050-14A.1",
+        "TST-UNT-004"
+      ],
+      "preconditions": "Cart with duplicate lines of one item exceeding stock or per-account limit; contract tests/contracts/s2-mock-backend.md 11.1; UI mock test double (not API/DB coverage)",
       "expected_domain_postconditions": [
-        "no Order created and no inventory change when combined quantity exceeds stock"
+        "rejected (no exception) listing only the overflowing duplicate line with SOLD_OUT / INSUFFICIENT_QUANTITY / PURCHASE_LIMIT_EXCEEDED; no Order, allocation, idempotency record or stored state change"
+      ]
+    },
+    {
+      "test_case_id": "TC-BR-ORD-014-111",
+      "level": "Unit",
+      "suite": "unit",
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "fixture_ids": ["MOCK-SEED-PUBLIC"],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "upstream_rule_ids": ["BR-ORD-014", "BR-ORD-018", "FR-CRT-007", "TST-UNT-004"],
+      "preconditions": "Cart with duplicate lines of one item whose total fits exactly in stock or per-account limit; contract tests/contracts/s2-mock-backend.md 11.1; UI mock test double (not API/DB coverage)",
+      "expected_domain_postconditions": [
+        "one PREPARED Order with one item per duplicate line; remaining decremented by the total and never negative; includedLineKeys in input order"
       ]
     },
     {
