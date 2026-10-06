@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-190
 title: AI Development Guidelines
-version: 1.2.0
+version: 1.2.1
 status: provisional
 depends_on:
   - SPEC-000
@@ -460,7 +460,7 @@ Authentication/validation orderingでSecurity上必要な先行処理がSPEC-110
 
 **DEV-AUTH-008:** Security Configuration failureをwarning-onlyにせずFail Closedする。
 
-**DEV-AUTH-009:** test用auth bypassをProduction code pathへ残さない。DEV-WEB-010〜013のUI mockが提供するmock認証は、`UI_MOCK_ENABLED` のときだけ選択され、本番の認証経路として扱わない。
+**DEV-AUTH-009:** test用auth bypassをProduction code pathへ残さない。DEV-WEB-010〜013のUI mockが提供するmock認証は、`DEV-WEB-011` の条件（`NEXT_PUBLIC_UI_MOCK=1`）のときだけ選択され、本番の認証経路として扱わない。
 
 ## 22. Authorization source ownership
 
