@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-050
 title: Page and Screen Specification
-version: 1.1.0
+version: 1.2.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -322,7 +322,7 @@ GuestがCartからの購入手続き、Karaoke購入、Mypage等の認証必須A
 
 例:
 
-- Cartの購入手続き（Entry Ticket / Goods） → `PG-CRT-001` へ復帰。Cart内容（参照と数量）はBrowser側のCartに保持され、Continuation Intentには含めない
+- Cartの購入手続き（Entry Ticket / Goods） → `PG-CRT-001` へ復帰。Cart内容（参照と数量）はBrowser側のCartに保持され、Continuation Intentには含めない。この保持は、一度も認証されていないGuestに適用する（`FR-CRT-012`）
 - Karaoke Slot購入 → `PG-KRK-003` の対象Slotへ復帰
 - Mypage → `PG-MYP-001` へ復帰
 
@@ -718,7 +718,7 @@ Karaokeはカートに入れられず、Slotごとに別の購入・別の支払
 - 削除: Cart ItemをCartから除く。Business effectを作らない。
 - `購入手続きへ進む`
   - Enabled条件: Cartが1件以上で、全Itemが購入可能と表示されている。購入不可Itemがある間はDisabledとし、理由と削除または数量変更の案内を周辺Textで示す。
-  - Guest: `PG-AUTH-003` へ。Continuation Intentとして `PG-CRT-001` へ戻す。Cart内容は保持する。
+  - Guest: `PG-AUTH-003` へ。Continuation Intentとして `PG-CRT-001` へ戻す。一度も認証されていないGuestのCart内容は保持する。認証済みだったUserのSession期限切れでAuthentication Gateへ遷移した場合、Cartはclearされ、再Login後の `PG-CRT-001` はEmpty状態となる（`FR-CRT-012`）。
   - Authenticated User: Server-sideで全Itemを再検証し、全Itemが成立した場合のみAllocation確保とOrder `PREPARED` の作成を行う（`BR-ORD-014`）。
 - 商品へ戻る → `PG-TKT-001` / `PG-GDS-001`
 
@@ -875,6 +875,7 @@ Continuation Intentがある場合、Page上部に「この操作にはLoginが�
 Logoutは専用Pageを持たない。Authenticated UserのAccount menuから実行する。
 
 - Action実行後、認証SessionがLogoutされた結果を受けたら `PG-PUB-001` へ遷移する。
+- Logout後、Browser側のCartはclearされる。`PG-CRT-001` を開いた場合はEmpty状態を表示する（`FR-CRT-012`）。
 - 既存Order、Ticket、Reservation、Goods購入を削除・取消したように表示しない。
 - Logout後にBrowser back等で保護Pageへ戻ろうとした場合は、保護Dataを再表示せずLoginへ遷移する。
 
