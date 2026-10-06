@@ -133,7 +133,8 @@
         "TC-PG-XFN-001-103",
         "TC-PG-XFN-001-104",
         "TC-PG-XFN-001-105",
-        "TC-PG-XFN-001-106"
+        "TC-PG-XFN-001-106",
+        "TC-PG-XFN-001-107"
       ],
       "notes": "implementation mapping only: state to presentation mapping and copy dictionary; S2 mock backend"
     },
@@ -331,7 +332,7 @@
     {
       "rule_id": "FR-CRT-007",
       "code_paths": ["apps/web/src/mock/backend/mock-api.ts"],
-      "test_case_ids": ["TC-BR-ORD-014-101"],
+      "test_case_ids": ["TC-BR-ORD-014-101", "TC-BR-ORD-014-110", "TC-BR-ORD-014-111"],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
@@ -346,7 +347,13 @@
     {
       "rule_id": "BR-ORD-014",
       "code_paths": ["apps/web/src/mock/backend/mock-api.ts"],
-      "test_case_ids": ["TC-AR-AZ-011-101", "TC-BR-ORD-014-101", "TC-BR-ORD-014-102"],
+      "test_case_ids": [
+        "TC-AR-AZ-011-101",
+        "TC-BR-ORD-014-101",
+        "TC-BR-ORD-014-102",
+        "TC-BR-ORD-014-110",
+        "TC-BR-ORD-014-111"
+      ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
@@ -376,7 +383,7 @@
     {
       "rule_id": "FR-XFN-012",
       "code_paths": ["apps/web/src/mock/backend/mock-api.ts"],
-      "test_case_ids": ["TC-PG-CRT-001-103"],
+      "test_case_ids": ["TC-PG-CRT-001-103", "TC-PG-XFN-001-107"],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
