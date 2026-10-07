@@ -1,8 +1,15 @@
 @import "tailwindcss";
 
+/* Design tokens (SPEC-050 24.3): visual values live here so the look can be swapped in one place.
+   No web font and no external resource is loaded (SEC-WEB-004). */
 @theme {
   --color-brand: #1d4ed8;
   --color-brand-foreground: #ffffff;
+  --color-background: #ffffff;
+  --color-foreground: #0f172a;
+  --color-muted: #f1f5f9;
+  --color-border: #cbd5e1;
+  --color-overlay: rgb(0 0 0 / 0.4);
   --color-tone-success-bg: #dcfce7;
   --color-tone-success-fg: #14532d;
   --color-tone-pending-bg: #fef9c3;
@@ -17,4 +24,20 @@
   --font-sans:
     system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Yu Gothic UI", "Noto Sans JP", Meiryo,
     sans-serif;
+  --hero-gradient: linear-gradient(135deg, #1d4ed8 0%, #4338ca 55%, #7c3aed 100%);
+}
+
+@utility bg-hero-gradient {
+  background-image: var(--hero-gradient);
+}
+
+@layer base {
+  html {
+    scroll-padding-top: 6rem;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+  }
 }

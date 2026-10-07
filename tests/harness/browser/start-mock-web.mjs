@@ -23,6 +23,7 @@ const server = spawn(`pnpm --filter @off-r39x/web exec next start -p ${PORT} -H 
   stdio: "inherit",
 });
 
+// Readiness is gated by Playwright's webServer.url poll (HTTP 2xx on the base URL); no sleeps here.
 function stop() {
   if (server.pid === undefined) return;
   if (process.platform === "win32") {

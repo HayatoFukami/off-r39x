@@ -12,7 +12,11 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: true,
   retries: 0,
-  workers: 4,
+  // Default parallelism is deliberately low: with 4 Chromium workers on the Windows dev host,
+  // loopback stalls (reproduced against a plain node http server, up to ~20 s) caused sporadic
+  // timeouts unrelated to the app. SPEC-170 §69 forbids retries, not low parallelism; every test
+  // still gets a fresh browser context (TST-FLK-001 / §65). Override with --workers=N.
+  workers: 2,
   reporter: "list",
   outputDir: "./test-results",
   use: {
