@@ -1,0 +1,22 @@
+{
+  "name": "off-r39x",
+  "private": true,
+  "packageManager": "pnpm@12.3.4",
+  "engines": {
+    "node": "24.x"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @off-r39x/web dev",
+    "build": "pnpm --filter @off-r39x/web build",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "check:boundaries": "node scripts/check-import-boundaries.mts",
+    "test:unit": "pnpm --filter @off-r39x/tests test:unit",
+    "test:e2e": "pnpm --filter @off-r39x/tests test:e2e"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2",
+    "typescript": "^5"
+  }
+}
