@@ -316,7 +316,8 @@
         "TC-PG-CRT-001-503",
         "TC-PG-CRT-001-505",
         "TC-PG-CRT-001-507",
-        "TC-PG-CRT-001-508"
+        "TC-PG-CRT-001-508",
+        "TC-PG-CRT-001-513"
       ],
       "notes": "implementation mapping only: distinct purchase unavailable reasons; S2 mock backend"
     },
@@ -1036,7 +1037,9 @@
         "TC-PG-CRT-001-532",
         "TC-PG-CRT-001-533",
         "TC-PG-CRT-001-534",
-        "TC-SEC-WEB-009-602"
+        "TC-SEC-WEB-009-602",
+        "TC-PG-TKT-001-509",
+        "TC-PG-TKT-001-510"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
@@ -1259,7 +1262,12 @@
         "apps/web/src/presentation/layout/account-menu.tsx",
         "apps/web/src/features/shell/site-header.tsx"
       ],
-      "test_case_ids": ["TC-AR-SES-009-101", "TC-PG-PUB-001-304"],
+      "test_case_ids": [
+        "TC-AR-SES-009-101",
+        "TC-PG-PUB-001-304",
+        "TC-PG-CRT-001-523",
+        "TC-PG-CRT-001-426"
+      ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
@@ -1283,7 +1291,10 @@
         "TC-PG-GDS-002-503",
         "TC-PG-CRT-001-501",
         "TC-PG-CRT-001-504",
-        "TC-PG-CRT-001-535"
+        "TC-PG-CRT-001-535",
+        "TC-PG-CRT-001-406",
+        "TC-PG-CRT-001-425",
+        "TC-PG-TKT-001-510"
       ],
       "notes": "implementation mapping only: UI mock shell (not API/DB/provider coverage)"
     },
@@ -1540,13 +1551,22 @@
       "rule_id": "FR-CRT-012",
       "code_paths": [
         "apps/web/src/features/cart/cart-store.ts",
-        "apps/web/src/features/cart/use-cart.ts"
+        "apps/web/src/features/cart/use-cart.ts",
+        "apps/web/src/features/shell/site-header.tsx",
+        "apps/web/src/auth/session-provider.tsx",
+        "apps/web/src/auth/session-equality.ts",
+        "apps/web/src/features/entry/entry-page.tsx",
+        "apps/web/src/features/cart/cart-page.tsx"
       ],
       "test_case_ids": [
         "TC-PG-CRT-001-424",
         "TC-PG-CRT-001-462",
         "TC-PG-CRT-001-502",
-        "TC-PG-CRT-001-523"
+        "TC-PG-CRT-001-523",
+        "TC-PG-CRT-001-426",
+        "TC-PG-TKT-001-412",
+        "TC-PG-TKT-001-509",
+        "TC-PG-CRT-001-513"
       ],
       "notes": "implementation mapping only: S5 cart / entry sales / goods detail (UI mock, not API/DB/provider coverage)"
     },
