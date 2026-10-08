@@ -18,7 +18,12 @@ import {
 } from "../harness/browser/cart.ts";
 import { gotoHydrated } from "../harness/browser/hydration.ts";
 import { fixClock } from "../harness/browser/public.ts";
-import { authenticatedSession, KEYS, seedLocalStorage } from "../harness/browser/shell.ts";
+import {
+  authenticatedSession,
+  KEYS,
+  scenarioJson,
+  seedLocalStorage,
+} from "../harness/browser/shell.ts";
 import { GOODS, OFFERING } from "../harness/mock-seed.ts";
 
 // UI mock suite (TST-E2E-004: auxiliary, not G8). Contract: tests/contracts/s5-cart.md sections 2.3, 2.4.
@@ -154,22 +159,97 @@ test.describe("TC-PG-CRT-001-522 another tab's change reaches this tab, includin
   });
 });
 
-test.describe("TC-PG-CRT-001-523 Login state never changes the Cart and the Cart never holds account data (FR-CRT-012, FR-CRT-003, SPEC-050 26.4)", () => {
-  test("logging out keeps the Cart content, the Header count and the page", async ({ page }) => {
+test.describe("TC-PG-CRT-001-523 Logout clears the Cart, a guest's first login keeps it, and the Cart never holds account data (FR-CRT-012, FR-CRT-003, SPEC-050 15.6 / 26.4, AR-SES-009, UF-AUTH-004)", () => {
+  const loginLink = (page: Page) =>
+    page.getByRole("banner").getByRole("link", { name: copy.layout.account.login, exact: true });
+  const logout = async (page: Page) => {
+    await page.getByRole("button", { name: copy.layout.account.menuButton, exact: true }).click();
+    await page.getByRole("button", { name: copy.layout.account.logout, exact: true }).click();
+  };
+  /** The post-conditions of a Logout (SPEC-050 15.6, AR-SES-009): Home, guest, no stored Cart, no count, Empty Cart. */
+  const expectLoggedOutAndCleared = async (page: Page) => {
+    await expect(page).toHaveURL(/\/$/);
+    await expect(loginLink(page)).toBeVisible();
+    await expect.poll(() => readCartRaw(page)).toBeNull();
+    await expect(headerCartLink(page, null)).toBeVisible();
+    await expect(
+      page.getByRole("banner").getByRole("link", { name: /カート（\d+点）/ }),
+    ).toHaveCount(0);
+    await gotoHydrated(page, "/cart");
+    await expect(main(page)).toContainText(copy.cart.empty);
+    await expect(rows(page)).toHaveCount(0);
+    expect(await readCartRaw(page)).toBeNull();
+  };
+
+  test("logging out from the Cart page goes Home and clears the Cart, the Header count and the next /cart", async ({
+    page,
+  }) => {
     await openCart(page, [entryLine(OFFERING.regular, 2)], {
       [KEYS.session]: authenticatedSession(),
     });
-    const before = await readCartRaw(page);
     await expect(headerCartLink(page, 2)).toBeVisible();
-    await page.getByRole("button", { name: copy.layout.account.menuButton, exact: true }).click();
-    await page.getByRole("button", { name: copy.layout.account.logout, exact: true }).click();
+    await logout(page);
+    await expectLoggedOutAndCleared(page);
+  });
+
+  test("a provider failure of the Logout still ends the session, goes Home and clears the Cart (AR-SES-009)", async ({
+    page,
+  }) => {
+    await openCart(page, [entryLine(OFFERING.regular, 2), goodsLine(GOODS.tshirt, 1)], {
+      [KEYS.session]: authenticatedSession(),
+      [KEYS.scenario]: scenarioJson({
+        auth: {
+          session: "ok",
+          login: "ok",
+          signup: "confirmation_required",
+          verify: "ok",
+          reset: "ok",
+          resetContext: "valid",
+          logout: "provider_failure",
+        },
+      }),
+    });
+    await expect(headerCartLink(page, 3)).toBeVisible();
+    await logout(page);
+    await expectLoggedOutAndCleared(page);
+  });
+
+  test("a damaged stored Cart is removed by a Logout too, not left as 'cannot be read'", async ({
+    page,
+  }) => {
+    await fixClock(page);
+    await seedLocalStorage(page, {
+      [KEYS.cart]: "not-json",
+      [KEYS.session]: authenticatedSession(),
+    });
+    await gotoHydrated(page, "/");
+    expect(await readCartRaw(page)).toBe("not-json");
+    await logout(page);
+    await expectLoggedOutAndCleared(page);
+    await expect(main(page).getByRole("alert")).toHaveCount(0);
+  });
+
+  test("another tab that shows the Cart shows the empty Cart after this tab logs out", async ({
+    page,
+    context,
+  }) => {
+    await openCart(page, [entryLine(OFFERING.regular, 2)], {
+      [KEYS.session]: authenticatedSession(),
+    });
+    const other = await openSecondTab(context);
+    await gotoHydrated(other, "/cart");
+    await expect(rows(other)).toHaveCount(1);
+    await expect(headerCartLink(other, 2)).toBeVisible();
+    await logout(page);
+    await expect(main(other)).toContainText(copy.cart.empty);
+    await expect(rows(other)).toHaveCount(0);
+    await expect(headerCartLink(other, null)).toBeVisible();
     await expect(
-      page.getByRole("banner").getByRole("link", { name: copy.layout.account.login, exact: true }),
-    ).toBeVisible();
-    expect(await readCartRaw(page)).toBe(before);
-    await expect(headerCartLink(page, 2)).toBeVisible();
-    await expect(rows(page)).toHaveCount(1);
-    await expect(page).toHaveURL(/\/cart$/);
+      other.getByRole("banner").getByRole("link", { name: /カート（\d+点）/ }),
+    ).toHaveCount(0);
+    await expect(loginLink(other)).toBeVisible();
+    expect(await readCartRaw(other)).toBeNull();
+    await other.close();
   });
 
   test("adding as an authenticated user stores no account, email or role", async ({ page }) => {

@@ -6,6 +6,7 @@ import {
   addFromOrder,
   addLine,
   type Cart,
+  CartQuantityOverflowError,
   cartTotalQuantity,
   EMPTY_CART,
   parseCart,
@@ -385,5 +386,86 @@ describe("TC-PG-CRT-001-405 addFromOrder re-populates the Cart from order items 
   it("does not validate against sales rules (an order of 4 stays 4; the server re-verifies later)", () => {
     const four: OrderItem = { ...entryItem, quantity: 4 };
     expect(addFromOrder(EMPTY_CART, [four])).toEqual(cartOf(entry(OFFERING_A, 4)));
+  });
+});
+
+function thrownBy(run: () => unknown): unknown {
+  try {
+    run();
+  } catch (error) {
+    return error;
+  }
+  return undefined;
+}
+
+describe("TC-PG-CRT-001-406 a quantity overflow is told apart from an invalid line by its exception class (SPEC-050 9.3, FR-CRT-001)", () => {
+  const karaoke = { kind: "KARAOKE", slotRef: SLOT, quantity: 1 } as unknown as CartLine;
+  const priced = {
+    kind: "ENTRY_TICKET",
+    offeringRef: OFFERING_A,
+    quantity: 1,
+    unitPrice: money("3000"),
+  } as unknown as CartLine;
+  const badRef = { kind: "GOODS", goodsRef: "not-a-uuid", quantity: 1 } as unknown as CartLine;
+
+  it("throws CartQuantityOverflowError (still a RangeError) when the sum passes the safe integer range", () => {
+    const base = cartOf(goods(GOODS_A, Number.MAX_SAFE_INTEGER));
+    let thrown: unknown;
+    try {
+      addLine(base, goods(GOODS_A, 1));
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(CartQuantityOverflowError);
+    expect(thrown).toBeInstanceOf(RangeError);
+    expect((thrown as Error).message).toBe("Cart quantity is out of range");
+  });
+
+  it("an invalid line is a RangeError but not a CartQuantityOverflowError", () => {
+    for (const line of [entry(OFFERING_A, 0), karaoke, priced, badRef]) {
+      let thrown: unknown;
+      try {
+        addLine(EMPTY_CART, line);
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(RangeError);
+      expect(thrown).not.toBeInstanceOf(CartQuantityOverflowError);
+    }
+  });
+
+  it("a single quantity beyond the safe range is an invalid line, not an overflow of a sum", () => {
+    let thrown: unknown;
+    try {
+      addLine(EMPTY_CART, entry(OFFERING_A, 2 ** 53));
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(RangeError);
+    expect(thrown).not.toBeInstanceOf(CartQuantityOverflowError);
+  });
+
+  it("addFromOrder reports an overflow of a sum with CartQuantityOverflowError too, and changes nothing", () => {
+    const base = deepFreeze(cartOf(entry(OFFERING_A, Number.MAX_SAFE_INTEGER)));
+    const snapshot = JSON.stringify(base);
+    const item: OrderItem = {
+      kind: "ENTRY_TICKET",
+      offeringRef: OFFERING_A,
+      name: "Regular",
+      quantity: 1,
+      unitPrice: money("3000"),
+      subtotal: money("3000"),
+    };
+    expect(thrownBy(() => addFromOrder(base, [item]))).toBeInstanceOf(CartQuantityOverflowError);
+    expect(JSON.stringify(base)).toBe(snapshot);
+  });
+
+  it("does not mutate its input when it throws", () => {
+    const base = deepFreeze(cartOf(goods(GOODS_A, Number.MAX_SAFE_INTEGER)));
+    const snapshot = JSON.stringify(base);
+    expect(thrownBy(() => addLine(base, goods(GOODS_A, 1)))).toBeInstanceOf(
+      CartQuantityOverflowError,
+    );
+    expect(JSON.stringify(base)).toBe(snapshot);
   });
 });

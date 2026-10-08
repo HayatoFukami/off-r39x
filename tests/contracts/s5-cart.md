@@ -111,6 +111,7 @@ goods: { detail: {                    // 既存 copy.goods に detail を追加
 ```
 
 - 既存 `copy.test.ts` の制約（全 leaf は trim 済みの非空 string か関数）を守る。`copy.sales.addSucceeded` と `copy.sales.add`、`copy.cart.proceed.label`、`copy.cart.empty`、`copy.cart.corrupted.title` は上記の文字列をそのまま使う（SPEC-050 §12.1 / §14.2 / §14A.1 の固定文言）。
+- `copy.sales.addQuantityOverflow` = `"Cartの数量が扱える範囲を超えるため、Cartに追加できませんでした。Cartで数量を確認してください"`（Cart の数量の合算が安全な整数を超えたときの専用文言）。`copy.sales.addFailed`（保存先に書けない）とは別の文言で、「追加しました」「保存領域」「購入上限」と数字を含まない。末尾に「。」を付けない。
 - `copy.cart.proceed.blocked` と `copy.cart.proceed.unknown` は互いに異なる。`copy.cart.karaoke.body` は「カート」「別」を含み、Karaoke を Cart へ追加する示唆（「追加できます」等）を含まない。
 - `copy.cart.summary.totalUnknown` と `copy.cart.summary.recalcNote` は数字を含まない。
 
@@ -130,15 +131,16 @@ export function removeLine(cart: Cart, lineKey: string): Cart;
 export function removeLines(cart: Cart, lineKeys: readonly string[]): Cart;
 export function addFromOrder(cart: Cart, items: readonly OrderItem[]): Cart;
 export function cartTotalQuantity(cart: Cart): number;
+export class CartQuantityOverflowError extends RangeError {}   // message "Cart quantity is out of range"、name も設定
 ```
 
 - すべて**純粋**（入力を変更しない、新しい `Cart` を返す）。`CartLine` は `api-client/types.ts`、line key は既存 `cartLineKey`（`${kind}:${ref}`。数量・並び順に依存しない）。
 - `parseCart`: `raw === null`（key なし）→ `ok` + 空の Cart。JSON として不正・schema 不正・空文字は `corrupted`（**空の Cart にしない**）。schema は strict（トップレベルも line も）: `version: 1`、`lines` の各要素は `ENTRY_TICKET`（`offeringRef`）か `GOODS`（`goodsRef`）、ref は canonical lowercase UUID、`quantity` は 1 以上の**安全な整数**。余分な field（価格・在庫・Owner 等）、`KARAOKE`、未知の kind は `corrupted`。S3 の `readCartCount` 表（`cart-count.test.ts`）の拒否ケースはすべて `corrupted`。**同じ line key が複数あれば数量を合算して 1 本にする**（最初の出現位置。`readCartCount` の合計と一致させるため。`corrupted` にはしない）。数量の上限は設けない（安全な整数の範囲だけ。Cart は Entry / Goods の `maxSelectableQuantity` を知らない）。
 - `serializeCart`: `JSON.stringify({ version: 1, lines })`。line は `kind` / ref / `quantity` だけ。`parseCart(serializeCart(c))` は `ok` で `c` と等しい。
-- `addLine`: 同じ line key があれば数量を**加算**（位置は変えない）、なければ末尾に追加。line が不正（数量が 1 以上の安全な整数でない、ref が canonical UUID でない、`KARAOKE` や未知の kind、余分な field）なら `RangeError` を throw。加算結果が安全な整数を超える場合も `RangeError`。
+- `addLine`: 同じ line key があれば数量を**加算**（位置は変えない）、なければ末尾に追加。line が不正（数量が 1 以上の安全な整数でない、ref が canonical UUID でない、`KARAOKE` や未知の kind、余分な field）なら `RangeError` を throw。加算結果が安全な整数を超える場合は `CartQuantityOverflowError`（`RangeError` の subclass。`instanceof RangeError` も真）を throw する。line の不正は subclass ではない通常の `RangeError`（呼び出し側が「合算の overflow」と「不正な line」を例外の class で区別できる。SPEC-050 §9.3: 失敗した対象と未成立の操作を、別の原因として示す）。
 - `setLineQuantity`: 数量を置き換える（位置を変えない）。数量が 1 以上の安全な整数でなければ `RangeError`（0 にする代わりに `removeLine` を使う）。存在しない key は何もしない（等しい Cart を返す）。
 - `removeLine` / `removeLines`: 該当 line を除く（残りの順序は保つ）。存在しない key は無視。空の `lineKeys` は何もしない。
-- `addFromOrder`（再購入時の再投入。SPEC-050 §16.4 / FR-CRT-011 の純粋部）: `ENTRY_TICKET` と `GOODS` の明細だけを、**参照と数量だけ**で `addLine` と同じ規則で（既存と同じ line key なら加算）明細の順に加える。`KARAOKE` の明細は無視する（Cart に入れられない）。名前・単価・小計は読まない・保存しない。明細が空、または Karaoke だけなら等しい Cart を返す。
+- `addFromOrder`（再購入時の再投入。SPEC-050 §16.4 / FR-CRT-011 の純粋部）: `ENTRY_TICKET` と `GOODS` の明細だけを、**参照と数量だけ**で `addLine` と同じ規則で（既存と同じ line key なら加算）明細の順に加える。途中で合算が overflow したら全体を中止し `CartQuantityOverflowError`（純粋関数なので何も書かれない）。`KARAOKE` の明細は無視する（Cart に入れられない）。名前・単価・小計は読まない・保存しない。明細が空、または Karaoke だけなら等しい Cart を返す。
 - `cartTotalQuantity`: 全 line の数量の合計。`readCartCount(serializeCart(c)) === cartTotalQuantity(c)`。
 
 ### 2.2 `features/cart/quantity.ts`
@@ -160,15 +162,17 @@ export function formatDisplayTotal(unitPrice: Money, quantity: number): string;
 export interface CartStorage { getItem(key: string): string | null; setItem(key: string, value: string): void; removeItem(key: string): void }
 export type CartSnapshot = { readonly kind: "ready"; readonly cart: Cart } | { readonly kind: "corrupted" };
 export type CartWriteResult = { kind: "ok"; cart: Cart } | { kind: "corrupted" } | { kind: "storage_unavailable" };
+export type CartAddResult = CartWriteResult | { kind: "quantity_overflow" };
 export interface CartStore {
   getSnapshot(): CartSnapshot;
   subscribe(listener: () => void): () => void;
-  add(line: CartLine): CartWriteResult;
+  add(line: CartLine): CartAddResult;
   setQuantity(lineKey: string, quantity: number): CartWriteResult;
   remove(lineKey: string): CartWriteResult;
   removeLines(lineKeys: readonly string[]): CartWriteResult;
-  addFromOrder(items: readonly OrderItem[]): CartWriteResult;
+  addFromOrder(items: readonly OrderItem[]): CartAddResult;
   reset(): CartWriteResult;
+  clear(): CartWriteResult;   // Logout 用。corrupted は返さない
 }
 export type CartStoreDeps = { storage: CartStorage; subscribeExternal?: (onChange: () => void) => () => void };
 export function createCartStore(deps: CartStoreDeps): CartStore;
@@ -177,11 +181,12 @@ export function getBrowserCartStore(): CartStore | null;   // window.localStorag
 
 - 永続化先は `CART_STORAGE_KEY = "r39x.cart.v1"`（`cart-count.ts`）。
 - `getSnapshot()`: 呼ぶたびに storage を読むが、**保存文字列が変わらない限り同じ参照を返す**（`useSyncExternalStore` 用）。`parseCart` が `ok` → `ready`、`corrupted` → `corrupted`。`getItem` が throw した場合も `corrupted`（内容を確認できないので空として扱わない）。
-- 変更操作（`add` / `setQuantity` / `remove` / `removeLines` / `addFromOrder`）: 現在の snapshot が `corrupted` なら**何も書かず** `{ kind: "corrupted" }`。それ以外は cart-model の関数で新しい Cart を作り `serializeCart` で `CART_STORAGE_KEY` に書く。`setItem` が throw したら `{ kind: "storage_unavailable" }`（保存されたと主張しない。snapshot も変わらない）。成功したら `subscribe` 済みの listener を呼び `{ kind: "ok", cart }`。不正な引数（`RangeError`）は throw する（storage は変更しない）。
+- 変更操作（`add` / `setQuantity` / `remove` / `removeLines` / `addFromOrder`）: 現在の snapshot が `corrupted` なら**何も書かず** `{ kind: "corrupted" }`。それ以外は cart-model の関数で新しい Cart を作り `serializeCart` で `CART_STORAGE_KEY` に書く。`setItem` が throw したら `{ kind: "storage_unavailable" }`（保存されたと主張しない。snapshot も変わらない）。成功したら `subscribe` 済みの listener を呼び `{ kind: "ok", cart }`。不正な引数（`RangeError`）は throw する（storage は変更しない）。`add` / `addFromOrder` だけは、計算中に `CartQuantityOverflowError` が出たら throw せず、何も書かず listener も呼ばず `{ kind: "quantity_overflow" }` を返す（snapshot は同じ参照）。snapshot が `corrupted` なら従来どおり `corrupted` が先（計算しない）。不正な line の `RangeError` は従来どおり throw する。
 - `reset()`: 明示的な復旧手段。`corrupted` からでも、空の Cart（`serializeCart(EMPTY_CART)`）を書いて listener を呼び `ok`。`setItem` が throw したら `storage_unavailable`。
+- `clear()`（FR-CRT-012 / SPEC-050 §15.6 / AR-SES-009 / UF-AUTH-004。Logout 時に shell が呼ぶ）: `storage.removeItem(CART_STORAGE_KEY)` を実行し、成功したら listener を 1 回呼び `{ kind: "ok", cart: EMPTY_CART }`。現在の snapshot を読まず、`setItem` も呼ばないので、`corrupted`（壊れた保存内容、`getItem` が throw する storage を含む）からでも成功し、`corrupted` を返さない。key が無い状態は検証済みの空の Cart（`parseCart(null)`）。`removeItem` が throw したら `{ kind: "storage_unavailable" }`（保存内容も snapshot も変えず、listener も呼ばない）。他 tab へは既存の `storage` event（key 一致）で伝わる。`reset()` は変えない（空の Cart を書く復旧手段のまま）。
 - `subscribe(listener)`: 自 store の書き込み成功後と、`subscribeExternal` からの通知（他 tab の変更）のあとに listener を呼ぶ。unsubscribe 後は呼ばない。`subscribeExternal` は最初の listener が付いたときに 1 度だけ購読し、最後の listener が外れたら解除する。
 - `getBrowserCartStore()`: `window.localStorage` を使う store を 1 つだけ作る（同一 tab の Header と Cart ページが同じ instance を共有するので、書き込みで即座に更新される。`storage` event は同一 tab では発火しない）。外部通知は `window` の `storage` event のうち `event.key === CART_STORAGE_KEY` または `event.key === null`（`clear()`）のもの。
-- Login / Logout は Cart に触れない（FR-CRT-012）。Cart store は session を知らない。
+- Cart store は session を知らない。Guest → 初回 Login は Cart に触れない（保持）。Logout 時の clear は shell（`site-header.tsx`）が `clear()` で行う（FR-CRT-012、SPEC-050 §15.6、AR-SES-009、UF-AUTH-004）。
 
 ### 2.4 `features/cart/use-cart.ts` / `use-cart-count.ts`
 
@@ -189,16 +194,17 @@ export function getBrowserCartStore(): CartStore | null;   // window.localStorag
 export type CartState = { readonly kind: "loading" } | CartSnapshot;
 export function useCart(): {
   state: CartState;                       // server snapshot と最初の描画は { kind: "loading" }
-  add(line: CartLine): CartWriteResult;
+  add(line: CartLine): CartAddResult;
   setQuantity(lineKey: string, quantity: number): CartWriteResult;
   remove(lineKey: string): CartWriteResult;
   removeLines(lineKeys: readonly string[]): CartWriteResult;
-  addFromOrder(items: readonly OrderItem[]): CartWriteResult;
+  addFromOrder(items: readonly OrderItem[]): CartAddResult;
   reset(): CartWriteResult;
+  clear(): CartWriteResult;
 };
 ```
 
-- `useCart` は `getBrowserCartStore()` を `useSyncExternalStore` で購読する。store が `null` のとき操作は `{ kind: "storage_unavailable" }` を返す。
+- `useCart` は `getBrowserCartStore()` を `useSyncExternalStore` で購読する。store が `null` のとき操作（`clear` を含む）は `{ kind: "storage_unavailable" }` を返す。
 - `useCartCount(): number | null` は同じ store を購読する。`ready` → `cartTotalQuantity`、`corrupted` / store なし → `null`、server snapshot は `null`。S3 の表示規則（1 以上のときだけ数字、accessible name `カート（n点）`）は変えない。**同一 tab での追加・変更・削除、他 tab の変更、`localStorage.clear()` のいずれでも Header の数が更新される。**
 
 ## 3. `canProceed` と Cart view model
@@ -296,7 +302,8 @@ focus 順は DOM 順と一致させる。Entry / Goods では**数量入力の�
 - loading: `role="status"` + `copy.pageState.loading`。unavailable: `role="alert"` + `copy.pageState.unavailable(copy.entry.subject)` + `<button>` `copy.pageState.retry`（read だけ再取得）。**有効な Add button を 1 つも出さない**（公開情報取得 Failure は Disabled。SPEC-050 §12.1）。empty: `copy.pageState.empty`。
 - ready: `<ul>` の各 `<li>` が offering 1 件（port の順）。`<li>` に `h2` = 名称、説明（`PlainText`）、価格（`priceText`）、販売期間（`formatJstDateTime` で整形した開始と終了の両方）、状態の label と description（理由。`BEFORE_SALES` は開始日時を含む）、`perAccountLimit` が非 null のとき `copy.entry.perAccountLimit(n)`、ON_SALE で `maxSelectableQuantity` が非 null のとき `copy.quantity.guidance(max)`、数量入力（初期値 `1`）、Add button（name に `copy.sales.add` を含む）、表示用合計（`copy.sales.displayTotalLabel` と `formatDisplayTotal(unitPrice, 入力数量)`、`copy.sales.displayTotalNote`）。
 - 状態表（SPEC-050 §12.1）: `addable` のとき Add は有効（Guest も Authenticated User も同じ）。それ以外は無効 + 理由。理由の文言は `presentAvailability` の `description`。販売開始前 / 販売中 / 販売終了 / 販売停止 / 売り切れ / 購入上限は互いに別の label。
-- page 全体に live region `role="status"` を **ready のとき 1 つだけ**常に描画する（追加前は空）。Add 成功で `copy.sales.addSucceeded` が入る。Cart に書けた場合だけ成功にする。保存先が壊れている（`corrupted`）→ `role="alert"` に `copy.cart.corrupted.title` と `copy.cart.corrupted.goToCart` の Link（`/cart`）を出し、storage を変えず、成功を示さない。`storage_unavailable` → `role="alert"` に `copy.sales.addFailed`、成功を示さない。
+- page 全体に live region `role="status"` を **ready のとき 1 つだけ**常に描画する（追加前は空）。Add 成功で `copy.sales.addSucceeded` が入る。Cart に書けた場合だけ成功にする。保存先が壊れている（`corrupted`）→ `role="alert"` に `copy.cart.corrupted.title` と `copy.cart.corrupted.goToCart` の Link（`/cart`）を出し、storage を変えず、成功を示さない。`storage_unavailable` → `role="alert"` に `copy.sales.addFailed`、成功を示さない。`quantity_overflow`（保存済み数量との合算が安全な整数を超える）→ `role="alert"` に `copy.sales.addQuantityOverflow`（`copy.sales.addFailed` は出さない）、成功を示さず、保存内容と Header の数は変わらない。成功の live region の文字は `ok` のときだけ。`AddResultNotice` を共有する Entry / Goods の両方で同じ。
+- session が変わったとき（`SessionProvider` の state が実際に変わったとき。他 tab のログイン / ログアウトを含む）、Entry は `listEntryOfferings` を再取得し、reload なしで各行の状態（例: ログイン後の `OFFERING.limit` が `PURCHASE_LIMIT_EXCEEDED`、Add 無効 + 理由）を更新する。session が `loading` の間は読まない（`unavailable` のときは読む）。再取得の間は前の表示を残し（loading へ戻さない）、古い応答は捨てる。Add の結果表示も残る。session が変わらない再読込み（他 tab の Cart 書き込みの `storage` event 等）では再取得しない。
 - 数量入力の検証は `parseQuantityInput(raw, maxSelectableQuantity)`。不正な数量では Cart を変更しない。エラー文は `empty` / `not_integer` / `below_min` → `copy.quantity.invalid`、`above_max` → `copy.quantity.exceedsMax(max)`。
 - **購入開始を持たない**: `購入手続き` / `今すぐ購入` を名前に持つ button / link を置かない。Add は `purchase.*` を呼ばず、mock DB を変更しない。
 
@@ -321,7 +328,8 @@ focus 順は DOM 順と一致させる。Entry / Goods では**数量入力の�
 - 購入手続きボタン `<button type="button">` name = `copy.cart.proceed.label`（exact）。ready と unavailable で表示する。`proceed.canProceed === false` のとき**ネイティブ `disabled`** + `aria-describedby` で理由文を含む要素へ結ぶ（理由に `kind: "line"` が 1 つでもあれば `copy.cart.proceed.blocked`、なければ `copy.cart.proceed.unknown`）。
   - **S5 では、有効なときもクリックは何も起こさない**: Order を作らず、`purchase.*` を呼ばず、画面遷移せず、Cart と mock DB を変更しない。S7a が `cart-page.tsx` の `handleProceed`（Guest は `/account/login?continue=cart`、Authenticated User は `startCartPurchase`）を結線する。Guest も Authenticated User も同じ画面（認証 gate なし）。
 - 商品へ戻る: Link `copy.cart.backToEntry`（`/entry`）と `copy.cart.backToGoods`（`/goods`）を ready / unavailable でも表示する。
-- resolve は Cart の line が変わるたびに（storage の変更、他 tab の変更を含む）`resolveCartLines` を呼び直す。Cart が空のときは呼ばない。
+- resolve は Cart の line が変わるたびに（storage の変更、他 tab の変更を含む）、また session が実際に変わったときに（他 tab のログイン / ログアウトを含む。Cart は同じでも購入済み数量が変わるため）`resolveCartLines` を呼び直す。Cart が空のときは呼ばない。session が `loading` の間は呼ばない。session が変わった後は、再取得が終わるまで前の行を表示したまま購入手続きを無効にする（`refreshing`）。保存済みの Cart は変わらない。古い応答は捨てる。
+- Logout（SPEC-050 §15.6）: ログアウト後は `PG-PUB-001`（Home）へ遷移し、Browser 側の Cart を clear する。Header の件数付き Cart Link は消え、その後に開いた `/cart` は Empty（`copy.cart.empty`）。provider 側の失敗（`auth.logout: "provider_failure"`）でも、保存済み Cart が壊れていても同じ結果。別 tab の `/cart` も Empty になる。Guest → 初回 Login では Cart を保持する。Session 期限切れでの clear は本契約の対象外（AR-SES-007 / FR-CRT-012 後半は別途）。
 
 ## 6. E2E の共通条件
 
@@ -337,6 +345,7 @@ focus 順は DOM 順と一致させる。Entry / Goods では**数量入力の�
 | `tests/unit/web/cart/quantity.test.ts` | §2.2 |
 | `tests/unit/web/cart/cart-store.test.ts` | §2.3 |
 | `tests/unit/web/cart/can-proceed.test.ts` | §3.1 |
+| `tests/unit/web/auth/session-equality.test.ts` | §5（`sameSessionState`。s3-layout.md §3.3） |
 | `tests/unit/web/cart/cart-view-model.test.ts` | §3.2 |
 | `tests/unit/web/cart/sales-models.test.ts` | §4 |
 | `tests/unit/web/cart/s5-copy.test.ts` | §1 |
@@ -361,6 +370,9 @@ focus 順は DOM 順と一致させる。Entry / Goods では**数量入力の�
 10. **title**: `copy.pageTitle` は S4 のテストが全 key を固定しているため、S5 の title は `copy.entry` / `copy.cart` / `copy.goods.detail` の `pageTitle` に置く。
 11. **Cache-Control**: `/entry` と `/cart` は静的 route として S4 §4 と同じ扱い（`private` / `no-store` を含まない）。
 12. **Goods 詳細の `not_found`**: S4 の Announcement 詳細と同じく、client が Not Found 表示（HTTP 200）。不正な UUID だけ server の `notFound()`（HTTP 404）。
+13. **Logout と Cart（マージ済み仕様 SPEC-050 §15.6 / SPEC-020 FR-CRT-012 / SPEC-040 UF-AUTH-004 / SPEC-060 AR-SES-009 に合わせる）**: 旧契約「Login / Logout は Cart に触れない」は破棄。Logout 後は Home へ遷移し Cart を clear する。壊れた Cart も Logout で消える（`clear()` は snapshot を読まず `removeItem` するので `corrupted` を返さない）。clear は `reset()`（空の Cart を書く）ではなく key の削除（`removeItem`）で行い、key なし = 検証済みの空の Cart とする（契約 §2.1 の `parseCart(null)`）。clear は Logout 操作にだけ結びつけ、session の authenticated → guest の遷移（期限切れ）には結びつけない。順序は signOut → Home への遷移 → clear（signOut が reject しても clear する）。`removeItem` が失敗しても Logout は妨げず、エラーも表示しない（書込みも削除もできない localStorage は前の Cart を残しうる。保存領域の制約）。
+14. **session 変化での再取得**: Entry / Cart の販売状態は現在のユーザーの購入済み数量に依存するため、Guest で開いたまま別 tab でログインした画面は Guest 時の状態を残してはならない（SPEC-050 §14A.1: 現在の販売状態を Server-side の値で表示）。Cart store は session を知らないまま。`SessionProvider` は `sameSessionState` で、実際に変わったときだけ state の参照を変える（他 tab の Cart 書き込みの `storage` event だけでは再取得しない）。session が `loading` の間は読まない。再取得の間は前の表示を残し、Cart ページは購入手続きだけを無効にする。
+15. **数量 overflow**: UI から到達できる（Cart ページの数量入力は上限なしで `9007199254740991` を保存でき、その後 Entry / Goods で 1 を追加すると合算が overflow）。保存先に書けない失敗（`storage_unavailable`）とは別の原因なので、別の結果 kind（`quantity_overflow`）と別の文言（`copy.sales.addQuantityOverflow`）で示す。例外 class（`CartQuantityOverflowError extends RangeError`）で区別し、UI で `instanceof RangeError` を使わない。
 
 ## 9. Hydration-ready signal（検証 round 1 で追加。SPEC-170 §69 / TST-FLK-001）
 

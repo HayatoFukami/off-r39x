@@ -121,6 +121,12 @@ describe("TC-DEV-WEB-001-403 the S5 containers read through the port after mount
     });
   }
 
+  for (const path of ["src/features/entry/entry-page.tsx", "src/features/cart/cart-page.tsx"]) {
+    it(`${path} reads the session state so that a session change re-fetches the sales state (FR-CRT-005, FR-CRT-012)`, () => {
+      expect(stripComments(read(path))).toMatch(/\buseSession\s*\(/);
+    });
+  }
+
   it("the Header count and the Cart page share one store (same-tab updates, SPEC-050 8.5)", () => {
     expect(stripComments(read("src/features/cart/use-cart-count.ts"))).toMatch(
       /cart-store|use-cart/,
@@ -184,7 +190,7 @@ describe("TC-PG-CRT-001-462 the Cart holds references and quantities only and ca
     );
   });
 
-  it("the Cart store does not read a session or an account (Login / Logout never change the Cart, FR-CRT-012)", () => {
+  it("the Cart store does not read a session or an account (FR-CRT-012: the store knows no account; Logout clearing lives in the shell)", () => {
     for (const path of [
       "src/features/cart/cart-model.ts",
       "src/features/cart/cart-store.ts",
@@ -275,6 +281,13 @@ describe("TC-PG-TKT-001-461 the quantity control and live region follow SPEC-050
   it("announces the add result through a status live region", () => {
     expect(source).toMatch(/role=["']status["']/);
     expect(source).toMatch(/copy\.sales\.addSucceeded/);
+  });
+
+  it("separates a quantity overflow from a storage failure without reading exception classes", () => {
+    expect(source).not.toMatch(/instanceof\s+RangeError/);
+    expect(source).toMatch(/quantity_overflow/);
+    expect(source).toMatch(/copy\.sales\.addQuantityOverflow/);
+    expect(source).toMatch(/copy\.sales\.addFailed/);
   });
 
   it("shows the display total through formatDisplayTotal and the recalculation note", () => {

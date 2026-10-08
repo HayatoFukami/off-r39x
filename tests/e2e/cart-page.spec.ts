@@ -15,6 +15,7 @@ import {
   headerCartLink,
   mainOf,
   offeringName,
+  openSecondTab,
   priceEdit,
   proceedButton,
   quantityInput,
@@ -40,6 +41,7 @@ import {
   KEYS,
   scenarioJson,
   seedLocalStorage,
+  sessionJson,
 } from "../harness/browser/shell.ts";
 import { GOODS, MARKER, NOW_ISO, OFFERING } from "../harness/mock-seed.ts";
 
@@ -806,5 +808,36 @@ test.describe("TC-PG-CRT-001-512 prices come from the port on every load and nev
   test("the display total is labelled as recalculated by the server", async ({ page }) => {
     await openRows(page, [entryLine(OFFERING.regular, 1)]);
     await expect(main(page)).toContainText(copy.cart.summary.recalcNote);
+  });
+});
+
+test.describe("TC-PG-CRT-001-513 a session that changes while the Cart page is open changes the line state and the proceed button without a reload (FR-CRT-005, FR-CRT-012, SPEC-050 14A.1)", () => {
+  test("a login in another tab blocks the limit line and the proceed button here; the stored Cart is unchanged", async ({
+    page,
+    context,
+  }) => {
+    await openRows(page, [entryLine(OFFERING.limit, 1)]);
+    await expect(rows(page).nth(0)).toContainText(label.label.ON_SALE);
+    await expect(proceedButton(page)).toBeEnabled();
+    const cartBefore = await readCartRaw(page);
+    await expect(headerCartLink(page, 1)).toBeVisible();
+    const other = await openSecondTab(context);
+    await other.goto("/");
+
+    await writeStorage(other, KEYS.session, authenticatedSession());
+    await expect(rows(page).nth(0)).toContainText(label.label.PURCHASE_LIMIT_EXCEEDED);
+    await expect(rows(page).nth(0)).toContainText(label.description.PURCHASE_LIMIT_EXCEEDED);
+    await expect(rows(page).nth(0)).not.toContainText(label.label.ON_SALE);
+    await expect(proceedButton(page)).toBeDisabled();
+    expect(await proceedReason(page)).toContain(copy.cart.proceed.blocked);
+    expect(await readCartRaw(page)).toBe(cartBefore);
+    expect(await readCart(page)).toEqual(stored([entryLine(OFFERING.limit, 1)]));
+    await expect(headerCartLink(page, 1)).toBeVisible();
+
+    await writeStorage(other, KEYS.session, sessionJson());
+    await expect(rows(page).nth(0)).toContainText(label.label.ON_SALE);
+    await expect(proceedButton(page)).toBeEnabled();
+    expect(await readCartRaw(page)).toBe(cartBefore);
+    await other.close();
   });
 });

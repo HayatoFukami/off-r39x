@@ -88,6 +88,17 @@ describe("TC-PG-CRT-001-451 copy carries the SPEC-050 fixed Cart wording", () =>
     expect(copy.sales.addFailed.length).toBeGreaterThan(0);
   });
 
+  it("words a quantity overflow as its own failure: not a success, not a storage failure, not a purchase limit", () => {
+    const text = copy.sales.addQuantityOverflow;
+    expect(text.length).toBeGreaterThan(0);
+    expect(text).not.toBe(copy.sales.addFailed);
+    expect(text).not.toContain("追加しました");
+    expect(text).not.toContain("保存領域");
+    expect(text).not.toContain("購入上限");
+    expect(text).not.toMatch(/[0-9０-９]/);
+    expect(text).toContain("Cart");
+  });
+
   it("has only trimmed, non-empty leaves in the S5 groups", () => {
     for (const group of [copy.cart, copy.quantity, copy.sales, copy.entry, copy.goods.detail]) {
       for (const leaf of stringLeaves(group)) {

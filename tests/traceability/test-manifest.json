@@ -5343,6 +5343,29 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-PG-CRT-001-406",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-001", "FR-CRT-003"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Pure addLine / addFromOrder with a Cart at the largest safe quantity, and with invalid lines",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "a sum beyond the safe integer range throws CartQuantityOverflowError (a RangeError); invalid lines throw a RangeError that is not CartQuantityOverflowError; addFromOrder overflow is the same class; inputs unchanged"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-PG-CRT-001-411",
       "level": "Unit",
       "suite": "unit",
@@ -5473,6 +5496,52 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "listeners notified once per successful write and per external change; external source subscribed lazily and released"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-CRT-001-425",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-TKT-001", "PG-GDS-002", "PG-CRT-001", "FR-CRT-001", "SPEC-050-9.3"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "createCartStore on an in-memory storage holding a line at the largest safe quantity",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "add / addFromOrder return quantity_overflow without a write, a notification or a new snapshot; a damaged Cart is still corrupted first; an invalid line still throws"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-CRT-001-426",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-012", "AR-SES-009"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "createCartStore on an in-memory storage whose removal can be made to fail",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "clear() removes the Cart key (also for a damaged Cart), leaves a ready empty snapshot, notifies once and never writes; a failed removal returns storage_unavailable without changing the stored Cart, the snapshot or notifying"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -5652,7 +5721,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "SPEC-050 12.1 / 14.2 / 14A.1 fixed Cart wording present literally; page titles kept out of copy.pageTitle; Karaoke guidance, damaged Cart and unknown-total wording"
+        "SPEC-050 12.1 / 14.2 / 14A.1 fixed Cart wording present literally; page titles kept out of copy.pageTitle; Karaoke guidance, damaged Cart and unknown-total wording; the quantity-overflow wording is its own failure wording (not a success, not a storage or limit wording)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -5698,7 +5767,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "exactly one strict stored-Cart schema; no price / stock / owner field; no Karaoke or session in the store and Cart UI"
+        "exactly one strict stored-Cart schema; no price / stock / owner field; no Karaoke or session in the store and Cart UI (the store knows no account; Logout clearing lives in the shell)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -5820,6 +5889,29 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-PG-TKT-001-412",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-TKT-001", "PG-CRT-001", "FR-CRT-005", "FR-CRT-012"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Pure sameSessionState over loading, unavailable, guest and authenticated states",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "equal states are the same; a changed status, kind, email or emailVerified is a change; the relation is symmetric"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-PG-TKT-001-461",
       "level": "Unit",
       "suite": "unit",
@@ -5834,7 +5926,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "number input validated by parseQuantityInput with aria-invalid / aria-describedby; status live region; display total through formatDisplayTotal"
+        "number input validated by parseQuantityInput with aria-invalid / aria-describedby; status live region; display total through formatDisplayTotal; quantity overflow separated from storage failure by the add result kind (no instanceof RangeError)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -6063,6 +6155,52 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "price shown and totalled from the port; stored Cart carries no price"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-TKT-001-509",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": ["PG-TKT-001", "FR-CRT-012"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock mode; Guest Entry page open; second tab writes and clears a demo session",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "the limit offering changes from on sale to purchase-limit-exceeded (Add disabled with its reason) and back without a reload; stored Cart and mock DB unchanged"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-TKT-001-510",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": ["PG-TKT-001", "PG-GDS-002", "FR-CRT-001", "SPEC-050-9.3"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock mode; stored Cart line at the largest safe quantity; storage write failure injected for the second case",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "an overflowing add shows the overflow alert, not the storage-failure wording, no success notice; stored Cart and Header count unchanged; a storage failure keeps its own wording"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -6485,6 +6623,29 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-PG-CRT-001-513",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-005", "FR-CRT-012"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock mode; Guest Cart page open with the limit offering; second tab writes and clears a demo session",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "the limit line changes to purchase-limit-exceeded and the proceed button is disabled with the blocked reason, and back, without a reload; stored Cart and Header count unchanged"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-PG-CRT-001-521",
       "level": "E2E",
       "suite": "e2e-ui-mock",
@@ -6534,18 +6695,26 @@
       "test_case_id": "TC-PG-CRT-001-523",
       "level": "E2E",
       "suite": "e2e-ui-mock",
-      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-012", "FR-CRT-003"],
+      "upstream_rule_ids": [
+        "PG-CRT-001",
+        "FR-CRT-012",
+        "FR-CRT-003",
+        "PG-PUB-001",
+        "AR-SES-009",
+        "UF-AUTH-004",
+        "SPEC-050-15.6"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "Mock mode; demo session",
+      "preconditions": "Mock mode; demo session; second tab; logout provider_failure; damaged stored Cart",
       "fixture_ids": [],
       "clock_instant": "2027-03-01T03:00:00Z",
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "logout keeps Cart, count and page; stored Cart holds no account data; guest Cart equals user Cart"
+        "logout removes the stored Cart (also on provider failure and for a damaged Cart), Header shows no count, URL is Home, /cart shows Empty, another tab shows Empty; guest Cart kept after a session appears; stored Cart holds no account data"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
