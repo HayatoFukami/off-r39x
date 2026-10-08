@@ -264,6 +264,8 @@ export const copy = {
     add: "Cartに追加",
     addSucceeded: "Cartに追加しました。購入はまだ確定していません",
     addFailed: "ブラウザの保存領域に書き込めなかったため、Cartを更新できませんでした",
+    addQuantityOverflow:
+      "Cartの数量が扱える範囲を超えるため、Cartに追加できませんでした。Cartで数量を確認してください",
     viewCart: "Cartを見る",
     displayTotalLabel: "表示用合計",
     displayTotalNote: "購入時の金額はサーバーで再計算されます",

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { createAuthPort } from "./index";
 import type { AuthPort } from "./port";
+import { sameSessionState } from "./session-equality";
 import { SessionContext, type SessionState } from "./use-session";
 
 export function SessionProvider({ children, port }: { children: ReactNode; port?: AuthPort }) {
@@ -17,11 +18,11 @@ export function SessionProvider({ children, port }: { children: ReactNode; port?
     const refresh = (): void => {
       void auth.getSession().then((result) => {
         if (!active) return;
-        setState(
+        const next: SessionState =
           result.kind === "ok"
             ? { status: "ready", session: result.session }
-            : { status: "unavailable" },
-        );
+            : { status: "unavailable" };
+        setState((prev) => (sameSessionState(prev, next) ? prev : next));
       });
     };
     refresh();

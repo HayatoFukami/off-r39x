@@ -5,6 +5,7 @@ import { type ChangeEvent, useCallback, useEffect, useId, useState } from "react
 import { useApi } from "../../api-client/provider";
 import { settleRead } from "../../api-client/settle-read";
 import type { CartLine, CartLineResolution } from "../../api-client/types";
+import { type SessionState, useSession } from "../../auth/use-session";
 import { ENTRY_HREF, GOODS_HREF, karaokeGuideHref } from "../../config/public-routes";
 import type { Loadable } from "../../presentation/components/list-state";
 import { PageState } from "../../presentation/components/page-state";
@@ -22,6 +23,8 @@ const linkClass = "text-brand underline underline-offset-4";
 type Resolution = {
   /** The Cart lines these resolutions were read for (null before the first read). */
   signature: string | null;
+  /** The session state they were read under (null before the first read). */
+  session: SessionState | null;
   value: Loadable<readonly CartLineResolution[]>;
 };
 
@@ -110,8 +113,10 @@ function CartRowView({
 export function CartPage() {
   const api = useApi();
   const cart = useCart();
+  const { state: session } = useSession();
   const [resolution, setResolution] = useState<Resolution>({
     signature: null,
+    session: null,
     value: { kind: "loading" },
   });
   const [attempt, setAttempt] = useState(0);
@@ -121,28 +126,31 @@ export function CartPage() {
 
   const lines = cart.state.kind === "ready" ? cart.state.cart.lines : null;
 
-  // Re-resolve whenever the lines change (this tab or another). An empty Cart is not resolved.
+  // Re-resolve whenever the lines or the session change (this tab or another). An empty Cart is not resolved.
   // `attempt` only re-runs the read for the retry button.
   // biome-ignore lint/correctness/useExhaustiveDependencies: `attempt` triggers a re-read on retry
   useEffect(() => {
+    if (session.status === "loading") return;
     if (lines === null || lines.length === 0) return;
     let active = true;
     const signature = signatureOf(lines);
     void settleRead(api.public.resolveCartLines(lines)).then((value) => {
-      if (active) setResolution({ signature, value });
+      if (active) setResolution({ signature, session, value });
     });
     return () => {
       active = false;
     };
-  }, [api, lines, attempt]);
+  }, [api, lines, attempt, session]);
 
   const retry = useCallback((): void => {
-    setResolution({ signature: null, value: { kind: "loading" } });
+    setResolution({ signature: null, session: null, value: { kind: "loading" } });
     setAttempt((count) => count + 1);
   }, []);
 
   const refreshing =
-    lines !== null && resolution.signature !== null && resolution.signature !== signatureOf(lines);
+    lines !== null &&
+    resolution.signature !== null &&
+    (resolution.signature !== signatureOf(lines) || resolution.session !== session);
   const model = buildCartPageModel({ cart: cart.state, resolutions: resolution.value, refreshing });
 
   // S7a: a Guest goes to the login page, an Authenticated User starts the purchase. S5 does nothing on purpose.
