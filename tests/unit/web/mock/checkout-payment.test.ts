@@ -187,6 +187,38 @@ describe("TC-PG-XFN-001-106 startCheckout authorization and ownership (SPEC-110 
   });
 });
 
+describe("TC-PG-XFN-001-107 the Checkout idempotencyKey replays by user and key only (PG-XFN-001, FR-XFN-012)", () => {
+  // The real API answers 409 IDEMPOTENCY_KEY_REUSED for another Order (SPEC-110 18);
+  // the mock deliberately simplifies this to replaying the first redirect (contract 11.3).
+  it("returns the first redirect for another Order and changes nothing", async () => {
+    const backend = await freshBackend();
+    const a = await prepare(backend, [goods(GOODS.tshirt, 1)], "k-a");
+    const b = await prepare(backend, [goods(GOODS.tshirt, 1)], "k-b");
+    const first = await backend.api.purchase.startCheckout(a, { idempotencyKey: "key-x" });
+    expect(first).toEqual({ kind: "redirect", url: `/dev/mock-checkout/${a}` });
+    const fingerprint = dbFingerprint(backend);
+    const ids = backend.ids.count();
+
+    const second = await backend.api.purchase.startCheckout(b, { idempotencyKey: "key-x" });
+    expect(second).toEqual(first);
+    expect(dbFingerprint(backend)).toBe(fingerprint);
+    expect(backend.ids.count()).toBe(ids);
+    expect(await stateOf(backend, b)).toBe("PREPARED");
+    expect(await stateOf(backend, a)).toBe("AWAITING_PAYMENT");
+  });
+
+  it("still answers another user's Order with state_conflict before any replay", async () => {
+    const backend = await freshBackend();
+    const a = await prepare(backend, [goods(GOODS.tshirt, 1)], "k-a");
+    await backend.api.purchase.startCheckout(a, { idempotencyKey: "key-x" });
+    const fingerprint = dbFingerprint(backend);
+    expect(
+      await backend.api.purchase.startCheckout(ORDER.otherEntry, { idempotencyKey: "key-x" }),
+    ).toEqual({ kind: "state_conflict" });
+    expect(dbFingerprint(backend)).toBe(fingerprint);
+  });
+});
+
 describe("TC-PAY-BRW-001-101 Browser Return never confirms: default confirm_after_recheck (PAY-BRW-001..003, 16.3)", () => {
   it("shows AWAITING_PAYMENT without entitlements on the first read and CONFIRMED on the recheck", async () => {
     const backend = await freshBackend();
