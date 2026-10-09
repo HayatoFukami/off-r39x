@@ -3,12 +3,18 @@
   "entries": [
     {
       "rule_id": "DEV-DEP-006",
-      "code_paths": ["scripts/check-import-boundaries.mts"],
+      "code_paths": [
+        "scripts/check-import-boundaries.mts",
+        "apps/web/src/features/cart",
+        "apps/web/src/features/entry",
+        "apps/web/src/features/goods"
+      ],
       "test_case_ids": [
         "TC-DEV-DEP-006-001",
         "TC-DEV-DEP-006-002",
         "TC-DEV-DEP-006-003",
         "TC-DEV-DEP-006-004",
+        "TC-DEV-WEB-001-403",
         "TC-DEV-DEP-006-005",
         "TC-DEV-DEP-006-006",
         "TC-DEV-DEP-006-007"
@@ -61,7 +67,9 @@
         "TC-DEV-WEB-012-201",
         "TC-DEV-WEB-012-301",
         "TC-PG-PUB-001-202",
-        "TC-PG-PUB-001-501"
+        "TC-PG-PUB-001-501",
+        "TC-PG-PUB-001-693",
+        "TC-PG-CRT-001-532"
       ],
       "notes": "implementation mapping only: mock-allowlist"
     },
@@ -100,13 +108,13 @@
     {
       "rule_id": "SEC-WEB-009",
       "code_paths": ["apps/web/next.config.ts"],
-      "test_case_ids": ["TC-SEC-WEB-009-001"],
+      "test_case_ids": ["TC-SEC-WEB-009-001", "TC-SEC-WEB-009-602"],
       "notes": "implementation mapping only: no-store headers; verified by TC-SEC-WEB-009-001 (E2E header check)"
     },
     {
       "rule_id": "SEC-WEB-004",
       "code_paths": ["apps/web/app/globals.css", "apps/web/app/layout.tsx"],
-      "test_case_ids": ["TC-DEV-WEB-001-203", "TC-SEC-WEB-004-101"],
+      "test_case_ids": ["TC-DEV-WEB-001-203", "TC-SEC-WEB-004-101", "TC-PG-CRT-001-533"],
       "notes": "implementation mapping only: system font stack, no external fonts"
     },
     {
@@ -120,7 +128,8 @@
         "apps/web/src/presentation/state-mapping/notification.ts",
         "apps/web/src/presentation/state-mapping/availability.ts",
         "apps/web/src/presentation/copy/ja.ts",
-        "apps/web/src/mock/backend/mock-api.ts"
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/features/cart/cart-model.ts"
       ],
       "test_case_ids": [
         "TC-PG-XFN-001-001",
@@ -134,6 +143,7 @@
         "TC-PG-XFN-001-104",
         "TC-PG-XFN-001-105",
         "TC-PG-XFN-001-106",
+        "TC-PG-CRT-001-405",
         "TC-PG-XFN-001-107"
       ],
       "notes": "implementation mapping only: state to presentation mapping and copy dictionary; S2 mock backend"
@@ -189,14 +199,49 @@
         "apps/web/src/presentation/state-mapping/karaoke.ts",
         "apps/web/src/presentation/format/datetime.ts",
         "apps/web/src/mock/backend/karaoke-buckets.ts",
-        "apps/web/src/mock/backend/mock-api.ts"
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/app/karaoke/page.tsx",
+        "apps/web/app/karaoke/schedule/[date]/page.tsx",
+        "apps/web/src/features/karaoke/karaoke-guide-model.ts",
+        "apps/web/src/features/karaoke/karaoke-guide-page.tsx",
+        "apps/web/src/features/karaoke/karaoke-day-model.ts",
+        "apps/web/src/features/karaoke/karaoke-day-page.tsx",
+        "apps/web/src/presentation/state-mapping/karaoke-sale-status.ts",
+        "apps/web/src/presentation/components/status-badge.tsx",
+        "apps/web/src/presentation/components/not-found-view.tsx",
+        "apps/web/src/features/public/route-params.ts",
+        "apps/web/src/config/public-routes.ts",
+        "apps/web/src/presentation/components/list-state.ts",
+        "apps/web/src/presentation/components/page-state.tsx",
+        "apps/web/src/presentation/components/plain-text.tsx",
+        "apps/web/src/presentation/components/section-heading.tsx",
+        "apps/web/src/api-client/settle-read.ts"
       ],
       "test_case_ids": [
         "TC-PG-KRK-002-001",
         "TC-PG-KRK-002-002",
         "TC-PG-KRK-002-101",
         "TC-PG-KRK-002-102",
-        "TC-PG-KRK-002-103"
+        "TC-PG-KRK-002-103",
+        "TC-PG-PUB-001-611",
+        "TC-PG-PUB-001-612",
+        "TC-PG-PUB-002-601",
+        "TC-PG-PUB-003-603",
+        "TC-PG-KRK-002-601",
+        "TC-PG-KRK-002-602",
+        "TC-PG-KRK-002-603",
+        "TC-PG-KRK-002-604",
+        "TC-PG-KRK-002-611",
+        "TC-PG-KRK-002-612",
+        "TC-PG-KRK-002-613",
+        "TC-PG-KRK-002-614",
+        "TC-PG-KRK-002-615",
+        "TC-PG-KRK-002-616",
+        "TC-PG-PUB-001-691",
+        "TC-PG-PUB-001-692",
+        "TC-PG-PUB-001-693",
+        "TC-PG-PUB-001-694",
+        "TC-PG-PUB-001-695"
       ],
       "notes": "implementation mapping only: slot presentation and JST date formatting; S2 mock backend"
     },
@@ -248,13 +293,31 @@
       "rule_id": "FR-CRT-005",
       "code_paths": [
         "apps/web/src/presentation/state-mapping/availability.ts",
-        "apps/web/src/mock/backend/mock-api.ts"
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/features/cart/can-proceed.ts",
+        "apps/web/src/features/cart/cart-view-model.ts"
       ],
       "test_case_ids": [
         "TC-PG-CRT-001-001",
         "TC-PG-CRT-001-002",
         "TC-PG-CRT-001-101",
-        "TC-PG-TKT-001-101"
+        "TC-PG-TKT-001-101",
+        "TC-PG-CRT-001-431",
+        "TC-PG-CRT-001-432",
+        "TC-PG-CRT-001-441",
+        "TC-PG-CRT-001-442",
+        "TC-PG-CRT-001-443",
+        "TC-PG-TKT-001-411",
+        "TC-PG-GDS-002-411",
+        "TC-PG-TKT-001-502",
+        "TC-PG-GDS-002-502",
+        "TC-PG-GDS-002-505",
+        "TC-PG-CRT-001-502",
+        "TC-PG-CRT-001-503",
+        "TC-PG-CRT-001-505",
+        "TC-PG-CRT-001-507",
+        "TC-PG-CRT-001-508",
+        "TC-PG-CRT-001-513"
       ],
       "notes": "implementation mapping only: distinct purchase unavailable reasons; S2 mock backend"
     },
@@ -267,7 +330,17 @@
         "apps/web/src/api-client/cart-line-key.ts",
         "apps/web/src/features/cart/cart-count.ts",
         "apps/web/src/features/cart/use-cart-count.ts",
-        "apps/web/src/presentation/layout/cart-link.tsx"
+        "apps/web/src/presentation/layout/cart-link.tsx",
+        "apps/web/src/features/cart/cart-page.tsx",
+        "apps/web/src/features/cart/cart-view-model.ts",
+        "apps/web/src/features/cart/can-proceed.ts",
+        "apps/web/src/features/cart/quantity.ts",
+        "apps/web/src/features/cart/cart-model.ts",
+        "apps/web/src/features/cart/cart-store.ts",
+        "apps/web/src/features/cart/use-cart.ts",
+        "apps/web/app/cart/page.tsx",
+        "apps/web/src/presentation/copy/ja.ts",
+        "apps/web/src/presentation/components/ui/input.tsx"
       ],
       "test_case_ids": [
         "TC-PG-CRT-001-001",
@@ -281,7 +354,51 @@
         "TC-PG-CRT-001-104",
         "TC-PG-CRT-001-201",
         "TC-PG-CRT-001-202",
-        "TC-PG-CRT-001-301"
+        "TC-PG-CRT-001-301",
+        "TC-PG-CRT-001-401",
+        "TC-PG-CRT-001-402",
+        "TC-PG-CRT-001-403",
+        "TC-PG-CRT-001-404",
+        "TC-PG-CRT-001-405",
+        "TC-PG-CRT-001-411",
+        "TC-PG-CRT-001-412",
+        "TC-PG-CRT-001-421",
+        "TC-PG-CRT-001-422",
+        "TC-PG-CRT-001-423",
+        "TC-PG-CRT-001-424",
+        "TC-PG-CRT-001-431",
+        "TC-PG-CRT-001-432",
+        "TC-PG-CRT-001-441",
+        "TC-PG-CRT-001-442",
+        "TC-PG-CRT-001-443",
+        "TC-PG-CRT-001-444",
+        "TC-PG-CRT-001-445",
+        "TC-PG-CRT-001-451",
+        "TC-PG-CRT-001-461",
+        "TC-PG-CRT-001-462",
+        "TC-DEV-WEB-001-404",
+        "TC-PG-TKT-001-461",
+        "TC-PG-CRT-001-501",
+        "TC-PG-CRT-001-502",
+        "TC-PG-CRT-001-503",
+        "TC-PG-CRT-001-504",
+        "TC-PG-CRT-001-505",
+        "TC-PG-CRT-001-506",
+        "TC-PG-CRT-001-507",
+        "TC-PG-CRT-001-508",
+        "TC-PG-CRT-001-509",
+        "TC-PG-CRT-001-510",
+        "TC-PG-CRT-001-511",
+        "TC-PG-CRT-001-512",
+        "TC-PG-CRT-001-521",
+        "TC-PG-CRT-001-522",
+        "TC-PG-CRT-001-523",
+        "TC-PG-CRT-001-531",
+        "TC-PG-CRT-001-532",
+        "TC-PG-CRT-001-533",
+        "TC-PG-CRT-001-534",
+        "TC-PG-CRT-001-535",
+        "TC-SEC-WEB-009-602"
       ],
       "notes": "implementation mapping only: availability and money formatting; S2 mock backend"
     },
@@ -289,28 +406,49 @@
       "rule_id": "DEV-TS-006",
       "code_paths": [
         "apps/web/src/presentation/format/money.ts",
-        "apps/web/src/api-client/types.ts"
+        "apps/web/src/api-client/types.ts",
+        "apps/web/src/features/cart/quantity.ts",
+        "apps/web/src/features/cart/cart-view-model.ts",
+        "apps/web/src/presentation/format/sales-period.ts"
       ],
-      "test_case_ids": ["TC-PG-CRT-001-003"],
+      "test_case_ids": [
+        "TC-PG-CRT-001-003",
+        "TC-PG-CRT-001-411",
+        "TC-PG-CRT-001-412",
+        "TC-PG-CRT-001-443",
+        "TC-DEV-WEB-001-404",
+        "TC-PG-CRT-001-512"
+      ],
       "notes": "implementation mapping only: decimal string money"
     },
     {
       "rule_id": "DEV-TS-007",
-      "code_paths": ["apps/web/src/presentation/format/money.ts"],
-      "test_case_ids": ["TC-PG-CRT-001-003"],
+      "code_paths": [
+        "apps/web/src/presentation/format/money.ts",
+        "apps/web/src/features/cart/quantity.ts"
+      ],
+      "test_case_ids": ["TC-PG-CRT-001-003", "TC-PG-CRT-001-411", "TC-PG-CRT-001-412"],
       "notes": "implementation mapping only: bigint money arithmetic"
     },
     {
       "rule_id": "TST-DAT-007",
       "code_paths": [
         "apps/web/src/presentation/format/datetime.ts",
-        "apps/web/src/mock/backend/karaoke-buckets.ts"
+        "apps/web/src/mock/backend/karaoke-buckets.ts",
+        "apps/web/src/features/karaoke/karaoke-day-model.ts",
+        "apps/web/src/features/public/home-model.ts"
       ],
       "test_case_ids": [
         "TC-PG-KRK-002-002",
         "TC-PG-KRK-002-101",
         "TC-PG-KRK-002-102",
-        "TC-PG-KRK-002-103"
+        "TC-PG-KRK-002-103",
+        "TC-PG-PUB-002-602",
+        "TC-PG-PUB-001-621",
+        "TC-PG-KRK-002-601",
+        "TC-PG-KRK-002-604",
+        "TC-PG-PUB-001-604",
+        "TC-PG-KRK-002-611"
       ],
       "notes": "implementation mapping only: JST day boundary; S2 mock backend"
     },
@@ -318,15 +456,35 @@
       "rule_id": "TST-DAT-008",
       "code_paths": [
         "apps/web/src/presentation/format/datetime.ts",
-        "apps/web/src/mock/backend/karaoke-buckets.ts"
+        "apps/web/src/mock/backend/karaoke-buckets.ts",
+        "apps/web/src/features/karaoke/karaoke-day-model.ts",
+        "apps/web/src/features/public/home-model.ts"
       ],
-      "test_case_ids": ["TC-PG-KRK-002-002", "TC-PG-KRK-002-101", "TC-PG-KRK-002-102"],
+      "test_case_ids": [
+        "TC-PG-KRK-002-002",
+        "TC-PG-KRK-002-101",
+        "TC-PG-KRK-002-102",
+        "TC-PG-PUB-001-621",
+        "TC-PG-KRK-002-601",
+        "TC-PG-KRK-002-611"
+      ],
       "notes": "implementation mapping only: JST day boundary; S2 mock backend"
     },
     {
       "rule_id": "FR-CRT-002",
-      "code_paths": ["apps/web/src/mock/backend/purpose.ts", "apps/web/src/api-client/types.ts"],
-      "test_case_ids": ["TC-BR-ORD-013-101"],
+      "code_paths": [
+        "apps/web/src/mock/backend/purpose.ts",
+        "apps/web/src/api-client/types.ts",
+        "apps/web/src/features/cart/cart-model.ts",
+        "apps/web/src/features/cart/cart-page.tsx"
+      ],
+      "test_case_ids": [
+        "TC-BR-ORD-013-101",
+        "TC-PG-CRT-001-403",
+        "TC-PG-CRT-001-405",
+        "TC-PG-CRT-001-462",
+        "TC-PG-CRT-001-509"
+      ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
@@ -515,7 +673,8 @@
         "apps/web/src/mock/backend/scenario.ts",
         "apps/web/src/mock/backend/session-store.ts",
         "apps/web/src/features/cart/cart-count.ts",
-        "apps/web/src/mock/dev-ui/scenario-panel.tsx"
+        "apps/web/src/mock/dev-ui/scenario-panel.tsx",
+        "apps/web/src/features/cart/cart-model.ts"
       ],
       "test_case_ids": [
         "TC-DEV-TS-004-101",
@@ -527,7 +686,10 @@
         "TC-PG-CRT-001-202",
         "TC-DEV-WEB-013-121",
         "TC-DEV-WEB-013-201",
-        "TC-DEV-WEB-013-202"
+        "TC-DEV-WEB-013-202",
+        "TC-PG-CRT-001-401",
+        "TC-PG-CRT-001-422",
+        "TC-PG-CRT-001-462"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
@@ -545,8 +707,40 @@
     },
     {
       "rule_id": "PG-KRK-001",
-      "code_paths": ["apps/web/src/mock/backend/mock-api.ts"],
-      "test_case_ids": ["TC-PG-KRK-001-101"],
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/app/karaoke/page.tsx",
+        "apps/web/app/karaoke/schedule/[date]/page.tsx",
+        "apps/web/src/features/karaoke/karaoke-guide-model.ts",
+        "apps/web/src/features/karaoke/karaoke-guide-page.tsx",
+        "apps/web/src/features/karaoke/karaoke-day-model.ts",
+        "apps/web/src/features/karaoke/karaoke-day-page.tsx",
+        "apps/web/src/presentation/state-mapping/karaoke-sale-status.ts",
+        "apps/web/src/presentation/components/status-badge.tsx",
+        "apps/web/src/presentation/components/not-found-view.tsx",
+        "apps/web/src/features/public/route-params.ts",
+        "apps/web/src/config/public-routes.ts",
+        "apps/web/src/presentation/components/list-state.ts",
+        "apps/web/src/presentation/components/page-state.tsx",
+        "apps/web/src/presentation/components/plain-text.tsx",
+        "apps/web/src/presentation/components/section-heading.tsx",
+        "apps/web/src/api-client/settle-read.ts"
+      ],
+      "test_case_ids": [
+        "TC-PG-KRK-001-101",
+        "TC-PG-PUB-001-612",
+        "TC-PG-KRK-001-601",
+        "TC-PG-KRK-001-602",
+        "TC-PG-KRK-001-611",
+        "TC-PG-KRK-001-612",
+        "TC-PG-KRK-001-613",
+        "TC-PG-PUB-001-691",
+        "TC-PG-PUB-001-692",
+        "TC-PG-PUB-001-693",
+        "TC-PG-PUB-001-694",
+        "TC-PG-PUB-001-695",
+        "TC-SEC-WEB-009-601"
+      ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
@@ -562,7 +756,17 @@
         "apps/web/src/features/shell",
         "apps/web/src/presentation/components/ui",
         "apps/web/app/globals.css",
-        "apps/web/public/mock/sponsors"
+        "apps/web/public/mock/sponsors",
+        "apps/web/src/features/public/home-model.ts",
+        "apps/web/src/features/public/home-page.tsx",
+        "apps/web/src/config/public-routes.ts",
+        "apps/web/src/presentation/components/list-state.ts",
+        "apps/web/src/presentation/components/page-state.tsx",
+        "apps/web/src/presentation/components/plain-text.tsx",
+        "apps/web/src/presentation/components/section-heading.tsx",
+        "apps/web/src/api-client/settle-read.ts",
+        "apps/web/src/presentation/components/date-time.tsx",
+        "apps/web/src/features/cart/use-cart-count.ts"
       ],
       "test_case_ids": [
         "TC-BR-EVT-005-101",
@@ -588,32 +792,134 @@
         "TC-PG-PUB-001-405",
         "TC-PG-PUB-001-502",
         "TC-PG-PUB-001-503",
-        "TC-PG-PUB-001-504"
+        "TC-PG-PUB-001-504",
+        "TC-PG-PUB-001-611",
+        "TC-PG-PUB-001-612",
+        "TC-PG-PUB-001-613",
+        "TC-PG-PUB-002-602",
+        "TC-PG-PUB-003-603",
+        "TC-PG-PUB-001-621",
+        "TC-PG-PUB-001-622",
+        "TC-PG-PUB-001-623",
+        "TC-PG-PUB-001-624",
+        "TC-PG-PUB-001-601",
+        "TC-PG-PUB-001-602",
+        "TC-PG-PUB-001-603",
+        "TC-PG-PUB-001-604",
+        "TC-PG-PUB-001-605",
+        "TC-PG-PUB-001-606",
+        "TC-PG-PUB-001-607",
+        "TC-PG-PUB-001-608",
+        "TC-PG-PUB-001-609",
+        "TC-PG-PUB-001-610",
+        "TC-PG-PUB-001-691",
+        "TC-PG-PUB-001-692",
+        "TC-PG-PUB-001-693",
+        "TC-PG-PUB-001-694",
+        "TC-PG-PUB-001-695",
+        "TC-SEC-WEB-009-601",
+        "TC-SEC-WEB-017-601",
+        "TC-PG-CRT-001-424",
+        "TC-PG-CRT-001-521"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
       "rule_id": "PG-PUB-002",
-      "code_paths": ["apps/web/src/mock/backend/mock-api.ts", "apps/web/src/mock/backend/seed.ts"],
-      "test_case_ids": ["TC-PG-PUB-002-101", "TC-PG-PUB-002-102"],
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/mock/backend/seed.ts",
+        "apps/web/app/announcements/page.tsx",
+        "apps/web/app/announcements/[announcementRef]/page.tsx",
+        "apps/web/src/features/public/announcement-model.ts",
+        "apps/web/src/features/public/announcement-list-page.tsx",
+        "apps/web/src/features/public/announcement-detail-page.tsx",
+        "apps/web/src/features/public/route-params.ts",
+        "apps/web/src/presentation/components/not-found-view.tsx",
+        "apps/web/src/config/public-routes.ts",
+        "apps/web/src/presentation/components/list-state.ts",
+        "apps/web/src/presentation/components/page-state.tsx",
+        "apps/web/src/presentation/components/plain-text.tsx",
+        "apps/web/src/presentation/components/section-heading.tsx",
+        "apps/web/src/api-client/settle-read.ts",
+        "apps/web/src/presentation/components/date-time.tsx",
+        "apps/web/app/layout.tsx"
+      ],
+      "test_case_ids": [
+        "TC-PG-PUB-002-101",
+        "TC-PG-PUB-002-102",
+        "TC-PG-PUB-001-612",
+        "TC-PG-PUB-002-601",
+        "TC-PG-PUB-002-602",
+        "TC-PG-PUB-002-611",
+        "TC-PG-PUB-002-612",
+        "TC-PG-PUB-001-691",
+        "TC-PG-PUB-001-692",
+        "TC-PG-PUB-001-693",
+        "TC-PG-PUB-001-694",
+        "TC-PG-PUB-001-695",
+        "TC-SEC-WEB-009-601",
+        "TC-SEC-WEB-017-601"
+      ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
       "rule_id": "PG-PUB-003",
-      "code_paths": ["apps/web/src/mock/backend/mock-api.ts", "apps/web/src/mock/backend/seed.ts"],
-      "test_case_ids": ["TC-PG-PUB-003-101"],
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/mock/backend/seed.ts",
+        "apps/web/app/announcements/page.tsx",
+        "apps/web/app/announcements/[announcementRef]/page.tsx",
+        "apps/web/src/features/public/announcement-model.ts",
+        "apps/web/src/features/public/announcement-list-page.tsx",
+        "apps/web/src/features/public/announcement-detail-page.tsx",
+        "apps/web/src/features/public/route-params.ts",
+        "apps/web/src/presentation/components/not-found-view.tsx",
+        "apps/web/src/config/public-routes.ts",
+        "apps/web/src/presentation/components/list-state.ts",
+        "apps/web/src/presentation/components/page-state.tsx",
+        "apps/web/src/presentation/components/plain-text.tsx",
+        "apps/web/src/presentation/components/section-heading.tsx",
+        "apps/web/src/api-client/settle-read.ts",
+        "apps/web/src/presentation/components/date-time.tsx",
+        "apps/web/app/layout.tsx"
+      ],
+      "test_case_ids": [
+        "TC-PG-PUB-003-101",
+        "TC-PG-PUB-001-612",
+        "TC-PG-PUB-003-601",
+        "TC-PG-PUB-003-602",
+        "TC-PG-PUB-003-603",
+        "TC-PG-PUB-003-611",
+        "TC-PG-PUB-003-612",
+        "TC-PG-PUB-003-613",
+        "TC-PG-PUB-001-691",
+        "TC-PG-PUB-001-692",
+        "TC-PG-PUB-001-693",
+        "TC-PG-PUB-001-694",
+        "TC-PG-PUB-001-695",
+        "TC-SEC-WEB-017-601"
+      ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
       "rule_id": "BR-EVT-001",
-      "code_paths": ["apps/web/src/mock/backend/mock-api.ts", "apps/web/src/mock/backend/seed.ts"],
-      "test_case_ids": ["TC-PG-PUB-001-101"],
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/mock/backend/seed.ts",
+        "apps/web/src/features/public/home-model.ts"
+      ],
+      "test_case_ids": ["TC-PG-PUB-001-101", "TC-PG-PUB-001-622", "TC-PG-PUB-001-604"],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
       "rule_id": "BR-EVT-002",
-      "code_paths": ["apps/web/src/mock/backend/mock-api.ts", "apps/web/src/mock/backend/seed.ts"],
-      "test_case_ids": ["TC-PG-PUB-002-101"],
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/mock/backend/seed.ts",
+        "apps/web/src/features/public/home-model.ts"
+      ],
+      "test_case_ids": ["TC-PG-PUB-002-101", "TC-PG-PUB-001-622", "TC-PG-PUB-001-603"],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
@@ -630,50 +936,182 @@
     },
     {
       "rule_id": "FR-PUB-013",
-      "code_paths": ["apps/web/src/mock/backend/mock-api.ts"],
-      "test_case_ids": ["TC-PG-PUB-001-101", "TC-PG-PUB-002-102"],
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/features/public/home-model.ts"
+      ],
+      "test_case_ids": ["TC-PG-PUB-001-101", "TC-PG-PUB-002-102", "TC-PG-PUB-001-624"],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
       "rule_id": "INV-010-08",
-      "code_paths": ["apps/web/src/mock/backend/mock-api.ts"],
-      "test_case_ids": ["TC-PG-PUB-002-101"],
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/features/public/announcement-model.ts",
+        "apps/web/src/features/public/home-model.ts"
+      ],
+      "test_case_ids": [
+        "TC-PG-PUB-002-101",
+        "TC-PG-PUB-002-602",
+        "TC-PG-PUB-003-601",
+        "TC-PG-PUB-001-622",
+        "TC-PG-PUB-001-603",
+        "TC-PG-PUB-001-605",
+        "TC-PG-PUB-002-611",
+        "TC-PG-PUB-003-612"
+      ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
       "rule_id": "SEC-WEB-017",
-      "code_paths": ["apps/web/src/mock/backend/mock-api.ts", "apps/web/src/mock/backend/seed.ts"],
-      "test_case_ids": ["TC-PG-PUB-003-101"],
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/mock/backend/seed.ts",
+        "apps/web/src/presentation/components/plain-text.tsx",
+        "apps/web/src/features/public/home-page.tsx",
+        "apps/web/src/features/public/announcement-detail-page.tsx"
+      ],
+      "test_case_ids": [
+        "TC-PG-PUB-003-101",
+        "TC-PG-PUB-001-613",
+        "TC-PG-PUB-003-601",
+        "TC-PG-PUB-003-611",
+        "TC-SEC-WEB-017-601"
+      ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
       "rule_id": "SEC-WEB-018",
-      "code_paths": ["apps/web/src/mock/backend/mock-api.ts", "apps/web/src/mock/backend/seed.ts"],
-      "test_case_ids": ["TC-PG-PUB-003-101"],
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/mock/backend/seed.ts",
+        "apps/web/src/presentation/components/plain-text.tsx",
+        "apps/web/src/features/public/announcement-detail-page.tsx"
+      ],
+      "test_case_ids": [
+        "TC-PG-PUB-003-101",
+        "TC-PG-PUB-001-613",
+        "TC-PG-PUB-003-601",
+        "TC-PG-PUB-003-611",
+        "TC-SEC-WEB-017-601"
+      ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
       "rule_id": "SEC-WEB-019",
-      "code_paths": ["apps/web/src/mock/backend/mock-api.ts", "apps/web/src/mock/backend/seed.ts"],
-      "test_case_ids": ["TC-PG-PUB-003-101"],
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/mock/backend/seed.ts",
+        "apps/web/src/presentation/components/plain-text.tsx",
+        "apps/web/src/features/public/home-page.tsx"
+      ],
+      "test_case_ids": ["TC-PG-PUB-003-101", "TC-PG-PUB-001-613", "TC-SEC-WEB-017-601"],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
       "rule_id": "PG-TKT-001",
-      "code_paths": ["apps/web/src/mock/backend/mock-api.ts"],
-      "test_case_ids": ["TC-PG-TKT-001-101", "TC-PG-TKT-001-102"],
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/features/entry/entry-page.tsx",
+        "apps/web/src/features/entry/entry-model.ts",
+        "apps/web/src/features/cart/add-to-cart-form.tsx",
+        "apps/web/app/entry/page.tsx"
+      ],
+      "test_case_ids": [
+        "TC-PG-TKT-001-101",
+        "TC-PG-TKT-001-102",
+        "TC-PG-CRT-001-411",
+        "TC-PG-CRT-001-451",
+        "TC-PG-TKT-001-411",
+        "TC-PG-TKT-001-461",
+        "TC-PG-TKT-001-501",
+        "TC-PG-TKT-001-502",
+        "TC-PG-TKT-001-503",
+        "TC-PG-TKT-001-504",
+        "TC-PG-TKT-001-505",
+        "TC-PG-TKT-001-506",
+        "TC-PG-TKT-001-507",
+        "TC-PG-TKT-001-508",
+        "TC-PG-CRT-001-501",
+        "TC-PG-CRT-001-531",
+        "TC-PG-CRT-001-532",
+        "TC-PG-CRT-001-533",
+        "TC-PG-CRT-001-534",
+        "TC-SEC-WEB-009-602",
+        "TC-PG-TKT-001-509",
+        "TC-PG-TKT-001-510"
+      ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
       "rule_id": "PG-GDS-001",
-      "code_paths": ["apps/web/src/mock/backend/mock-api.ts"],
-      "test_case_ids": ["TC-PG-GDS-001-101"],
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/app/goods/page.tsx",
+        "apps/web/src/features/goods/goods-list-model.ts",
+        "apps/web/src/features/goods/goods-list-page.tsx",
+        "apps/web/src/presentation/components/status-badge.tsx",
+        "apps/web/src/presentation/components/money.tsx",
+        "apps/web/src/config/public-routes.ts",
+        "apps/web/src/presentation/components/list-state.ts",
+        "apps/web/src/presentation/components/page-state.tsx",
+        "apps/web/src/presentation/components/plain-text.tsx",
+        "apps/web/src/presentation/components/section-heading.tsx",
+        "apps/web/src/api-client/settle-read.ts",
+        "apps/web/src/features/goods/goods-detail-page.tsx"
+      ],
+      "test_case_ids": [
+        "TC-PG-GDS-001-101",
+        "TC-PG-PUB-001-611",
+        "TC-PG-PUB-001-612",
+        "TC-PG-PUB-002-601",
+        "TC-PG-PUB-003-603",
+        "TC-PG-GDS-001-601",
+        "TC-PG-GDS-001-611",
+        "TC-PG-GDS-001-612",
+        "TC-PG-GDS-001-613",
+        "TC-PG-GDS-001-614",
+        "TC-PG-GDS-001-615",
+        "TC-PG-PUB-001-691",
+        "TC-PG-PUB-001-692",
+        "TC-PG-PUB-001-693",
+        "TC-PG-PUB-001-694",
+        "TC-PG-PUB-001-695",
+        "TC-PG-PUB-001-696",
+        "TC-SEC-WEB-009-601",
+        "TC-PG-GDS-002-506"
+      ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
       "rule_id": "PG-GDS-002",
-      "code_paths": ["apps/web/src/mock/backend/mock-api.ts"],
-      "test_case_ids": ["TC-PG-GDS-001-101"],
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/features/goods/goods-detail-page.tsx",
+        "apps/web/src/features/goods/goods-detail-model.ts",
+        "apps/web/src/features/public/route-params.ts",
+        "apps/web/src/features/cart/add-to-cart-form.tsx",
+        "apps/web/app/goods/[goodsRef]/page.tsx"
+      ],
+      "test_case_ids": [
+        "TC-PG-GDS-001-101",
+        "TC-PG-CRT-001-411",
+        "TC-PG-CRT-001-451",
+        "TC-PG-TKT-001-461",
+        "TC-PG-GDS-002-411",
+        "TC-PG-GDS-002-412",
+        "TC-PG-GDS-002-501",
+        "TC-PG-GDS-002-502",
+        "TC-PG-GDS-002-503",
+        "TC-PG-GDS-002-504",
+        "TC-PG-GDS-002-505",
+        "TC-PG-GDS-002-506",
+        "TC-PG-CRT-001-501",
+        "TC-PG-CRT-001-531",
+        "TC-PG-CRT-001-532",
+        "TC-PG-CRT-001-533",
+        "TC-PG-CRT-001-534"
+      ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
@@ -824,28 +1262,78 @@
         "apps/web/src/presentation/layout/account-menu.tsx",
         "apps/web/src/features/shell/site-header.tsx"
       ],
-      "test_case_ids": ["TC-AR-SES-009-101", "TC-PG-PUB-001-304"],
+      "test_case_ids": [
+        "TC-AR-SES-009-101",
+        "TC-PG-PUB-001-304",
+        "TC-PG-CRT-001-523",
+        "TC-PG-CRT-001-426"
+      ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
       "rule_id": "FR-CRT-001",
       "code_paths": [
         "apps/web/src/features/cart/cart-count.ts",
-        "apps/web/src/features/cart/use-cart-count.ts"
+        "apps/web/src/features/cart/use-cart-count.ts",
+        "apps/web/src/features/cart/cart-store.ts",
+        "apps/web/src/features/cart/cart-model.ts",
+        "apps/web/src/features/cart/add-to-cart-form.tsx",
+        "apps/web/src/features/cart/cart-page.tsx"
       ],
-      "test_case_ids": ["TC-PG-CRT-001-201", "TC-PG-CRT-001-301"],
+      "test_case_ids": [
+        "TC-PG-CRT-001-201",
+        "TC-PG-CRT-001-301",
+        "TC-PG-CRT-001-403",
+        "TC-PG-CRT-001-404",
+        "TC-PG-CRT-001-423",
+        "TC-PG-CRT-001-461",
+        "TC-PG-TKT-001-503",
+        "TC-PG-GDS-002-503",
+        "TC-PG-CRT-001-501",
+        "TC-PG-CRT-001-504",
+        "TC-PG-CRT-001-535",
+        "TC-PG-CRT-001-406",
+        "TC-PG-CRT-001-425",
+        "TC-PG-TKT-001-510"
+      ],
       "notes": "implementation mapping only: UI mock shell (not API/DB/provider coverage)"
     },
     {
       "rule_id": "FR-CRT-003",
-      "code_paths": ["apps/web/src/features/cart/cart-count.ts"],
-      "test_case_ids": ["TC-PG-CRT-001-202", "TC-PG-CRT-001-301"],
+      "code_paths": [
+        "apps/web/src/features/cart/cart-count.ts",
+        "apps/web/src/features/cart/cart-model.ts",
+        "apps/web/src/features/cart/cart-store.ts",
+        "apps/web/src/features/cart/add-to-cart-form.tsx"
+      ],
+      "test_case_ids": [
+        "TC-PG-CRT-001-202",
+        "TC-PG-CRT-001-301",
+        "TC-PG-CRT-001-401",
+        "TC-PG-CRT-001-402",
+        "TC-PG-CRT-001-403",
+        "TC-PG-CRT-001-422",
+        "TC-PG-CRT-001-423",
+        "TC-PG-CRT-001-445",
+        "TC-PG-CRT-001-462",
+        "TC-PG-TKT-001-503",
+        "TC-PG-TKT-001-506",
+        "TC-PG-TKT-001-508",
+        "TC-PG-GDS-002-503",
+        "TC-PG-CRT-001-510",
+        "TC-PG-CRT-001-512",
+        "TC-PG-CRT-001-523"
+      ],
       "notes": "implementation mapping only: UI mock shell (not API/DB/provider coverage)"
     },
     {
       "rule_id": "SEC-WEB-016",
-      "code_paths": ["apps/web/src/presentation/layout/sponsor-area-model.ts"],
-      "test_case_ids": ["TC-PG-PUB-001-213"],
+      "code_paths": [
+        "apps/web/src/presentation/layout/sponsor-area-model.ts",
+        "apps/web/src/presentation/components/safe-url.ts",
+        "apps/web/src/presentation/components/external-link.tsx"
+      ],
+      "test_case_ids": ["TC-PG-PUB-001-213", "TC-SEC-WEB-016-601", "TC-SEC-WEB-017-601"],
       "notes": "implementation mapping only: UI mock shell (not API/DB/provider coverage)"
     },
     {
@@ -853,13 +1341,19 @@
       "code_paths": [
         "apps/web/app/not-found.tsx",
         "apps/web/app/error.tsx",
-        "apps/web/app/dev/error-probe/page.tsx"
+        "apps/web/app/dev/error-probe/page.tsx",
+        "apps/web/src/presentation/components/not-found-view.tsx",
+        "apps/web/src/features/goods/goods-detail-page.tsx",
+        "apps/web/app/goods/[goodsRef]/page.tsx"
       ],
       "test_case_ids": [
         "TC-PG-XFN-002-201",
         "TC-PG-XFN-002-202",
         "TC-PG-XFN-002-301",
-        "TC-SEC-WEB-012-101"
+        "TC-SEC-WEB-012-101",
+        "TC-PG-PUB-003-612",
+        "TC-PG-KRK-002-615",
+        "TC-PG-GDS-002-504"
       ],
       "notes": "implementation mapping only: UI mock shell (not API/DB/provider coverage)"
     },
@@ -885,15 +1379,215 @@
         "apps/web/src/auth/session-provider.tsx",
         "apps/web/src/auth/use-session.ts",
         "apps/web/src/features/shell",
-        "apps/web/src/features/cart/use-cart-count.ts"
+        "apps/web/src/features/cart/use-cart-count.ts",
+        "apps/web/app/page.tsx",
+        "apps/web/src/features/public/home-model.ts",
+        "apps/web/src/features/public/home-page.tsx",
+        "apps/web/app/announcements/page.tsx",
+        "apps/web/app/announcements/[announcementRef]/page.tsx",
+        "apps/web/src/features/public/announcement-model.ts",
+        "apps/web/src/features/public/announcement-list-page.tsx",
+        "apps/web/src/features/public/announcement-detail-page.tsx",
+        "apps/web/src/features/public/route-params.ts",
+        "apps/web/src/presentation/components/not-found-view.tsx",
+        "apps/web/app/karaoke/page.tsx",
+        "apps/web/app/karaoke/schedule/[date]/page.tsx",
+        "apps/web/src/features/karaoke/karaoke-guide-model.ts",
+        "apps/web/src/features/karaoke/karaoke-guide-page.tsx",
+        "apps/web/src/features/karaoke/karaoke-day-model.ts",
+        "apps/web/src/features/karaoke/karaoke-day-page.tsx",
+        "apps/web/src/presentation/state-mapping/karaoke-sale-status.ts",
+        "apps/web/src/presentation/components/status-badge.tsx",
+        "apps/web/app/goods/page.tsx",
+        "apps/web/src/features/goods/goods-list-model.ts",
+        "apps/web/src/features/goods/goods-list-page.tsx",
+        "apps/web/src/presentation/components/money.tsx",
+        "apps/web/src/presentation/components/page-state.tsx",
+        "apps/web/app/entry/page.tsx",
+        "apps/web/app/cart/page.tsx",
+        "apps/web/app/goods/[goodsRef]/page.tsx",
+        "apps/web/src/features/cart/cart-page.tsx",
+        "apps/web/src/features/entry/entry-page.tsx",
+        "apps/web/src/features/goods/goods-detail-page.tsx"
       ],
       "test_case_ids": [
         "TC-DEV-WEB-001-201",
         "TC-DEV-WEB-001-202",
         "TC-DEV-WEB-001-203",
-        "TC-PG-XFN-002-202"
+        "TC-PG-XFN-002-202",
+        "TC-PG-PUB-001-612",
+        "TC-PG-PUB-001-613",
+        "TC-PG-PUB-003-602",
+        "TC-DEV-WEB-001-401",
+        "TC-DEV-WEB-001-402",
+        "TC-DEV-WEB-001-403",
+        "TC-DEV-WEB-001-404"
       ],
       "notes": "implementation mapping only: UI mock shell (not API/DB/provider coverage)"
+    },
+    {
+      "rule_id": "SEC-WEB-020",
+      "code_paths": [
+        "apps/web/src/presentation/components/external-link.tsx",
+        "apps/web/src/presentation/components/plain-text.tsx"
+      ],
+      "test_case_ids": ["TC-PG-PUB-001-613", "TC-PG-PUB-003-611", "TC-SEC-WEB-017-601"],
+      "notes": "implementation mapping only: S4 public pages (UI mock, not API/DB/provider coverage)"
+    },
+    {
+      "rule_id": "INV-010-04",
+      "code_paths": ["apps/web/src/features/karaoke/karaoke-day-model.ts"],
+      "test_case_ids": ["TC-PG-KRK-002-601", "TC-PG-KRK-002-602", "TC-PG-KRK-002-612"],
+      "notes": "implementation mapping only: S4 public pages (UI mock, not API/DB/provider coverage)"
+    },
+    {
+      "rule_id": "INV-010-10",
+      "code_paths": ["apps/web/src/features/karaoke/karaoke-day-model.ts"],
+      "test_case_ids": ["TC-PG-KRK-002-602"],
+      "notes": "implementation mapping only: S4 public pages (UI mock, not API/DB/provider coverage)"
+    },
+    {
+      "rule_id": "INV-010-09",
+      "code_paths": ["apps/web/src/features/goods/goods-list-model.ts"],
+      "test_case_ids": ["TC-PG-GDS-001-601"],
+      "notes": "implementation mapping only: S4 public pages (UI mock, not API/DB/provider coverage)"
+    },
+    {
+      "rule_id": "FR-PUB-008",
+      "code_paths": [
+        "apps/web/src/features/karaoke/karaoke-guide-model.ts",
+        "apps/web/src/features/karaoke/karaoke-guide-page.tsx"
+      ],
+      "test_case_ids": ["TC-PG-KRK-001-602", "TC-PG-KRK-001-611"],
+      "notes": "implementation mapping only: S4 public pages (UI mock, not API/DB/provider coverage)"
+    },
+    {
+      "rule_id": "FR-PUB-011",
+      "code_paths": [
+        "apps/web/src/features/public/home-model.ts",
+        "apps/web/src/features/entry/entry-model.ts",
+        "apps/web/src/features/entry/entry-page.tsx"
+      ],
+      "test_case_ids": [
+        "TC-PG-PUB-001-622",
+        "TC-PG-PUB-001-601",
+        "TC-PG-TKT-001-501",
+        "TC-PG-TKT-001-505"
+      ],
+      "notes": "implementation mapping only: S4 public pages (UI mock, not API/DB/provider coverage)"
+    },
+    {
+      "rule_id": "FR-KRK-001",
+      "code_paths": ["apps/web/src/features/karaoke/karaoke-guide-model.ts"],
+      "test_case_ids": ["TC-PG-KRK-001-602"],
+      "notes": "implementation mapping only: S4 public pages (UI mock, not API/DB/provider coverage)"
+    },
+    {
+      "rule_id": "FR-KRK-002",
+      "code_paths": ["apps/web/src/features/karaoke/karaoke-day-model.ts"],
+      "test_case_ids": ["TC-PG-KRK-002-601", "TC-PG-KRK-002-613"],
+      "notes": "implementation mapping only: S4 public pages (UI mock, not API/DB/provider coverage)"
+    },
+    {
+      "rule_id": "FR-GDS-001",
+      "code_paths": ["apps/web/src/features/goods/goods-list-model.ts"],
+      "test_case_ids": ["TC-PG-GDS-001-601", "TC-PG-GDS-001-611"],
+      "notes": "implementation mapping only: S4 public pages (UI mock, not API/DB/provider coverage)"
+    },
+    {
+      "rule_id": "BR-SAL-003",
+      "code_paths": ["apps/web/src/features/goods/goods-list-model.ts"],
+      "test_case_ids": ["TC-PG-GDS-001-601"],
+      "notes": "implementation mapping only: S4 public pages (UI mock, not API/DB/provider coverage)"
+    },
+    {
+      "rule_id": "DEV-WEB-009",
+      "code_paths": [
+        "apps/web/src/features/goods/goods-list-model.ts",
+        "apps/web/src/features/goods/goods-list-page.tsx",
+        "apps/web/src/features/karaoke/karaoke-day-model.ts"
+      ],
+      "test_case_ids": ["TC-PG-PUB-001-696"],
+      "notes": "implementation mapping only: S4 public pages (UI mock, not API/DB/provider coverage)"
+    },
+    {
+      "rule_id": "FR-CRT-011",
+      "code_paths": [
+        "apps/web/src/features/cart/cart-model.ts",
+        "apps/web/src/features/cart/cart-store.ts"
+      ],
+      "test_case_ids": ["TC-PG-CRT-001-404", "TC-PG-CRT-001-405"],
+      "notes": "implementation mapping only: S5 cart / entry sales / goods detail (UI mock, not API/DB/provider coverage)"
+    },
+    {
+      "rule_id": "BR-ORD-020",
+      "code_paths": [
+        "apps/web/src/features/cart/cart-store.ts",
+        "apps/web/src/features/cart/add-to-cart-form.tsx",
+        "apps/web/src/features/cart/cart-page.tsx"
+      ],
+      "test_case_ids": [
+        "TC-PG-CRT-001-404",
+        "TC-PG-CRT-001-423",
+        "TC-PG-CRT-001-461",
+        "TC-PG-TKT-001-503",
+        "TC-PG-GDS-002-503",
+        "TC-PG-CRT-001-504",
+        "TC-PG-CRT-001-535"
+      ],
+      "notes": "implementation mapping only: S5 cart / entry sales / goods detail (UI mock, not API/DB/provider coverage)"
+    },
+    {
+      "rule_id": "FR-CRT-004",
+      "code_paths": [
+        "apps/web/src/features/cart/cart-store.ts",
+        "apps/web/src/features/cart/use-cart.ts",
+        "apps/web/src/features/cart/use-cart-count.ts"
+      ],
+      "test_case_ids": ["TC-PG-CRT-001-421", "TC-PG-CRT-001-522"],
+      "notes": "implementation mapping only: S5 cart / entry sales / goods detail (UI mock, not API/DB/provider coverage)"
+    },
+    {
+      "rule_id": "FR-CRT-012",
+      "code_paths": [
+        "apps/web/src/features/cart/cart-store.ts",
+        "apps/web/src/features/cart/use-cart.ts",
+        "apps/web/src/features/shell/site-header.tsx",
+        "apps/web/src/auth/session-provider.tsx",
+        "apps/web/src/auth/session-equality.ts",
+        "apps/web/src/features/entry/entry-page.tsx",
+        "apps/web/src/features/cart/cart-page.tsx"
+      ],
+      "test_case_ids": [
+        "TC-PG-CRT-001-424",
+        "TC-PG-CRT-001-462",
+        "TC-PG-CRT-001-502",
+        "TC-PG-CRT-001-523",
+        "TC-PG-CRT-001-426",
+        "TC-PG-TKT-001-412",
+        "TC-PG-TKT-001-509",
+        "TC-PG-CRT-001-513"
+      ],
+      "notes": "implementation mapping only: S5 cart / entry sales / goods detail (UI mock, not API/DB/provider coverage)"
+    },
+    {
+      "rule_id": "DEV-REP-006",
+      "code_paths": [
+        "apps/web/src/features/cart",
+        "apps/web/src/features/entry",
+        "apps/web/src/features/goods"
+      ],
+      "test_case_ids": ["TC-DEV-WEB-001-401"],
+      "notes": "implementation mapping only: S5 cart / entry sales / goods detail (UI mock, not API/DB/provider coverage)"
+    },
+    {
+      "rule_id": "BR-ORD-017",
+      "code_paths": [
+        "apps/web/src/features/cart/can-proceed.ts",
+        "apps/web/src/features/cart/cart-page.tsx"
+      ],
+      "test_case_ids": ["TC-PG-CRT-001-503"],
+      "notes": "implementation mapping only: S5 cart / entry sales / goods detail (UI mock, not API/DB/provider coverage)"
     }
   ]
 }

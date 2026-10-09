@@ -16,6 +16,9 @@ export default defineConfig({
   // loopback stalls (reproduced against a plain node http server, up to ~20 s) caused sporadic
   // timeouts unrelated to the app. SPEC-170 §69 forbids retries, not low parallelism; every test
   // still gets a fresh browser context (TST-FLK-001 / §65). Override with --workers=N.
+  // Residual stalls remain at workers=2 (about 1 failing test in 1-2 full runs, measured in
+  // verification round 2; workers=1 passed in 454 s). hydration.ts diagnoses them (request ledger) and
+  // waits at most 30 s only when no request/page error points at an app defect; see contracts section 9.3.
   workers: 2,
   reporter: "list",
   outputDir: "./test-results",

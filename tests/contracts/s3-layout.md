@@ -245,6 +245,7 @@ export function SessionProvider(props: { children: ReactNode; port?: AuthPort })
 
 - 初期 state は `loading`（SSR と最初の client render は常に `loading`）。mount 後に `getSession()` を呼び、`{kind:"ok"}` → `ready`、`{kind:"unavailable"}` → `unavailable`。`onSessionChange` で再取得する。他 tab の変更を拾うため `storage` event でも再取得してよい。
 - `signOut()` は `AuthPort.signOut()` を呼び、その後 `/` へ遷移する（`router.push("/")`。AR-SES-009 / SPEC-050 §15.6）。provider 側が失敗してもローカル session は破棄済みとして扱う。
+- state の参照は、session が実際に変わったときだけ変わる。再取得のたびに新しい object を作らず、`sameSessionState(prev, next)`（`auth/session-equality.ts`。`status` が同じで、`ready` なら `kind` が同じ、`authenticated` なら `email` と `emailVerified` も同じ）が真なら直前の state をそのまま返す。他 tab の Cart 書き込みなど session と無関係な `storage` event では、`useSession().state` を購読する component（Entry / Cart の再取得）を動かさないため（`tests/unit/web/auth/session-equality.test.ts`）。
 - `useSession` を Provider の外で呼ぶと `Error`。
 
 ## 4. Layout shell の DOM 契約
@@ -312,6 +313,7 @@ export function SessionProvider(props: { children: ReactNode; port?: AuthPort })
   - 内容: `ACCOUNT_MENU_ITEMS` の 5 Link（名前 `プロフィール`、`注文`、`Entry Ticket`、`Karaoke`、`Goods`。`copy.layout.account.{profile,orders,entryTickets,karaoke,goods}`）と、`<button type="button">` `ログアウト`（`copy.layout.account.logout`）。Logout は **Link ではなく button**（SPEC-050 §25）。
   - `Escape` で閉じ、**focus が `アカウントメニュー` button へ戻る**。メニュー外のクリックでも閉じてよい。
   - `ログアウト` を押すと `useSession().signOut()` が実行され（§3.3）、`/` へ遷移し、Header は Guest 表示（`ログイン` Link が出て `マイページ` が消える）になる。localStorage の `r39x.mock.session.v1` は guest を返す状態になる（AuthPort の既存契約）。
+  - Logout は Browser 側の Cart も clear する（FR-CRT-012、SPEC-050 §15.6、AR-SES-009、UF-AUTH-004）: `signOut()` が終わったあと（reject しても）shell が Cart store の `clear()` を呼び、localStorage の `r39x.cart.v1` が削除され、Header の件数付き Cart Link が消える（件数なしの `カート` Link になる）。provider 側の失敗でも壊れた Cart でも同じ。Guest → 初回 Login では Cart に触れない（`tests/e2e/cart-store.spec.ts` TC-PG-CRT-001-523。契約は s5-cart.md §2.3 / §5.3 / §8）。
 - session が `loading` の間、Account area には `ログイン` も `マイページ` も出さない（placeholder だけ。誤った状態のちらつきを避ける）。
 
 ## 5. Mobile Drawer（md 未満）
