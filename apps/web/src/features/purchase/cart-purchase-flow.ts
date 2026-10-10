@@ -1,4 +1,6 @@
+import { cartLineKey } from "../../api-client/cart-line-key";
 import type {
+  CartLine,
   CartPurchaseStart,
   CartRejectionReasonCode,
   CheckoutStart,
@@ -56,6 +58,15 @@ export function interpretCartStart(result: CartPurchaseStart): CartStartStep {
       return unreachable;
     }
   }
+}
+
+/** The lines the Order took, in the quantity that was sent. Only the sent snapshot is the source. */
+export function orderedLines(
+  sent: readonly CartLine[],
+  includedLineKeys: readonly string[],
+): CartLine[] {
+  const included = new Set(includedLineKeys);
+  return sent.filter((line) => included.has(cartLineKey(line)));
 }
 
 export type CheckoutStep = { kind: "assign"; url: string } | { kind: "go_status"; to: string };
