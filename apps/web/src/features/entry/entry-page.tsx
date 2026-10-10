@@ -5,6 +5,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useApi } from "../../api-client/provider";
 import { settleRead } from "../../api-client/settle-read";
 import type { EntryOffering } from "../../api-client/types";
+import { useSession } from "../../auth/use-session";
 import { CART_HREF } from "../../config/site";
 import type { Loadable } from "../../presentation/components/list-state";
 import { PageState } from "../../presentation/components/page-state";
@@ -65,6 +66,7 @@ export function EntryPage() {
   const api = useApi();
   const [input, setInput] = useState<Loadable<readonly EntryOffering[]>>({ kind: "loading" });
   const [result, setResult] = useState<AddResult>({ kind: "idle" });
+  const { state: session } = useSession();
   const token = useRef(0);
 
   const load = useCallback(() => {
@@ -75,13 +77,16 @@ export function EntryPage() {
     });
   }, [api]);
 
+  // Sale states depend on the session (per-account limit), so the offerings are read again when it changes.
+  // The previous list stays shown meanwhile; a response for an older session is dropped by the token.
   useEffect(() => {
+    if (session.status === "loading") return;
     const ref = token;
     load();
     return () => {
       ref.current += 1;
     };
-  }, [load]);
+  }, [load, session]);
 
   const reload = (): void => {
     setInput({ kind: "loading" });

@@ -4,7 +4,9 @@ import { formatJstDateTime } from "../../apps/web/src/presentation/format/dateti
 import { formatMoney, multiplyMoney } from "../../apps/web/src/presentation/format/money.ts";
 import {
   addButton,
+  cartEntries,
   describedText,
+  entryLine,
   expectedOfferings,
   FORBIDDEN_IN_CART_STORAGE,
   failCartWrites,
@@ -12,6 +14,7 @@ import {
   liveRegion,
   mainOf,
   offeringName,
+  openSecondTab,
   priceEdit,
   quantityInput,
   readCart,
@@ -27,6 +30,7 @@ import {
   KEYS,
   scenarioJson,
   seedLocalStorage,
+  sessionJson,
 } from "../harness/browser/shell.ts";
 import { OFFERING } from "../harness/mock-seed.ts";
 
@@ -499,5 +503,71 @@ test.describe("TC-PG-TKT-001-508 price comes from the port, never from the Cart 
     const raw = (await readCartRaw(page)) ?? "";
     expect(raw).not.toMatch(/3300|3,300|6600/);
     expect(raw).not.toMatch(FORBIDDEN_IN_CART_STORAGE);
+  });
+});
+
+test.describe("TC-PG-TKT-001-509 a session that changes while the Entry page is open changes the shown sale state without a reload (FR-CRT-005, FR-CRT-012, SPEC-050 12.1)", () => {
+  test("a login in another tab blocks the limit offering here, and a logout there restores it; the Cart and the data are untouched", async ({
+    page,
+    context,
+  }) => {
+    await openReady(page);
+    const item = row(page, OFFERING.limit);
+    const label = copy.availability.label;
+    const description = copy.availability.description;
+    await expect(item).toContainText(label.ON_SALE);
+    await expect(addButton(item)).toBeEnabled();
+    const dbBefore = await readDbRaw(page);
+    const other = await openSecondTab(context);
+    await other.goto("/");
+
+    await writeStorage(other, KEYS.session, authenticatedSession());
+    await expect(item).toContainText(label.PURCHASE_LIMIT_EXCEEDED);
+    await expect(item).toContainText(description.PURCHASE_LIMIT_EXCEEDED);
+    await expect(item).not.toContainText(label.ON_SALE);
+    await expect(addButton(item)).toBeDisabled();
+    expect(await describedText(addButton(item))).toContain(description.PURCHASE_LIMIT_EXCEEDED);
+    // The other offerings stay as they were: only the account-dependent state changed.
+    await expect(row(page, OFFERING.regular)).toContainText(label.ON_SALE);
+    await expect(addButton(row(page, OFFERING.regular))).toBeEnabled();
+
+    await writeStorage(other, KEYS.session, sessionJson());
+    await expect(item).toContainText(label.ON_SALE);
+    await expect(item).not.toContainText(label.PURCHASE_LIMIT_EXCEEDED);
+    await expect(addButton(item)).toBeEnabled();
+
+    expect(await readCartRaw(page)).toBeNull();
+    expect(await readDbRaw(page)).toBe(dbBefore);
+    await other.close();
+  });
+});
+
+test.describe("TC-PG-TKT-001-510 a quantity that no longer fits in the Cart is reported as its own failure, never as a storage failure or a success (SPEC-050 9.3, FR-CRT-001)", () => {
+  test("adding to a line already at the largest safe quantity shows the overflow wording and changes nothing", async ({
+    page,
+  }) => {
+    const seeded = cartEntries([entryLine(OFFERING.regular, Number.MAX_SAFE_INTEGER)]);
+    await openReady(page, seeded);
+    await expect(headerCartLink(page, Number.MAX_SAFE_INTEGER)).toBeVisible();
+    await addButton(row(page, OFFERING.regular)).click();
+    const alert = main(page).getByRole("alert");
+    await expect(alert).toContainText(copy.sales.addQuantityOverflow);
+    await expect(alert).not.toContainText(copy.sales.addFailed);
+    await expect(main(page)).not.toContainText(copy.sales.addFailed);
+    await expect(liveRegion(page)).not.toContainText(copy.sales.addSucceeded);
+    await expect(main(page)).not.toContainText(copy.sales.addSucceeded);
+    expect(await readCartRaw(page)).toBe(seeded[KEYS.cart]);
+    await expect(headerCartLink(page, Number.MAX_SAFE_INTEGER)).toBeVisible();
+  });
+
+  test("a storage write failure keeps its own wording, not the overflow wording", async ({
+    page,
+  }) => {
+    await failCartWrites(page);
+    await openReady(page);
+    await addButton(row(page, OFFERING.regular)).click();
+    const alert = main(page).getByRole("alert");
+    await expect(alert).toContainText(copy.sales.addFailed);
+    await expect(alert).not.toContainText(copy.sales.addQuantityOverflow);
   });
 });

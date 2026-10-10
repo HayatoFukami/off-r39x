@@ -9,6 +9,14 @@ import type { CartLine, OrderItem, Ref } from "../../api-client/types";
 export type Cart = { readonly version: 1; readonly lines: readonly CartLine[] };
 export type CartLoad = { kind: "ok"; cart: Cart } | { kind: "corrupted" };
 
+/** A merged quantity passed the safe integer range. Still a RangeError, but not an invalid line. */
+export class CartQuantityOverflowError extends RangeError {
+  constructor() {
+    super("Cart quantity is out of range");
+    this.name = "CartQuantityOverflowError";
+  }
+}
+
 export const EMPTY_CART: Cart = { version: 1, lines: [] };
 
 const uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
@@ -101,7 +109,7 @@ export function addLine(cart: Cart, line: CartLine): Cart {
   const checked = lineSchema.safeParse(line);
   if (!checked.success) throw new RangeError("Invalid cart line");
   const merged = merge(cart.lines, toCartLine(checked.data));
-  if (merged === null) throw new RangeError("Cart quantity is out of range");
+  if (merged === null) throw new CartQuantityOverflowError();
   return { version: 1, lines: merged };
 }
 

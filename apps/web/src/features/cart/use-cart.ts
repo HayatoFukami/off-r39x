@@ -2,7 +2,12 @@
 
 import { useSyncExternalStore } from "react";
 import type { CartLine, OrderItem } from "../../api-client/types";
-import { type CartSnapshot, type CartWriteResult, getBrowserCartStore } from "./cart-store";
+import {
+  type CartAddResult,
+  type CartSnapshot,
+  type CartWriteResult,
+  getBrowserCartStore,
+} from "./cart-store";
 
 export type CartState = { readonly kind: "loading" } | CartSnapshot;
 
@@ -26,12 +31,13 @@ const getServerSnapshot = (): CartState => LOADING;
 
 export function useCart(): {
   state: CartState;
-  add(line: CartLine): CartWriteResult;
+  add(line: CartLine): CartAddResult;
   setQuantity(lineKey: string, quantity: number): CartWriteResult;
   remove(lineKey: string): CartWriteResult;
   removeLines(lineKeys: readonly string[]): CartWriteResult;
-  addFromOrder(items: readonly OrderItem[]): CartWriteResult;
+  addFromOrder(items: readonly OrderItem[]): CartAddResult;
   reset(): CartWriteResult;
+  clear(): CartWriteResult;
 } {
   const state = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   return {
@@ -43,5 +49,6 @@ export function useCart(): {
     removeLines: (lineKeys) => getBrowserCartStore()?.removeLines(lineKeys) ?? UNAVAILABLE,
     addFromOrder: (items) => getBrowserCartStore()?.addFromOrder(items) ?? UNAVAILABLE,
     reset: () => getBrowserCartStore()?.reset() ?? UNAVAILABLE,
+    clear: () => getBrowserCartStore()?.clear() ?? UNAVAILABLE,
   };
 }

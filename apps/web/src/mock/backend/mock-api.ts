@@ -698,18 +698,26 @@ export function createMockApi(deps: MockApiDeps): ApiPort {
     },
   };
 
-  /** Natural rejection reason of one cart line, or null when the line can be purchased. */
-  function rejectionOf(ctx: Ctx, line: CartLine, email: string): CartRejectionReasonCode | null {
+  /**
+   * Natural rejection reason of one cart line, or null when the line can be purchased.
+   * `taken` is the quantity already allocated to earlier accepted lines with the same key.
+   */
+  function rejectionOf(
+    ctx: Ctx,
+    line: CartLine,
+    email: string,
+    taken: number,
+  ): CartRejectionReasonCode | null {
     let availability: SaleAvailability;
     switch (line.kind) {
       case "ENTRY_TICKET": {
         const offering = ctx.state.offerings.find((o) => o.ref === line.offeringRef && o.published);
         if (offering === undefined) return "NOT_PUBLIC";
         availability = evaluate(
-          offering,
+          { ...offering, remaining: offering.remaining - taken },
           offering.perAccountLimit,
           line.quantity,
-          usedQuantity(ctx.state, email, offering.ref),
+          usedQuantity(ctx.state, email, offering.ref) + taken,
           ctx.nowMs,
         );
         break;
@@ -717,7 +725,13 @@ export function createMockApi(deps: MockApiDeps): ApiPort {
       case "GOODS": {
         const goods = ctx.state.goods.find((g) => g.ref === line.goodsRef && g.published);
         if (goods === undefined) return "NOT_PUBLIC";
-        availability = evaluate(goods, null, line.quantity, 0, ctx.nowMs);
+        availability = evaluate(
+          { ...goods, remaining: goods.remaining - taken },
+          null,
+          line.quantity,
+          0,
+          ctx.nowMs,
+        );
         break;
       }
       default:
@@ -750,7 +764,15 @@ export function createMockApi(deps: MockApiDeps): ApiPort {
         };
       }
 
-      const reasons = lines.map((line) => rejectionOf(ctx, line, email));
+      // Duplicate lines are allocated in order against the quantity already taken (BR-ORD-014).
+      const taken = new Map<string, number>();
+      const reasons = lines.map((line) => {
+        const key = cartLineKey(line);
+        const before = taken.get(key) ?? 0;
+        const reason = rejectionOf(ctx, line, email, before);
+        if (reason === null) taken.set(key, before + line.quantity);
+        return reason;
+      });
       const forced = ctx.scenario.cart.purchaseStart;
       if (forced === "reject_one" || forced === "limit") {
         if (reasons[0] === null) {
@@ -904,12 +926,10 @@ export function createMockApi(deps: MockApiDeps): ApiPort {
       const order = state.orders.find((x) => x.ref === orderRef && x.ownerEmail === email);
       if (order === undefined) return { kind: "state_conflict" };
 
+      // Key-only replay deliberately simplifies SPEC-110 section 18 (the real API answers 409
+      // IDEMPOTENCY_KEY_REUSED for another Order); see tests/contracts/s2-mock-backend.md 11.3.
       const replay = state.idempotency.find(
-        (r) =>
-          r.kind === "checkout" &&
-          r.ownerEmail === email &&
-          r.key === o.idempotencyKey &&
-          r.orderRef === order.ref,
+        (r) => r.kind === "checkout" && r.ownerEmail === email && r.key === o.idempotencyKey,
       );
       if (replay !== undefined && replay.kind === "checkout") {
         return { kind: "redirect", url: replay.url };
