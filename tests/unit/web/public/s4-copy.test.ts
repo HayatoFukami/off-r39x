@@ -18,6 +18,7 @@ describe("TC-PG-PUB-001-611 copy carries the SPEC-050 fixed public wording", () 
       announcementDetail: "お知らせ詳細",
       karaoke: "Karaoke販売案内",
       karaokeDay: "Karaoke空き状況",
+      karaokeSlot: "Karaoke枠の詳細", // added by S7b (SPEC-050 13.3, tests/contracts/s7b-karaoke.md 2)
       goods: "Goods",
     });
     expect(copy.home.sections).toEqual({

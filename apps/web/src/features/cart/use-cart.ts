@@ -35,6 +35,7 @@ export function useCart(): {
   setQuantity(lineKey: string, quantity: number): CartWriteResult;
   remove(lineKey: string): CartWriteResult;
   removeLines(lineKeys: readonly string[]): CartWriteResult;
+  subtractLines(lines: readonly CartLine[]): CartWriteResult;
   addFromOrder(items: readonly OrderItem[]): CartAddResult;
   reset(): CartWriteResult;
   clear(): CartWriteResult;
@@ -47,6 +48,7 @@ export function useCart(): {
       getBrowserCartStore()?.setQuantity(lineKey, quantity) ?? UNAVAILABLE,
     remove: (lineKey) => getBrowserCartStore()?.remove(lineKey) ?? UNAVAILABLE,
     removeLines: (lineKeys) => getBrowserCartStore()?.removeLines(lineKeys) ?? UNAVAILABLE,
+    subtractLines: (lines) => getBrowserCartStore()?.subtractLines(lines) ?? UNAVAILABLE,
     addFromOrder: (items) => getBrowserCartStore()?.addFromOrder(items) ?? UNAVAILABLE,
     reset: () => getBrowserCartStore()?.reset() ?? UNAVAILABLE,
     clear: () => getBrowserCartStore()?.clear() ?? UNAVAILABLE,

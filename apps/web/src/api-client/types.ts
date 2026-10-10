@@ -160,7 +160,7 @@ export type KaraokeSlotDetail = {
   price: Money;
   state: KaraokeSlotState;
   saleStatus: KaraokeSaleStatus;
-  purchasable: boolean; // state === "AVAILABLE" && saleStatus === "ON_SALE"
+  purchasable: boolean; // Server-decided purchasability (SPEC-110 §27 availability); the mock derives it from state and saleStatus
 };
 export type GoodsSummary = {
   goodsRef: Ref<"goods">;

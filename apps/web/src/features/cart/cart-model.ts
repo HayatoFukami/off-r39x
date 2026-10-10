@@ -131,6 +131,33 @@ export function removeLines(cart: Cart, lineKeys: readonly string[]): Cart {
   return { version: 1, lines: cart.lines.filter((line) => !lineKeys.includes(cartLineKey(line))) };
 }
 
+/**
+ * Subtracts the ordered quantities from the current Cart, per line key. A line that reaches zero is
+ * removed; a line the Order does not cover (added meanwhile) is kept; an ordered key missing from the
+ * Cart (removed meanwhile) is not restored. Returns the same `cart` reference when nothing changes.
+ */
+export function subtractLines(cart: Cart, ordered: readonly CartLine[]): Cart {
+  const totals = new Map<string, number>();
+  for (const line of ordered) {
+    if (!isValidQuantity(line.quantity)) continue;
+    const key = cartLineKey(line);
+    totals.set(key, (totals.get(key) ?? 0) + line.quantity);
+  }
+  let changed = false;
+  const lines: CartLine[] = [];
+  for (const line of cart.lines) {
+    const total = totals.get(cartLineKey(line));
+    if (total === undefined) {
+      lines.push(line);
+      continue;
+    }
+    changed = true;
+    const left = line.quantity - total;
+    if (left > 0) lines.push({ ...line, quantity: left });
+  }
+  return changed ? { version: 1, lines } : cart;
+}
+
 /** Re-populates the Cart from order items: references and quantities only; items that cannot be in a Cart are skipped. */
 export function addFromOrder(cart: Cart, items: readonly OrderItem[]): Cart {
   let next = cart;
