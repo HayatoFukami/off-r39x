@@ -335,7 +335,8 @@
         "apps/web/src/features/karaoke/karaoke-purchase-flow.ts",
         "apps/web/src/features/karaoke/use-karaoke-purchase.ts",
         "apps/web/src/features/karaoke/karaoke-slot-page.tsx",
-        "apps/web/src/features/public/route-params.ts"
+        "apps/web/src/features/public/route-params.ts",
+        "apps/web/src/presentation/copy/ja.ts"
       ],
       "test_case_ids": [
         "TC-PG-KRK-003-001",
@@ -372,7 +373,8 @@
         "TC-PG-KRK-003-661",
         "TC-PG-KRK-003-662",
         "TC-PG-KRK-003-663",
-        "TC-PG-KRK-003-664"
+        "TC-PG-KRK-003-664",
+        "TC-PG-KRK-003-615"
       ],
       "notes": "implementation mapping only: hold presentation; S2 mock backend"
     },
@@ -526,7 +528,11 @@
         "TC-PG-CRT-001-611",
         "TC-PG-CRT-001-612",
         "TC-PG-CRT-001-613",
-        "TC-PG-CRT-001-614"
+        "TC-PG-CRT-001-614",
+        "TC-PG-CRT-001-407",
+        "TC-PG-CRT-001-427",
+        "TC-PG-CRT-001-615",
+        "TC-PG-CRT-001-624"
       ],
       "notes": "implementation mapping only: availability and money formatting; S2 mock backend"
     },
@@ -1841,7 +1847,8 @@
         "TC-PG-KRK-003-613",
         "TC-PG-KRK-003-614",
         "TC-PG-KRK-003-642",
-        "TC-PG-KRK-003-662"
+        "TC-PG-KRK-003-662",
+        "TC-PG-KRK-003-615"
       ],
       "notes": "implementation mapping only: S4 public pages (UI mock, not API/DB/provider coverage)"
     },
@@ -1922,14 +1929,20 @@
         "apps/web/src/features/cart/cart-store.ts",
         "apps/web/src/features/purchase/purchase-again.ts",
         "apps/web/src/features/purchase/purchase-status-page.tsx",
-        "apps/web/src/features/purchase/use-cart-purchase.ts"
+        "apps/web/src/features/purchase/use-cart-purchase.ts",
+        "apps/web/src/features/cart/use-cart.ts",
+        "apps/web/src/features/purchase/cart-purchase-flow.ts"
       ],
       "test_case_ids": [
         "TC-PG-CRT-001-404",
         "TC-PG-CRT-001-405",
         "TC-PG-XFN-001-631",
         "TC-PG-XFN-001-632",
-        "TC-PG-XFN-001-671"
+        "TC-PG-XFN-001-671",
+        "TC-PG-CRT-001-407",
+        "TC-PG-CRT-001-427",
+        "TC-PG-CRT-001-615",
+        "TC-PG-CRT-001-624"
       ],
       "notes": "implementation mapping only: S5 cart / entry sales / goods detail (UI mock, not API/DB/provider coverage)"
     },
