@@ -5366,6 +5366,29 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-PG-CRT-001-407",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-011", "SPEC-050-14A.1"],
+      "system_invariant_ids": ["INV-010-01"],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Pure subtractLines over a Cart and ordered lines: unchanged, raised, lowered, deleted, not ordered, repeated and invalid quantities, frozen inputs",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "the ordered quantity is subtracted per line key; a line left at zero or below is removed, a raised remainder keeps its position, a deleted line is not restored, lines not ordered are untouched; invalid ordered quantities are ignored without throwing; the same Cart reference is returned when nothing changes; inputs unchanged"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-PG-CRT-001-411",
       "level": "Unit",
       "suite": "unit",
@@ -5542,6 +5565,29 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "clear() removes the Cart key (also for a damaged Cart), leaves a ready empty snapshot, notifies once and never writes; a failed removal returns storage_unavailable without changing the stored Cart, the snapshot or notifying"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-CRT-001-427",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-011", "FR-CRT-012"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Cart store with injected storage: subtractLines after local and another-store edits, no-op, corrupted and failing write",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "one write and one notification apply the subtraction to the latest persisted Cart (another tab included); a no-op writes and notifies nothing and does not recreate an absent key; corrupted writes nothing; a failed write reports storage_unavailable without notifying or changing snapshot or storage"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -7910,7 +7956,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "Logout ends on / as guest; Back never shows protected content and ends at Login; Cart and mock DB untouched; provider failure still discards the session"
+        "Logout ends on / as guest; Back never shows protected content and ends at Login; Cart key removed, Header shows no count, /cart Empty; mock DB untouched; provider failure still discards the session"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -7956,7 +8002,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "Header switches on Login and Logout without reload; Cart storage byte-identical throughout"
+        "Header switches on Login and Logout without reload; Cart byte-identical across Login; removed after Logout with no Header count"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -8233,6 +8279,29 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "input order kept; label and description from the shared presentation; unknown name uses the generic name"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-CRT-001-624",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-011", "BR-ORD-014"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "orderedLines over the sent snapshot and the Order's included line keys, with repeated and unknown keys",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "the sent lines the Order included are returned in snapshot order at the sent quantity; repeated included keys do not count twice; unknown keys are ignored; inputs unchanged"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -8669,7 +8738,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "handleProceed delegates to one hook with the three pure decisions, a fresh idempotency key and removeLines; the feedback view has a live region and a focusable alert"
+        "handleProceed delegates to one hook with the three pure decisions, a fresh idempotency key and subtractLines over orderedLines (only the ordered quantities leave the Cart); the feedback view has a live region and a focusable alert"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -8877,6 +8946,29 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "no Order, no allocation change and the Cart kept; rejected lines named with reasons and focus on the summary; the write re-verifies server state"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-CRT-001-615",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-011", "BR-ORD-020", "SPEC-050-14A.1"],
+      "system_invariant_ids": ["INV-010-01"],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock mode; long latency; edits during verifying in this tab and another tab; failing Cart write",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "the Order holds the sent quantities; only those leave the Cart; raised remainder kept, lowered or deleted lines gone, lines added meanwhile untouched; a failed Cart write still reaches the mock Checkout"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -9341,7 +9433,9 @@
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
-      "expected_domain_postconditions": ["contracted slot detail wording, trimmed non-empty"],
+      "expected_domain_postconditions": [
+        "contracted slot detail wording including the not-purchasable label, description and reason, trimmed non-empty"
+      ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
       "expected_observability": [],
@@ -9363,7 +9457,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "no copy fragment contains another; purchasable label is in none of them"
+        "no copy fragment (including the not-purchasable reason and description) contains another; the purchasable and not-purchasable labels are in none of them"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -9498,6 +9592,29 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "sale status other than ON_SALE disables; inconsistent port flag defended"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-KRK-003-615",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-KRK-003", "SPEC-050-13.3", "SPEC-050-25"],
+      "system_invariant_ids": ["INV-010-04"],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Pure function / static source check (node, no DOM); contract tests/contracts/s7b-karaoke.md; UI mock (not API/DB/Provider coverage)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "AVAILABLE and ON_SALE with a false port flag is not purchasable and shows the not-purchasable label, description and reason; other states and sale statuses keep their own reason whatever the flag; purchasable is true exactly when no disabled reason exists"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],

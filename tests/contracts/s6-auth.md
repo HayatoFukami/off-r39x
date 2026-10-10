@@ -331,9 +331,9 @@ export function describeContinuation(intent: ContinuationIntent | null): Continu
 
 ### 6.7 Logout と Header
 
-- Account menu の `copy.layout.account.logout` button → 同じ tab で `/` へ遷移して終わる（Home。Login や `/mypage` ではない）。Session は guest（`r39x.mock.session.v1`）。Cart（`r39x.cart.v1`）と mock DB は**変更しない**（FR-CRT-012。既存 Order 等を削除・取消したように見せない）。
+- Account menu の `copy.layout.account.logout` button → 同じ tab で `/` へ遷移して終わる（Home。Login や `/mypage` ではない）。Session は guest（`r39x.mock.session.v1`）。Cart（`r39x.cart.v1`）は clear（key 削除）する。mock DB は**変更しない**（Cart の clear は既存 Order 等を変えない。FR-CRT-012、SPEC-050 §15.6、AR-SES-009、UF-AUTH-004）。Logout 後の `/cart` は Empty。
 - Logout 後の Browser back で `/mypage` へ戻る → 保護 Content（`copy.mypage.heading` / `protectedMarker`）を一度も表示せず、`/account/login?continue=mypage` へ遷移する。
-- Header（S3 の挙動を変えない）: Guest は `copy.layout.account.login` Link があり、`copy.layout.account.mypage` / Account menu button が無い。Authenticated は逆。Login / Logout の直後に追加の reload なしで切り替わる。Login / Logout で Header の Cart 数は変わらない。
+- Header（S3 の挙動を変えない）: Guest は `copy.layout.account.login` Link があり、`copy.layout.account.mypage` / Account menu button が無い。Authenticated は逆。Login / Logout の直後に追加の reload なしで切り替わる。Login（Guest → 初回 Login）では Cart 数は変わらない。Logout 後は件数なしの Cart link になる。
 
 ### 6.8 no-store と共通（`/account/*`、`/mypage`）
 

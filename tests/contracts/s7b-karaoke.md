@@ -56,6 +56,8 @@ karaoke: {
     stateLabel: "この枠の状態",
     purchasableLabel: "予約購入可能",
     purchasableDescription: "この枠は現在購入できます。購入手続きに進むと、この枠を確保します。",
+    notPurchasableLabel: "現在購入不可",
+    notPurchasableDescription: "この枠は現在購入できません。",
     separateNote: "Karaokeの購入はカートを使いません。Entry TicketやGoodsとは別の購入、別の支払いになります。",
     proceed: "購入手続きへ進む",
     proceedGuest: "ログインして購入手続きへ",
@@ -67,6 +69,7 @@ karaoke: {
       SOLD: "この枠は販売済みのため、購入手続きへ進めません。",
       SALES_STOPPED: "この枠は販売停止のため、購入手続きへ進めません。",
       NOT_ON_SALE: "現在は販売期間外または販売停止中のため、購入手続きへ進めません。",
+      NOT_PURCHASABLE: "現在この枠は購入できないため、購入手続きへ進めません。空き状況から別の枠を選んでください。",
     },
     failure: {
       conflict: "他の利用者が先に確保したため購入を開始できません",
@@ -81,7 +84,7 @@ karaoke: {
 
 - 上記は**そのまま**使う（`s7b-copy.test.ts` が固定する）。全 leaf は trim 済みの非空 string。
 - `copy.karaoke.slotDetail.holding` は SPEC-050 §13.3 手順 3「枠を確保しています」。`failure.conflict` は手順 4（設計書 §6 の文末表記）、`failure.expired` は手順 7。
-- **部分文字列の衝突を避ける**: `disabledReason.*`、`failure.*`、`holding`、`purchasableDescription` の 9 件は、**どの 2 件も一方が他方を含まない**（E2E の否定 assert が誤検知しない。S7a の教訓）。`purchasableLabel`（予約購入可能）はこの 9 件のどれにも含まれない。
+- **部分文字列の衝突を避ける**: `disabledReason.*`、`failure.*`、`holding`、`purchasableDescription`、`notPurchasableDescription`、`disabledReason.NOT_PURCHASABLE` の 11 件は、**どの 2 件も一方が他方を含まない**（E2E の否定 assert が誤検知しない。S7a の教訓）。`purchasableLabel`（予約購入可能）と `notPurchasableLabel`（現在購入不可）はこの 11 件のどれにも含まれない（`notPurchasableLabel` は `purchasableLabel` も含まない）。
 - 全 leaf は Hold の具体秒数・残り時間を表す数字（`/[0-9０-９]+\s*(分|秒)/`）を含まない。
 - `copy.karaoke.slotDetail.*` は「取り消されました」「キャンセルされました」を含まない。
 
@@ -106,9 +109,10 @@ export function buildKaraokeSlotModel(input: Loadable<KaraokeSlotDetail>): Karao
 - `dateText = formatBusinessDate(date)`、`timeText = formatJstTimeRange(usageStart, usageEnd)`、`priceText = formatMoney(price)`、`dayHref = karaokeDayHref(date)`（PG-KRK-002）。
 - 状態の表示（SPEC-050 §13.3 の表。色だけに依存せず text で区別）:
   - `state !== "AVAILABLE"`: `presentSlot(state)` の `label` / `description` / `tone`。`purchasable = false`。`disabledReason = copy.karaoke.slotDetail.disabledReason[state]`（`HELD` / `SOLD` / `SALES_STOPPED`）。**販売状態が `ON_SALE` でなくても slot の状態を優先**する。
-  - `state === "AVAILABLE"` かつ `saleStatus === "ON_SALE"`: `stateLabel = copy.karaoke.slotDetail.purchasableLabel`、`description = copy.karaoke.slotDetail.purchasableDescription`、`tone = presentSlot("AVAILABLE").tone`、`purchasable = true`、`disabledReason = null`。
+  - `state === "AVAILABLE"` かつ `saleStatus === "ON_SALE"` かつ `purchasable === true`: `stateLabel = copy.karaoke.slotDetail.purchasableLabel`、`description = copy.karaoke.slotDetail.purchasableDescription`、`tone = presentSlot("AVAILABLE").tone`、`purchasable = true`、`disabledReason = null`。
+  - `state === "AVAILABLE"` かつ `saleStatus === "ON_SALE"` かつ port の `purchasable !== true`（不整合な組み合わせ。TC-PG-KRK-003-615）: `stateLabel = copy.karaoke.slotDetail.notPurchasableLabel`、`description = copy.karaoke.slotDetail.notPurchasableDescription`、`tone = "neutral"`、`purchasable = false`、`disabledReason = disabledReason.NOT_PURCHASABLE`（SPEC-050 §25: Disabled の理由を周辺 Text で示す）。
   - `state === "AVAILABLE"` かつ `saleStatus !== "ON_SALE"`: `presentKaraokeSaleStatus(saleStatus)` の `label` / `description` / `tone`（「予約購入可能」「選択可能」を出さない）、`purchasable = false`、`disabledReason = disabledReason.NOT_ON_SALE`。
-- **多重防御（INV-010-04）**: port の `purchasable` が `true` でも、`state === "AVAILABLE" && saleStatus === "ON_SALE"` でなければ `purchasable = false`。
+- **多重防御（INV-010-04）は双方向**: port の `purchasable` が `true` でも、`state === "AVAILABLE" && saleStatus === "ON_SALE"` でなければ `purchasable = false`。逆に `state === "AVAILABLE" && saleStatus === "ON_SALE"` でも、port の `purchasable` が `false`（`true` でない）なら `purchasable = false`（`notPurchasableLabel` 等を表示）。state と saleStatus の理由を flag より優先する。
 - `ready` では `purchasable === true` ⇔ `disabledReason === null`。入力を変更しない。例外を投げない。
 
 ### 3.3 `features/karaoke/karaoke-purchase-flow.ts`
@@ -198,9 +202,9 @@ export type KaraokePurchasePhase =
 
 | ファイル | 内容 |
 |---|---|
-| `tests/unit/web/karaoke/s7b-copy.test.ts` | §2（TC-PG-KRK-003-601〜603） |
+| `tests/unit/web/karaoke/s7b-copy.test.ts` | §2（TC-PG-KRK-003-601〜603。新しい 3 文言を含む） |
 | `tests/unit/web/karaoke/s7b-static.test.ts` | §0 / §1 / §4 の静的検査（TC-DEV-WEB-001-701〜704） |
-| `tests/unit/web/karaoke/karaoke-slot-model.test.ts` | §3.2（TC-PG-KRK-003-611〜614） |
+| `tests/unit/web/karaoke/karaoke-slot-model.test.ts` | §3.2（TC-PG-KRK-003-611〜615） |
 | `tests/unit/web/karaoke/karaoke-purchase-flow.test.ts` | §3.3（TC-PG-KRK-003-621〜623） |
 | `tests/unit/web/public/route-params-slot.test.ts` | §3.1（TC-PG-KRK-003-602） |
 | `tests/e2e/karaoke-slot-detail.spec.ts` | §4.1（E2E 5 / 28、TC-PG-KRK-003-641〜645） |

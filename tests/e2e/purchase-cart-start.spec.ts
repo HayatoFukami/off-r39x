@@ -9,6 +9,7 @@ import {
   expectedOfferings,
   goodsLine,
   offeringName,
+  openSecondTab,
   quantityInput,
   readCart,
   readCartRaw,
@@ -16,6 +17,7 @@ import {
   removeButton,
   rowByHeading,
   type StoredLine,
+  writeStorage,
 } from "../harness/browser/cart.ts";
 import {
   alertsOf,
@@ -32,6 +34,7 @@ import {
   waitSeen,
   watchTexts,
 } from "../harness/browser/purchase.ts";
+import { KEYS } from "../harness/browser/shell.ts";
 import { EMAIL, GOODS, OFFERING } from "../harness/mock-seed.ts";
 
 // UI mock suite (TST-E2E-004: auxiliary, not G8). Contract: tests/contracts/s7a-purchase.md sections 4, 9.
@@ -366,5 +369,112 @@ test.describe("TC-PG-CRT-001-614 a rejected purchase start creates nothing, keep
     expect(await readCartRaw(page)).toBe(cartBefore);
     expect(parsed(await readDbRaw(page))).toEqual(dbBefore);
     await expect(proceedButton(page)).toBeEnabled();
+  });
+});
+
+test.describe("TC-PG-CRT-001-615 an edit made while the purchase start is being verified costs the Cart only the ordered quantity (FR-CRT-011, BR-ORD-020, SPEC-050 14A.1, INV-010-01)", () => {
+  const SLOW = { latency: "long", latencyLongMs: 3000 };
+  const cartOf = (...lines: StoredLine[]) => ({ version: 1, lines });
+
+  /** Opens the Cart with a long latency and presses proceed; returns once "verifying" was seen. */
+  async function startAndWaitVerifying(page: Page, lines: readonly StoredLine[]): Promise<void> {
+    await watchTexts(page, [copy.cart.purchase.verifying]);
+    await openCart(page, lines, { scenario: SLOW });
+    await expect(proceedButton(page)).toBeEnabled({ timeout: 15_000 });
+    await proceedButton(page).click();
+    await waitSeen(page, copy.cart.purchase.verifying);
+  }
+
+  /** The edit must have been saved before the Order exists, otherwise the test proves nothing. */
+  async function expectEditedBeforeOrder(page: Page, expected: unknown): Promise<void> {
+    await expect.poll(() => readCart(page)).toEqual(expected);
+    expect(await newOrders(page), "the edit must land before the Order is created").toHaveLength(0);
+  }
+
+  test("(a) raised 1 -> 2 in this tab: the Order holds 1 and 1 stays in the Cart", async ({
+    page,
+  }) => {
+    await startAndWaitVerifying(page, [entryLine(OFFERING.regular, 1)]);
+    await quantityInput(rowByHeading(page, offeringName(OFFERING.regular))).fill("2");
+    await expectEditedBeforeOrder(page, cartOf(entryLine(OFFERING.regular, 2)));
+
+    await page.waitForURL(/\/dev\/mock-checkout\//, { timeout: 30_000 });
+    const created = await newOrders(page);
+    expect(created).toHaveLength(1);
+    expect(created[0]?.items.map((i) => i.quantity)).toEqual([1]);
+    expect(await readCart(page)).toEqual(cartOf(entryLine(OFFERING.regular, 1)));
+  });
+
+  test("(b) lowered 2 -> 1 in this tab: the Order holds 2 and the line leaves the Cart", async ({
+    page,
+  }) => {
+    await startAndWaitVerifying(page, [entryLine(OFFERING.regular, 2), goodsLine(GOODS.tshirt, 1)]);
+    await quantityInput(rowByHeading(page, offeringName(OFFERING.regular))).fill("1");
+    await expectEditedBeforeOrder(
+      page,
+      cartOf(entryLine(OFFERING.regular, 1), goodsLine(GOODS.tshirt, 1)),
+    );
+
+    await page.waitForURL(/\/dev\/mock-checkout\//, { timeout: 30_000 });
+    const created = await newOrders(page);
+    expect(created).toHaveLength(1);
+    expect(created[0]?.items.map((i) => i.quantity)).toEqual([2, 1]);
+    expect(await readCartRaw(page)).toBe(EMPTY_CART_JSON);
+  });
+
+  test("(c) a line deleted in this tab stays deleted; the Order still holds it", async ({
+    page,
+  }) => {
+    await startAndWaitVerifying(page, [entryLine(OFFERING.regular, 1), goodsLine(GOODS.tshirt, 1)]);
+    await removeButton(rowByHeading(page, expectedGoodsDetail(GOODS.tshirt).name)).click();
+    await expectEditedBeforeOrder(page, cartOf(entryLine(OFFERING.regular, 1)));
+
+    await page.waitForURL(/\/dev\/mock-checkout\//, { timeout: 30_000 });
+    const created = await newOrders(page);
+    expect(created).toHaveLength(1);
+    expect(created[0]?.items).toHaveLength(2);
+    expect(await readCartRaw(page)).toBe(EMPTY_CART_JSON);
+  });
+
+  test("(d) another tab raises a line and adds one: the remainder and the new line stay, in order", async ({
+    page,
+    context,
+  }) => {
+    const other = await openSecondTab(context);
+    await other.goto("/");
+    await startAndWaitVerifying(page, [entryLine(OFFERING.regular, 1)]);
+    const edited = cartOf(entryLine(OFFERING.regular, 3), goodsLine(GOODS.towel, 1));
+    await writeStorage(other, KEYS.cart, JSON.stringify(edited));
+    await expectEditedBeforeOrder(page, edited);
+
+    await page.waitForURL(/\/dev\/mock-checkout\//, { timeout: 30_000 });
+    const created = await newOrders(page);
+    expect(created).toHaveLength(1);
+    expect(created[0]?.items.map((i) => i.quantity)).toEqual([1]);
+    expect(await readCart(page)).toEqual(
+      cartOf(entryLine(OFFERING.regular, 2), goodsLine(GOODS.towel, 1)),
+    );
+    await other.close();
+  });
+
+  test("(e) a Cart write that fails after the Order exists does not stop the hand-off to the mock Checkout", async ({
+    page,
+  }) => {
+    await startAndWaitVerifying(page, [entryLine(OFFERING.regular, 1)]);
+    const cartBefore = await readCartRaw(page);
+    await page.evaluate((key: string) => {
+      const original = Storage.prototype.setItem;
+      Storage.prototype.setItem = function setItem(this: Storage, name: string, value: string) {
+        if (name === key) throw new DOMException("quota", "QuotaExceededError");
+        original.call(this, name, value);
+      };
+    }, KEYS.cart);
+    expect(await newOrders(page)).toHaveLength(0);
+
+    await page.waitForURL(/\/dev\/mock-checkout\//, { timeout: 30_000 });
+    const created = await newOrders(page);
+    expect(created).toHaveLength(1);
+    expect(created[0]?.items.map((i) => i.quantity)).toEqual([1]);
+    expect(await readCartRaw(page)).toBe(cartBefore);
   });
 });

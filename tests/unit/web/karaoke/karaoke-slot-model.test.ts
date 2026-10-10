@@ -156,3 +156,66 @@ describe("TC-PG-KRK-003-614 an AVAILABLE slot outside the sales period or under 
     expect(suspended.disabledReason).not.toBeNull();
   });
 });
+
+describe("TC-PG-KRK-003-615 the port purchasable flag takes part in the judgement and an inconsistent combination is not purchasable (SPEC-050 13.3, 25, INV-010-04)", () => {
+  it("AVAILABLE + ON_SALE + purchasable true is purchasable with no reason", async () => {
+    const model = build({ ...(await seeded(SLOT.d1_1000)), purchasable: true });
+    expect(model.purchasable).toBe(true);
+    expect(model.disabledReason).toBeNull();
+    expect(model.stateLabel).toBe(detail.purchasableLabel);
+  });
+
+  it("AVAILABLE + ON_SALE + purchasable false is not purchasable and shows the new reason", async () => {
+    const data = { ...(await seeded(SLOT.d1_1000)), purchasable: false };
+    expect(data.state).toBe("AVAILABLE");
+    expect(data.saleStatus).toBe("ON_SALE");
+    const model = build(data);
+    expect(model.purchasable).toBe(false);
+    expect(model.stateLabel).toBe(detail.notPurchasableLabel);
+    expect(model.description).toBe(detail.notPurchasableDescription);
+    expect(model.tone).toBe("neutral");
+    expect(model.disabledReason).toBe(detail.disabledReason.NOT_PURCHASABLE);
+    expect(model.stateLabel).not.toBe(detail.purchasableLabel);
+    expect(model.stateLabel).not.toBe(copy.karaoke.slot.label.AVAILABLE);
+  });
+
+  it.each([true, false])(
+    "HELD, SOLD and SALES_STOPPED keep their own reason whatever the flag (%s)",
+    async (flag) => {
+      const base = await seeded(SLOT.d1_1000);
+      for (const state of ["HELD", "SOLD", "SALES_STOPPED"] as const) {
+        const model = build({ ...base, state, purchasable: flag });
+        expect(model.purchasable, state).toBe(false);
+        expect(model.disabledReason, state).toBe(detail.disabledReason[state]);
+        expect(model.stateLabel, state).toBe(presentSlot(state).label);
+      }
+    },
+  );
+
+  it.each([true, false])(
+    "AVAILABLE outside ON_SALE keeps NOT_ON_SALE whatever the flag (%s)",
+    async (flag) => {
+      for (const status of ["SUSPENDED", "BEFORE_SALES", "SALES_ENDED"] as const) {
+        const model = build({ ...(await seeded(SLOT.d1_1000, status)), purchasable: flag });
+        expect(model.purchasable, status).toBe(false);
+        expect(model.disabledReason, status).toBe(detail.disabledReason.NOT_ON_SALE);
+        expect(model.stateLabel, status).toBe(presentKaraokeSaleStatus(status).label);
+      }
+    },
+  );
+
+  it("purchasable is true exactly when disabledReason is null, for every combination", async () => {
+    const base = await seeded(SLOT.d1_1000);
+    for (const state of ["AVAILABLE", "HELD", "SOLD", "SALES_STOPPED"] as KaraokeSlotState[]) {
+      for (const saleStatus of ["ON_SALE", "BEFORE_SALES", "SALES_ENDED", "SUSPENDED"] as const) {
+        for (const flag of [true, false]) {
+          const model = build({ ...base, state, saleStatus, purchasable: flag });
+          expect(
+            model.purchasable === (model.disabledReason === null),
+            `${state} ${saleStatus} ${flag}`,
+          ).toBe(true);
+        }
+      }
+    }
+  });
+});
