@@ -363,11 +363,11 @@ test.describe("TC-PG-CRT-001-503 every purchase-blocking reason is shown per lin
   });
 });
 
-test.describe("TC-PG-CRT-001-504 proceeding is enabled only when every line is purchasable and does nothing yet (SPEC-050 14A.1; S7a wires the start)", () => {
+test.describe("TC-PG-CRT-001-504 proceeding is enabled only when every line is purchasable (SPEC-050 14A.1; the start itself is covered by purchase-cart-start.spec.ts, S7a)", () => {
   const lines = [entryLine(OFFERING.regular, 1), goodsLine(GOODS.tshirt, 1)];
 
   for (const viewer of ["guest", "user"] as const) {
-    test(`${viewer}: the button is enabled, and clicking it creates no Order, changes nothing and goes nowhere`, async ({
+    test(`${viewer}: the button is enabled for a Cart whose every line is on sale (it is the same screen for both)`, async ({
       page,
     }) => {
       await openRows(
@@ -377,22 +377,8 @@ test.describe("TC-PG-CRT-001-504 proceeding is enabled only when every line is p
       );
       const button = proceedButton(page);
       await expect(button).toBeEnabled();
-      const dbBefore = await readDbRaw(page);
-      const cartBefore = await readCartRaw(page);
-      await button.click();
-      // Two animation frames: any (unwanted) asynchronous reaction to the click has started by then.
-      await page.evaluate(
-        () =>
-          new Promise<void>((done) =>
-            requestAnimationFrame(() => requestAnimationFrame(() => done())),
-          ),
-      );
-      await expect(page).toHaveURL(/\/cart$/);
-      expect(await readDbRaw(page)).toBe(dbBefore);
-      expect(await readCartRaw(page)).toBe(cartBefore);
-      await expect(rows(page)).toHaveCount(2);
       await expect(alert(page)).toHaveCount(0);
-      await expect(main(page)).not.toContainText(/支払い画面|購入条件を確認/);
+      expect(await describedText(button)).toBe("");
     });
   }
 

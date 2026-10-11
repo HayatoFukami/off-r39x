@@ -23,7 +23,14 @@ describe("TC-PG-CRT-001-451 copy carries the SPEC-050 fixed Cart wording", () =>
 
   it("keeps the S5 page titles out of copy.pageTitle (S4 pins that object) and names the three pages", () => {
     expect(Object.keys(copy.pageTitle).sort()).toEqual(
-      ["announcementDetail", "announcements", "goods", "karaoke", "karaokeDay"].sort(),
+      [
+        "announcementDetail",
+        "announcements",
+        "goods",
+        "karaoke",
+        "karaokeDay",
+        "karaokeSlot",
+      ].sort(),
     );
     expect(copy.entry.pageTitle).toBe("Entry Ticket");
     expect(copy.cart.pageTitle).toBe("カート");

@@ -11,6 +11,7 @@ import {
   removeLines,
   serializeCart,
   setLineQuantity,
+  subtractLines,
 } from "./cart-model";
 
 // Browser Cart store (SPEC-050 14A.1 Cartの保持, 22, 26.4). The persisted text is the only state; the
@@ -41,6 +42,7 @@ export interface CartStore {
   setQuantity(lineKey: string, quantity: number): CartWriteResult;
   remove(lineKey: string): CartWriteResult;
   removeLines(lineKeys: readonly string[]): CartWriteResult;
+  subtractLines(lines: readonly CartLine[]): CartWriteResult;
   addFromOrder(items: readonly OrderItem[]): CartAddResult;
   reset(): CartWriteResult;
   clear(): CartWriteResult;
@@ -133,6 +135,13 @@ export function createCartStore(deps: CartStoreDeps): CartStore {
     setQuantity: (lineKey, quantity) => change((cart) => setLineQuantity(cart, lineKey, quantity)),
     remove: (lineKey) => change((cart) => removeLine(cart, lineKey)),
     removeLines: (lineKeys) => change((cart) => removeLines(cart, lineKeys)),
+    subtractLines(lines) {
+      const snapshot = getSnapshot();
+      if (snapshot.kind === "corrupted") return { kind: "corrupted" };
+      const next = subtractLines(snapshot.cart, lines);
+      if (next === snapshot.cart) return { kind: "ok", cart: next };
+      return write(next);
+    },
     addFromOrder: (items) => changeAdding((cart) => addFromOrder(cart, items)),
     reset: () => write(EMPTY_CART),
     // Removes the key without reading it, so it also succeeds on a damaged Cart.

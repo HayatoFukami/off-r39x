@@ -14,6 +14,7 @@ import {
   removeLines,
   serializeCart,
   setLineQuantity,
+  subtractLines,
 } from "../../../../apps/web/src/features/cart/cart-model.ts";
 
 // Contract: tests/contracts/s5-cart.md section 2.1 (SPEC-050 14A.1 / 26.4, FR-CRT-001 / 002 / 003 / 011,
@@ -467,5 +468,104 @@ describe("TC-PG-CRT-001-406 a quantity overflow is told apart from an invalid li
       CartQuantityOverflowError,
     );
     expect(JSON.stringify(base)).toBe(snapshot);
+  });
+});
+
+describe("TC-PG-CRT-001-407 subtractLines removes only the ordered quantity from the current Cart and never restores or touches other lines (FR-CRT-011, BR-ORD-020, SPEC-050 14A.1, INV-010-01)", () => {
+  it("removes a line whose quantity is unchanged (2 - 2)", () => {
+    const next = subtractLines(cartOf(entry(OFFERING_A, 2)), [entry(OFFERING_A, 2)]);
+    expect(next).toEqual(EMPTY_CART);
+  });
+
+  it("keeps the raised remainder at the same position (current 2, ordered 1)", () => {
+    const next = subtractLines(cartOf(goods(GOODS_A, 4), entry(OFFERING_A, 2), goods(GOODS_B, 1)), [
+      entry(OFFERING_A, 1),
+    ]);
+    expect(next).toEqual(cartOf(goods(GOODS_A, 4), entry(OFFERING_A, 1), goods(GOODS_B, 1)));
+  });
+
+  it("removes a line lowered below the ordered quantity (current 1, ordered 2)", () => {
+    expect(subtractLines(cartOf(entry(OFFERING_A, 1)), [entry(OFFERING_A, 2)])).toEqual(EMPTY_CART);
+  });
+
+  it("ignores an ordered key that is not in the Cart (deleted while waiting is not restored)", () => {
+    const base = cartOf(goods(GOODS_A, 1));
+    const next = subtractLines(base, [entry(OFFERING_A, 1)]);
+    expect(next).toBe(base);
+    expect(next.lines).toEqual([goods(GOODS_A, 1)]);
+  });
+
+  it("leaves lines that were not ordered untouched and keeps the order", () => {
+    const next = subtractLines(
+      cartOf(entry(OFFERING_B, 3), entry(OFFERING_A, 1), goods(GOODS_A, 2)),
+      [entry(OFFERING_A, 1)],
+    );
+    expect(next).toEqual(cartOf(entry(OFFERING_B, 3), goods(GOODS_A, 2)));
+  });
+
+  it("sums ordered lines that share a key (2 + 2 from 5 leaves 1)", () => {
+    const next = subtractLines(cartOf(entry(OFFERING_A, 5)), [
+      entry(OFFERING_A, 2),
+      entry(OFFERING_A, 2),
+    ]);
+    expect(next).toEqual(cartOf(entry(OFFERING_A, 1)));
+  });
+
+  it.each([
+    ["zero", 0],
+    ["negative", -1],
+    ["fractional", 1.5],
+    ["NaN", Number.NaN],
+    ["above the safe integer range", Number.MAX_SAFE_INTEGER + 1],
+  ])(
+    "ignores an ordered line with an invalid quantity (%s) without throwing",
+    (_name, quantity) => {
+      const base = cartOf(entry(OFFERING_A, 3));
+      let next: Cart | undefined;
+      expect(() => {
+        next = subtractLines(base, [entry(OFFERING_A, quantity)]);
+      }).not.toThrow();
+      expect(next).toBe(base);
+    },
+  );
+
+  it("ignores only the invalid ordered line when valid ones are mixed in", () => {
+    const next = subtractLines(cartOf(entry(OFFERING_A, 3)), [
+      entry(OFFERING_A, 0),
+      entry(OFFERING_A, 1),
+    ]);
+    expect(next).toEqual(cartOf(entry(OFFERING_A, 2)));
+  });
+
+  it("treats ENTRY_TICKET and GOODS with the same uuid as different keys", () => {
+    const same = "e0000000-0000-4000-8000-0000000000aa";
+    const base = cartOf(
+      { kind: "ENTRY_TICKET", offeringRef: same as Ref<"offering">, quantity: 2 },
+      { kind: "GOODS", goodsRef: same as Ref<"goods">, quantity: 2 },
+    );
+    const next = subtractLines(base, [
+      { kind: "GOODS", goodsRef: same as Ref<"goods">, quantity: 2 },
+    ]);
+    expect(next).toEqual(
+      cartOf({ kind: "ENTRY_TICKET", offeringRef: same as Ref<"offering">, quantity: 2 }),
+    );
+  });
+
+  it("returns the very same Cart reference when nothing changes", () => {
+    const base = cartOf(entry(OFFERING_A, 2));
+    expect(subtractLines(base, [])).toBe(base);
+    expect(subtractLines(base, [entry(OFFERING_A, 0), entry(OFFERING_A, -3)])).toBe(base);
+    expect(subtractLines(base, [goods(GOODS_A, 1)])).toBe(base);
+    expect(subtractLines(EMPTY_CART, [entry(OFFERING_A, 1)])).toBe(EMPTY_CART);
+  });
+
+  it("does not mutate frozen inputs", () => {
+    const base = deepFreeze(cartOf(entry(OFFERING_A, 5), goods(GOODS_A, 1)));
+    const ordered = deepFreeze([entry(OFFERING_A, 2), goods(GOODS_A, 1)]);
+    const before = JSON.stringify({ base, ordered });
+    const next = subtractLines(base, ordered);
+    expect(JSON.stringify({ base, ordered })).toBe(before);
+    expect(next).toEqual(cartOf(entry(OFFERING_A, 3)));
+    expect(next).not.toBe(base);
   });
 });

@@ -1,14 +1,19 @@
 "use client";
 
 import { createContext, useContext } from "react";
-import type { Session } from "./port";
+import type { AuthPort, Session } from "./port";
 
 export type SessionState =
   | { status: "loading" }
   | { status: "ready"; session: Session }
   | { status: "unavailable" };
 
-export type SessionContextValue = { state: SessionState; signOut(): Promise<void> };
+export type SessionContextValue = {
+  state: SessionState;
+  signOut(): Promise<void>;
+  /** The single AuthPort of the provider. Screens reach it through useAuth(). */
+  auth: AuthPort;
+};
 
 export const SessionContext = createContext<SessionContextValue | null>(null);
 

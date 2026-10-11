@@ -13,6 +13,10 @@ export function parseBusinessDateParam(raw: string): BusinessDateJst | null {
   return parseBusinessDateJst(raw);
 }
 
+export function parseSlotRef(raw: string): Ref<"slot"> | null {
+  return CANONICAL_UUID.test(raw) ? (raw as Ref<"slot">) : null;
+}
+
 export function parseGoodsRef(raw: string): Ref<"goods"> | null {
   return CANONICAL_UUID.test(raw) ? (raw as Ref<"goods">) : null;
 }

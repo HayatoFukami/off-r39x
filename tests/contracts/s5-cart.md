@@ -21,7 +21,7 @@
 
 | パス | 種別 | export |
 |---|---|---|
-| `apps/web/src/features/cart/cart-model.ts` | 純粋 | `Cart`, `CartLoad`, `EMPTY_CART`, `parseCart`, `serializeCart`, `addLine`, `setLineQuantity`, `removeLine`, `removeLines`, `addFromOrder`, `cartTotalQuantity` |
+| `apps/web/src/features/cart/cart-model.ts` | 純粋 | `Cart`, `CartLoad`, `EMPTY_CART`, `parseCart`, `serializeCart`, `addLine`, `setLineQuantity`, `removeLine`, `removeLines`, `subtractLines`, `addFromOrder`, `cartTotalQuantity` |
 | `apps/web/src/features/cart/cart-count.ts` | 純粋（S3 既存。拡張のみ） | `CART_STORAGE_KEY`, `readCartCount`（内部で `parseCart` を使い、zod schema を二重に持たない） |
 | `apps/web/src/features/cart/quantity.ts` | 純粋 | `QuantityParse`, `parseQuantityInput`, `formatDisplayTotal` |
 | `apps/web/src/features/cart/cart-store.ts` | client から使う | `CartStorage`, `CartSnapshot`, `CartWriteResult`, `CartStore`, `CartStoreDeps`, `createCartStore`, `getBrowserCartStore` |
@@ -129,6 +129,7 @@ export function addLine(cart: Cart, line: CartLine): Cart;
 export function setLineQuantity(cart: Cart, lineKey: string, quantity: number): Cart;
 export function removeLine(cart: Cart, lineKey: string): Cart;
 export function removeLines(cart: Cart, lineKeys: readonly string[]): Cart;
+export function subtractLines(cart: Cart, ordered: readonly CartLine[]): Cart;
 export function addFromOrder(cart: Cart, items: readonly OrderItem[]): Cart;
 export function cartTotalQuantity(cart: Cart): number;
 export class CartQuantityOverflowError extends RangeError {}   // message "Cart quantity is out of range"、name も設定
@@ -140,6 +141,12 @@ export class CartQuantityOverflowError extends RangeError {}   // message "Cart 
 - `addLine`: 同じ line key があれば数量を**加算**（位置は変えない）、なければ末尾に追加。line が不正（数量が 1 以上の安全な整数でない、ref が canonical UUID でない、`KARAOKE` や未知の kind、余分な field）なら `RangeError` を throw。加算結果が安全な整数を超える場合は `CartQuantityOverflowError`（`RangeError` の subclass。`instanceof RangeError` も真）を throw する。line の不正は subclass ではない通常の `RangeError`（呼び出し側が「合算の overflow」と「不正な line」を例外の class で区別できる。SPEC-050 §9.3: 失敗した対象と未成立の操作を、別の原因として示す）。
 - `setLineQuantity`: 数量を置き換える（位置を変えない）。数量が 1 以上の安全な整数でなければ `RangeError`（0 にする代わりに `removeLine` を使う）。存在しない key は何もしない（等しい Cart を返す）。
 - `removeLine` / `removeLines`: 該当 line を除く（残りの順序は保つ）。存在しない key は無視。空の `lineKeys` は何もしない。
+- `subtractLines`（FR-CRT-011 / BR-ORD-020 / SPEC-050 §14A.1 の純粋部。購入開始の応答待ちに Cart が編集されても、「Order に含めた数量」だけを現在の Cart から外す。TC-PG-CRT-001-407）:
+  1. `ordered` を line key（`cartLineKey`）ごとに数量を合算する。数量が 1 以上の安全な整数でない ordered line は**無視**する（`isValidQuantity` と同じ判定。throw しない）。
+  2. 現在の Cart の各 line について、合算値 `t` があれば `left = quantity − t` を求め、`left > 0` なら同じ位置に `{ ...line, quantity: left }` で残し、`left ≤ 0` なら除く。合算値がない line（待機中に追加された line、Order に含まれない line）は**そのまま**残す。
+  3. `ordered` にあって Cart にない key（待機中に削除された line）は**無視**する（復活させない）。
+  4. 何も変わらないとき（`ordered` が空、すべて無視、該当 key がない）は**入力と同じ参照**の `cart` を返す（store がこの参照の同一性で no-op を判定する）。
+  5. 入力を変更しない。例外を投げない。ENTRY_TICKET と GOODS は同じ UUID でも別 key。
 - `addFromOrder`（再購入時の再投入。SPEC-050 §16.4 / FR-CRT-011 の純粋部）: `ENTRY_TICKET` と `GOODS` の明細だけを、**参照と数量だけ**で `addLine` と同じ規則で（既存と同じ line key なら加算）明細の順に加える。途中で合算が overflow したら全体を中止し `CartQuantityOverflowError`（純粋関数なので何も書かれない）。`KARAOKE` の明細は無視する（Cart に入れられない）。名前・単価・小計は読まない・保存しない。明細が空、または Karaoke だけなら等しい Cart を返す。
 - `cartTotalQuantity`: 全 line の数量の合計。`readCartCount(serializeCart(c)) === cartTotalQuantity(c)`。
 
@@ -170,6 +177,7 @@ export interface CartStore {
   setQuantity(lineKey: string, quantity: number): CartWriteResult;
   remove(lineKey: string): CartWriteResult;
   removeLines(lineKeys: readonly string[]): CartWriteResult;
+  subtractLines(lines: readonly CartLine[]): CartWriteResult;
   addFromOrder(items: readonly OrderItem[]): CartAddResult;
   reset(): CartWriteResult;
   clear(): CartWriteResult;   // Logout 用。corrupted は返さない
@@ -182,6 +190,7 @@ export function getBrowserCartStore(): CartStore | null;   // window.localStorag
 - 永続化先は `CART_STORAGE_KEY = "r39x.cart.v1"`（`cart-count.ts`）。
 - `getSnapshot()`: 呼ぶたびに storage を読むが、**保存文字列が変わらない限り同じ参照を返す**（`useSyncExternalStore` 用）。`parseCart` が `ok` → `ready`、`corrupted` → `corrupted`。`getItem` が throw した場合も `corrupted`（内容を確認できないので空として扱わない）。
 - 変更操作（`add` / `setQuantity` / `remove` / `removeLines` / `addFromOrder`）: 現在の snapshot が `corrupted` なら**何も書かず** `{ kind: "corrupted" }`。それ以外は cart-model の関数で新しい Cart を作り `serializeCart` で `CART_STORAGE_KEY` に書く。`setItem` が throw したら `{ kind: "storage_unavailable" }`（保存されたと主張しない。snapshot も変わらない）。成功したら `subscribe` 済みの listener を呼び `{ kind: "ok", cart }`。不正な引数（`RangeError`）は throw する（storage は変更しない）。`add` / `addFromOrder` だけは、計算中に `CartQuantityOverflowError` が出たら throw せず、何も書かず listener も呼ばず `{ kind: "quantity_overflow" }` を返す（snapshot は同じ参照）。snapshot が `corrupted` なら従来どおり `corrupted` が先（計算しない）。不正な line の `RangeError` は従来どおり throw する。
+- `subtractLines(lines)`（購入開始に成功した直後に hook が呼ぶ。TC-PG-CRT-001-427）: `getSnapshot()` で**保存済みの最新 text**を読む（hook の React state は使わない。同じ tab と他 tab の編集の両方を反映する）。`corrupted` なら何も書かず notify もせず `{ kind: "corrupted" }`。`cart-model.subtractLines(snapshot.cart, lines)` の結果が入力と**同じ参照**なら何も書かず notify もせず `{ kind: "ok", cart }`（他 tab の Logout で key が消えていても空の Cart key を再作成しない）。それ以外は 1 回だけ `setItem` し（原子的な 1 回の write）、listener を 1 回呼び `{ kind: "ok", cart }`。`setItem` が throw したら `{ kind: "storage_unavailable" }`（notify せず、snapshot も保存内容も変えない）。`removeLines` は残す。
 - `reset()`: 明示的な復旧手段。`corrupted` からでも、空の Cart（`serializeCart(EMPTY_CART)`）を書いて listener を呼び `ok`。`setItem` が throw したら `storage_unavailable`。
 - `clear()`（FR-CRT-012 / SPEC-050 §15.6 / AR-SES-009 / UF-AUTH-004。Logout 時に shell が呼ぶ）: `storage.removeItem(CART_STORAGE_KEY)` を実行し、成功したら listener を 1 回呼び `{ kind: "ok", cart: EMPTY_CART }`。現在の snapshot を読まず、`setItem` も呼ばないので、`corrupted`（壊れた保存内容、`getItem` が throw する storage を含む）からでも成功し、`corrupted` を返さない。key が無い状態は検証済みの空の Cart（`parseCart(null)`）。`removeItem` が throw したら `{ kind: "storage_unavailable" }`（保存内容も snapshot も変えず、listener も呼ばない）。他 tab へは既存の `storage` event（key 一致）で伝わる。`reset()` は変えない（空の Cart を書く復旧手段のまま）。
 - `subscribe(listener)`: 自 store の書き込み成功後と、`subscribeExternal` からの通知（他 tab の変更）のあとに listener を呼ぶ。unsubscribe 後は呼ばない。`subscribeExternal` は最初の listener が付いたときに 1 度だけ購読し、最後の listener が外れたら解除する。
@@ -198,6 +207,7 @@ export function useCart(): {
   setQuantity(lineKey: string, quantity: number): CartWriteResult;
   remove(lineKey: string): CartWriteResult;
   removeLines(lineKeys: readonly string[]): CartWriteResult;
+  subtractLines(lines: readonly CartLine[]): CartWriteResult;
   addFromOrder(items: readonly OrderItem[]): CartAddResult;
   reset(): CartWriteResult;
   clear(): CartWriteResult;
@@ -341,9 +351,9 @@ focus 順は DOM 順と一致させる。Entry / Goods では**数量入力の�
 
 | ファイル | 内容 |
 |---|---|
-| `tests/unit/web/cart/cart-model.test.ts` | §2.1 |
+| `tests/unit/web/cart/cart-model.test.ts` | §2.1（`subtractLines` は TC-PG-CRT-001-407） |
 | `tests/unit/web/cart/quantity.test.ts` | §2.2 |
-| `tests/unit/web/cart/cart-store.test.ts` | §2.3 |
+| `tests/unit/web/cart/cart-store.test.ts` | §2.3（`subtractLines` は TC-PG-CRT-001-427） |
 | `tests/unit/web/cart/can-proceed.test.ts` | §3.1 |
 | `tests/unit/web/auth/session-equality.test.ts` | §5（`sameSessionState`。s3-layout.md §3.3） |
 | `tests/unit/web/cart/cart-view-model.test.ts` | §3.2 |
