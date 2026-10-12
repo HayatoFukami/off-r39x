@@ -1,8 +1,10 @@
 "use client";
 
 import { assertNever } from "@off-r39x/domain";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { applyIfLatest, invalidateRequests } from "../../api-client/latest-request";
 import { useApi } from "../../api-client/provider";
 import { settleRead } from "../../api-client/settle-read";
 import type { CheckoutStart, OrderDetail, Ref } from "../../api-client/types";
@@ -14,12 +16,38 @@ import { useCart } from "../cart/use-cart";
 import { interpretCheckoutStart } from "./cart-purchase-flow";
 import { OrderOutcome, type OrderOutcomePending, type OutcomeButtonAction } from "./order-outcome";
 import { planPurchaseAgain } from "./purchase-again";
-import { buildPurchaseStatusModel, recheckAnnouncement } from "./purchase-status-model";
+import {
+  buildPurchaseStatusModel,
+  type PurchaseStatusModel,
+  recheckAnnouncement,
+} from "./purchase-status-model";
 
 // PG-XFN-001 container (SPEC-050 16, 21, 22, 26.2). The Order is read once per mount and once per
 // "recheck" press; the page creates no Order and confirms nothing: only the server state is shown.
+// Only the last-started read is shown: an older read that finishes later is dropped.
 
-export function PurchaseStatusPage({ orderRef }: { orderRef: Ref<"order"> }) {
+// PG-MYP-004 shows the same outcome with its own heading, subject, model and a way back (SPEC-050 18.4).
+export type PurchaseStatusVariant = {
+  heading: string;
+  subject: string;
+  buildModel: (input: Loadable<OrderDetail>) => PurchaseStatusModel;
+  backLink: { href: string; label: string } | null;
+};
+
+const PURCHASE_VARIANT: PurchaseStatusVariant = {
+  heading: copy.purchase.heading,
+  subject: copy.purchase.subject,
+  buildModel: buildPurchaseStatusModel,
+  backLink: null,
+};
+
+export function PurchaseStatusPage({
+  orderRef,
+  variant = PURCHASE_VARIANT,
+}: {
+  orderRef: Ref<"order">;
+  variant?: PurchaseStatusVariant;
+}) {
   const api = useApi();
   const router = useRouter();
   const cart = useCart();
@@ -31,19 +59,18 @@ export function PurchaseStatusPage({ orderRef }: { orderRef: Ref<"order"> }) {
   const shown = useRef<OrderDetail | null>(null);
   shown.current = read.kind === "ok" ? read.data : shown.current;
 
+  // Every read of the Order (mount, reload, recheck, retry follow-up) shares one counter.
+  const requests = useRef(0);
+
   useEffect(() => {
-    let active = true;
-    void settleRead(api.self.getOrder(orderRef)).then((value) => {
-      if (active) setRead(value);
-    });
-    return () => {
-      active = false;
-    };
+    const counter = requests;
+    void applyIfLatest(counter, settleRead(api.self.getOrder(orderRef)), setRead);
+    return () => invalidateRequests(counter);
   }, [api, orderRef]);
 
   const reload = useCallback((): void => {
     setRead({ kind: "loading" });
-    void settleRead(api.self.getOrder(orderRef)).then((value) => setRead(value));
+    void applyIfLatest(requests, settleRead(api.self.getOrder(orderRef)), setRead);
   }, [api, orderRef]);
 
   const recheck = async (): Promise<void> => {
@@ -51,24 +78,34 @@ export function PurchaseStatusPage({ orderRef }: { orderRef: Ref<"order"> }) {
     setPending("recheck_status");
     setAlertMessage(null);
     setLiveMessage(copy.purchase.recheck.inProgress);
-    const next = await settleRead(api.self.getOrder(orderRef));
-    setPending(null);
-    if (next.kind === "ok") {
-      setRead(next);
-      setLiveMessage(
-        previous === null
-          ? copy.purchase.recheck.unchanged
-          : recheckAnnouncement(previous.state, next.data.state),
-      );
-      return;
+    const applied = await applyIfLatest(
+      requests,
+      settleRead(api.self.getOrder(orderRef)),
+      (next) => {
+        setPending(null);
+        if (next.kind === "ok") {
+          setRead(next);
+          setLiveMessage(
+            previous === null
+              ? copy.purchase.recheck.unchanged
+              : recheckAnnouncement(previous.state, next.data.state),
+          );
+          return;
+        }
+        if (next.kind === "not_found") {
+          setRead(next);
+          return;
+        }
+        // The Order that was shown stays; only the failure is reported.
+        setLiveMessage("");
+        setAlertMessage(copy.purchase.recheck.failed);
+      },
+    );
+    // A superseded result is dropped without any message.
+    if (!applied) {
+      setPending(null);
+      setLiveMessage("");
     }
-    if (next.kind === "not_found") {
-      setRead(next);
-      return;
-    }
-    // The Order that was shown stays; only the failure is reported.
-    setLiveMessage("");
-    setAlertMessage(copy.purchase.recheck.failed);
   };
 
   const retryCheckout = async (): Promise<void> => {
@@ -84,11 +121,20 @@ export function PurchaseStatusPage({ orderRef }: { orderRef: Ref<"order"> }) {
       return;
     }
     // Anything else reads the same Order again: no blind retry, no new Order.
-    const next = await settleRead(api.self.getOrder(orderRef));
-    setPending(null);
-    setLiveMessage("");
-    if (next.kind === "ok" || next.kind === "not_found") setRead(next);
-    if (result.kind === "start_failed") setAlertMessage(copy.purchase.checkoutStartFailed);
+    const applied = await applyIfLatest(
+      requests,
+      settleRead(api.self.getOrder(orderRef)),
+      (next) => {
+        setPending(null);
+        setLiveMessage("");
+        if (next.kind === "ok" || next.kind === "not_found") setRead(next);
+        if (result.kind === "start_failed") setAlertMessage(copy.purchase.checkoutStartFailed);
+      },
+    );
+    if (!applied) {
+      setPending(null);
+      setLiveMessage("");
+    }
   };
 
   const purchaseAgain = (): void => {
@@ -124,7 +170,7 @@ export function PurchaseStatusPage({ orderRef }: { orderRef: Ref<"order"> }) {
     }
   };
 
-  const model = buildPurchaseStatusModel(read);
+  const model = variant.buildModel(read);
 
   // Ownership failure: nothing of the Order was rendered before this view (SPEC-050 26.2).
   if (model.kind === "denied") {
@@ -133,12 +179,12 @@ export function PurchaseStatusPage({ orderRef }: { orderRef: Ref<"order"> }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-2xl font-bold">{copy.purchase.heading}</h1>
+      <h1 className="text-2xl font-bold">{variant.heading}</h1>
       {model.kind === "loading" ? <PageState state="loading" /> : null}
       {model.kind === "unavailable" ? (
         <PageState
           state="unavailable"
-          message={copy.pageState.unavailable(copy.purchase.subject)}
+          message={copy.pageState.unavailable(variant.subject)}
           onRetry={reload}
         />
       ) : null}
@@ -150,6 +196,17 @@ export function PurchaseStatusPage({ orderRef }: { orderRef: Ref<"order"> }) {
           pending={pending}
           onAction={handleAction}
         />
+      ) : null}
+      {model.kind === "ready" && variant.backLink !== null ? (
+        <p>
+          <Link
+            href={variant.backLink.href}
+            prefetch={false}
+            className="text-brand underline underline-offset-4"
+          >
+            {variant.backLink.label}
+          </Link>
+        </p>
       ) : null}
     </div>
   );
