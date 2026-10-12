@@ -1,8 +1,9 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { ApiProvider } from "../src/api-client/provider";
 import { SessionProvider } from "../src/auth/session-provider";
 import { SITE_NAME } from "../src/config/site";
+import { SiteFloatingTicket } from "../src/features/shell/site-floating-ticket";
 import { SiteFooter } from "../src/features/shell/site-footer";
 import { SiteHeader } from "../src/features/shell/site-header";
 import { MockModeBadge } from "../src/mock/dev-ui/mock-mode-badge";
@@ -13,6 +14,13 @@ import "./globals.css";
 // Pages set `title`; Home keeps the site name (SPEC-050 7).
 export const metadata: Metadata = {
   title: { default: SITE_NAME, template: `%s | ${SITE_NAME}` },
+};
+
+// viewport-fit=cover lets env(safe-area-inset-*) apply to the Floating Ticket Button on iOS.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 // The root layout owns the single main landmark: pages must not render their own <main>.
@@ -37,6 +45,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               {children}
             </main>
             <SiteFooter />
+            <SiteFloatingTicket />
             <MockModeBadge />
           </SessionProvider>
         </ApiProvider>

@@ -20,15 +20,11 @@ describe("TC-PG-PUB-001-221 copy.layout carries the fixed global shell wording (
     expect(copy.layout.cart.labelWithCount(12)).toBe("カート（12点）");
   });
 
-  it("has landmark, skip link, drawer, sponsor and mock badge wording", () => {
+  it("has landmark, skip link, menu, sponsor and mock badge wording", () => {
     expect(copy.layout.skipLink).toBe("メインコンテンツへ移動");
     expect(copy.layout.nav.primaryLabel).toBe("メインナビゲーション");
     expect(copy.layout.nav.footerLabel).toBe("フッターナビゲーション");
-    expect(copy.layout.drawer).toEqual({
-      open: "メニューを開く",
-      close: "メニューを閉じる",
-      title: "メニュー",
-    });
+    expect(copy.layout.menu).toEqual({ button: "メニュー" });
     expect(copy.layout.sponsors.regionLabel).toBe("協賛");
     expect(copy.layout.sponsors.externalSuffix).toBe("（外部サイト）");
     expect(copy.layout.mockBadge).toBe("UIモック表示中");
@@ -77,6 +73,36 @@ describe("TC-PG-XFN-002-201 copy for the Not Found and error pages (SPEC-050 19.
     expect(copy.errorPage.homeLink).toBe("Event Homeへ戻る");
     for (const value of Object.values(copy.errorPage)) {
       expect(value).not.toMatch(/stack|Error:|digest|\.tsx?|at /i);
+    }
+  });
+});
+
+describe("TC-PG-PUB-001-242 menu and Floating Ticket Button copy (SPEC-050 8.5; contract s10 section 1)", () => {
+  const label = (): string => copy.layout.floatingTicket.label;
+
+  it("has no drawer wording any more", () => {
+    expect("drawer" in copy.layout).toBe(false);
+  });
+
+  it("defines a non-empty Floating Ticket label separate from the Header main CTA", () => {
+    expect(typeof label()).toBe("string");
+    expect(label().trim().length).toBeGreaterThan(0);
+    expect(label()).not.toBe(copy.layout.cta.buyTickets);
+  });
+
+  it("never collides by substring with the other shell names (strict-mode locators stay unique)", () => {
+    const others = [
+      copy.layout.cta.buyTickets,
+      copy.layout.menu.button,
+      copy.layout.skipLink,
+      copy.layout.cart.label,
+      copy.layout.cart.labelWithCount(1),
+      ...Object.values(copy.layout.nav.items),
+      ...Object.values(copy.layout.account),
+    ];
+    for (const other of others) {
+      expect(label().includes(other), `label contains "${other}"`).toBe(false);
+      expect(other.includes(label()), `"${other}" contains the label`).toBe(false);
     }
   });
 });

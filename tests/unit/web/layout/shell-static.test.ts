@@ -38,7 +38,9 @@ describe("TC-DEV-WEB-001-201 the S3 shell files exist at the contracted paths (S
     "src/presentation/layout/sponsor-area-model.ts",
     "src/presentation/layout/global-header.tsx",
     "src/presentation/layout/primary-nav.tsx",
-    "src/presentation/layout/mobile-nav-drawer.tsx",
+    "src/presentation/layout/header-menu.tsx",
+    "src/presentation/layout/floating-ticket-button.tsx",
+    "src/presentation/layout/floating-ticket-visibility.ts",
     "src/presentation/layout/account-menu.tsx",
     "src/presentation/layout/cart-link.tsx",
     "src/presentation/layout/global-footer.tsx",
@@ -135,11 +137,17 @@ describe("TC-DEV-WEB-012-102 dev area is guarded and kept out of general navigat
   });
 
   it("does not link /admin, /staff or /dev from the shell (SPEC-050 27)", () => {
+    // floating-ticket-visibility.ts names "/dev" only to decide where the Floating Ticket Button is hidden
+    // (contract s10 section 4.1); it must not render any link.
+    const visibility = "src/presentation/layout/floating-ticket-visibility.ts";
+    const visibilitySource = read(visibility);
+    expect(visibilitySource).not.toMatch(/href|next\/link|<Link/);
     const shell = sources.filter(
       (f) =>
-        rel(f).startsWith("src/presentation/layout/") ||
-        rel(f).startsWith("src/features/shell/") ||
-        rel(f).startsWith("src/config/site"),
+        rel(f) !== visibility &&
+        (rel(f).startsWith("src/presentation/layout/") ||
+          rel(f).startsWith("src/features/shell/") ||
+          rel(f).startsWith("src/config/site")),
     );
     expect(shell.length).toBeGreaterThan(0);
     for (const file of shell) {
