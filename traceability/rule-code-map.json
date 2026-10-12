@@ -200,7 +200,8 @@
         "apps/web/src/features/purchase/purchase-again.ts",
         "apps/web/src/features/purchase/order-outcome.tsx",
         "apps/web/src/features/purchase/purchase-status-page.tsx",
-        "apps/web/app/(self)/purchase/orders/[orderRef]/page.tsx"
+        "apps/web/app/(self)/purchase/orders/[orderRef]/page.tsx",
+        "apps/web/src/api-client/latest-request.ts"
       ],
       "test_case_ids": [
         "TC-PG-XFN-001-001",
@@ -245,7 +246,9 @@
         "TC-PG-XFN-001-681",
         "TC-PG-XFN-001-682",
         "TC-PG-XFN-001-691",
-        "TC-PG-XFN-001-107"
+        "TC-PG-XFN-001-107",
+        "TC-PG-XFN-001-669",
+        "TC-DEV-WEB-009-601"
       ],
       "notes": "implementation mapping only: state to presentation mapping and copy dictionary; S2 mock backend"
     },
@@ -283,7 +286,8 @@
         "apps/web/src/features/mypage/order-detail-page.tsx",
         "apps/web/src/features/purchase/purchase-status-page.tsx",
         "apps/web/src/presentation/components/external-link.tsx",
-        "apps/web/app/(self)/mypage/orders/[orderRef]/page.tsx"
+        "apps/web/app/(self)/mypage/orders/[orderRef]/page.tsx",
+        "apps/web/src/api-client/latest-request.ts"
       ],
       "test_case_ids": [
         "TC-PG-XFN-001-001",
@@ -299,7 +303,10 @@
         "TC-PG-MYP-004-703",
         "TC-PG-MYP-004-704",
         "TC-PG-MYP-004-705",
-        "TC-PG-MYP-004-706"
+        "TC-PG-MYP-004-706",
+        "TC-PG-MYP-004-707",
+        "TC-DEV-WEB-009-601",
+        "TC-PG-XFN-001-651"
       ],
       "notes": "implementation mapping only: order presentation actions; S2 mock backend; S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
@@ -1559,7 +1566,8 @@
         "apps/web/src/features/mypage/use-read.ts",
         "apps/web/src/config/mypage-routes.ts",
         "apps/web/app/(self)/mypage/layout.tsx",
-        "apps/web/app/(self)/mypage/page.tsx"
+        "apps/web/app/(self)/mypage/page.tsx",
+        "apps/web/src/api-client/latest-request.ts"
       ],
       "test_case_ids": [
         "TC-AR-AZ-011-102",
@@ -1587,7 +1595,10 @@
         "TC-PG-MYP-001-731",
         "TC-PG-MYP-001-732",
         "TC-PG-MYP-001-733",
-        "TC-SEC-WEB-009-721"
+        "TC-SEC-WEB-009-721",
+        "TC-DEV-WEB-009-601",
+        "TC-PG-MYP-001-734",
+        "TC-DEV-WEB-001-805"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
@@ -1609,7 +1620,8 @@
         "TC-PG-MYP-002-702",
         "TC-PG-MYP-002-703",
         "TC-PG-MYP-002-704",
-        "TC-PG-MYP-002-705"
+        "TC-PG-MYP-002-705",
+        "TC-PG-MYP-002-623"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
@@ -1668,7 +1680,8 @@
         "TC-PG-MYP-007-702",
         "TC-PG-MYP-007-703",
         "TC-PG-MYP-007-704",
-        "TC-SEC-QR-013-701"
+        "TC-SEC-QR-013-701",
+        "TC-PG-MYP-007-705"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
@@ -1709,7 +1722,8 @@
         "TC-PG-MYP-010-702",
         "TC-PG-MYP-010-703",
         "TC-PG-MYP-010-704",
-        "TC-SEC-QR-013-701"
+        "TC-SEC-QR-013-701",
+        "TC-PG-MYP-010-705"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
@@ -2268,9 +2282,17 @@
         "apps/web/src/features/karaoke/karaoke-day-model.ts",
         "apps/web/src/features/mypage/use-read.ts",
         "apps/web/src/features/mypage/profile-model.ts",
-        "apps/web/src/features/mypage/profile-page.tsx"
+        "apps/web/src/features/mypage/profile-page.tsx",
+        "apps/web/src/api-client/latest-request.ts",
+        "apps/web/src/features/purchase/purchase-status-page.tsx"
       ],
-      "test_case_ids": ["TC-PG-PUB-001-696", "TC-DEV-WEB-001-805", "TC-PG-MYP-002-622"],
+      "test_case_ids": [
+        "TC-PG-PUB-001-696",
+        "TC-DEV-WEB-001-805",
+        "TC-PG-MYP-002-622",
+        "TC-DEV-WEB-009-601",
+        "TC-PG-XFN-001-651"
+      ],
       "notes": "implementation mapping only: S4 public pages (UI mock, not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
