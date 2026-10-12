@@ -205,6 +205,15 @@ describe("TC-PG-XFN-001-651 the Purchase Status container reads the Order once p
     expect(code).not.toMatch(/\bconsole\s*\./);
   });
 
+  it("only the latest read is shown: mount, reload, recheck and the retry follow-up all go through the latest-request guard", () => {
+    expect(code).toMatch(/from\s+["'][^"']*api-client\/latest-request["']/);
+    expect((code.match(/\bapplyIfLatest\s*\(/g) ?? []).length).toBeGreaterThanOrEqual(4);
+    expect(code).toMatch(/\binvalidateRequests\b/);
+    expect(code).not.toMatch(/\blet\s+active\b/);
+    expect(code).not.toMatch(/\bawait\s+settleRead\s*\(/);
+    expect(code).not.toMatch(/settleRead\s*\([^;]*\)\s*\.then\s*\(/);
+  });
+
   it("starts no cart purchase, no Karaoke purchase and no second Order from this page", () => {
     expect(code).not.toMatch(/startCartPurchase|startKaraokePurchase/);
   });

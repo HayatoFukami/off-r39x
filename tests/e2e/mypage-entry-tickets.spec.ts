@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import { copy } from "../../apps/web/src/presentation/copy/ja.ts";
 import { formatJstDateTime } from "../../apps/web/src/presentation/format/datetime.ts";
 import { readDbRaw, writeStorage } from "../harness/browser/cart.ts";
@@ -25,7 +25,7 @@ import {
   ticketQrPath,
 } from "../harness/browser/mypage.ts";
 import { horizontalOverflow, seedState } from "../harness/browser/public.ts";
-import { alertsOf, heading1, mainOf, openAs } from "../harness/browser/purchase.ts";
+import { alertsOf, heading1, mainOf, openAs, setScenario } from "../harness/browser/purchase.ts";
 import { KEYS, SITE_NAME } from "../harness/browser/shell.ts";
 import { ORDER, RESERVATION, TICKET } from "../harness/mock-seed.ts";
 
@@ -301,5 +301,101 @@ test.describe("TC-PG-MYP-007-704 the QR is large, has margins and does not overf
     expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
     // The state is visible with the QR on the same screen.
     await expect(figureOf(page)).toContainText(labels().VALID);
+  });
+});
+
+test.describe("TC-PG-MYP-007-705 while the Entry QR page loads or cannot be read it is still titled with its route purpose, and the final Access Denied never carries the purpose (E2E 17 / 20, SPEC-050 9, 18.7, 21, 26.2, SEC-QR-012)", () => {
+  const subject = () => copy.mypage.entryTickets.detail.subject;
+  const expectPurposeTitle = async (page: Page): Promise<void> => {
+    await expect(heading1(page)).toHaveText(copy.qr.ENTRY);
+    await expect(heading1(page)).toHaveCount(1);
+    await expect(page).toHaveTitle(`${copy.qr.ENTRY} | ${SITE_NAME}`);
+  };
+
+  test("loading: the h1 and the document title are the Entry purpose; only the loading state is shown (no QR, no Ticket state, no mock notice)", async ({
+    page,
+  }) => {
+    await openAs(page, ticketQrPath(TICKET.valid), {
+      scenario: { latency: "long", latencyLongMs: 2500 },
+    });
+    await expectPurposeTitle(page);
+    await expect(mainOf(page).locator('[role="status"]').first()).toContainText(
+      copy.pageState.loading,
+    );
+    await expect(figureOf(page)).toHaveCount(0);
+    await expect(qrImages(page)).toHaveCount(0);
+    await expect(alertsOf(page)).toHaveCount(0);
+    const early = await mainOf(page).innerText();
+    for (const label of ALL_LABELS()) expect(early).not.toContain(label);
+    expect(early).not.toContain(copy.mypage.qr.mockNotice);
+    expect(early).not.toContain(copy.mypage.qr.ticketStateLabel);
+    expect(early).not.toContain(copy.accessDenied.title);
+    await expect(figureOf(page)).toHaveCount(1, { timeout: 15_000 });
+    await expectPurposeTitle(page);
+  });
+
+  test("unavailable: the same h1 and title, an unavailable alert with a retry, no Access Denied and no QR; the retry shows the purpose title while loading and then the QR", async ({
+    page,
+  }) => {
+    await openAs(page, ticketQrPath(TICKET.valid), { extra: { [KEYS.db]: "{ not json" } });
+    await expectPurposeTitle(page);
+    await expect(alertsOf(page)).toHaveCount(1);
+    await expect(alertsOf(page)).toContainText(copy.pageState.unavailable(subject()));
+    await expect(retryButtons(mainOf(page))).toHaveCount(1);
+    await expect(mainOf(page)).not.toContainText(copy.accessDenied.title);
+    await expect(figureOf(page)).toHaveCount(0);
+    await expect(qrImages(page)).toHaveCount(0);
+    await expect(heading1(page)).not.toHaveText(copy.mypage.heading);
+
+    await writeStorage(page, KEYS.db, JSON.stringify(seedState()));
+    await setScenario(page, { latency: "long", latencyLongMs: 2500 });
+    await retryButtons(mainOf(page)).click();
+    await expect(mainOf(page).locator('[role="status"]').first()).toContainText(
+      copy.pageState.loading,
+    );
+    await expectPurposeTitle(page);
+    await expect(alertsOf(page)).toHaveCount(0);
+    await expect(figureOf(page)).toHaveCount(0);
+    await expect(figureOf(page)).toHaveCount(1, { timeout: 15_000 });
+    await expectPurposeTitle(page);
+    await expect(qrImages(page)).toHaveCount(1);
+  });
+
+  test("the loading text is identical for own, another user's, a missing and a Reservation ref; the final Access Denied never contains the purpose title; the DB is unchanged", async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    await openAs(page, ticketQrPath(TICKET.valid), {
+      scenario: { latency: "long", latencyLongMs: 2500 },
+    });
+    await expect(figureOf(page)).toHaveCount(1, { timeout: 15_000 });
+    const dbBefore = JSON.parse((await readDbRaw(page)) ?? "null") as unknown;
+
+    const loadingTexts: string[] = [];
+    const refs = [
+      { name: "own", ref: TICKET.valid, denied: false },
+      { name: "another user's", ref: TICKET.other, denied: true },
+      { name: "missing", ref: "7c000000-0000-4000-8000-0000000009ff", denied: true },
+      { name: "Reservation", ref: RESERVATION.valid, denied: true },
+    ];
+    for (const target of refs) {
+      await gotoHydrated(page, ticketQrPath(target.ref));
+      await expect(mainOf(page).locator('[role="status"]').first(), target.name).toContainText(
+        copy.pageState.loading,
+      );
+      await expect(heading1(page), target.name).toHaveText(copy.qr.ENTRY);
+      loadingTexts.push(await mainOf(page).innerText());
+      if (target.denied) {
+        await expect(heading1(page), target.name).toHaveText(copy.accessDenied.title, {
+          timeout: 15_000,
+        });
+        await expect(mainOf(page), target.name).not.toContainText(copy.qr.ENTRY);
+        await expect(qrImages(page), target.name).toHaveCount(0);
+      } else {
+        await expect(figureOf(page), target.name).toHaveCount(1, { timeout: 15_000 });
+      }
+    }
+    expect(new Set(loadingTexts).size, "the loading text does not reveal the target").toBe(1);
+    expect(JSON.parse((await readDbRaw(page)) ?? "null")).toEqual(dbBefore);
   });
 });

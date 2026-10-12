@@ -8761,7 +8761,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "reads through the port only; a fresh idempotency key per retry; no cart or Karaoke purchase start; OrderOutcome is a view with a live region"
+        "reads through the port only; a fresh idempotency key per retry; no cart or Karaoke purchase start; OrderOutcome is a view with a live region; all Order reads go through the latest-request guard"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -9228,6 +9228,37 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "a failed read is unavailable, not denied or empty; a failed recheck keeps the shown Order; loading shows no business result"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-XFN-001-669",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-XFN-001",
+        "DEV-WEB-009",
+        "SPEC-050-9.1",
+        "SPEC-050-21",
+        "SPEC-050-22",
+        "PAY-BRW-002",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": ["INV-010-10"],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock mode (desktop and mobile Chromium); contract tests/contracts/s7a-purchase.md; DB postconditions are the mock DB",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "slow reads: one read per mount and per press, the pending state and the live message end with every read and the last read decides; a read abandoned by leaving the page is not shown and throws nothing; a retry after an unavailable read is one more read with a loading state; no Order is created"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -10229,7 +10260,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "S8 modules and routes exist at contracted paths; ports unchanged"
+        "S8 modules and routes exist at contracted paths; ports unchanged; the shared latest-request helper exists"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -10275,7 +10306,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "pure modules import no React / storage / clock / mock and reuse shared presentations"
+        "pure modules import no React / storage / clock / mock and reuse shared presentations; the shared latest-request helper is pure"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -10298,7 +10329,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "containers read through useApi only; read-only containers write nothing; Goods detail has no button"
+        "containers read through useApi only; read-only containers write nothing; Goods detail has no button; only the latest read is applied; QR non-ready h1 is the route purpose"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -10351,6 +10382,36 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "no hard-coded Japanese / yen / colour / console / raw HTML in S8 sources; dependency direction kept"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-DEV-WEB-009-601",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "DEV-WEB-009",
+        "PG-MYP-001",
+        "PG-XFN-001",
+        "SPEC-050-9.1",
+        "SPEC-050-22",
+        "TST-UNT-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "contract tests/contracts/s8-mypage.md section 4.1 and tests/contracts/s7a-purchase.md section 6; pure helper driven by hand-resolved promises (no timers, no clock, no randomness)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "only the last-started read is applied: earlier overlapping reads are discarded in every completion order, a response after invalidation is discarded, a rejection is propagated unapplied, separate counters do not interfere"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -10938,6 +10999,29 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-PG-MYP-002-623",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-MYP-002", "SPEC-050-18.2", "DEV-WEB-009", "TST-UNT-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "contract tests/contracts/s8-mypage.md section 3.8; pure model",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "after a save the input takes the server value only if it still equals the submitted value; a value typed meanwhile (including an emptied field) is kept"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-PG-MYP-001-621",
       "level": "Unit",
       "suite": "unit",
@@ -11502,6 +11586,36 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-PG-MYP-001-734",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-MYP-001",
+        "DEV-WEB-009",
+        "SPEC-050-9.1",
+        "SPEC-050-22",
+        "TST-E2E-003",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock mode (desktop and mobile Chromium); contract tests/contracts/s8-mypage.md; DB postconditions are the mock DB",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "leaving a Mypage page while its retry read is still running shows only the destination and raises no page error or console error"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-PG-MYP-002-701",
       "level": "E2E",
       "suite": "e2e-ui-mock",
@@ -11551,7 +11665,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "unsaved / saved statuses; only the signed-in user's Profile changes; survives reload"
+        "unsaved / saved statuses; only the signed-in user's Profile changes; survives reload; a value typed while saving is kept (unsaved) and the DB holds the submitted value; the input is never locked"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -11907,6 +12021,36 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-PG-MYP-004-707",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-MYP-004",
+        "DEV-WEB-009",
+        "SPEC-050-22",
+        "PAY-BRW-002",
+        "TST-E2E-003",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock mode (desktop and mobile Chromium); contract tests/contracts/s8-mypage.md; DB postconditions are the mock DB",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "on the Order detail, slow reads: one read per mount and per press, the pending state and the live message end with every read and the last read decides; a read abandoned by leaving through the Mypage navigation is not shown and throws nothing"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-PG-MYP-005-701",
       "level": "E2E",
       "suite": "e2e-ui-mock",
@@ -12161,6 +12305,37 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "at 390px the QR is at least 200px with margin; state visible with it; no sideways scroll"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-MYP-007-705",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-MYP-007",
+        "SPEC-050-9",
+        "SPEC-050-18.7",
+        "SPEC-050-26.2",
+        "SEC-QR-012",
+        "TST-E2E-003",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": ["INV-010-08"],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock mode (desktop and mobile Chromium); contract tests/contracts/s8-mypage.md; DB postconditions are the mock DB",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "while loading or unavailable the h1 and the document title are the Entry purpose, with no QR, no Ticket state and no Access Denied; the loading text is identical for own, foreign, missing and wrong-purpose refs; the final Access Denied never contains the purpose title; DB unchanged"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -12424,6 +12599,37 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-PG-MYP-010-705",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-MYP-010",
+        "SPEC-050-9",
+        "SPEC-050-18.10",
+        "SPEC-050-26.2",
+        "SEC-QR-012",
+        "TST-E2E-003",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": ["INV-010-08"],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock mode (desktop and mobile Chromium); contract tests/contracts/s8-mypage.md; DB postconditions are the mock DB",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "while loading or unavailable the h1 and the document title are the Karaoke purpose, with no QR, no Reservation state and no Access Denied; the loading text is identical for own, foreign, missing and wrong-purpose refs; the final Access Denied never contains the purpose title; DB unchanged"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-PG-MYP-011-701",
       "level": "E2E",
       "suite": "e2e-ui-mock",
@@ -12609,7 +12815,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "for six detail / QR kinds, foreign, missing, malformed and wrong-purpose refs give the same Access Denied text with no ready content at any moment; DB unchanged"
+        "for six detail / QR kinds, foreign, missing, malformed and wrong-purpose refs give the same Access Denied text with no ready content at any moment; the QR purpose title may appear while loading but never in the final Access Denied; DB unchanged"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],

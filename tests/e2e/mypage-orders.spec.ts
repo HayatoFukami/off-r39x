@@ -14,6 +14,8 @@ import {
   hrefsIn,
   mainButton,
   mainLink,
+  navLink,
+  navToggle,
   orderPath,
   otherSession,
   PATH,
@@ -24,6 +26,10 @@ import {
   rowsIn,
   rowWithHref,
 } from "../harness/browser/mypage.ts";
+import {
+  exerciseLeaveDuringRecheck,
+  exerciseSlowConsecutiveReads,
+} from "../harness/browser/order-reads.ts";
 import { seedState } from "../harness/browser/public.ts";
 import {
   alertsOf,
@@ -39,7 +45,7 @@ import {
   SUCCESS_WORDING,
   statusLive,
 } from "../harness/browser/purchase.ts";
-import { KEYS } from "../harness/browser/shell.ts";
+import { isDesktop, KEYS } from "../harness/browser/shell.ts";
 import { ORDER, RESERVATION, TICKET } from "../harness/mock-seed.ts";
 
 // UI mock suite (TST-E2E-004: auxiliary, not G8). Contract: tests/contracts/s8-mypage.md sections 4.5 and 4.6.
@@ -413,5 +419,34 @@ test.describe("TC-PG-MYP-004-706 retrying the Checkout of a PREPARED Order uses 
     );
     await expect(pageButtons(page)).toHaveCount(0);
     await expect(region(page, copy.purchase.outcomeHeading)).toHaveCount(0);
+  });
+});
+
+test.describe("TC-PG-MYP-004-707 the Order detail reflects only the last-started Order read, and a read that is not reflected never leaves the page busy or announcing (E2E 22, DEV-WEB-009, SPEC-050 18.4, 22, PAY-BRW-002)", () => {
+  test("slow reads: one read on mount and one per press, the pending state and the announcement end with each read, and the last press decides", async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    await exerciseSlowConsecutiveReads(page, orderPath(ORDER.awaiting), ORDER.awaiting);
+  });
+
+  test("leaving the page during a recheck through the Mypage navigation: the Order list is shown, nothing of the abandoned read appears and nothing is thrown", async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    await exerciseLeaveDuringRecheck(
+      page,
+      orderPath(ORDER.awaiting),
+      ORDER.awaiting,
+      async () => {
+        if (!isDesktop(page)) await navToggle(page).click();
+        await navLink(page, "orders").click();
+        await expect(page).toHaveURL(/\/mypage\/orders$/);
+        await expect(heading1(page)).toHaveText(orders().heading);
+        await expect(rowsIn(mainOf(page)).first()).toBeVisible({ timeout: 15_000 });
+        await expect(rowWithHref(mainOf(page), orderPath(ORDER.awaiting))).toHaveCount(1);
+      },
+      [copy.mypage.orders.detail.heading],
+    );
   });
 });

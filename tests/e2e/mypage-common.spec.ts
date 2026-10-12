@@ -1,27 +1,37 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { copy } from "../../apps/web/src/presentation/copy/ja.ts";
 import { watchConsole } from "../harness/browser/auth.ts";
-import { readDbRaw } from "../harness/browser/cart.ts";
+import { readDbRaw, writeStorage } from "../harness/browser/cart.ts";
 import {
   DEMO_NAME,
   expectNoMatrixSeed,
   figureOf,
   goodsItemPath,
+  navLink,
+  navToggle,
   orderPath,
   PATH,
   qrImages,
   region,
   reservationPath,
   reservationQrPath,
+  retryButtons,
   rowsIn,
   ticketPath,
   ticketQrPath,
 } from "../harness/browser/mypage.ts";
-import { hasLevelSkip, horizontalOverflow, mainHeadingLevels } from "../harness/browser/public.ts";
-import { heading1, mainOf, openAs } from "../harness/browser/purchase.ts";
+import {
+  hasLevelSkip,
+  horizontalOverflow,
+  mainHeadingLevels,
+  seedState,
+} from "../harness/browser/public.ts";
+import { alertsOf, heading1, mainOf, openAs, setScenario } from "../harness/browser/purchase.ts";
 import {
   allHrefs,
   FORBIDDEN_AREA,
+  isDesktop,
+  KEYS,
   pathOf,
   SITE_NAME,
   watchRequestHosts,
@@ -250,5 +260,39 @@ test.describe("TC-SEC-QR-013-701 the mock QR seed is input to drawing only and a
         expect(href, `${path} -> ${href}`).not.toMatch(/mock-seed|[?&](token|seed|qr)=/i);
       }
     }
+  });
+});
+
+test.describe("TC-PG-MYP-001-734 leaving a Mypage page while its retry read is still running shows only the destination and raises no runtime error (DEV-WEB-009, SPEC-050 9.1, 22)", () => {
+  test("a retry with long latency, then a client navigation through the Mypage navigation: the destination renders on its own and nothing is thrown", async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    const runtime = watchRuntimeErrors(page);
+    await openAs(page, PATH.profile, { extra: { [KEYS.db]: "{ not json" } });
+    await expect(alertsOf(page)).toContainText(
+      copy.pageState.unavailable(copy.mypage.profile.subject),
+    );
+    const good = JSON.stringify(seedState());
+    await writeStorage(page, KEYS.db, good);
+    await setScenario(page, { latency: "long", latencyLongMs: 2500 });
+    await retryButtons(mainOf(page)).click();
+    await expect(mainOf(page).locator('[role="status"]').first()).toContainText(
+      copy.pageState.loading,
+    );
+    // Leave while the retry read is still in flight.
+    if (!isDesktop(page)) await navToggle(page).click();
+    await navLink(page, "overview").click();
+    await expect(page).toHaveURL(/\/mypage$/);
+    await expect(heading1(page)).toHaveText(copy.mypage.heading);
+    await expect(
+      region(page, copy.mypage.overview.profileHeading).getByText(DEMO_NAME),
+    ).toBeVisible({ timeout: 15_000 });
+    // The abandoned Profile read has completed by now; it changed nothing on the destination.
+    await expect(heading1(page)).toHaveText(copy.mypage.heading);
+    await expect(
+      mainOf(page).getByLabel(copy.mypage.profile.displayNameLabel, { exact: true }),
+    ).toHaveCount(0);
+    expect(runtime.errors).toEqual([]);
   });
 });

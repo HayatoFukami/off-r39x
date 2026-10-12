@@ -14,7 +14,14 @@ import {
   retryButtons,
 } from "../harness/browser/mypage.ts";
 import { seedState } from "../harness/browser/public.ts";
-import { alertsOf, heading1, mainOf, openAs, readState } from "../harness/browser/purchase.ts";
+import {
+  alertsOf,
+  heading1,
+  mainOf,
+  openAs,
+  readState,
+  setScenario,
+} from "../harness/browser/purchase.ts";
 import { KEYS } from "../harness/browser/shell.ts";
 import { EMAIL } from "../harness/mock-seed.ts";
 
@@ -95,6 +102,67 @@ test.describe("TC-PG-MYP-002-702 saving the display name changes only this user'
     await expect(statusOf(page)).toHaveText(profile().status.dirty);
     await nameField(page).fill("一度目");
     await expect(statusOf(page)).not.toHaveText(profile().status.dirty);
+  });
+
+  test("while saving, the input stays editable and the button is busy; a value typed meanwhile survives the successful save (dirty), and the DB holds the submitted value", async ({
+    page,
+  }) => {
+    await openAs(page, PATH.profile);
+    await expect(nameField(page)).toHaveValue(DEMO_NAME);
+    await setScenario(page, { latency: "long", latencyLongMs: 2500 });
+    await nameField(page).fill("提出した名前");
+    await saveButton(page).click();
+    await expect(saveButton(page)).toBeDisabled();
+    await expect(saveButton(page)).toHaveAttribute("aria-busy", "true");
+    await expect(statusOf(page)).toHaveText(profile().status.saving);
+    // The field is never locked while saving.
+    await expect(nameField(page)).toBeEnabled();
+    await expect(nameField(page)).toBeEditable();
+    await nameField(page).fill("保存中に打った名前");
+    await expect(saveButton(page)).toBeEnabled({ timeout: 15_000 });
+    await expect(nameField(page)).toHaveValue("保存中に打った名前");
+    await expect(statusOf(page)).toHaveText(profile().status.dirty);
+    await expect(alertsOf(page)).toHaveCount(0);
+    expect(await nameOf(page, EMAIL.demo)).toBe("提出した名前");
+    // The newer value is then saved by the next press.
+    await setScenario(page, { latency: "none" });
+    await saveButton(page).click();
+    await expect(statusOf(page)).toHaveText(profile().status.saved);
+    await expect(nameField(page)).toHaveValue("保存中に打った名前");
+    expect(await nameOf(page, EMAIL.demo)).toBe("保存中に打った名前");
+  });
+
+  test("without a further edit, the input takes the value the server confirmed and the status is saved", async ({
+    page,
+  }) => {
+    await openAs(page, PATH.profile);
+    await setScenario(page, { latency: "long", latencyLongMs: 2500 });
+    await nameField(page).fill("編集しない名前");
+    await saveButton(page).click();
+    await expect(saveButton(page)).toBeDisabled();
+    await expect(saveButton(page)).toHaveAttribute("aria-busy", "true");
+    await expect(saveButton(page)).toBeEnabled({ timeout: 15_000 });
+    await expect(nameField(page)).toHaveValue("編集しない名前");
+    await expect(statusOf(page)).toHaveText(profile().status.saved);
+    await expect(alertsOf(page)).toHaveCount(0);
+    expect(await nameOf(page, EMAIL.demo)).toBe("編集しない名前");
+  });
+
+  test("editing while saving and typing the submitted value again before the save completes ends as saved", async ({
+    page,
+  }) => {
+    await openAs(page, PATH.profile);
+    await setScenario(page, { latency: "long", latencyLongMs: 2500 });
+    await nameField(page).fill("戻す名前");
+    await saveButton(page).click();
+    await expect(saveButton(page)).toBeDisabled();
+    await nameField(page).fill("途中で変えた名前");
+    await expect(nameField(page)).toHaveValue("途中で変えた名前");
+    await nameField(page).fill("戻す名前");
+    await expect(saveButton(page)).toBeEnabled({ timeout: 15_000 });
+    await expect(nameField(page)).toHaveValue("戻す名前");
+    await expect(statusOf(page)).toHaveText(profile().status.saved);
+    expect(await nameOf(page, EMAIL.demo)).toBe("戻す名前");
   });
 
   test("the saved name belongs to the signed-in user: another user edits their own Profile only", async ({

@@ -26,6 +26,7 @@ function stripComments(source: string): string {
 }
 
 const PURE = [
+  "src/api-client/latest-request.ts",
   "src/config/mypage-routes.ts",
   "src/features/mypage/order-list-model.ts",
   "src/features/mypage/order-detail-model.ts",
@@ -286,6 +287,7 @@ describe("TC-DEV-WEB-001-805 the containers read through useApi() only and write
       "updateProfile",
       "buildProfileModel",
       "interpretProfileSave",
+      "resolveInputAfterSave",
     ]);
     expectCalls("src/features/mypage/order-list-page.tsx", ["listOrders", "buildOrderListModel"]);
     expectCalls("src/features/mypage/entry-ticket-list-page.tsx", [
@@ -371,6 +373,35 @@ describe("TC-DEV-WEB-001-805 the containers read through useApi() only and write
     expect(code).toMatch(/aria-busy/);
     expect(code).toMatch(/<form[\s>]/);
     expect(code).toMatch(/updateProfile\(\s*\{\s*displayName/);
+  });
+
+  it("useRead orders every read through the shared latest-request guard (only the last-started read is reflected)", () => {
+    const code = stripComments(read("src/features/mypage/use-read.ts"));
+    expect(code.length).toBeGreaterThan(0);
+    expect(code.match(/\bapplyIfLatest\b/g) ?? []).not.toHaveLength(0);
+    expect((code.match(/\bapplyIfLatest\s*\(/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    expect(code).toMatch(/\binvalidateRequests\b/);
+    expect(code).toMatch(/from\s+["'][^"']*api-client\/latest-request["']/);
+    expect(code).not.toMatch(/\blet\s+active\b/);
+    expect(code).not.toMatch(/settleRead\(load\(api\)\)\s*\.then/);
+  });
+
+  it("the Profile container keeps the input editable while saving and resolves the input after the save with the pure helper", () => {
+    const code = stripComments(read("src/features/mypage/profile-page.tsx"));
+    expect(code).toMatch(/resolveInputAfterSave\s*\(/);
+    expect(code).not.toMatch(/setValue\(\s*step\.displayName\s*\)/);
+    expect(code).not.toMatch(/<input[^>]*\b(readOnly|disabled)\b/);
+  });
+
+  it("the QR containers title the loading and unavailable states with the route-determined purpose, never the Mypage heading", () => {
+    const entry = stripComments(read("src/features/mypage/entry-qr-page.tsx"));
+    expect(entry).not.toMatch(/copy\.mypage\.heading/);
+    expect(entry).toMatch(/copy\.qr\.ENTRY/);
+    expect(entry).not.toMatch(/copy\.qr\.KARAOKE/);
+    const karaoke = stripComments(read("src/features/mypage/karaoke-qr-page.tsx"));
+    expect(karaoke).not.toMatch(/copy\.mypage\.heading/);
+    expect(karaoke).toMatch(/copy\.qr\.KARAOKE/);
+    expect(karaoke).not.toMatch(/copy\.qr\.ENTRY/);
   });
 });
 
