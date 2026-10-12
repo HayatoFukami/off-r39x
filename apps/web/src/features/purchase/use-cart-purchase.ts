@@ -10,6 +10,7 @@ import {
   describeRejections,
   interpretCartStart,
   interpretCheckoutStart,
+  orderedLines,
   planProceed,
   type RejectionLine,
 } from "./cart-purchase-flow";
@@ -44,7 +45,7 @@ export function useCartPurchase(options: UseCartPurchaseOptions): {
   const { names, onRejected } = options;
 
   const lines = cart.state.kind === "ready" ? cart.state.cart.lines : null;
-  const removeLines = cart.removeLines;
+  const subtractLines = cart.subtractLines;
 
   const run = useCallback(async (): Promise<void> => {
     if (lines === null || lines.length === 0) return;
@@ -71,7 +72,8 @@ export function useCartPurchase(options: UseCartPurchaseOptions): {
       case "checkout": {
         setPhase({ kind: "preparing" });
         // The Order exists: a failed Cart write must not stop the hand-off to Checkout.
-        removeLines(step.includedLineKeys);
+        // Subtract only what the Order took from the current Cart (edits of this and other tabs included).
+        subtractLines(orderedLines(lines, step.includedLineKeys));
         const checkout: CheckoutStart = await api.purchase
           .startCheckout(step.orderRef, { idempotencyKey: crypto.randomUUID() })
           .catch((): CheckoutStart => ({ kind: "unavailable" }));
@@ -88,7 +90,7 @@ export function useCartPurchase(options: UseCartPurchaseOptions): {
         return unreachable;
       }
     }
-  }, [api, lines, names, onRejected, removeLines, router]);
+  }, [api, lines, names, onRejected, router, subtractLines]);
 
   const start = useCallback((): void => {
     if (inFlight.current) return;

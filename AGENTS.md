@@ -6,11 +6,14 @@
 
 ## 1. 現在の状態
 
-- 現在のリビジョンは仕様書のみである。追跡対象は `docs/specs/` の21本のMarkdown仕様書と `LICENSE` であり、アプリケーションソース、`package.json`、lockfile、テスト設定、CI、formatter / linter設定は存在しない。
-- `SPEC-010`, `SPEC-180`, `SPEC-190` が定める `apps/`, `packages/`, `tests/`, `scripts/`, `traceability/` は **まだ存在しない**（計画上の配置である）。build / lint / typecheck / testコマンドも実行できない。存在しないコマンドを作り出さない。`SPEC-180` の将来のパイプラインを「実行済み」と報告しない。
-- 実行可能なmanifest / scriptが整備された後は、実在するscriptを確認してから `SPEC-180` のbuild順序（`corepack enable` → `pnpm install --frozen-lockfile` → `pnpm lint` → `pnpm typecheck` → 該当する `SPEC-170` gate → `pnpm build`）に従う。
-- 21本の仕様書はすべて `provisional` で、semverは `1.0.0`〜`1.3.0` が混在する（HEAD `385127c`。例: `SPEC-130` は `1.2.0`、`SPEC-160` は `1.3.0`）。単一バージョンを仮定せず、現行の正式本文に従う。
-- `reviews/specification-review/` が存在する場合、それは生成されたレビュー証跡であり、正式仕様ではない。
+リポジトリの状態は変化する。特定のcommitやHEADを前提にせず、作業の前に実在するファイルとscriptを確認する。
+
+- 正式仕様は `docs/specs/` の `SPEC-000`〜`SPEC-200` と `LICENSE` である。仕様書のversionは仕様書ごとに異なるため、単一バージョンを仮定せず、各仕様書のfrontmatterと現行の正式本文に従う。
+- 仕様書以外に、agent定義（`.claude/agents/`）、`CLAUDE.md`、`docs/drafts/`（正式仕様ではない検討資料）、`reviews/specification-review/`（生成されたレビュー証跡）が存在する場合がある。これらは正式仕様ではない。
+- アプリケーションソース、`package.json`、lockfile、テスト設定、CI、formatter / linter設定は、実在を確認してから扱う。`SPEC-010`, `SPEC-180`, `SPEC-190` が定める `apps/`, `packages/`, `tests/`, `scripts/`, `traceability/` も、実在するものだけを対象とする。存在しないものを前提にしない。
+- build / lint / typecheck / testコマンドは、実在するscriptだけを実行する。存在しないコマンドを作り出さない。`SPEC-180` のパイプラインを「実行済み」と報告しない。
+- 実在するscriptを確認したうえで、`SPEC-180` のbuild順序（`corepack enable` → `pnpm install --frozen-lockfile` → `pnpm lint` → `pnpm typecheck` → 該当する `SPEC-170` gate → `pnpm build`）に従う。
+- UI mockが実在する場合の扱いは `SPEC-190` の `DEV-WEB-010`〜`013` に従う。
 
 ## 2. 仕様書の場所と読み方
 
@@ -25,9 +28,10 @@
 - 判断が割れたときの優先順位は `SPEC-000 §8` に従う。最上位はユーザーの最新の明示的指示である。
 - 仕様書frontmatterの `spec_id`、英語の `title`、semverの `version`、`status`、`depends_on`、`related_specs` を維持する。
 
-### 2.1 UCRの状況（HEAD `385127c`）
+### 2.1 UCRの状況
 
-- `UCR-130-001`, `-002`, `-003`, `-004`, `-006`、`UCR-150-001`, `-002`、`UCR-170-001` は正式仕様へ反映済みであり、実装契約として扱う。
+- UCRの反映状況は、特定のcommitに固定せず、各Canonical Owner仕様の現行本文（「未反映のUCR」節など）で確認する。
+- 未反映のUCRは、対象Canonical Owner仕様の本文へ反映されるまで実装契約として扱わない（`DEV-GEN-001`）。
 - `UCR-130-005` は `DEFERRED_NONBLOCKING`（実際のquery plan、selectivity、データ形状が判明するまで保留）である。提案されたindexを先回りして追加しない。
 - 反映済みの流れは正式仕様が正である。Capability意味論は `SPEC-060`、handoffと管理操作は `SPEC-130`、API・Operation ID・recovery contractは `SPEC-110`（通知recoveryは `SPEC-120`）を直接参照する。UCR案を複製したり、UCRだけに存在するendpoint / capability / Operation ID / index / recovery commandを追加したりしない。
 
@@ -56,7 +60,7 @@
 | テスト | `tester.md` | テストを作成し、実装を検証する。不合格箇所はコーディングへ修正指示を出す | `tests/**` |
 | コーディング | `coder.md` | 設計をもとに実装する。テストからの修正指示に対応する | `apps/**`, `packages/**`, `scripts/**`, `traceability/rule-code-map.json` |
 
-上記の書き込み範囲のうち、現時点で実在するディレクトリはない。`SPEC-190 §6` の構成に従い、必要になった時点で該当ロールが作成してよい。範囲外のパスは作成・変更しない。
+上記の書き込み範囲のうち、実在しないディレクトリは、`SPEC-190 §6` の構成に従い、必要になった時点で該当ロールが作成してよい。範囲外のパスは作成・変更しない。
 
 境界は次のとおり固定する。
 
@@ -111,7 +115,7 @@
 
 ### 5.3 現時点でのテスト・検証の扱い
 
-テスト基盤が存在しない間は、テスト担当は実行できない項目を実行したと報告しない。実行できなかった項目は `Not executed` へ理由とリリースへの影響を書く。テスト基盤そのもの（`SPEC-180` / `SPEC-190` が定める manifest・script・設定）を整備するタスクでは、設計書でその範囲を明示し、実在するscriptを確認してから実行する。
+テスト基盤（実在するscript・設定）が存在しない場合は、テスト担当は実行できない項目を実行したと報告しない。実行できなかった項目は `Not executed` へ理由とリリースへの影響を書く。テスト基盤そのもの（`SPEC-180` / `SPEC-190` が定める manifest・script・設定）を整備するタスクでは、設計書でその範囲を明示し、実在するscriptを確認してから実行する。
 
 ### 5.4 オーケストレーターの責務
 

@@ -119,7 +119,7 @@ test.describe("TC-AR-SES-007-301 AuthGate keeps protected content from a guest (
   });
 });
 
-test.describe("TC-PG-AUTH-003-311 Logout goes Home, keeps the Cart, and back never shows protected content (SPEC-050 15.6, AR-SES-009, FR-CRT-012)", () => {
+test.describe("TC-PG-AUTH-003-311 Logout goes Home, clears the Cart, and back never shows protected content (SPEC-050 15.6, AR-SES-009, FR-CRT-012)", () => {
   test("Logout from Mypage ends on Home (/), as a guest, and stays there", async ({ page }) => {
     await open(page, "/mypage", { [KEYS.session]: authenticatedSession() });
     await expect(heading1(page)).toHaveText(copy.mypage.heading);
@@ -159,7 +159,7 @@ test.describe("TC-PG-AUTH-003-311 Logout goes Home, keeps the Cart, and back nev
     expect(await readSession(page)).toEqual({ kind: "guest" });
   });
 
-  test("Logout from a public page also ends on Home and does not touch the Cart or the mock DB (FR-CRT-012)", async ({
+  test("Logout from a public page also ends on Home, clears the Cart and leaves the mock DB untouched (FR-CRT-012)", async ({
     page,
   }) => {
     await open(page, "/cart", {
@@ -167,12 +167,19 @@ test.describe("TC-PG-AUTH-003-311 Logout goes Home, keeps the Cart, and back nev
       ...cartEntries(CART),
     });
     await expect(headerCartLink(page, 3)).toBeVisible();
-    const cartBefore = await readCartRaw(page);
     const dbBefore = await page.evaluate((key) => window.localStorage.getItem(key), KEYS.db);
     await logoutViaMenu(page);
     await expect(page).toHaveURL(/\/$/);
-    await expect(headerCartLink(page, 3)).toBeVisible();
-    expect(await readCartRaw(page)).toBe(cartBefore);
+    await expect.poll(() => readCartRaw(page)).toBeNull();
+    await expect(headerCartLink(page, null)).toBeVisible();
+    await expect(
+      page.getByRole("banner").getByRole("link", { name: /カート（\d+点）/ }),
+    ).toHaveCount(0);
+    expect(await page.evaluate((key) => window.localStorage.getItem(key), KEYS.db)).toBe(dbBefore);
+    await gotoHydrated(page, "/cart");
+    await expect(mainOf(page)).toContainText(copy.cart.empty);
+    await expect(mainOf(page).getByRole("listitem")).toHaveCount(0);
+    expect(await readCartRaw(page)).toBeNull();
     expect(await page.evaluate((key) => window.localStorage.getItem(key), KEYS.db)).toBe(dbBefore);
   });
 
@@ -223,7 +230,7 @@ test.describe("TC-AR-SES-007-302 the gate follows session changes made elsewhere
 });
 
 test.describe("TC-PG-AUTH-003-312 Header and Cart across Login and Logout (SPEC-050 8.2 / 8.3, 31 item 24 second half, FR-CRT-012)", () => {
-  test("Login then Logout: the Header switches both ways without a reload and the Cart is unchanged throughout", async ({
+  test("Login then Logout: the Header switches both ways without a reload; the Cart is kept on Login and cleared on Logout", async ({
     page,
   }) => {
     await open(page, "/account/login", cartEntries(CART));
@@ -244,8 +251,11 @@ test.describe("TC-PG-AUTH-003-312 Header and Cart across Login and Logout (SPEC-
     await expect(page).toHaveURL(/\/$/);
     await expect(headerLogin(page)).toBeVisible();
     await expect(headerMypage(page)).toHaveCount(0);
-    await expect(headerCartLink(page, 3)).toBeVisible();
-    expect(await readCartRaw(page)).toBe(cartRaw);
+    await expect.poll(() => readCartRaw(page)).toBeNull();
+    await expect(headerCartLink(page, null)).toBeVisible();
+    await expect(
+      page.getByRole("banner").getByRole("link", { name: /カート（\d+点）/ }),
+    ).toHaveCount(0);
   });
 
   test("a guest adds to the Cart, logs in from the Cart flow, and the lines are still there on /cart", async ({

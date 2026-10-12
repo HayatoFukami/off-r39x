@@ -31,26 +31,29 @@
         "TC-DEV-WEB-001-702",
         "TC-DEV-WEB-001-703",
         "TC-DEV-WEB-001-704",
-        "TC-DEV-WEB-001-807"
+        "TC-DEV-WEB-001-807",
+        "TC-DEV-DEP-006-005",
+        "TC-DEV-DEP-006-006",
+        "TC-DEV-DEP-006-007"
       ],
       "notes": "implementation mapping only; S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "DEV-DEP-002",
       "code_paths": ["scripts/check-import-boundaries.mts"],
-      "test_case_ids": ["TC-DEV-DEP-002-001"],
+      "test_case_ids": ["TC-DEV-DEP-002-001", "TC-DEV-DEP-006-007"],
       "notes": "implementation mapping only: web-no-db edge"
     },
     {
       "rule_id": "DEV-DEP-004",
       "code_paths": ["scripts/check-import-boundaries.mts", "packages/domain/src"],
-      "test_case_ids": ["TC-DEV-DEP-004-001"],
+      "test_case_ids": ["TC-DEV-DEP-004-001", "TC-DEV-DEP-006-005"],
       "notes": "implementation mapping only: domain-no-external edge"
     },
     {
       "rule_id": "DEV-DEP-005",
       "code_paths": ["scripts/check-import-boundaries.mts"],
-      "test_case_ids": ["TC-DEV-DEP-005-001"],
+      "test_case_ids": ["TC-DEV-DEP-005-001", "TC-DEV-DEP-005-002"],
       "notes": "implementation mapping only: workspace-cycle"
     },
     {
@@ -75,6 +78,9 @@
       ],
       "test_case_ids": [
         "TC-DEV-WEB-012-001",
+        "TC-DEV-DEP-006-005",
+        "TC-DEV-DEP-006-006",
+        "TC-DEV-DEP-006-007",
         "TC-DEV-WEB-012-101",
         "TC-DEV-WEB-012-102",
         "TC-DEV-WEB-012-201",
@@ -238,7 +244,8 @@
         "TC-PG-XFN-001-673",
         "TC-PG-XFN-001-681",
         "TC-PG-XFN-001-682",
-        "TC-PG-XFN-001-691"
+        "TC-PG-XFN-001-691",
+        "TC-PG-XFN-001-107"
       ],
       "notes": "implementation mapping only: state to presentation mapping and copy dictionary; S2 mock backend"
     },
@@ -404,7 +411,8 @@
         "apps/web/src/features/karaoke/karaoke-purchase-flow.ts",
         "apps/web/src/features/karaoke/use-karaoke-purchase.ts",
         "apps/web/src/features/karaoke/karaoke-slot-page.tsx",
-        "apps/web/src/features/public/route-params.ts"
+        "apps/web/src/features/public/route-params.ts",
+        "apps/web/src/presentation/copy/ja.ts"
       ],
       "test_case_ids": [
         "TC-PG-KRK-003-001",
@@ -441,7 +449,8 @@
         "TC-PG-KRK-003-661",
         "TC-PG-KRK-003-662",
         "TC-PG-KRK-003-663",
-        "TC-PG-KRK-003-664"
+        "TC-PG-KRK-003-664",
+        "TC-PG-KRK-003-615"
       ],
       "notes": "implementation mapping only: hold presentation; S2 mock backend"
     },
@@ -538,7 +547,8 @@
         "TC-PG-CRT-001-505",
         "TC-PG-CRT-001-507",
         "TC-PG-CRT-001-508",
-        "TC-PG-CRT-001-623"
+        "TC-PG-CRT-001-623",
+        "TC-PG-CRT-001-513"
       ],
       "notes": "implementation mapping only: distinct purchase unavailable reasons; S2 mock backend"
     },
@@ -631,7 +641,11 @@
         "TC-PG-CRT-001-611",
         "TC-PG-CRT-001-612",
         "TC-PG-CRT-001-613",
-        "TC-PG-CRT-001-614"
+        "TC-PG-CRT-001-614",
+        "TC-PG-CRT-001-407",
+        "TC-PG-CRT-001-427",
+        "TC-PG-CRT-001-615",
+        "TC-PG-CRT-001-624"
       ],
       "notes": "implementation mapping only: availability and money formatting; S2 mock backend"
     },
@@ -733,7 +747,7 @@
     {
       "rule_id": "FR-CRT-007",
       "code_paths": ["apps/web/src/mock/backend/mock-api.ts"],
-      "test_case_ids": ["TC-BR-ORD-014-101"],
+      "test_case_ids": ["TC-BR-ORD-014-101", "TC-BR-ORD-014-110", "TC-BR-ORD-014-111"],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
@@ -759,7 +773,9 @@
         "TC-BR-ORD-014-102",
         "TC-PG-CRT-001-622",
         "TC-PG-CRT-001-612",
-        "TC-PG-CRT-001-614"
+        "TC-PG-CRT-001-614",
+        "TC-BR-ORD-014-110",
+        "TC-BR-ORD-014-111"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
@@ -812,7 +828,7 @@
     {
       "rule_id": "FR-XFN-012",
       "code_paths": ["apps/web/src/mock/backend/mock-api.ts"],
-      "test_case_ids": ["TC-PG-CRT-001-103"],
+      "test_case_ids": ["TC-PG-CRT-001-103", "TC-PG-XFN-001-107"],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
@@ -1424,7 +1440,9 @@
         "TC-PG-CRT-001-532",
         "TC-PG-CRT-001-533",
         "TC-PG-CRT-001-534",
-        "TC-SEC-WEB-009-602"
+        "TC-SEC-WEB-009-602",
+        "TC-PG-TKT-001-509",
+        "TC-PG-TKT-001-510"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
@@ -1916,7 +1934,9 @@
         "TC-AR-SES-009-101",
         "TC-PG-PUB-001-304",
         "TC-PG-AUTH-003-311",
-        "TC-PG-AUTH-003-312"
+        "TC-PG-AUTH-003-312",
+        "TC-PG-CRT-001-523",
+        "TC-PG-CRT-001-426"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
@@ -1943,7 +1963,10 @@
         "TC-PG-CRT-001-501",
         "TC-PG-CRT-001-504",
         "TC-PG-CRT-001-535",
-        "TC-PG-CRT-001-651"
+        "TC-PG-CRT-001-651",
+        "TC-PG-CRT-001-406",
+        "TC-PG-CRT-001-425",
+        "TC-PG-TKT-001-510"
       ],
       "notes": "implementation mapping only: UI mock shell (not API/DB/provider coverage)"
     },
@@ -2167,7 +2190,8 @@
         "TC-PG-KRK-003-613",
         "TC-PG-KRK-003-614",
         "TC-PG-KRK-003-642",
-        "TC-PG-KRK-003-662"
+        "TC-PG-KRK-003-662",
+        "TC-PG-KRK-003-615"
       ],
       "notes": "implementation mapping only: S4 public pages (UI mock, not API/DB/provider coverage)"
     },
@@ -2256,14 +2280,20 @@
         "apps/web/src/features/cart/cart-store.ts",
         "apps/web/src/features/purchase/purchase-again.ts",
         "apps/web/src/features/purchase/purchase-status-page.tsx",
-        "apps/web/src/features/purchase/use-cart-purchase.ts"
+        "apps/web/src/features/purchase/use-cart-purchase.ts",
+        "apps/web/src/features/cart/use-cart.ts",
+        "apps/web/src/features/purchase/cart-purchase-flow.ts"
       ],
       "test_case_ids": [
         "TC-PG-CRT-001-404",
         "TC-PG-CRT-001-405",
         "TC-PG-XFN-001-631",
         "TC-PG-XFN-001-632",
-        "TC-PG-XFN-001-671"
+        "TC-PG-XFN-001-671",
+        "TC-PG-CRT-001-407",
+        "TC-PG-CRT-001-427",
+        "TC-PG-CRT-001-615",
+        "TC-PG-CRT-001-624"
       ],
       "notes": "implementation mapping only: S5 cart / entry sales / goods detail (UI mock, not API/DB/provider coverage)"
     },
@@ -2299,13 +2329,22 @@
       "rule_id": "FR-CRT-012",
       "code_paths": [
         "apps/web/src/features/cart/cart-store.ts",
-        "apps/web/src/features/cart/use-cart.ts"
+        "apps/web/src/features/cart/use-cart.ts",
+        "apps/web/src/features/shell/site-header.tsx",
+        "apps/web/src/auth/session-provider.tsx",
+        "apps/web/src/auth/session-equality.ts",
+        "apps/web/src/features/entry/entry-page.tsx",
+        "apps/web/src/features/cart/cart-page.tsx"
       ],
       "test_case_ids": [
         "TC-PG-CRT-001-424",
         "TC-PG-CRT-001-462",
         "TC-PG-CRT-001-502",
-        "TC-PG-CRT-001-523"
+        "TC-PG-CRT-001-523",
+        "TC-PG-CRT-001-426",
+        "TC-PG-TKT-001-412",
+        "TC-PG-TKT-001-509",
+        "TC-PG-CRT-001-513"
       ],
       "notes": "implementation mapping only: S5 cart / entry sales / goods detail (UI mock, not API/DB/provider coverage)"
     },

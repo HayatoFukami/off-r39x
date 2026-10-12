@@ -1,9 +1,19 @@
 // DEV-DEP-006: mechanical gate for forbidden import edges.
-// Runs under plain `node` (type stripping): erasable TypeScript syntax only, node: built-ins only.
+// Runs under plain `node` (type stripping): erasable TypeScript syntax only. Imports are extracted with the
+// TypeScript AST, so `typescript` (root devDependency) is required; everything else is `node:` built-ins only.
 // Usage: node scripts/check-import-boundaries.mts [--root <dir>]
-import { readdirSync, readFileSync, statSync } from "node:fs";
+// Known limitations:
+//   - Files directly under packages/* are not scanned (only packages/*/src).
+//   - Under apps/*, only app/, src/ and the files directly in apps/<app>/ are scanned; other subdirectories
+//     (for example apps/web/scripts/**) are not.
+//   - Unresolvable dynamic import() / require() (interpolated template, non-literal argument) is reported as
+//     a WARNING only and is not a violation.
+//   - .cts and .d.* files are not scanned.
+//   - Wiring this script into CI is outside the scope of this script.
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 
 interface Violation {
   readonly rule: string;
@@ -17,7 +27,18 @@ interface ImportRef {
   readonly line: number;
 }
 
-const SOURCE_EXT = /\.(ts|tsx|mts)$/;
+interface Extraction {
+  readonly refs: ImportRef[];
+  readonly unresolved: number[];
+}
+
+interface Warning {
+  readonly file: string;
+  readonly line: number;
+}
+
+const SOURCE_EXT = /\.(ts|tsx|mts|js|jsx|mjs|cjs)$/;
+const DECL_EXT = /\.d\.[mc]?ts$/;
 const WEB = "apps/web";
 
 function parseRoot(argv: readonly string[]): string {
@@ -45,6 +66,10 @@ function listDirs(dir: string): string[] {
   }
 }
 
+function isSourceFile(name: string): boolean {
+  return SOURCE_EXT.test(name) && !DECL_EXT.test(name);
+}
+
 function walk(dir: string): string[] {
   let names: string[];
   try {
@@ -56,82 +81,83 @@ function walk(dir: string): string[] {
     if (name === "node_modules" || name === ".next") return [];
     const full = join(dir, name);
     if (statSync(full).isDirectory()) return walk(full);
-    return SOURCE_EXT.test(name) && !name.endsWith(".d.ts") ? [full] : [];
+    return isSourceFile(name) ? [full] : [];
   });
+}
+
+// Source files directly under a directory (not recursive).
+function topLevelSourceFiles(dir: string): string[] {
+  try {
+    return readdirSync(dir)
+      .filter((name) => isSourceFile(name) && statSync(join(dir, name)).isFile())
+      .map((name) => join(dir, name));
+  } catch {
+    return [];
+  }
 }
 
 function collectSourceFiles(root: string): string[] {
   const roots: string[] = [];
+  const files: string[] = [];
   for (const app of listDirs(join(root, "apps"))) {
     roots.push(join(root, "apps", app, "app"), join(root, "apps", app, "src"));
+    files.push(...topLevelSourceFiles(join(root, "apps", app)));
   }
   for (const pkg of listDirs(join(root, "packages"))) {
     roots.push(join(root, "packages", pkg, "src"));
   }
-  return roots.flatMap(walk).sort();
+  return [...roots.flatMap(walk), ...files].sort();
 }
 
-// Replaces comments with spaces (newlines kept) so line numbers stay stable.
-function stripComments(source: string): string {
-  let out = "";
-  let i = 0;
-  let quote: string | null = null;
-  while (i < source.length) {
-    const ch = source.charAt(i);
-    const next = source.charAt(i + 1);
-    if (quote !== null) {
-      out += ch;
-      if (ch === "\\") {
-        out += next;
-        i += 2;
-        continue;
-      }
-      if (ch === quote) quote = null;
-      i += 1;
-    } else if (ch === '"' || ch === "'" || ch === "`") {
-      quote = ch;
-      out += ch;
-      i += 1;
-    } else if (ch === "/" && next === "/") {
-      while (i < source.length && source.charAt(i) !== "\n") {
-        out += " ";
-        i += 1;
-      }
-    } else if (ch === "/" && next === "*") {
-      out += "  ";
-      i += 2;
-      while (i < source.length && !(source.charAt(i) === "*" && source.charAt(i + 1) === "/")) {
-        out += source.charAt(i) === "\n" ? "\n" : " ";
-        i += 1;
-      }
-      out += "  ";
-      i += 2;
-    } else {
-      out += ch;
-      i += 1;
-    }
-  }
-  return out;
+function scriptKindOf(file: string): ts.ScriptKind {
+  if (file.endsWith(".tsx")) return ts.ScriptKind.TSX;
+  if (file.endsWith(".jsx")) return ts.ScriptKind.JSX;
+  if (/\.(js|mjs|cjs)$/.test(file)) return ts.ScriptKind.JS;
+  return ts.ScriptKind.TS;
 }
 
-function extractImports(source: string): ImportRef[] {
-  const text = stripComments(source);
-  const patterns = [
-    /\b(?:import|export)\b[^;'"`]*?\bfrom\s*(["'])([^"'\n]+)\1/g,
-    /\bimport\s*(["'])([^"'\n]+)\1/g,
-    /\bimport\s*\(\s*(["'])([^"'\n]+)\1\s*\)/g,
-  ];
-  const found = new Map<number, ImportRef>();
-  for (const pattern of patterns) {
-    for (const match of text.matchAll(pattern)) {
-      const specifier = match[2];
-      if (specifier === undefined) continue;
-      const at = match.index + match[0].lastIndexOf(specifier);
-      const line = text.slice(0, at).split("\n").length;
-      found.set(at, { specifier, line });
+function extractImports(file: string, text: string): Extraction {
+  const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, scriptKindOf(file));
+  const refs: ImportRef[] = [];
+  const unresolved: number[] = [];
+  const lineOf = (node: ts.Node): number =>
+    sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
+  const addLiteral = (literal: ts.Node): void => {
+    if (ts.isStringLiteralLike(literal)) {
+      refs.push({ specifier: literal.text, line: lineOf(literal) });
     }
-  }
-  return [...found.values()];
+  };
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
+      if (node.moduleSpecifier !== undefined && ts.isStringLiteral(node.moduleSpecifier)) {
+        addLiteral(node.moduleSpecifier);
+      }
+    } else if (ts.isImportEqualsDeclaration(node)) {
+      const ref = node.moduleReference;
+      if (ts.isExternalModuleReference(ref) && ts.isStringLiteral(ref.expression)) {
+        addLiteral(ref.expression);
+      }
+    } else if (ts.isImportTypeNode(node)) {
+      if (ts.isLiteralTypeNode(node.argument) && ts.isStringLiteral(node.argument.literal)) {
+        addLiteral(node.argument.literal);
+      }
+    } else if (ts.isCallExpression(node)) {
+      const isDynamicImport = node.expression.kind === ts.SyntaxKind.ImportKeyword;
+      const isRequire = ts.isIdentifier(node.expression) && node.expression.text === "require";
+      if (isDynamicImport || (isRequire && node.arguments.length >= 1)) {
+        const first = node.arguments[0];
+        if (first !== undefined && ts.isStringLiteralLike(first)) {
+          addLiteral(first);
+        } else {
+          unresolved.push(lineOf(node));
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return { refs, unresolved };
 }
 
 // Returns the repo-relative path of the import target (extension stripped), or null for bare specifiers.
@@ -210,10 +236,69 @@ interface WorkspacePackage {
   readonly deps: readonly string[];
 }
 
-function readWorkspacePackages(root: string): WorkspacePackage[] {
+const DEFAULT_WORKSPACE_PATTERNS = ["apps/*", "packages/*", "tests"];
+const EXACT_DIR = /^[A-Za-z0-9._@-]+(\/[A-Za-z0-9._@-]+)*$/;
+
+function failWorkspace(reason: string, detail: string): never {
+  process.stderr.write(`ERROR pnpm-workspace.yaml: ${reason} ${detail}\n`);
+  process.exit(2);
+}
+
+function isSafeDir(path: string): boolean {
+  return EXACT_DIR.test(path) && path.split("/").every((seg) => seg !== "." && seg !== "..");
+}
+
+// Minimal parser for the `packages:` list of pnpm-workspace.yaml. Fails closed (exit 2) on anything else.
+function readWorkspacePatterns(root: string): string[] {
+  const file = join(root, "pnpm-workspace.yaml");
+  if (!existsSync(file)) return DEFAULT_WORKSPACE_PATTERNS;
+  let text: string;
+  try {
+    text = readFileSync(file, "utf8");
+  } catch {
+    return failWorkspace("unreadable file", file);
+  }
+  const patterns: string[] = [];
+  let found = false;
+  let inPackages = false;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.replace(/(^|\s)#.*$/, "");
+    if (line.trim() === "") continue;
+    if (!/^[\s-]/.test(line)) {
+      inPackages = false;
+      if (/^packages\s*:/.test(line)) {
+        if (!/^packages\s*:\s*$/.test(line)) {
+          return failWorkspace("unsupported syntax", line.trim());
+        }
+        found = true;
+        inPackages = true;
+      }
+      continue;
+    }
+    if (!inPackages) continue;
+    const item = /^\s*-\s+(.+?)\s*$/.exec(line)?.[1];
+    if (item === undefined) return failWorkspace("unsupported syntax", line.trim());
+    const unquoted = item.replace(/^(["'])(.*)\1$/, "$2");
+    const pattern = unquoted.replace(/^\.\//, "").replace(/\/$/, "");
+    const base = pattern.endsWith("/*") ? pattern.slice(0, -2) : pattern;
+    if (!isSafeDir(base)) return failWorkspace("unsupported pattern", pattern);
+    patterns.push(pattern);
+  }
+  if (!found) return failWorkspace("missing packages", file);
+  return patterns;
+}
+
+function readWorkspacePackages(root: string, patterns: readonly string[]): WorkspacePackage[] {
   const manifests = [
-    ...listDirs(join(root, "apps")).map((d) => join(root, "apps", d, "package.json")),
-    ...listDirs(join(root, "packages")).map((d) => join(root, "packages", d, "package.json")),
+    ...new Set(
+      patterns.flatMap((pattern) =>
+        pattern.endsWith("/*")
+          ? listDirs(join(root, pattern.slice(0, -2))).map((d) =>
+              join(root, pattern.slice(0, -2), d, "package.json"),
+            )
+          : [join(root, pattern, "package.json")],
+      ),
+    ),
   ];
   const packages: WorkspacePackage[] = [];
   for (const manifest of manifests) {
@@ -282,24 +367,27 @@ function findCycles(packages: readonly WorkspacePackage[]): Violation[] {
 
 function main(): void {
   const root = parseRoot(process.argv.slice(2));
+  const patterns = readWorkspacePatterns(root);
+  const packages = readWorkspacePackages(root, patterns);
   const violations: Violation[] = [];
+  const warnings: Warning[] = [];
 
   for (const file of collectSourceFiles(root)) {
-    const refs = extractImports(readFileSync(file, "utf8"));
+    const rel = posix(relative(root, file));
+    const { refs, unresolved } = extractImports(file, readFileSync(file, "utf8"));
     for (const ref of refs) {
       const rule = classify(root, file, ref);
       if (rule !== null) {
-        violations.push({
-          rule,
-          file: posix(relative(root, file)),
-          line: ref.line,
-          specifier: ref.specifier,
-        });
+        violations.push({ rule, file: rel, line: ref.line, specifier: ref.specifier });
       }
     }
+    for (const line of unresolved) warnings.push({ file: rel, line });
   }
-  violations.push(...findCycles(readWorkspacePackages(root)));
+  violations.push(...findCycles(packages));
 
+  for (const w of warnings) {
+    process.stdout.write(`WARNING unresolved-dynamic-import ${w.file}:${w.line}\n`);
+  }
   if (violations.length === 0) {
     process.stdout.write("OK import boundaries\n");
     return;

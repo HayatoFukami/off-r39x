@@ -158,7 +158,7 @@ describe("TC-PG-CRT-001-651 the Cart page wires the purchase start through one h
     expect(cartPage).not.toMatch(/\b(startCartPurchase|startCheckout|location\.assign)\b/);
   });
 
-  it("the hook uses the three pure decisions, a fresh idempotency key per attempt and removeLines for the included lines", () => {
+  it("the hook uses the three pure decisions, a fresh idempotency key per attempt and subtractLines over orderedLines (only the ordered quantities leave the Cart)", () => {
     const hook = stripComments(read("src/features/purchase/use-cart-purchase.ts"));
     expect(hook).toMatch(/^\s*["']use client["']/);
     expect(hook).toMatch(/planProceed/);
@@ -168,7 +168,9 @@ describe("TC-PG-CRT-001-651 the Cart page wires the purchase start through one h
     expect(hook).toMatch(/startCheckout/);
     expect(hook).toMatch(/idempotencyKey/);
     expect(hook).toMatch(/crypto\.randomUUID/);
-    expect(hook).toMatch(/removeLines/);
+    expect(hook).toMatch(/subtractLines/);
+    expect(hook).toMatch(/orderedLines/);
+    expect(hook).not.toMatch(/\bremoveLines\s*\(/);
     expect(hook).toMatch(/describeRejections/);
     expect(hook).not.toMatch(/startKaraokePurchase/);
     expect(hook).not.toMatch(/from\s+["'][^"']*\/mock\//);
