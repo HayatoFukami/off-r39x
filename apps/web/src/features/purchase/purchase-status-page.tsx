@@ -4,6 +4,7 @@ import { assertNever } from "@off-r39x/domain";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { applyIfLatest, invalidateRequests } from "../../api-client/latest-request";
 import { useApi } from "../../api-client/provider";
 import { settleRead } from "../../api-client/settle-read";
 import type { CheckoutStart, OrderDetail, Ref } from "../../api-client/types";
@@ -23,6 +24,7 @@ import {
 
 // PG-XFN-001 container (SPEC-050 16, 21, 22, 26.2). The Order is read once per mount and once per
 // "recheck" press; the page creates no Order and confirms nothing: only the server state is shown.
+// Only the last-started read is shown: an older read that finishes later is dropped.
 
 // PG-MYP-004 shows the same outcome with its own heading, subject, model and a way back (SPEC-050 18.4).
 export type PurchaseStatusVariant = {
@@ -57,19 +59,18 @@ export function PurchaseStatusPage({
   const shown = useRef<OrderDetail | null>(null);
   shown.current = read.kind === "ok" ? read.data : shown.current;
 
+  // Every read of the Order (mount, reload, recheck, retry follow-up) shares one counter.
+  const requests = useRef(0);
+
   useEffect(() => {
-    let active = true;
-    void settleRead(api.self.getOrder(orderRef)).then((value) => {
-      if (active) setRead(value);
-    });
-    return () => {
-      active = false;
-    };
+    const counter = requests;
+    void applyIfLatest(counter, settleRead(api.self.getOrder(orderRef)), setRead);
+    return () => invalidateRequests(counter);
   }, [api, orderRef]);
 
   const reload = useCallback((): void => {
     setRead({ kind: "loading" });
-    void settleRead(api.self.getOrder(orderRef)).then((value) => setRead(value));
+    void applyIfLatest(requests, settleRead(api.self.getOrder(orderRef)), setRead);
   }, [api, orderRef]);
 
   const recheck = async (): Promise<void> => {
@@ -77,24 +78,34 @@ export function PurchaseStatusPage({
     setPending("recheck_status");
     setAlertMessage(null);
     setLiveMessage(copy.purchase.recheck.inProgress);
-    const next = await settleRead(api.self.getOrder(orderRef));
-    setPending(null);
-    if (next.kind === "ok") {
-      setRead(next);
-      setLiveMessage(
-        previous === null
-          ? copy.purchase.recheck.unchanged
-          : recheckAnnouncement(previous.state, next.data.state),
-      );
-      return;
+    const applied = await applyIfLatest(
+      requests,
+      settleRead(api.self.getOrder(orderRef)),
+      (next) => {
+        setPending(null);
+        if (next.kind === "ok") {
+          setRead(next);
+          setLiveMessage(
+            previous === null
+              ? copy.purchase.recheck.unchanged
+              : recheckAnnouncement(previous.state, next.data.state),
+          );
+          return;
+        }
+        if (next.kind === "not_found") {
+          setRead(next);
+          return;
+        }
+        // The Order that was shown stays; only the failure is reported.
+        setLiveMessage("");
+        setAlertMessage(copy.purchase.recheck.failed);
+      },
+    );
+    // A superseded result is dropped without any message.
+    if (!applied) {
+      setPending(null);
+      setLiveMessage("");
     }
-    if (next.kind === "not_found") {
-      setRead(next);
-      return;
-    }
-    // The Order that was shown stays; only the failure is reported.
-    setLiveMessage("");
-    setAlertMessage(copy.purchase.recheck.failed);
   };
 
   const retryCheckout = async (): Promise<void> => {
@@ -110,11 +121,20 @@ export function PurchaseStatusPage({
       return;
     }
     // Anything else reads the same Order again: no blind retry, no new Order.
-    const next = await settleRead(api.self.getOrder(orderRef));
-    setPending(null);
-    setLiveMessage("");
-    if (next.kind === "ok" || next.kind === "not_found") setRead(next);
-    if (result.kind === "start_failed") setAlertMessage(copy.purchase.checkoutStartFailed);
+    const applied = await applyIfLatest(
+      requests,
+      settleRead(api.self.getOrder(orderRef)),
+      (next) => {
+        setPending(null);
+        setLiveMessage("");
+        if (next.kind === "ok" || next.kind === "not_found") setRead(next);
+        if (result.kind === "start_failed") setAlertMessage(copy.purchase.checkoutStartFailed);
+      },
+    );
+    if (!applied) {
+      setPending(null);
+      setLiveMessage("");
+    }
   };
 
   const purchaseAgain = (): void => {
