@@ -324,6 +324,8 @@ export function describeContinuation(intent: ContinuationIntent | null): Continu
 
 ### 6.6 AuthGate 配下（`/mypage`）
 
+> **S8 で置き換え済み**（`tests/contracts/s8-mypage.md` §10）: `/mypage` は PG-MYP-001（Overview）になり、`copy.mypage.protectedMarker` は削除された。S6 のテストの「保護 Content の目印」は seed の表示名（`MARKER_PROTECTED_TEXT` = `デモ太郎`）に置き換わった。以下の記述のうち `protectedMarker` に関する部分は本注記が優先する。
+
 - `/mypage`（S6 placeholder）: `h1` = `copy.mypage.heading`、本文に `copy.mypage.protectedMarker`。**Authenticated かつ email 確認済み**のときだけ描画される。
 - Guest が `/mypage` を開く → `/account/login?continue=mypage` へ redirect（`copy.mypage.heading` / `protectedMarker` を一度も DOM に出さない）。
 - email 未確認の Authenticated（`unverified@example.com`）→ `/account/email-verification?continue=mypage` へ redirect。

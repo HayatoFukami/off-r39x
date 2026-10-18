@@ -264,7 +264,7 @@ DOM（`CartPurchaseFeedback`。`ready` / `unavailable` の Cart で表示）:
 ## 6. PG-XFN-001 Purchase Status（`/purchase/orders/[orderRef]`）
 
 - route 殻（Server Component）: async `params` を `await`。`parseOrderRef` が null → **`AccessDeniedView`** を直接描画する（HTTP 200。`notFound()` にしない。存在の有無を確定させない。`listHref = "/mypage/orders"`、`listLabel = copy.accessDenied.ordersLink`）。それ以外は `<PurchaseStatusPage orderRef={...} />`。AuthGate（`(self)/layout.tsx`）の内側。
-- `PurchaseStatusPage`（client container）: AuthGate が allow した後の mount で `self.getOrder(orderRef)` を**ちょうど 1 回**読む（mount ごと。S2 契約 §16-4: `confirm_after_recheck` の初回 read は呼び出し回数で数える）。「状態を再確認」の press ごとに 1 回だけ読む。再読込（reload）は同じ Order を読み直すだけで新しい Order を作らない（§22）。`buildPurchaseStatusModel` で整形する。
+- `PurchaseStatusPage`（client container）: AuthGate が allow した後の mount で `self.getOrder(orderRef)` を**ちょうど 1 回**読む（mount ごと。S2 契約 §16-4: `confirm_after_recheck` の初回 read は呼び出し回数で数える）。「状態を再確認」の press ごとに 1 回だけ読む。再読込（reload）は同じ Order を読み直すだけで新しい Order を作らない（§22）。mount / reload / 再確認 / 支払い開始の再試行後の読み直しは `api-client/latest-request.ts` の `applyIfLatest` で順序づけ、**最後に開始した read だけが画面へ反映される**（unmount・dependency 変更では `invalidateRequests` する。DEV-WEB-009）。読む回数（mount ごとに 1 回、press ごとに 1 回）は変わらない。`buildPurchaseStatusModel` で整形する。
 - **Ownership（§26.2 / §16.8）**: read が `not_found` なら、データを描画する前に `AccessDeniedView` を表示する（redirect しない。`h1` = `copy.accessDenied.title`）。他者所有 ref と不存在 ref で、`main` のテキストが**完全に同じ**になる。Order 内容・state・Purpose・購入者・存在の有無を一切出さない。
 
 ### 6.1 DOM
@@ -307,11 +307,11 @@ DOM（`CartPurchaseFeedback`。`ready` / `unavailable` の Cart で表示）:
 | `tests/unit/web/purchase/purchase-status-model.test.ts` | §3.3 |
 | `tests/unit/web/purchase/purchase-again.test.ts` | §3.4 |
 | `tests/unit/web/purchase/s7a-copy.test.ts` | §2 |
-| `tests/unit/web/purchase/s7a-static.test.ts` | §1 と静的検査（構成、route 殻、直書き、依存方向、mock Checkout が port を呼ばない、Cart page の結線） |
+| `tests/unit/web/purchase/s7a-static.test.ts` | §1 と静的検査（構成、route 殻、直書き、依存方向、mock Checkout が port を呼ばない、Cart page の結線、TC-PG-XFN-001-651 の全 Order read が `applyIfLatest` を通ること） |
 | `tests/unit/web/mock/seeded-order-checkout.test.ts` | mock の忠実度: seed 済み `PREPARED` Order の再試行（§6.2 の前提。S2 の拡張確認） |
 | `tests/e2e/purchase-cart-start.spec.ts` | §4（E2E 3 / 7 の前半 / 24 後半 / 26。TC-PG-CRT-001-615: 応答待ちの編集と Order に含めた数量だけを Cart から外す規則、同 tab の増減・削除、別 tab の編集、Cart write 失敗でも Checkout へ進む） |
 | `tests/e2e/mock-checkout.spec.ts` | §5（PAY-BRW-001〜003） |
-| `tests/e2e/purchase-status.spec.ts` | §6.1 / §6.2（E2E 7 / 8 / 9 / 10 / 11 / 19 XFN / 27） |
+| `tests/e2e/purchase-status.spec.ts` | §6.1 / §6.2（E2E 7 / 8 / 9 / 10 / 11 / 19 XFN / 27）。TC-PG-XFN-001-669: 最後に開始した read だけの反映（遅い read・連続操作・read 中の離脱・unavailable 後の遅い retry。helper は `tests/harness/browser/order-reads.ts`） |
 | `tests/e2e/purchase-again.spec.ts` | §6.2 もう一度購入する（E2E 12） |
 | `tests/e2e/purchase-ownership.spec.ts` | §6 Ownership、§6.3、§7 の保護（E2E 20 の XFN-001 部分、§26.2） |
 | `tests/e2e/purchase-common.spec.ts` | §7 |
@@ -333,3 +333,4 @@ S5 の以下のテストは S7a の結線に合わせて**更新済み**（購�
 11. **OrderOutcome の置き場所**: Design §6 は PG-XFN-001 / PG-MYP-004 の共有部品とする。→ `features/purchase/order-outcome.tsx`（presentation から features への import は禁止のため）。S8 の Mypage feature が import する（features → features は禁止 edge に無い）。
 12. **E2E 7 の「Mypage の注文一覧」**: S7a は Mypage 一覧 UI を持たない。→ mock DB の `orders` の件数と内容（同じ Order が 1 件、重複なし）で確認する。一覧 UI での確認は S8 の E2E 15 が担う。
 12. **検証 round 1 の訂正**: (a) `copy.cart.purchase.unavailable` は `rejectedTitle`（「購入は開始されていません」）を部分文字列として含むため、`unavailable` の alert が `rejectedTitle` を含まないという期待は誤りだった。区別は `rejectedBody` を含まないことで行う。(b) Login 画面の継続案内「購入状況の確認」が `copy.purchase.heading`（購入状況）を含むため、ゲストの保護 Content 監視の対象を seed Order の明細名に改めた（`copy.purchase.outcomeHeading`「現在の状態」も Login の revalidate 文に含まれるため不可）。(c) Cart の live region は処理中だけ描画する（§4 を訂正。SPEC-050 §25 が要求するのは AWAITING_PAYMENT → CONFIRMED の通知領域であり、Cart の常設は要求していない）。
+13. **破棄された read の後始末（レビュー指摘 F2、request-ID 方式）**: 再確認 / 支払い開始の再試行は、自分の応答が「最後に開始した read」でなくなる（unmount、dependency 変更、後から開始した別の read）ことがある。→ 破棄された応答は Order も alert も変えず、**pending は必ず解除し（button は有効に戻り `aria-busy` が外れる）、live region を空にする**（「確認しています」を残さない）。破棄された read は alert（`recheck.failed` / `checkoutStartFailed`）を出さない。UI は pending 中に他の button を押せず（`OrderOutcome` が全 button を disabled にする）、reload button は unavailable のときだけなので、2 つの read の重なりは UI からは作れない。E2E（TC-PG-XFN-001-669 / TC-PG-MYP-004-707）は遅い read・連続操作・離脱の観測可能な帰結を検証し、順序の規則自体は Vitest（TC-DEV-WEB-009-601）で検証する。jsdom / testing-library は導入しない（GitHub Issue #13）。
