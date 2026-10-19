@@ -13628,7 +13628,30 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "Header menu replaces the drawer (disclosure, no dialog), the floating button is fixed with safe-area inset and wired in layout with viewport-fit=cover, the badge is bottom-left, reveal CSS has a reduced-motion override"
+        "Header menu replaces the drawer (disclosure, no dialog), the floating button is fixed with safe-area inset and wired in layout with viewport-fit=cover, the badge is bottom-left, reveal CSS has a reduced-motion override, the site name link guards its scroll with isPlainPrimaryClick"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-PUB-001-244",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-PUB-001", "SPEC-050-8.5", "SPEC-050-25", "TST-UNT-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Static source inspection / pure function (no browser); contract tests/contracts/s10-header-float-reveal.md",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "isPlainPrimaryClick is true only for button 0 with no Control / Meta / Shift / Alt; any modifier or a non-primary button is false"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -13711,14 +13734,14 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md",
+      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md; modified-click case emulates prefers-reduced-motion and cancels the browser default in a test-only window listener",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "Site name links to / (client-side), and on / scrolls to the top without reload (click, Enter, reduced motion immediate)"
+        "Site name links to / (client-side), and on / scrolls to the top without reload (click, Enter, reduced motion immediate); a click with Control / Meta / Shift / Alt is not default-prevented by the app and does not scroll"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
