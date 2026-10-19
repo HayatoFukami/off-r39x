@@ -28,6 +28,7 @@
 
 | パス | 種別 | export |
 |---|---|---|
+| `apps/web/src/api-client/latest-request.ts` | 純粋（何も import しない。timer / 乱数 / 時計 / console を使わない。`features/mypage` と `features/purchase` が共有するため `api-client` に置く。§11-18） | `RequestCounter`（`{ current: number }`）, `applyIfLatest`, `invalidateRequests` |
 | `apps/web/src/config/mypage-routes.ts` | 純粋（react / next を import しない。型 import のみ） | `parseTicketRef`, `parseReservationRef`, `parseGoodsItemRef`, `MYPAGE_PATHS`, `MypageNavKey`, `MYPAGE_NAV_KEYS`, `entryQrHref`, `reservationQrHref`, `currentNavKey` |
 | `apps/web/src/features/mypage/order-list-model.ts` | 純粋 | `OrderListRow`, `buildOrderListModel` |
 | `apps/web/src/features/mypage/order-detail-model.ts` | 純粋 | `buildMypageOrderDetailModel` |
@@ -35,7 +36,7 @@
 | `apps/web/src/features/mypage/reservation-model.ts` | 純粋 | `ReservationRow`, `buildReservationListModel`, `ReservationDetailModel`, `buildReservationDetailModel` |
 | `apps/web/src/features/mypage/goods-item-model.ts` | 純粋 | `GoodsItemRow`, `buildGoodsItemListModel`, `GoodsItemDetailModel`, `buildGoodsItemDetailModel` |
 | `apps/web/src/features/mypage/qr-model.ts` | 純粋 | `QrPageModel`, `buildEntryQrModel`, `buildKaraokeQrModel` |
-| `apps/web/src/features/mypage/profile-model.ts` | 純粋 | `ProfileModel`, `buildProfileModel`, `ProfileSaveStep`, `interpretProfileSave` |
+| `apps/web/src/features/mypage/profile-model.ts` | 純粋 | `ProfileModel`, `buildProfileModel`, `ProfileSaveStep`, `interpretProfileSave`, `resolveInputAfterSave` |
 | `apps/web/src/features/mypage/overview-model.ts` | 純粋 | `OverviewInput`, `MypageOverviewModel`, `buildMypageOverviewModel` |
 | `apps/web/src/features/mypage/mypage-nav.tsx` | client view | `MypageNav` |
 | `apps/web/src/features/mypage/mypage-overview-page.tsx` | client container | `MypageOverviewPage` |
@@ -394,10 +395,12 @@ export type ProfileSaveStep =
   | { kind: "invalid"; message: string }
   | { kind: "failed"; message: string };
 export function interpretProfileSave(result: ProfileUpdate): ProfileSaveStep;
+export function resolveInputAfterSave(input: { current: string; submitted: string; saved: string }): string;
 ```
 
 - `buildProfileModel`: `ok` → ready。`not_found` / `unavailable` / `auth_required` / `email_unverified` → `unavailable`（**別 Profile へ fallback しない**。SPEC-050 §18.2 Failure。`denied` を持たない）。
 - `interpretProfileSave`: `saved` → `{ kind: "saved", displayName: profile.displayName }`（server が確定した値）。`validation_failed` → `{ kind: "invalid", message: copy.mypage.profile.error.required }`。`unavailable` → `{ kind: "failed", message: copy.mypage.profile.error.unavailable }`。exhaustive switch。
+- `resolveInputAfterSave`（TC-PG-MYP-002-623）: 保存成功後の入力欄の値。`current === submitted`（送信後に打ち直していない）なら `saved`（server が確定した値。正規化されていればその値）、そうでなければ `current`（送信後に打った値を上書きしない。空にした場合は空のまま）。
 
 ### 3.9 `overview-model.ts`
 
@@ -436,6 +439,7 @@ export function buildMypageOverviewModel(input: OverviewInput): MypageOverviewMo
 - unavailable: `h1` + `role="alert"` + `copy.pageState.unavailable(subject)` + `<button type="button">` `copy.pageState.retry`（その read の再取得だけ。Empty / Access Denied に変換しない）。Overview は Section ごとに同じ表示（§4.2）。
 - 一覧（Order / Entry Ticket / Karaoke / Goods）: 取得成功で 0 件のときだけ `copy.mypage.*.empty`（`<p>`。alert / button なし）。1 件以上のとき `<ul>` の各 `<li>` が 1 行。**Mypage nav は `<ul>` / `<li>` を使わない**（`main` 内の `listitem` = ページの行だけ）。
 - 行の状態は label テキストを持ち、同一行に別の状態 label を出さない。
+- **read は最後に開始したものだけが画面へ反映される**（`useRead` は mount / dependency 変更 / retry の read を `applyIfLatest` で順序づけ、unmount と dependency 変更で `invalidateRequests` する。DEV-WEB-009、SPEC-050 §9.1 / §22）。unmount 後・dependency 変更後に届いた古い応答は state に入らない。read の回数（mount ごとに 1 回、retry の押下ごとに 1 回）は変わらない。
 
 ### 4.2 Mypage ローカルナビゲーション（`MypageNav`、`mypage/layout.tsx`）
 
@@ -465,10 +469,10 @@ export function buildMypageOverviewModel(input: OverviewInput): MypageOverviewMo
   - 状態表示: `<div role="status">`（常に存在。初期は空）に、入力が保存済み値と異なるとき `status.dirty`（未保存）、送信中 `status.saving`、成功後 `status.saved`。
   - Link `passwordReset` → `/account/password-reset`（Password 変更を Profile 編集として扱わない。`passwordNote` を併記）。
 - 送信: **UI は値が空かどうかを自分で判定せず**、入力値をそのまま `self.updateProfile({ displayName })` に渡す（server が権威。Display name の最大文字数は定めない = UCR-100-001）。結果は `interpretProfileSave`:
-  - `saved` → status `status.saved`、入力値を保存値に更新（dirty ではなくなる）。mock DB の displayName が更新され、reload 後も保持される。他の User は変わらない。
+  - `saved` → 保存値 = server が確定した値。入力値は `resolveInputAfterSave`（§3.8）で決める: **保存中に打った値は上書きしない**（送信した値のまま触っていないときだけ server 確定値へ更新）。status は、入力値が保存値と同じなら `status.saved`（dirty ではなくなる）、保存中に打ち直して異なるなら `status.dirty`（未保存。mock DB の displayName は送信した値）。mock DB の displayName が更新され、reload 後も保持される。他の User は変わらない。
   - `invalid` → **error summary** `<div role="alert" tabindex="-1">`（`main` で 1 つ。`message` と、入力欄へ移動する `<a href="#<input id>">` を含む）へ focus を移す。入力欄に `aria-invalid="true"` と `aria-describedby`（欄の下の誤りメッセージ `<p id>` = 同じ `message`）を付ける。mock DB は変わらない。次の入力 / 送信で消える。
   - `failed` → `role="alert"` + `message`。入力値は保持する（失われない）。保存済みと表示しない。
-- 保存中は submit button を `disabled` + `aria-busy="true"` にする（二重送信を抑止）。
+- 保存中は submit button を `disabled` + `aria-busy="true"` にする（二重送信を抑止）。**入力欄は保存中も編集できる**（`disabled` / `readOnly` にしない。TC-PG-MYP-002-702。§11-16）。
 - read が失敗（`not_found` を含む）→ unavailable（form を出さない。別 Profile を表示しない。`AccessDeniedView` にもしない）。
 - reload は同じ Profile を再取得するだけ。
 
@@ -496,7 +500,7 @@ export function buildMypageOverviewModel(input: OverviewInput): MypageOverviewMo
 
 ### 4.9 Entry QR（`/mypage/entry-tickets/{ticketRef}/qr`、PG-MYP-007）
 
-- document title = `Entry Ticket / 入場受付用 | SITE_NAME`（`metadata.title = copy.qr.ENTRY`）。`h1` = `copy.qr.ENTRY`（denied 以外）。見出しは `h1` だけ（`h2` 以降を持たない）。
+- document title = `Entry Ticket / 入場受付用 | SITE_NAME`（`metadata.title = copy.qr.ENTRY`）。`h1` = `copy.qr.ENTRY`（denied 以外。**loading と unavailable でも同じ**: route が決める権利種別の語であり、所有権の判定結果ではない。TC-PG-MYP-007-705。§11-17）。見出しは `h1` だけ（`h2` 以降を持たない）。
 - ready: `<figure>`（QR 近傍。`main` に 1 つだけ）が次を**すべて含む**: (1) `<figcaption>` の `copy.qr.ENTRY`（権利種別をテキストで常時識別）、(2) `lines`（`Ticketの状態` + `StatusBadge`）、(3) presentable のとき QR（`<svg role="img" aria-label={imageLabel}>` を持つ `QrPlaceholder`）と `mockNotice`、(4) presentable でないとき `primaryLabel`（使用済み / 取消済み / 失効済み）と `disabledReason` を**テキストで主表示**し、QR（role `img`）を**描かない**。`main` に Link `backLabel`（`copy.mypage.qr.backToTicket`）→ `backHref`。
 - presentable のとき QR の `role="img"` 要素は、viewport 390px でも**幅・高さとも 200px 以上**で、`<figure>` の幅との差が 16px 以上ある（周囲の余白。SPEC-050 §18.7 / §24.2）。横 scroll が出ない。
 - QR の描画は `matrixSeed` から決定的に導く。seed の文字列そのものを DOM / URL / storage / console に出さない（§0）。
@@ -514,7 +518,7 @@ export function buildMypageOverviewModel(input: OverviewInput): MypageOverviewMo
 
 ### 4.12 Karaoke QR（`/mypage/karaoke/{reservationRef}/qr`、PG-MYP-010）
 
-- title / `h1` / `<figcaption>` = `copy.qr.KARAOKE`（Entry QR と異なる）。`<figure>` に `lines`（対象日、利用時刻、予約の状態、Ticketの状態。テキスト）と、presentable のとき QR（`role="img"` `aria-label` = `copy.mypage.qr.imageLabel.KARAOKE`）と `mockNotice`、presentable でないとき `primaryLabel`（使用済み / 取消済み / 失効済み）と `disabledReason` を主表示し QR を描かない。Reservation `CANCELED` と Ticket `CANCELED` はどちらも `copy.karaoke.primary.CANCELED`（取消済み）。Link `copy.mypage.qr.backToReservation` → `backHref`。
+- title / `h1` / `<figcaption>` = `copy.qr.KARAOKE`（Entry QR と異なる。`h1` は denied 以外では loading と unavailable でも同じ。TC-PG-MYP-010-705。§11-17）。`<figure>` に `lines`（対象日、利用時刻、予約の状態、Ticketの状態。テキスト）と、presentable のとき QR（`role="img"` `aria-label` = `copy.mypage.qr.imageLabel.KARAOKE`）と `mockNotice`、presentable でないとき `primaryLabel`（使用済み / 取消済み / 失効済み）と `disabledReason` を主表示し QR を描かない。Reservation `CANCELED` と Ticket `CANCELED` はどちらも `copy.karaoke.primary.CANCELED`（取消済み）。Link `copy.mypage.qr.backToReservation` → `backHref`。
 - Entry QR と Karaoke QR は、title・`figcaption`・`imageLabel` で互いに区別でき、Karaoke QR ページに `copy.qr.ENTRY` を、Entry QR ページに `copy.qr.KARAOKE` を出さない（SPEC-050 §18.10 / §24.2、SEC-QR-012）。寸法・余白は §4.9 と同じ。
 
 ### 4.13 Goods Purchase List（`/mypage/goods`、PG-MYP-011）
@@ -531,6 +535,7 @@ export function buildMypageOverviewModel(input: OverviewInput): MypageOverviewMo
 
 - detail / QR の read が `not_found`（他者所有・不存在）→ **データを描画する前に** `AccessDeniedView`（redirect しない。`h1` = `copy.accessDenied.title`、`copy.accessDenied.description`、Link `copy.accessDenied.mypageLink` → `/mypage`、本人所有一覧への Link、retry button なし）。他者の Item 名・日時・state・購入内容を一切出さない。`main` のテキストが、他者所有 ref・不存在 ref・不正 ref で**完全に同じ**になる（同じ種類のページ内で。Mypage nav を含む）。
 - `listHref` / `listLabel`: Order = `/mypage/orders` / `copy.accessDenied.ordersLink`、Entry Ticket（詳細・QR）= `/mypage/entry-tickets` / `copy.accessDenied.entryTicketsLink`、Karaoke（詳細・QR）= `/mypage/karaoke` / `copy.accessDenied.reservationsLink`、Goods = `/mypage/goods` / `copy.accessDenied.goodsItemsLink`。
+- **QR ページの権利種別の語（`copy.qr.ENTRY` / `copy.qr.KARAOKE`）は loading と unavailable の `h1` と document title には出てよいが、最終の Access Denied には出さない**（他者所有・不存在・不正・権利種別違いの ref は loading の `main` テキストも同一。TC-PG-MYP-007-705 / 010-705 / TC-PG-XFN-003-701）。
 - route param が不正（UUID でない・大文字・空白等）の detail / QR route は、server の殻が `AccessDeniedView` を直接描画する（HTTP 200。`notFound()` にしない。存在の有無を確定させない。S7a と同じ）。
 - **権利種別の取り違え**: Entry の route に Reservation の ref（またはその逆）を渡しても `AccessDeniedView`（port が not_found を返す）。Entry QR の route で Karaoke の presentation を受け取っても描画しない（§3.7）。
 - 他者所有 ref の read の前後で mock DB は変わらない。Login している User を切り替えると（`other@example.com`）、demo の ref は denied、自分の ref は表示される（所有権は Session に従う）。
@@ -553,25 +558,26 @@ export function buildMypageOverviewModel(input: OverviewInput): MypageOverviewMo
 | ファイル | 内容 |
 |---|---|
 | `tests/unit/web/mypage/s8-copy.test.ts` | §2（TC-PG-MYP-001-601、002-601、003-601、004-601、007-601、TC-DEV-WEB-001-801） |
-| `tests/unit/web/mypage/s8-static.test.ts` | §0 / §1 / §4 の静的検査（TC-DEV-WEB-001-802〜807、TC-SEC-QR-013-601） |
+| `tests/unit/web/mypage/s8-static.test.ts` | §0 / §1 / §4 の静的検査（TC-DEV-WEB-001-802〜807、TC-SEC-QR-013-601）。`latest-request.ts` は PURE 一覧（802 / 804）。805 に useRead の `applyIfLatest` 検査と QR の非 ready `h1` 検査 |
+| `tests/unit/web/api-client/latest-request.test.ts` | §1 / §4.1（TC-DEV-WEB-009-601。手動で解決する promise。timer なし） |
 | `tests/unit/web/mypage/mypage-routes.test.ts` | §3.1（TC-PG-MYP-001-611〜612） |
 | `tests/unit/web/mypage/order-models.test.ts` | §3.2 / §3.3（TC-PG-MYP-003-621〜622、TC-PG-MYP-004-621〜622） |
 | `tests/unit/web/mypage/entry-ticket-model.test.ts` | §3.4（TC-PG-MYP-005-621、TC-PG-MYP-006-621〜622） |
 | `tests/unit/web/mypage/reservation-model.test.ts` | §3.5（TC-PG-MYP-008-621、TC-PG-MYP-009-621〜622） |
 | `tests/unit/web/mypage/goods-item-model.test.ts` | §3.6（TC-PG-MYP-011-621、TC-PG-MYP-012-621〜622） |
 | `tests/unit/web/mypage/qr-model.test.ts` | §3.7（TC-PG-MYP-007-621〜622、TC-PG-MYP-010-621〜622） |
-| `tests/unit/web/mypage/profile-model.test.ts` | §3.8（TC-PG-MYP-002-621〜622） |
+| `tests/unit/web/mypage/profile-model.test.ts` | §3.8（TC-PG-MYP-002-621〜623） |
 | `tests/unit/web/mypage/overview-model.test.ts` | §3.9（TC-PG-MYP-001-621〜624） |
 | `tests/e2e/mypage-overview.spec.ts` | §4.3（E2E 14 / 19 の Overview 部分、TC-PG-MYP-001-701〜705） |
 | `tests/e2e/mypage-nav.spec.ts` | §4.2 / §6（E2E 14 / 3 の Mypage 部分 / 22、TC-PG-MYP-001-711〜714） |
-| `tests/e2e/mypage-profile.spec.ts` | §4.4（TC-PG-MYP-002-701〜705） |
-| `tests/e2e/mypage-orders.spec.ts` | §4.5 / §4.6（E2E 15 / 19、TC-PG-MYP-003-701〜703、TC-PG-MYP-004-701〜706） |
-| `tests/e2e/mypage-entry-tickets.spec.ts` | §4.7〜4.9（E2E 16 / 17、TC-PG-MYP-005-701〜702、TC-PG-MYP-006-701〜703、TC-PG-MYP-007-701〜704） |
-| `tests/e2e/mypage-karaoke.spec.ts` | §4.10〜4.12（E2E 16 / 17、TC-PG-MYP-008-701〜702、TC-PG-MYP-009-701〜703、TC-PG-MYP-010-701〜703） |
+| `tests/e2e/mypage-profile.spec.ts` | §4.4（TC-PG-MYP-002-701〜705。702 に保存中の編集を含む） |
+| `tests/e2e/mypage-orders.spec.ts` | §4.5 / §4.6（E2E 15 / 19、TC-PG-MYP-003-701〜703、TC-PG-MYP-004-701〜707。707 は最後に開始した read だけの反映。helper は `tests/harness/browser/order-reads.ts`） |
+| `tests/e2e/mypage-entry-tickets.spec.ts` | §4.7〜4.9（E2E 16 / 17、TC-PG-MYP-005-701〜702、TC-PG-MYP-006-701〜703、TC-PG-MYP-007-701〜705。705 は loading / unavailable の `h1`） |
+| `tests/e2e/mypage-karaoke.spec.ts` | §4.10〜4.12（E2E 16 / 17、TC-PG-MYP-008-701〜702、TC-PG-MYP-009-701〜703、TC-PG-MYP-010-701〜705。705 は loading / unavailable の `h1`） |
 | `tests/e2e/mypage-goods.spec.ts` | §4.13 / §4.14（E2E 18 / 19、TC-PG-MYP-011-701〜702、TC-PG-MYP-012-701〜704） |
-| `tests/e2e/mypage-ownership.spec.ts` | §5（E2E 20、TC-PG-XFN-003-701〜704） |
+| `tests/e2e/mypage-ownership.spec.ts` | §5（E2E 20、TC-PG-XFN-003-701〜704。701 は最終 Access Denied に QR の権利種別の語が出ないこと） |
 | `tests/e2e/mypage-a11y.spec.ts` | §4.2 / §4.4 / §4.6 のキーボード・状態通知（E2E 22、TC-PG-MYP-001-721〜724） |
-| `tests/e2e/mypage-common.spec.ts` | §6 / §7（E2E 23 / no-store / reload / QR の seed 非露出、TC-PG-MYP-001-731〜733、TC-SEC-WEB-009-721、TC-SEC-QR-013-701） |
+| `tests/e2e/mypage-common.spec.ts` | §6 / §7（E2E 23 / no-store / reload / QR の seed 非露出、TC-PG-MYP-001-731〜734、TC-SEC-WEB-009-721、TC-SEC-QR-013-701） |
 
 ## 9. SPEC-050 §31 の Page Acceptance と Test Case
 
@@ -613,3 +619,6 @@ PG-MYP-001〜012 の各 Page の Sections / State / Actions / Failure は §4 �
 13. **Profile の Password**: Credential 変更を Profile 編集として扱わない（SPEC-050 §18.2）。`/account/password-reset` への Link だけを置く。
 14. **Hold / Ticket の reload**: reload は既存の Order / Ticket / Reservation / Goods item を再取得するだけで、mock DB を変えない。ただし `PAYMENT` の模擬 Webhook（`pendingWebhook` の Order）は、S7a の契約どおり `self.getOrder` の read で進む。Mypage の一覧 read（`list*`）と Ticket / Reservation / Goods の read は DB を変えない。
 15. **E2E 17 の「補助情報」**: `figcaption`（権利種別）、`imageLabel`、`mockNotice` 以外の補助情報として、Karaoke QR は対象日・利用時刻・予約の状態を QR と同じ `<figure>` に持ち、Entry QR は Ticket の状態を持つ。
+16. **保存中に打った値（レビュー指摘 F1、案 A）**: 保存成功時に入力欄を server 値で一律に上書きすると、保存中に打った文字が消える。→ 送信した値を覚え、成功時は入力値がその値のままのときだけ server 確定値へ更新し、そうでなければ入力値を保持して status を `status.dirty` にする（`resolveInputAfterSave`、TC-PG-MYP-002-623 / 702）。入力欄は保存中も編集可能（`disabled` / `readOnly` にしない）。保存の結果（送信した値）は mock DB にそのまま保存される。
+17. **QR ページの loading / unavailable の `h1`（レビュー指摘 F3、案 A）**: §4.9 / §4.12 の `h1` は route が決める権利種別の語（`copy.qr.ENTRY` / `copy.qr.KARAOKE`）であり、`copy.mypage.heading` ではない。権利種別は所有権の判定結果ではないので、loading / unavailable に出しても存在は漏れない（loading の `main` テキストは他者所有・不存在・不正 ref と同一）。**TC-PG-XFN-003-701 の期待を変更する**: 以前は `readyOnly` に `copy.qr.*` を含めていたが、これは §4.9 / §4.12 と矛盾していたため `readyOnly` から外し、「最終の Access Denied に出ない」（`deniedNever`）へ移した（ユーザー承認済み。仕様と整合する変更であり、実装に合わせた書き換えではない）。
+18. **最後に開始した read だけを反映する仕組み（レビュー指摘 F2、request-ID 方式）**: `applyIfLatest(counter, request, apply)` は呼び出し時に `counter.current` を 1 増やしてその値を ID とし、応答時に ID が最新のときだけ `apply` を同期的に 1 回呼ぶ（`true`）。古ければ呼ばず `false`。rejection はそのまま reject（`apply` なし）。`invalidateRequests(counter)` は `counter.current` を 1 増やす（unmount / dependency 変更）。`useRead`（`features/mypage`）と `PurchaseStatusPage`（`features/purchase`）の両方が使うため、`features/mypage` ⇄ `features/purchase` の循環 import を避けて `api-client/latest-request.ts` に置く。UI は 2 つの read を重ねられない（pending 中は button が disabled、reload button は unavailable のときだけ）ため、E2E は「遅い read と連続操作」「read 中に離脱」「unavailable 後の遅い retry」の観測可能な帰結を検証し、順序そのものは Vitest（TC-DEV-WEB-009-601）で検証する。jsdom / testing-library は導入しない（GitHub Issue #13）。

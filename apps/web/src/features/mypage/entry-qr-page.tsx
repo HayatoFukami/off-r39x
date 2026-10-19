@@ -13,7 +13,10 @@ import { buildEntryQrModel } from "./qr-model";
 import { useRead } from "./use-read";
 
 // PG-MYP-007 container (SPEC-050 18.7, 24.2, SEC-QR-012 / 013). Synthetic QR placeholder only. The
-// purpose title appears only once the ownership decision is made, so no purpose text precedes it.
+// purpose is determined by the route (the same as the document title), not by fetched data, so
+// showing it while loading or unavailable leaks nothing about ownership. The Ticket data is shown
+// only after the ownership decision; denied uses AccessDeniedView and cannot tell another user's
+// ref from a missing one (SEC-QR-012, SPEC-110 section 22).
 
 const linkClass = "text-brand underline underline-offset-4";
 
@@ -36,7 +39,7 @@ export function EntryQrPage({ ticketRef }: { ticketRef: Ref<"ticket"> }) {
   if (model.kind !== "ready") {
     return (
       <div className="flex flex-col gap-4">
-        <h1 className="text-2xl font-bold">{copy.mypage.heading}</h1>
+        <h1 className="text-2xl font-bold">{copy.qr.ENTRY}</h1>
         {model.kind === "loading" ? (
           <PageState state="loading" />
         ) : (

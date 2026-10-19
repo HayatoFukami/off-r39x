@@ -8,7 +8,7 @@ import type { ProfileUpdate } from "../../api-client/types";
 import { PageState } from "../../presentation/components/page-state";
 import { Button } from "../../presentation/components/ui/button";
 import { copy } from "../../presentation/copy/ja";
-import { buildProfileModel, interpretProfileSave } from "./profile-model";
+import { buildProfileModel, interpretProfileSave, resolveInputAfterSave } from "./profile-model";
 import { useRead } from "./use-read";
 
 // PG-MYP-002 container (SPEC-050 18.2, 25). One editable field: the display name. The email is text.
@@ -55,15 +55,18 @@ function ProfileForm({ email, initialName }: { email: string; initialName: strin
     setJustSaved(false);
     setInvalid(null);
     setFailed(null);
+    const submitted = value;
     const result: ProfileUpdate = await api.self
-      .updateProfile({ displayName: value })
+      .updateProfile({ displayName: submitted })
       .catch((): ProfileUpdate => ({ kind: "unavailable" }));
     setPhase("idle");
     const step = interpretProfileSave(result);
     switch (step.kind) {
       case "saved":
         setSavedName(step.displayName);
-        setValue(step.displayName);
+        setValue((current) =>
+          resolveInputAfterSave({ current, submitted, saved: step.displayName }),
+        );
         setJustSaved(true);
         return;
       case "invalid":

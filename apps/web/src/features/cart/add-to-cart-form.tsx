@@ -7,14 +7,14 @@ import { CART_HREF } from "../../config/site";
 import { Button } from "../../presentation/components/ui/button";
 import { Input } from "../../presentation/components/ui/input";
 import { copy } from "../../presentation/copy/ja";
-import type { CartWriteResult } from "./cart-store";
+import type { CartAddResult } from "./cart-store";
 import { formatDisplayTotal, parseQuantityInput, type QuantityParse } from "./quantity";
 import { useCart } from "./use-cart";
 
 // Quantity + "add to Cart" control shared by the Entry sales page and the Goods detail page
 // (SPEC-050 12.1, 14.2, 25). It stores a reference and a quantity only; adding is not a purchase.
 
-export type AddResult = { kind: "idle" } | CartWriteResult;
+export type AddResult = { kind: "idle" } | CartAddResult;
 
 function invalidMessage(parse: QuantityParse, max: number | null): string | null {
   if (parse.kind === "valid") return null;
@@ -40,6 +40,14 @@ export function AddResultNotice({ result }: { result: AddResult }) {
             {copy.cart.corrupted.goToCart}
           </Link>
         </div>
+      ) : null}
+      {result.kind === "quantity_overflow" ? (
+        <p
+          role="alert"
+          className="rounded-base border border-tone-failure-fg/30 bg-tone-failure-bg p-3 text-tone-failure-fg"
+        >
+          {copy.sales.addQuantityOverflow}
+        </p>
       ) : null}
       {result.kind === "storage_unavailable" ? (
         <p
@@ -99,12 +107,7 @@ export function AddToCartForm({
   const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
     if (!addable || parse.kind !== "valid") return;
-    try {
-      onResult(cart.add(buildLine(parse.quantity)));
-    } catch (failure) {
-      if (!(failure instanceof RangeError)) throw failure;
-      onResult({ kind: "storage_unavailable" });
-    }
+    onResult(cart.add(buildLine(parse.quantity)));
   };
 
   return (

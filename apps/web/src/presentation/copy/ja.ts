@@ -178,6 +178,8 @@ export const copy = {
       stateLabel: "この枠の状態",
       purchasableLabel: "予約購入可能",
       purchasableDescription: "この枠は現在購入できます。購入手続きに進むと、この枠を確保します。",
+      notPurchasableLabel: "現在購入不可",
+      notPurchasableDescription: "この枠は現在購入できません。",
       separateNote:
         "Karaokeの購入はカートを使いません。Entry TicketやGoodsとは別の購入、別の支払いになります。",
       proceed: "購入手続きへ進む",
@@ -190,6 +192,8 @@ export const copy = {
         SOLD: "この枠は販売済みのため、購入手続きへ進めません。",
         SALES_STOPPED: "この枠は販売停止のため、購入手続きへ進めません。",
         NOT_ON_SALE: "現在は販売期間外または販売停止中のため、購入手続きへ進めません。",
+        NOT_PURCHASABLE:
+          "現在この枠は購入できないため、購入手続きへ進めません。空き状況から別の枠を選んでください。",
       },
       failure: {
         conflict: "他の利用者が先に確保したため購入を開始できません",
@@ -353,6 +357,8 @@ export const copy = {
     add: "Cartに追加",
     addSucceeded: "Cartに追加しました。購入はまだ確定していません",
     addFailed: "ブラウザの保存領域に書き込めなかったため、Cartを更新できませんでした",
+    addQuantityOverflow:
+      "Cartの数量が扱える範囲を超えるため、Cartに追加できませんでした。Cartで数量を確認してください",
     viewCart: "Cartを見る",
     displayTotalLabel: "表示用合計",
     displayTotalNote: "購入時の金額はサーバーで再計算されます",

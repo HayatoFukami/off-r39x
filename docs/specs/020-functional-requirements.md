@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-020
 title: Functional Requirements
-version: 1.1.0
+version: 1.2.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -267,13 +267,13 @@ Entry TicketとGoodsは、Cartを経由して1回の外部決済へまとめて�
 | FR-CRT-003 | Cartは、対象の参照と数量だけを保持しなければならない。価格、金額、通貨、在庫、販売可否、支払結果、Owner、Role、個人情報、Secretを保持してはならず、保持値を権威値として採用してはならない。 |
 | FR-CRT-004 | CartはBrowser側の購入前補助であり、Business Databaseへ保存してはならない。Cartへの追加は容量、在庫、Slotを確保せず、他の利用者の購入可否に影響してはならない。 |
 | FR-CRT-005 | Cart表示は、各Itemの現在の価格と販売状態をServer-sideの現在値から表示し、販売開始前、販売終了、販売停止、売り切れ、数量不足、Purchase Limit超過等の購入不可理由をItem単位で識別できなければならない。取得に失敗したItemを購入可能として表示してはならない。 |
-| FR-CRT-006 | Cartからの購入開始はAuthenticated Userだけが実行できなければならない。GuestがCartから購入開始を選んだ場合、認証が必要であることを識別できる結果を返し、認証後もCart内容を保持して再開できなければならない。 |
+| FR-CRT-006 | Cartからの購入開始はAuthenticated Userだけが実行できなければならない。GuestがCartから購入開始を選んだ場合、認証が必要であることを識別できる結果を返し、認証後もCart内容を保持して再開できなければならない。この保持は、一度も認証されていないGuestのCartに適用する（`FR-CRT-012`）。 |
 | FR-CRT-007 | Cartからの購入開始では、APIはCart内の全Itemについて販売期間、販売状態、容量または在庫、Purchase Limit、価格をServer-sideで再検証し、1件でも成立しない場合は、Orderを作成せず、Allocationを確保した状態を残してはならない。成功した場合は全Itemを同一の購入開始として成立させなければならない。 |
 | FR-CRT-008 | Cart内のItemの種類に応じて、システムはEntry Ticketだけ、Goodsだけ、またはEntry TicketとGoodsの両方を含む単一のOrderを作成し、単一の外部決済へ対応させなければならない。Order Purposeの決定はServer-sideで行い、Clientが指定してはならない。 |
 | FR-CRT-009 | 複合Orderの支払確定では、含まれるEntry Ticketの発行とAllocation確定、およびGoodsのAllocation確定と履行可能化を、中途半端な確定状態を残さない一貫した業務更新として成立させなければならない。いずれかが成立しない場合は、Orderを通常の `CONFIRMED` として扱ってはならない。 |
 | FR-CRT-010 | 複合Orderが支払前に取消、失効または支払不成立となった場合、当該Orderに属する全てのAllocationを同一Order内で一貫して解放しなければならない。 |
 | FR-CRT-011 | 購入開始が成功しOrderが作成された時点で、当該Orderに含めたItemをCartから除去できなければならない。購入開始失敗時は、Cart内容を失わず利用者が内容を見直せなければならない。 |
-| FR-CRT-012 | Cart内容は特定のAccountの所有権や権利を発生させてはならない。LoginまたはLogoutによって他者のCart内容や購入済み権利が表示されてはならない。 |
+| FR-CRT-012 | Cart内容は特定のAccountの所有権や権利を発生させてはならない。CartはBrowser側の購入前補助でありAuth Subjectを保持しないため、「他者のCart内容」は「直前にAuthenticated Userとして利用していた者がCartへ追加した内容」と定め、認証状態の遷移に応じて次のとおり扱う。Guest → 初回Login（Continuationを含む）ではCartを保持する（`FR-CRT-006`）。Authenticated User → Logoutでは、当該BrowserのCartをclearする。Authenticated UserのSessionが期限切れまたは無効で、安全にrefreshできないと保護Page / 保護Actionで判定され、Authentication Gateへ遷移する場合も、判定時点で当該BrowserのCartをclearする。本Requirementは定期的なSession監視を要求しない。LoginまたはLogoutによって他者のCart内容や購入済み権利が表示されてはならない。Cartのclearは、既存のOrder、Ticket、Reservation、Goods購入、Allocationを変更・削除・取消してはならない。 |
 
 ## 12. マイページ Functional Requirements
 

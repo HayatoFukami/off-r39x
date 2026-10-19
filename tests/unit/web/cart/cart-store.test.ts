@@ -24,6 +24,8 @@ class MemoryStorage implements CartStorage {
   readonly writes: [string, string][] = [];
   failRead = false;
   failWrite = false;
+  failRemove = false;
+  readonly removals: string[] = [];
   getItem(key: string): string | null {
     if (this.failRead) throw new Error("storage read blocked");
     return this.data.get(key) ?? null;
@@ -34,6 +36,8 @@ class MemoryStorage implements CartStorage {
     this.data.set(key, value);
   }
   removeItem(key: string): void {
+    if (this.failRemove) throw new Error("storage remove blocked");
+    this.removals.push(key);
     this.data.delete(key);
   }
 }
@@ -337,6 +341,259 @@ describe("TC-PG-CRT-001-424 subscribers hear local writes and external changes, 
       notified += 1;
     });
     store.add(entry(1));
+    expect(notified).toBe(0);
+  });
+});
+
+describe("TC-PG-CRT-001-425 an add that overflows the quantity is reported as quantity_overflow and changes nothing (SPEC-050 9.3, FR-CRT-001)", () => {
+  const FULL = JSON.stringify({
+    version: 1,
+    lines: [{ kind: "ENTRY_TICKET", offeringRef: OFFERING, quantity: Number.MAX_SAFE_INTEGER }],
+  });
+  const item = (quantity: number): Extract<OrderItem, { kind: "ENTRY_TICKET" }> => {
+    const money = { amount: "1000", currency: "JPY" };
+    return {
+      kind: "ENTRY_TICKET",
+      offeringRef: OFFERING,
+      name: "Regular",
+      quantity,
+      unitPrice: money,
+      subtotal: money,
+    };
+  };
+
+  it("add() returns quantity_overflow without writing, notifying or replacing the snapshot", () => {
+    const { store, storage } = setup(FULL);
+    let notified = 0;
+    store.subscribe(() => {
+      notified += 1;
+    });
+    const before = store.getSnapshot();
+    expect(store.add(entry(1))).toEqual({ kind: "quantity_overflow" });
+    expect(storage.writes).toEqual([]);
+    expect(storage.data.get(CART_STORAGE_KEY)).toBe(FULL);
+    expect(notified).toBe(0);
+    expect(store.getSnapshot()).toBe(before);
+  });
+
+  it("addFromOrder() returns quantity_overflow the same way", () => {
+    const { store, storage } = setup(FULL);
+    let notified = 0;
+    store.subscribe(() => {
+      notified += 1;
+    });
+    const before = store.getSnapshot();
+    expect(store.addFromOrder([item(1)])).toEqual({ kind: "quantity_overflow" });
+    expect(storage.writes).toEqual([]);
+    expect(notified).toBe(0);
+    expect(store.getSnapshot()).toBe(before);
+  });
+
+  it("aborts the whole addFromOrder when a later item overflows (nothing is written)", () => {
+    const { store, storage } = setup(FULL);
+    expect(
+      store.addFromOrder([
+        { ...item(1), offeringRef: "e0000000-0000-4000-8000-000000000099" as Ref<"offering"> },
+        item(1),
+      ]),
+    ).toEqual({
+      kind: "quantity_overflow",
+    });
+    expect(storage.writes).toEqual([]);
+  });
+
+  it("a Cart that is not full still adds up to the largest safe quantity", () => {
+    const { store } = setup(
+      JSON.stringify({
+        version: 1,
+        lines: [
+          { kind: "ENTRY_TICKET", offeringRef: OFFERING, quantity: Number.MAX_SAFE_INTEGER - 1 },
+        ],
+      }),
+    );
+    expect(store.add(entry(1))).toEqual({
+      kind: "ok",
+      cart: { version: 1, lines: [entry(Number.MAX_SAFE_INTEGER)] },
+    });
+  });
+
+  it("a damaged Cart is reported as corrupted before anything is computed", () => {
+    const { store, storage } = setup("not-json");
+    expect(store.add(entry(1))).toEqual({ kind: "corrupted" });
+    expect(store.addFromOrder([item(1)])).toEqual({ kind: "corrupted" });
+    expect(storage.writes).toEqual([]);
+  });
+
+  it("an invalid line still throws a RangeError that is not a quantity_overflow result", () => {
+    const { store, storage } = setup(FULL);
+    expect(() => store.add(entry(0))).toThrow(RangeError);
+    expect(() => store.add({ ...entry(1), unitPrice: 1 } as unknown as CartLine)).toThrow(
+      RangeError,
+    );
+    expect(storage.writes).toEqual([]);
+  });
+});
+
+describe("TC-PG-CRT-001-426 clear() removes the stored Cart whatever its state, and a failed removal is reported without a change (FR-CRT-012, AR-SES-009, UF-AUTH-004)", () => {
+  it("removes the key, leaves a ready empty snapshot, notifies once and writes nothing", () => {
+    const { store, storage } = setup(
+      JSON.stringify({ version: 1, lines: [{ kind: "GOODS", goodsRef: GOODS, quantity: 2 }] }),
+    );
+    let notified = 0;
+    store.subscribe(() => {
+      notified += 1;
+    });
+    expect(store.getSnapshot()).toEqual({ kind: "ready", cart: { version: 1, lines: [goods(2)] } });
+    expect(store.clear()).toEqual({ kind: "ok", cart: { version: 1, lines: [] } });
+    expect(storage.getItem(CART_STORAGE_KEY)).toBeNull();
+    expect(storage.removals).toEqual([CART_STORAGE_KEY]);
+    expect(storage.writes).toEqual([]);
+    expect(store.getSnapshot()).toEqual({ kind: "ready", cart: { version: 1, lines: [] } });
+    expect(notified).toBe(1);
+  });
+
+  it("succeeds on a damaged Cart (a damaged Cart is removed by Logout, never reported as corrupted)", () => {
+    const { store, storage } = setup("not-json");
+    expect(store.getSnapshot()).toEqual({ kind: "corrupted" });
+    expect(store.clear()).toEqual({ kind: "ok", cart: { version: 1, lines: [] } });
+    expect(storage.getItem(CART_STORAGE_KEY)).toBeNull();
+    expect(store.getSnapshot()).toEqual({ kind: "ready", cart: { version: 1, lines: [] } });
+  });
+
+  it("succeeds on an unreadable storage as long as removal works (it does not read the snapshot)", () => {
+    const { store, storage } = setup("not-json");
+    storage.failRead = true;
+    expect(store.clear()).toEqual({ kind: "ok", cart: { version: 1, lines: [] } });
+    expect(storage.data.has(CART_STORAGE_KEY)).toBe(false);
+  });
+
+  it("clearing an absent Cart is an ok empty Cart", () => {
+    const { store, storage } = setup();
+    expect(store.clear()).toEqual({ kind: "ok", cart: { version: 1, lines: [] } });
+    expect(storage.data.has(CART_STORAGE_KEY)).toBe(false);
+  });
+
+  it("a Cart added after clear() starts from empty", () => {
+    const { store } = setup(JSON.stringify({ version: 1, lines: [entry(3)] }));
+    store.clear();
+    expect(store.add(goods(1))).toEqual({ kind: "ok", cart: { version: 1, lines: [goods(1)] } });
+  });
+
+  it("reports storage_unavailable when removal throws, keeps the stored Cart and snapshot and does not notify", () => {
+    const text = JSON.stringify({ version: 1, lines: [entry(2)] });
+    const { store, storage } = setup(text);
+    let notified = 0;
+    store.subscribe(() => {
+      notified += 1;
+    });
+    const before = store.getSnapshot();
+    storage.failRemove = true;
+    expect(store.clear()).toEqual({ kind: "storage_unavailable" });
+    expect(storage.data.get(CART_STORAGE_KEY)).toBe(text);
+    expect(store.getSnapshot()).toBe(before);
+    expect(notified).toBe(0);
+  });
+
+  it("is seen by another store on the same storage (another tab)", () => {
+    const { storage, store } = setup(JSON.stringify({ version: 1, lines: [goods(3)] }));
+    const other = createCartStore({ storage });
+    expect(other.getSnapshot()).toEqual({ kind: "ready", cart: { version: 1, lines: [goods(3)] } });
+    store.clear();
+    expect(other.getSnapshot()).toEqual({ kind: "ready", cart: { version: 1, lines: [] } });
+  });
+});
+
+describe("TC-PG-CRT-001-427 subtractLines on the store subtracts the ordered quantity from the latest persisted Cart in one write (FR-CRT-011, FR-CRT-012, SPEC-050 14A.1)", () => {
+  const persisted = (...lines: CartLine[]): string => JSON.stringify({ version: 1, lines });
+
+  it("persists the remainder with one write and one notification", () => {
+    const { store, storage } = setup(persisted(entry(2), goods(1)));
+    let notified = 0;
+    store.subscribe(() => {
+      notified += 1;
+    });
+    store.getSnapshot();
+    expect(store.subtractLines([entry(1), goods(1)])).toEqual({
+      kind: "ok",
+      cart: { version: 1, lines: [entry(1)] },
+    });
+    expect(storage.writes).toHaveLength(1);
+    expect(stored(storage)).toEqual({ version: 1, lines: [entry(1)] });
+    expect(notified).toBe(1);
+    expect(store.getSnapshot()).toEqual({ kind: "ready", cart: { version: 1, lines: [entry(1)] } });
+  });
+
+  it("applies to what another store (another tab) saved last, whether it raised a line or added one", () => {
+    const { store, storage } = setup(persisted(entry(1)));
+    expect(store.getSnapshot()).toEqual({ kind: "ready", cart: { version: 1, lines: [entry(1)] } });
+    const other = createCartStore({ storage });
+    other.getSnapshot();
+    other.setQuantity(cartLineKey(entry(1)), 3);
+    other.add(goods(2));
+    expect(store.subtractLines([entry(1)])).toEqual({
+      kind: "ok",
+      cart: { version: 1, lines: [entry(2), goods(2)] },
+    });
+    expect(stored(storage)).toEqual({ version: 1, lines: [entry(2), goods(2)] });
+  });
+
+  it("does not write or notify when nothing changes, and keeps an absent key absent", () => {
+    const { store, storage } = setup();
+    let notified = 0;
+    store.subscribe(() => {
+      notified += 1;
+    });
+    expect(store.subtractLines([entry(1)])).toEqual({
+      kind: "ok",
+      cart: { version: 1, lines: [] },
+    });
+    expect(store.subtractLines([])).toEqual({ kind: "ok", cart: { version: 1, lines: [] } });
+    expect(storage.writes).toEqual([]);
+    expect(storage.data.has(CART_STORAGE_KEY)).toBe(false);
+    expect(notified).toBe(0);
+  });
+
+  it("does not write or notify when the ordered key is not in a stored Cart", () => {
+    const text = persisted(goods(2));
+    const { store, storage } = setup(text);
+    let notified = 0;
+    store.subscribe(() => {
+      notified += 1;
+    });
+    expect(store.subtractLines([entry(1)])).toEqual({
+      kind: "ok",
+      cart: { version: 1, lines: [goods(2)] },
+    });
+    expect(storage.writes).toEqual([]);
+    expect(storage.data.get(CART_STORAGE_KEY)).toBe(text);
+    expect(notified).toBe(0);
+  });
+
+  it("reports corrupted without writing, notifying or changing the stored text", () => {
+    const { store, storage } = setup("not-json");
+    let notified = 0;
+    store.subscribe(() => {
+      notified += 1;
+    });
+    expect(store.subtractLines([entry(1)])).toEqual({ kind: "corrupted" });
+    expect(storage.writes).toEqual([]);
+    expect(storage.removals).toEqual([]);
+    expect(storage.data.get(CART_STORAGE_KEY)).toBe("not-json");
+    expect(notified).toBe(0);
+  });
+
+  it("reports storage_unavailable when the write throws, without notifying or changing anything", () => {
+    const text = persisted(entry(2));
+    const { store, storage } = setup(text);
+    let notified = 0;
+    store.subscribe(() => {
+      notified += 1;
+    });
+    const before = store.getSnapshot();
+    storage.failWrite = true;
+    expect(store.subtractLines([entry(1)])).toEqual({ kind: "storage_unavailable" });
+    expect(storage.data.get(CART_STORAGE_KEY)).toBe(text);
+    expect(store.getSnapshot()).toBe(before);
     expect(notified).toBe(0);
   });
 });

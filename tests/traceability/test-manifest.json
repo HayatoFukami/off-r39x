@@ -18,7 +18,7 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "exit code 0 and an OK line",
-        "non-ts files and out-of-scope directories are ignored"
+        "non-source files, .d.ts/.d.mts, and directories outside the scanned roots (apps/*/app, apps/*/src, apps/* top-level source files, packages/*/src; e.g. apps/web/scripts) are ignored"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -40,7 +40,10 @@
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
-      "expected_domain_postconditions": ["exit code 0 and an OK line, no VIOLATION line"],
+      "expected_domain_postconditions": [
+        "exit code 0 and an OK line, no VIOLATION line",
+        "no WARNING lines"
+      ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
       "expected_observability": [],
@@ -96,6 +99,79 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-DEV-DEP-006-005",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["DEV-DEP-006", "DEV-WEB-012", "DEV-DEP-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Fixture repo with imports written as template-literal dynamic import, import attributes, require(), import = require() and typeof import(); plus comments, strings and JSX text that merely look like imports",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "exit code 1 and VIOLATION <rule> <file>:<line> <specifier> for every AST-recognised specifier form, line = the specifier line",
+        "comments, string literals and JSX text are never detected",
+        "an allowed edge written as a template-literal dynamic import is clean"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-DEV-DEP-006-006",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["DEV-DEP-006", "DEV-WEB-012"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Fixture repo with dynamic import() / require() whose argument cannot be resolved statically (interpolated template, identifier, process.env)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "WARNING unresolved-dynamic-import <file>:<line> is printed before the result line",
+        "an unresolved dynamic import is not a violation and does not change the exit code (0 with OK line)",
+        "with a real violation present the exit code is 1, the WARNING remains and no OK line is printed"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-DEV-DEP-006-007",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["DEV-DEP-006", "DEV-WEB-012", "DEV-DEP-002"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Fixture repo with .js, .jsx, .mjs and .cjs sources (including apps/web/next.config.mjs) importing forbidden targets",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "exit code 1 and the matching VIOLATION <rule> <file>:<line> <specifier> for each JS-family file"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-DEV-WEB-012-001",
       "level": "Unit",
       "suite": "unit",
@@ -111,7 +187,8 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "VIOLATION mock-allowlist for non-allowlisted importers",
-        "api-client/index.ts, auth/index.ts, app/dev/**, app/layout.tsx and mock/** itself are allowed"
+        "api-client/index.ts, auth/index.ts, app/dev/**, app/layout.tsx and mock/** itself are allowed",
+        "a top-level apps/web/next.config.ts is outside the allowlist and yields mock-allowlist"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -207,6 +284,32 @@
       "expected_domain_postconditions": [
         "VIOLATION workspace-cycle <package.json>:0 <cycle path> for cycles",
         "acyclic diamond passes"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-DEV-DEP-005-002",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["DEV-DEP-005", "DEV-DEP-006"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Fixture repo with pnpm-workspace.yaml (LF and CRLF, comments, quoted entries, extra top-level keys), without the file (default apps/*, packages/*, tests), and with unsupported patterns; tests/package.json and tools/gen/package.json take part in the dependency graph",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "a cycle through the tests workspace (or an exact-directory workspace) is reported as VIOLATION workspace-cycle <package.json>:0 <path>",
+        "missing pnpm-workspace.yaml falls back to apps/*, packages/*, tests",
+        "acyclic tests -> domain graph passes",
+        "unsupported patterns (**, !) exit 2 with an error mentioning pnpm-workspace.yaml and nothing on stdout"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -2314,6 +2417,29 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-PG-XFN-001-107",
+      "level": "Unit",
+      "suite": "unit",
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "fixture_ids": ["MOCK-SEED-PUBLIC"],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "upstream_rule_ids": ["PG-XFN-001", "FR-XFN-012", "TST-UNT-004"],
+      "preconditions": "Same user reuses a Checkout idempotencyKey for another Order; the real API answers 409 IDEMPOTENCY_KEY_REUSED (SPEC-110 18) but the mock simplifies to key-only replay (contract 11.3); UI mock test double (not API/DB/Provider coverage)",
+      "expected_domain_postconditions": [
+        "same user + same key on another Order replays the first redirect; no new idempotency record, no transition, Order B stays PREPARED"
+      ]
+    },
+    {
       "test_case_id": "TC-PG-XFN-003-101",
       "level": "Unit",
       "suite": "unit",
@@ -2349,7 +2475,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "fixture_ids": ["MOCK-SEED-DEMO"],
+      "fixture_ids": ["MOCK-SEED-PUBLIC"],
       "clock_instant": "2027-03-01T03:00:00Z",
       "concurrency_seed": null,
       "fault_points": [],
@@ -2359,10 +2485,39 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": false,
-      "upstream_rule_ids": ["BR-ORD-014", "SPEC-050-14A.1", "TST-UNT-004"],
-      "preconditions": "Cart with duplicate lines of one item; UI mock test double (not API/DB coverage)",
+      "upstream_rule_ids": [
+        "BR-ORD-014",
+        "BR-ORD-017",
+        "FR-CRT-007",
+        "SPEC-050-14A.1",
+        "TST-UNT-004"
+      ],
+      "preconditions": "Cart with duplicate lines of one item exceeding stock or per-account limit; contract tests/contracts/s2-mock-backend.md 11.1; UI mock test double (not API/DB coverage)",
       "expected_domain_postconditions": [
-        "no Order created and no inventory change when combined quantity exceeds stock"
+        "rejected (no exception) listing only the overflowing duplicate line with SOLD_OUT / INSUFFICIENT_QUANTITY / PURCHASE_LIMIT_EXCEEDED; no Order, allocation, idempotency record or stored state change"
+      ]
+    },
+    {
+      "test_case_id": "TC-BR-ORD-014-111",
+      "level": "Unit",
+      "suite": "unit",
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "fixture_ids": ["MOCK-SEED-PUBLIC"],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "upstream_rule_ids": ["BR-ORD-014", "BR-ORD-018", "FR-CRT-007", "TST-UNT-004"],
+      "preconditions": "Cart with duplicate lines of one item whose total fits exactly in stock or per-account limit; contract tests/contracts/s2-mock-backend.md 11.1; UI mock test double (not API/DB coverage)",
+      "expected_domain_postconditions": [
+        "one PREPARED Order with one item per duplicate line; remaining decremented by the total and never negative; includedLineKeys in input order"
       ]
     },
     {
@@ -5200,6 +5355,52 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-PG-CRT-001-406",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-001", "FR-CRT-003"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Pure addLine / addFromOrder with a Cart at the largest safe quantity, and with invalid lines",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "a sum beyond the safe integer range throws CartQuantityOverflowError (a RangeError); invalid lines throw a RangeError that is not CartQuantityOverflowError; addFromOrder overflow is the same class; inputs unchanged"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-CRT-001-407",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-011", "SPEC-050-14A.1"],
+      "system_invariant_ids": ["INV-010-01"],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Pure subtractLines over a Cart and ordered lines: unchanged, raised, lowered, deleted, not ordered, repeated and invalid quantities, frozen inputs",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "the ordered quantity is subtracted per line key; a line left at zero or below is removed, a raised remainder keeps its position, a deleted line is not restored, lines not ordered are untouched; invalid ordered quantities are ignored without throwing; the same Cart reference is returned when nothing changes; inputs unchanged"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-PG-CRT-001-411",
       "level": "Unit",
       "suite": "unit",
@@ -5330,6 +5531,75 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "listeners notified once per successful write and per external change; external source subscribed lazily and released"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-CRT-001-425",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-TKT-001", "PG-GDS-002", "PG-CRT-001", "FR-CRT-001", "SPEC-050-9.3"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "createCartStore on an in-memory storage holding a line at the largest safe quantity",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "add / addFromOrder return quantity_overflow without a write, a notification or a new snapshot; a damaged Cart is still corrupted first; an invalid line still throws"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-CRT-001-426",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-012", "AR-SES-009"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "createCartStore on an in-memory storage whose removal can be made to fail",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "clear() removes the Cart key (also for a damaged Cart), leaves a ready empty snapshot, notifies once and never writes; a failed removal returns storage_unavailable without changing the stored Cart, the snapshot or notifying"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-CRT-001-427",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-011", "FR-CRT-012"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Cart store with injected storage: subtractLines after local and another-store edits, no-op, corrupted and failing write",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "one write and one notification apply the subtraction to the latest persisted Cart (another tab included); a no-op writes and notifies nothing and does not recreate an absent key; corrupted writes nothing; a failed write reports storage_unavailable without notifying or changing snapshot or storage"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -5509,7 +5779,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "SPEC-050 12.1 / 14.2 / 14A.1 fixed Cart wording present literally; page titles kept out of copy.pageTitle; Karaoke guidance, damaged Cart and unknown-total wording"
+        "SPEC-050 12.1 / 14.2 / 14A.1 fixed Cart wording present literally; page titles kept out of copy.pageTitle; Karaoke guidance, damaged Cart and unknown-total wording; the quantity-overflow wording is its own failure wording (not a success, not a storage or limit wording)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -5555,7 +5825,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "exactly one strict stored-Cart schema; no price / stock / owner field; no Karaoke or session in the store and Cart UI"
+        "exactly one strict stored-Cart schema; no price / stock / owner field; no Karaoke or session in the store and Cart UI (the store knows no account; Logout clearing lives in the shell)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -5677,6 +5947,29 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-PG-TKT-001-412",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-TKT-001", "PG-CRT-001", "FR-CRT-005", "FR-CRT-012"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Pure sameSessionState over loading, unavailable, guest and authenticated states",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "equal states are the same; a changed status, kind, email or emailVerified is a change; the relation is symmetric"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-PG-TKT-001-461",
       "level": "Unit",
       "suite": "unit",
@@ -5691,7 +5984,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "number input validated by parseQuantityInput with aria-invalid / aria-describedby; status live region; display total through formatDisplayTotal"
+        "number input validated by parseQuantityInput with aria-invalid / aria-describedby; status live region; display total through formatDisplayTotal; quantity overflow separated from storage failure by the add result kind (no instanceof RangeError)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -5920,6 +6213,52 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "price shown and totalled from the port; stored Cart carries no price"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-TKT-001-509",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": ["PG-TKT-001", "FR-CRT-012"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock mode; Guest Entry page open; second tab writes and clears a demo session",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "the limit offering changes from on sale to purchase-limit-exceeded (Add disabled with its reason) and back without a reload; stored Cart and mock DB unchanged"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-TKT-001-510",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": ["PG-TKT-001", "PG-GDS-002", "FR-CRT-001", "SPEC-050-9.3"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock mode; stored Cart line at the largest safe quantity; storage write failure injected for the second case",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "an overflowing add shows the overflow alert, not the storage-failure wording, no success notice; stored Cart and Header count unchanged; a storage failure keeps its own wording"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -6342,6 +6681,29 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-PG-CRT-001-513",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-005", "FR-CRT-012"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock mode; Guest Cart page open with the limit offering; second tab writes and clears a demo session",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "the limit line changes to purchase-limit-exceeded and the proceed button is disabled with the blocked reason, and back, without a reload; stored Cart and Header count unchanged"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-PG-CRT-001-521",
       "level": "E2E",
       "suite": "e2e-ui-mock",
@@ -6391,18 +6753,26 @@
       "test_case_id": "TC-PG-CRT-001-523",
       "level": "E2E",
       "suite": "e2e-ui-mock",
-      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-012", "FR-CRT-003"],
+      "upstream_rule_ids": [
+        "PG-CRT-001",
+        "FR-CRT-012",
+        "FR-CRT-003",
+        "PG-PUB-001",
+        "AR-SES-009",
+        "UF-AUTH-004",
+        "SPEC-050-15.6"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "Mock mode; demo session",
+      "preconditions": "Mock mode; demo session; second tab; logout provider_failure; damaged stored Cart",
       "fixture_ids": [],
       "clock_instant": "2027-03-01T03:00:00Z",
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "logout keeps Cart, count and page; stored Cart holds no account data; guest Cart equals user Cart"
+        "logout removes the stored Cart (also on provider failure and for a damaged Cart), Header shows no count, URL is Home, /cart shows Empty, another tab shows Empty; guest Cart kept after a session appears; stored Cart holds no account data"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -7598,7 +7968,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "Logout ends on / as guest; Back never shows protected content and ends at Login; Cart and mock DB untouched; provider failure still discards the session"
+        "Logout ends on / as guest; Back never shows protected content and ends at Login; Cart key removed, Header shows no count, /cart Empty; mock DB untouched; provider failure still discards the session"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -7644,7 +8014,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "Header switches on Login and Logout without reload; Cart storage byte-identical throughout"
+        "Header switches on Login and Logout without reload; Cart byte-identical across Login; removed after Logout with no Header count"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -7921,6 +8291,29 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "input order kept; label and description from the shared presentation; unknown name uses the generic name"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-CRT-001-624",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-011", "BR-ORD-014"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "orderedLines over the sent snapshot and the Order's included line keys, with repeated and unknown keys",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "the sent lines the Order included are returned in snapshot order at the sent quantity; repeated included keys do not count twice; unknown keys are ignored; inputs unchanged"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -8357,7 +8750,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "handleProceed delegates to one hook with the three pure decisions, a fresh idempotency key and removeLines; the feedback view has a live region and a focusable alert"
+        "handleProceed delegates to one hook with the three pure decisions, a fresh idempotency key and subtractLines over orderedLines (only the ordered quantities leave the Cart); the feedback view has a live region and a focusable alert"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -8380,7 +8773,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "reads through the port only; a fresh idempotency key per retry; no cart or Karaoke purchase start; OrderOutcome is a view with a live region"
+        "reads through the port only; a fresh idempotency key per retry; no cart or Karaoke purchase start; OrderOutcome is a view with a live region; all Order reads go through the latest-request guard"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -8565,6 +8958,29 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "no Order, no allocation change and the Cart kept; rejected lines named with reasons and focus on the summary; the write re-verifies server state"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-CRT-001-615",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-011", "BR-ORD-020", "SPEC-050-14A.1"],
+      "system_invariant_ids": ["INV-010-01"],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock mode; long latency; edits during verifying in this tab and another tab; failing Cart write",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "the Order holds the sent quantities; only those leave the Cart; raised remainder kept, lowered or deleted lines gone, lines added meanwhile untouched; a failed Cart write still reaches the mock Checkout"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -8832,6 +9248,37 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-PG-XFN-001-669",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-XFN-001",
+        "DEV-WEB-009",
+        "SPEC-050-9.1",
+        "SPEC-050-21",
+        "SPEC-050-22",
+        "PAY-BRW-002",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": ["INV-010-10"],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock mode (desktop and mobile Chromium); contract tests/contracts/s7a-purchase.md; DB postconditions are the mock DB",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "slow reads: one read per mount and per press, the pending state and the live message end with every read and the last read decides; a read abandoned by leaving the page is not shown and throws nothing; a retry after an unavailable read is one more read with a loading state; no Order is created"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-PG-XFN-001-671",
       "level": "E2E",
       "suite": "e2e-ui-mock",
@@ -9029,7 +9476,9 @@
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
-      "expected_domain_postconditions": ["contracted slot detail wording, trimmed non-empty"],
+      "expected_domain_postconditions": [
+        "contracted slot detail wording including the not-purchasable label, description and reason, trimmed non-empty"
+      ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
       "expected_observability": [],
@@ -9051,7 +9500,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "no copy fragment contains another; purchasable label is in none of them"
+        "no copy fragment (including the not-purchasable reason and description) contains another; the purchasable and not-purchasable labels are in none of them"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -9186,6 +9635,29 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "sale status other than ON_SALE disables; inconsistent port flag defended"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-KRK-003-615",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-KRK-003", "SPEC-050-13.3", "SPEC-050-25"],
+      "system_invariant_ids": ["INV-010-04"],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Pure function / static source check (node, no DOM); contract tests/contracts/s7b-karaoke.md; UI mock (not API/DB/Provider coverage)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "AVAILABLE and ON_SALE with a false port flag is not purchasable and shows the not-purchasable label, description and reason; other states and sale statuses keep their own reason whatever the flag; purchasable is true exactly when no disabled reason exists"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -9800,7 +10272,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "S8 modules and routes exist at contracted paths; ports unchanged"
+        "S8 modules and routes exist at contracted paths; ports unchanged; the shared latest-request helper exists"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -9846,7 +10318,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "pure modules import no React / storage / clock / mock and reuse shared presentations"
+        "pure modules import no React / storage / clock / mock and reuse shared presentations; the shared latest-request helper is pure"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -9869,7 +10341,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "containers read through useApi only; read-only containers write nothing; Goods detail has no button"
+        "containers read through useApi only; read-only containers write nothing; Goods detail has no button; only the latest read is applied; QR non-ready h1 is the route purpose"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -9922,6 +10394,36 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "no hard-coded Japanese / yen / colour / console / raw HTML in S8 sources; dependency direction kept"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-DEV-WEB-009-601",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "DEV-WEB-009",
+        "PG-MYP-001",
+        "PG-XFN-001",
+        "SPEC-050-9.1",
+        "SPEC-050-22",
+        "TST-UNT-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "contract tests/contracts/s8-mypage.md section 4.1 and tests/contracts/s7a-purchase.md section 6; pure helper driven by hand-resolved promises (no timers, no clock, no randomness)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "only the last-started read is applied: earlier overlapping reads are discarded in every completion order, a response after invalidation is discarded, a rejection is propagated unapplied, separate counters do not interfere"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -10509,6 +11011,29 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-PG-MYP-002-623",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-MYP-002", "SPEC-050-18.2", "DEV-WEB-009", "TST-UNT-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "contract tests/contracts/s8-mypage.md section 3.8; pure model",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "after a save the input takes the server value only if it still equals the submitted value; a value typed meanwhile (including an emptied field) is kept"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-PG-MYP-001-621",
       "level": "Unit",
       "suite": "unit",
@@ -11073,6 +11598,36 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-PG-MYP-001-734",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-MYP-001",
+        "DEV-WEB-009",
+        "SPEC-050-9.1",
+        "SPEC-050-22",
+        "TST-E2E-003",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock mode (desktop and mobile Chromium); contract tests/contracts/s8-mypage.md; DB postconditions are the mock DB",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "leaving a Mypage page while its retry read is still running shows only the destination and raises no page error or console error"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-PG-MYP-002-701",
       "level": "E2E",
       "suite": "e2e-ui-mock",
@@ -11122,7 +11677,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "unsaved / saved statuses; only the signed-in user's Profile changes; survives reload"
+        "unsaved / saved statuses; only the signed-in user's Profile changes; survives reload; a value typed while saving is kept (unsaved) and the DB holds the submitted value; the input is never locked"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -11478,6 +12033,36 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-PG-MYP-004-707",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-MYP-004",
+        "DEV-WEB-009",
+        "SPEC-050-22",
+        "PAY-BRW-002",
+        "TST-E2E-003",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock mode (desktop and mobile Chromium); contract tests/contracts/s8-mypage.md; DB postconditions are the mock DB",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "on the Order detail, slow reads: one read per mount and per press, the pending state and the live message end with every read and the last read decides; a read abandoned by leaving through the Mypage navigation is not shown and throws nothing"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-PG-MYP-005-701",
       "level": "E2E",
       "suite": "e2e-ui-mock",
@@ -11732,6 +12317,37 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "at 390px the QR is at least 200px with margin; state visible with it; no sideways scroll"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-MYP-007-705",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-MYP-007",
+        "SPEC-050-9",
+        "SPEC-050-18.7",
+        "SPEC-050-26.2",
+        "SEC-QR-012",
+        "TST-E2E-003",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": ["INV-010-08"],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock mode (desktop and mobile Chromium); contract tests/contracts/s8-mypage.md; DB postconditions are the mock DB",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "while loading or unavailable the h1 and the document title are the Entry purpose, with no QR, no Ticket state and no Access Denied; the loading text is identical for own, foreign, missing and wrong-purpose refs; the final Access Denied never contains the purpose title; DB unchanged"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -11995,6 +12611,37 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-PG-MYP-010-705",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-MYP-010",
+        "SPEC-050-9",
+        "SPEC-050-18.10",
+        "SPEC-050-26.2",
+        "SEC-QR-012",
+        "TST-E2E-003",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": ["INV-010-08"],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock mode (desktop and mobile Chromium); contract tests/contracts/s8-mypage.md; DB postconditions are the mock DB",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "while loading or unavailable the h1 and the document title are the Karaoke purpose, with no QR, no Reservation state and no Access Denied; the loading text is identical for own, foreign, missing and wrong-purpose refs; the final Access Denied never contains the purpose title; DB unchanged"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-PG-MYP-011-701",
       "level": "E2E",
       "suite": "e2e-ui-mock",
@@ -12180,7 +12827,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "for six detail / QR kinds, foreign, missing, malformed and wrong-purpose refs give the same Access Denied text with no ready content at any moment; DB unchanged"
+        "for six detail / QR kinds, foreign, missing, malformed and wrong-purpose refs give the same Access Denied text with no ready content at any moment; the QR purpose title may appear while loading but never in the final Access Denied; DB unchanged"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
