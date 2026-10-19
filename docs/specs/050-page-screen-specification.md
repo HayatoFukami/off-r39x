@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-050
 title: Page and Screen Specification
-version: 1.2.0
+version: 1.2.1
 status: provisional
 depends_on:
   - SPEC-000
@@ -234,7 +234,7 @@ Customerは独立Roleではないため、「Customer roleを持つからNavigat
 - Primary Navigation（Event、Entry Ticket、Karaoke、Goods）は、Mobile・Desktopを問わず、メニューボタンを操作したときに開き、そこから選択できる形式にする。メニューは常時展開しない。
 - メニューボタンは、開閉状態をプログラム上で伝え（`aria-expanded` 相当）、Keyboardで開閉でき、Escape等で閉じられ、閉じた後はメニューボタンへFocusを戻す。選択またはPage遷移でメニューを閉じる。メニューの項目はNavigationであり、Linkとして提供する（§25）。Drawer等のDialogを使用する場合は§25のDialog / Drawer要件を満たす。
 - Cart、主要CTA、Login / Mypageはメニュー内に隠さず、Header上に常時表示する。Flow完遂に必要な到達性を失わせない。
-- サイト名のLinkは `PG-PUB-001` へ遷移する。すでに `PG-PUB-001` を表示している場合は、Pageの先頭へscrollする。
+- サイト名のLinkは `PG-PUB-001` へ遷移する。すでに `PG-PUB-001` を表示している場合は、Pageの先頭へscrollする。このscrollは、修飾キー（Ctrl / Cmd / Shift / Alt）を伴わない主ボタンのクリックとKeyboardの操作（Enter）に適用する。修飾キーを伴うクリックと主ボタン以外のクリックでは、ブラウザ標準のLink動作（新しいタブやウィンドウで開く等）を妨げず、scrollしない。
 
 **Floating Ticket Button**
 
