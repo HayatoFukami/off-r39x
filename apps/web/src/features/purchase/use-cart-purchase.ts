@@ -5,6 +5,7 @@ import { useCallback, useRef, useState } from "react";
 import { useApi } from "../../api-client/provider";
 import type { CartPurchaseStart, CheckoutStart } from "../../api-client/types";
 import { useSession } from "../../auth/use-session";
+import { getBrowserCartLifecycle } from "../cart/cart-lifecycle";
 import { useCart } from "../cart/use-cart";
 import {
   describeRejections,
@@ -57,6 +58,10 @@ export function useCartPurchase(options: UseCartPurchaseOptions): {
     const step = interpretCartStart(result);
     switch (step.kind) {
       case "go_login":
+        // A protected purchase operation can be the first place an expired Session is noticed.
+        getBrowserCartLifecycle()?.expireAuthenticatedCart();
+        router.push(step.to);
+        return;
       case "go_verification":
         router.push(step.to);
         return;

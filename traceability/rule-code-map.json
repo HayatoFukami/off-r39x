@@ -1928,7 +1928,6 @@
       "code_paths": [
         "apps/web/src/mock/backend/mock-auth.ts",
         "apps/web/src/mock/backend/session-store.ts",
-        "apps/web/src/auth/auth-gate.tsx",
         "apps/web/src/auth/gate-decision.ts",
         "apps/web/src/auth/logout-signal.ts",
         "apps/web/app/(self)/layout.tsx",
@@ -2529,6 +2528,23 @@
       "code_paths": ["scripts/secret-scan.mts"],
       "test_case_ids": ["TC-DEV-SEC-004-001", "TC-DEV-SEC-004-002", "TC-DEV-SEC-004-009"],
       "notes": "implementation mapping only: secret / raw QR / PII scan; matched values are never printed"
+    },
+    {
+      "rule_id": "AR-SES-010",
+      "code_paths": [
+        "apps/web/src/features/cart/cart-lifecycle.ts",
+        "apps/web/src/features/cart/use-cart.ts",
+        "apps/web/src/features/cart/use-cart-count.ts",
+        "apps/web/src/features/cart/cart-page.tsx",
+        "apps/web/src/features/shell/cart-lifecycle-auth-port.ts",
+        "apps/web/src/auth/session-provider.tsx",
+        "apps/web/src/auth/auth-gate.tsx",
+        "apps/web/src/features/shell/site-header.tsx",
+        "apps/web/src/features/purchase/use-cart-purchase.ts",
+        "apps/web/src/features/karaoke/use-karaoke-purchase.ts"
+      ],
+      "test_case_ids": ["TC-AR-SES-010-001", "TC-AR-SES-010-002"],
+      "notes": "implementation mapping only: UI mock (not API/DB/provider coverage)"
     }
   ]
 }

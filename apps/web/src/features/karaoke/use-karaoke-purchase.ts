@@ -5,6 +5,7 @@ import { useCallback, useRef, useState } from "react";
 import { useApi } from "../../api-client/provider";
 import type { CheckoutStart, KaraokePurchaseStart, Ref } from "../../api-client/types";
 import { useSession } from "../../auth/use-session";
+import { getBrowserCartLifecycle } from "../cart/cart-lifecycle";
 import {
   interpretKaraokeCheckout,
   interpretKaraokeStart,
@@ -50,6 +51,10 @@ export function useKaraokePurchase(options: UseKaraokePurchaseOptions): {
     const step = interpretKaraokeStart(result, slotRef);
     switch (step.kind) {
       case "go_login":
+        // A protected purchase operation can be the first place an expired Session is noticed.
+        getBrowserCartLifecycle()?.expireAuthenticatedCart();
+        router.push(step.to);
+        return;
       case "go_verification":
         router.push(step.to);
         return;

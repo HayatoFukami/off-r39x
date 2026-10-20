@@ -158,7 +158,11 @@ export function CartPage() {
     lines !== null &&
     resolution.signature !== null &&
     (resolution.signature !== signatureOf(lines) || resolution.session !== session);
-  const model = buildCartPageModel({ cart: cart.state, resolutions: resolution.value, refreshing });
+  const model = buildCartPageModel({
+    cart: cart.state.kind === "blocked" ? { kind: "loading" } : cart.state,
+    resolutions: resolution.value,
+    refreshing,
+  });
 
   const names = new Map<string, string | null>(
     model.kind === "ready" || model.kind === "unavailable"
@@ -171,6 +175,30 @@ export function CartPage() {
   const handleProceed = (): void => {
     purchase.start();
   };
+
+  if (cart.state.kind === "blocked") {
+    return (
+      <div className="flex flex-col gap-4">
+        <h1 className="text-2xl font-bold">{copy.cart.heading}</h1>
+        <div
+          role="alert"
+          className="flex flex-col items-start gap-2 rounded-base border border-tone-failure-fg/30 bg-tone-failure-bg p-3 text-tone-failure-fg"
+        >
+          <p className="font-bold">{copy.cart.lifecycleBlocked.title}</p>
+          <p>{copy.cart.lifecycleBlocked.description}</p>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() =>
+              cart.recover(session.status === "ready" ? session.session.kind : "unknown")
+            }
+          >
+            {copy.cart.lifecycleBlocked.retry}
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   const setQuantity = (lineKey: string, quantity: number): boolean =>
     cart.setQuantity(lineKey, quantity).kind === "ok";

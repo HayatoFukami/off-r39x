@@ -289,6 +289,12 @@ export const copy = {
       reset: "カートをリセットする",
       goToCart: "カートを確認する",
     },
+    lifecycleBlocked: {
+      title: "カートを利用できません",
+      description:
+        "カートの安全な更新を確認できません。カートを消去して再試行してください。認証状態は維持されています。",
+      retry: "カートを消去して再試行",
+    },
     purchase: {
       verifying: "購入条件を確認しています",
       preparing: "支払い画面を準備中です。購入はまだ確定していません",

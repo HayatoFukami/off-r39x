@@ -21,10 +21,10 @@ import {
   urlOf,
 } from "../harness/browser/auth.ts";
 import {
-  cartEntries,
-  entryLine,
-  goodsLine,
+  addButton,
   headerCartLink,
+  offeringName,
+  quantityInput,
   readCartRaw,
 } from "../harness/browser/cart.ts";
 import { gotoHydrated } from "../harness/browser/hydration.ts";
@@ -47,8 +47,18 @@ test.describe("TC-PG-AUTH-003-301 Login returns to the logical destination: Cart
   test("continue=cart: after Login the Cart page is shown with its lines intact (item 24, second half)", async ({
     page,
   }) => {
-    const lines = [entryLine(OFFERING.regular, 2), goodsLine(GOODS.tshirt, 1)];
-    await openLogin(page, "?continue=cart", cartEntries(lines));
+    await openLogin(page);
+    await gotoHydrated(page, "/entry");
+    const entry = mainOf(page)
+      .getByRole("listitem")
+      .filter({
+        has: page.getByRole("heading", { name: offeringName(OFFERING.regular), exact: true }),
+      });
+    await quantityInput(entry).fill("2");
+    await addButton(entry).click();
+    await gotoHydrated(page, `/goods/${GOODS.tshirt}`);
+    await addButton(mainOf(page)).click();
+    await gotoHydrated(page, "/account/login?continue=cart");
     const before = await readCartRaw(page);
     await loginWith(page, EMAIL.demo);
     await expect(page).toHaveURL(/\/cart$/);

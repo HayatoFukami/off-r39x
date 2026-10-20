@@ -20,11 +20,14 @@ import {
   watchForProtectedText,
 } from "../harness/browser/auth.ts";
 import {
+  addButton,
   cartEntries,
   entryLine,
   goodsLine,
   headerCartLink,
+  offeringName,
   openSecondTab,
+  quantityInput,
   readCartRaw,
   writeStorage,
 } from "../harness/browser/cart.ts";
@@ -51,6 +54,49 @@ async function open(page: Page, path: string, entries: Record<string, string> = 
 }
 
 const guestStays = (page: Page) => readSession(page).then((s) => s.kind === "guest");
+
+test.describe("TC-AR-SES-010-001 an expired prior session cannot carry its Cart into another Login (AR-SES-010, FR-CRT-012)", () => {
+  test("after the prior page closes, a Guest-state Login clears the previous authenticated user's Cart without visiting a protected page", async ({
+    page,
+    context,
+  }) => {
+    await open(page, "/entry", { [KEYS.session]: authenticatedSession() });
+    const offering = page
+      .getByRole("main")
+      .getByRole("listitem")
+      .filter({
+        has: page.getByRole("heading", { name: offeringName(OFFERING.regular), exact: true }),
+      });
+    await addButton(offering).click();
+    await expect(headerCartLink(page, 1)).toBeVisible();
+    expect(await readCartRaw(page)).not.toBeNull();
+    await page.close();
+
+    const reauthenticated = await context.newPage();
+    await fixClock(reauthenticated);
+    // Model an expired session discovered while the browser is away: only the auth session is gone.
+    // The Cart and its lifecycle metadata remain in this same browser storage.
+    await reauthenticated.addInitScript(
+      (key: string) => window.localStorage.removeItem(key),
+      KEYS.session,
+    );
+    await gotoHydrated(reauthenticated, "/account/login");
+    await expect(heading1(reauthenticated)).toHaveText(copy.auth.login.heading);
+    await loginWith(reauthenticated, EMAIL.other);
+
+    await expect(reauthenticated).toHaveURL(/\/mypage$/);
+    expect(await readSession(reauthenticated)).toEqual({
+      kind: "authenticated",
+      email: EMAIL.other,
+      emailVerified: true,
+    });
+    await expect.poll(() => readCartRaw(reauthenticated)).toBeNull();
+    await expect(headerCartLink(reauthenticated, null)).toBeVisible();
+    await gotoHydrated(reauthenticated, "/cart");
+    await expect(mainOf(reauthenticated)).toContainText(copy.cart.empty);
+    await expect(mainOf(reauthenticated).getByRole("listitem")).toHaveCount(0);
+  });
+});
 
 test.describe("TC-AR-SES-007-301 AuthGate keeps protected content from a guest (AR-SES-007, SPEC-050 17.1)", () => {
   test("a guest opening /mypage is sent to Login with continue=mypage and never sees the protected content", async ({
@@ -233,7 +279,19 @@ test.describe("TC-PG-AUTH-003-312 Header and Cart across Login and Logout (SPEC-
   test("Login then Logout: the Header switches both ways without a reload; the Cart is kept on Login and cleared on Logout", async ({
     page,
   }) => {
-    await open(page, "/account/login", cartEntries(CART));
+    await open(page, "/entry");
+    const entry = page
+      .getByRole("main")
+      .getByRole("listitem")
+      .filter({
+        has: page.getByRole("heading", { name: offeringName(OFFERING.regular), exact: true }),
+      });
+    await quantityInput(entry).fill("2");
+    await addButton(entry).click();
+    await gotoHydrated(page, `/goods/${GOODS.tshirt}`);
+    await addButton(mainOf(page)).click();
+    await expect(headerCartLink(page, 3)).toBeVisible();
+    await gotoHydrated(page, "/account/login");
     const cartRaw = await readCartRaw(page);
     await expect(headerLogin(page)).toBeVisible();
     await expect(accountMenuButton(page)).toHaveCount(0);

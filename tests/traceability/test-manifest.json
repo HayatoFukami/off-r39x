@@ -7931,6 +7931,54 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-AR-SES-010-002",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["AR-SES-010", "FR-CRT-012"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Fake AuthPort that can notify before resolving Login and injected Cart lifecycle contract with synthetic provenance",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Cart cleanup receives the pre-transition provenance; no Login success notification is published before cleanup completes",
+        "Login failure aborts the Cart transition and preserves the Cart; cleanup failure preserves the successful Auth result and leaves Cart lifecycle blocked"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-AR-SES-010-001",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": ["AR-SES-010", "FR-CRT-012"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Synthetic UI mock; prior authenticated user adds a Cart line, prior page closes, stored session expires to Guest, and a different seeded user logs in without a protected-page visit",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "successful Login as the second user clears the previous authenticated user Cart before it can be displayed; Header has no count and /cart is Empty",
+        "the mock authenticated session belongs to the second user"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-AR-SES-007-301",
       "level": "E2E",
       "suite": "e2e-ui-mock",
