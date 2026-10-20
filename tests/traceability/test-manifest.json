@@ -5825,7 +5825,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "exactly one strict stored-Cart schema; no price / stock / owner field; no Karaoke or session in the store and Cart UI (the store knows no account; Logout clearing lives in the shell)"
+        "exactly one strict stored-Cart body schema; a separate FR-CRT-012 provenance metadata schema may validate metadata but cannot redefine Cart lines; no price / stock / owner field; no Karaoke or session in the store and Cart UI (the store knows no account; Logout clearing lives in the shell)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -6916,7 +6916,7 @@
       "test_case_id": "TC-PG-CRT-001-541",
       "level": "E2E",
       "suite": "e2e-ui-mock",
-      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-003"],
+      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-003", "FR-CRT-012"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -6927,7 +6927,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "a failed quantity save is reported; stored Cart and Header count unchanged; a failed removal keeps the row and the stored Cart"
+        "Failed quantity save or removal preserves the stored Cart, hides Cart rows and Header count, stops editing/purchase, and exposes explicit clear recovery without reporting success"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -6962,7 +6962,7 @@
       "test_case_id": "TC-PG-CRT-001-542",
       "level": "E2E",
       "suite": "e2e-ui-mock",
-      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-003"],
+      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-003", "FR-CRT-012"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -7934,7 +7934,7 @@
       "test_case_id": "TC-AR-SES-010-002",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["AR-SES-010", "FR-CRT-012"],
+      "upstream_rule_ids": ["FR-CRT-012"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -7958,7 +7958,7 @@
       "test_case_id": "TC-AR-SES-010-001",
       "level": "E2E",
       "suite": "e2e-ui-mock",
-      "upstream_rule_ids": ["AR-SES-010", "FR-CRT-012"],
+      "upstream_rule_ids": ["FR-CRT-012"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -7969,7 +7969,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "successful Login as the second user clears the previous authenticated user Cart before it can be displayed; Header has no count and /cart is Empty",
+        "public Login page and failed Login retain the prior persisted Cart; successful Login as the second user clears the previous authenticated user Cart before it can be displayed; Header has no count and /cart is Empty",
         "the mock authenticated session belongs to the second user"
       ],
       "expected_db_postconditions": [],
@@ -14033,6 +14033,123 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "data-reveal is only on h2 / h3 section headings (never h1), every main section heading carries it, and the heading outline and aria-hidden state do not change"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-FR-CRT-012-003",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["FR-CRT-012"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real CartStore and CartLifecycle on shared in-memory CartStorage; authenticated restoration, Guest/public lookup, Login/signup/logout and pending metadata",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Only confirmed Guest provenance permits first-login Cart preservation; restored authenticated Cart requires valid provenance; Login failures and public Guest queries do not clear prior Cart"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-FR-CRT-012-004",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["FR-CRT-012"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real CartStore and CartLifecycle with injected metadata read/write and Cart clear faults; raw AuthPort callbacks notify early",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Storage failures block Cart access, do not publish a successful clear, preserve established Auth result and require successful explicit clear plus metadata recovery",
+        "Simultaneous Login, Logout and session reads serialize their own cleanup and publish only settled Cart state"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-FR-CRT-012-005",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": ["FR-CRT-012", "AR-SES-007"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "UI mock protected page observes Guest with prior authenticated Cart; Cart clear fails until explicit recovery",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Failed clear keeps protected content hidden and URL unchanged; header suppresses count; visible clear retry stays blocked on failure, succeeds only after storage recovers; mock business data remains identical"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-FR-CRT-012-006",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": ["FR-CRT-012", "AR-SES-007"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "UI mock Cart and Karaoke protected actions discover expiry at API result or raw Guest preflight; clear fails until explicit recovery",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Failed clear keeps protected content hidden and URL unchanged; header suppresses count; visible clear retry stays blocked on failure, succeeds only after storage recovers; mock business data remains identical"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-FR-CRT-012-007",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": ["FR-CRT-012", "AR-AUTH-008"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "UI mock browser with localStorage getter denied until explicitly enabled, or final authenticated metadata write denied; verified and unverified synthetic users",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Initial unavailable Cart stays blocked, successful explicit recovery reloads and restores Header subscriptions and Auth decoration; Guest Cart survives Login and Logout clears it",
+        "Final metadata failure preserves successful verified/unverified Auth navigation and authenticated Session; Cart alone stays blocked until successful explicit clear"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],

@@ -128,9 +128,10 @@ describe("TC-DEV-WEB-001-704 the container and the hook wire the purchase start 
     expect(hook).not.toMatch(/\b(localStorage|sessionStorage|fetch)\b/);
   });
 
-  it("neither file touches the Cart (Karaoke is never added to the Cart and never reads it)", () => {
+  it("neither file uses Cart items or mutations for Karaoke; authentication lifecycle gating is allowed", () => {
     for (const code of [hook, page]) {
-      expect(code).not.toMatch(/useCart|cart-store|addFromOrder|removeLines|r39x\.cart/);
+      expect(code).not.toMatch(/cart-store|addFromOrder|removeLines|r39x\.cart|state\.cart/);
+      expect(code).not.toMatch(/\bcart\.(add|setQuantity|remove|reset|subtractLines)\s*\(/);
       expect(code).not.toMatch(/copy\.sales\.(add|viewCart|addSucceeded)\b/);
     }
   });

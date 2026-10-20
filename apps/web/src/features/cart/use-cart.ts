@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useRef, useSyncExternalStore } from "react";
 import type { CartLine, OrderItem } from "../../api-client/types";
 import { getBrowserCartLifecycle } from "./cart-lifecycle";
 import {
@@ -31,7 +31,7 @@ function subscribe(listener: () => void): () => void {
 
 function getSnapshot(): CartState {
   const lifecycle = getBrowserCartLifecycle();
-  if (lifecycle === null) return UNREADABLE;
+  if (lifecycle === null) return BLOCKED;
   if (lifecycle.getSnapshot().kind === "blocked") return BLOCKED;
   const store = getBrowserCartStore();
   return store === null ? UNREADABLE : store.getSnapshot();
@@ -62,6 +62,7 @@ export function useCart(): {
   clear(): CartWriteResult;
   recover(provenance: "guest" | "authenticated" | "unknown"): boolean;
 } {
+  const initiallyUnavailable = useRef(getBrowserCartLifecycle() === null);
   const state = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   return {
     state,
@@ -75,6 +76,11 @@ export function useCart(): {
     addFromOrder: (items) => writeCart(() => writableStore()?.addFromOrder(items) ?? UNAVAILABLE),
     reset: () => writeCart(() => writableStore()?.reset() ?? UNAVAILABLE),
     clear: () => writeCart(() => getBrowserCartStore()?.clear() ?? UNAVAILABLE),
-    recover: (provenance) => getBrowserCartLifecycle()?.recover(provenance) ?? false,
+    recover: (provenance) => {
+      const recovered = getBrowserCartLifecycle()?.recover(provenance) ?? false;
+      // Initial storage denial also prevented Header/Auth subscriptions. Reinitialize all wiring.
+      if (recovered && initiallyUnavailable.current) window.location.reload();
+      return recovered;
+    },
   };
 }

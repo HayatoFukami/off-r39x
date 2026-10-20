@@ -5,11 +5,11 @@ import { createCartLifecycleAuthPort } from "../../../../apps/web/src/features/s
 type Provenance = "guest" | "authenticated" | "unknown";
 
 type Lifecycle = {
-  beginTransition(): Provenance;
+  beginTransition(): { kind: "ready"; provenance: Provenance } | { kind: "blocked" };
   finishLogin(provenance: Provenance): void;
   abortTransition(provenance: Provenance): void;
   finishLogout(): void;
-  expireAuthenticatedCart(): void;
+  expireAuthenticatedCart(): boolean;
   subscribe(listener: () => void): () => void;
   getSnapshot(): { kind: "ready" } | { kind: "blocked" };
 };
@@ -30,18 +30,18 @@ function rawAuth(overrides: Partial<AuthPort> = {}): AuthPort {
 
 function lifecycle(overrides: Partial<Lifecycle> = {}): Lifecycle {
   return {
-    beginTransition: () => "guest",
+    beginTransition: () => ({ kind: "ready", provenance: "guest" }),
     finishLogin: () => undefined,
     abortTransition: () => undefined,
     finishLogout: () => undefined,
-    expireAuthenticatedCart: () => undefined,
+    expireAuthenticatedCart: () => true,
     subscribe: () => () => undefined,
     getSnapshot: () => ({ kind: "ready" }),
     ...overrides,
   };
 }
 
-describe("TC-AR-SES-010-002 AuthPort lifecycle decorator orders Cart cleanup and session notifications (AR-SES-010, FR-CRT-012)", () => {
+describe("TC-AR-SES-010-002 AuthPort lifecycle decorator orders Cart cleanup and session notifications (FR-CRT-012)", () => {
   it("finishes Login cleanup before forwarding an early raw session notification", async () => {
     const order: string[] = [];
     let rawNotify: (() => void) | undefined;
@@ -61,7 +61,7 @@ describe("TC-AR-SES-010-002 AuthPort lifecycle decorator orders Cart cleanup and
       lifecycle({
         beginTransition: () => {
           order.push("begin");
-          return "guest";
+          return { kind: "ready", provenance: "guest" };
         },
         finishLogin: (provenance) => order.push(`finish:${provenance}`),
       }),
@@ -86,7 +86,7 @@ describe("TC-AR-SES-010-002 AuthPort lifecycle decorator orders Cart cleanup and
       });
       const port = createCartLifecycleAuthPort(
         raw,
-        lifecycle({ beginTransition: () => provenance, finishLogin }),
+        lifecycle({ beginTransition: () => ({ kind: "ready", provenance }), finishLogin }),
       );
 
       await port.signIn({ email: "new@example.com", password: "synthetic" });
@@ -104,7 +104,7 @@ describe("TC-AR-SES-010-002 AuthPort lifecycle decorator orders Cart cleanup and
     const port = createCartLifecycleAuthPort(
       raw,
       lifecycle({
-        beginTransition: () => "guest",
+        beginTransition: () => ({ kind: "ready", provenance: "guest" }),
         finishLogin,
         abortTransition,
       }),

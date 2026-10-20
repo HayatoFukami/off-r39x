@@ -6,6 +6,7 @@ import { useApi } from "../../api-client/provider";
 import type { CheckoutStart, KaraokePurchaseStart, Ref } from "../../api-client/types";
 import { useSession } from "../../auth/use-session";
 import { getBrowserCartLifecycle } from "../cart/cart-lifecycle";
+import { useCart } from "../cart/use-cart";
 import {
   interpretKaraokeCheckout,
   interpretKaraokeStart,
@@ -38,6 +39,7 @@ export function useKaraokePurchase(options: UseKaraokePurchaseOptions): {
   const api = useApi();
   const router = useRouter();
   const session = useSession();
+  const cart = useCart();
   const [phase, setPhase] = useState<KaraokePurchasePhase>({ kind: "idle" });
   const inFlight = useRef(false);
   const { slotRef, onRefresh } = options;
@@ -52,8 +54,9 @@ export function useKaraokePurchase(options: UseKaraokePurchaseOptions): {
     switch (step.kind) {
       case "go_login":
         // A protected purchase operation can be the first place an expired Session is noticed.
-        getBrowserCartLifecycle()?.expireAuthenticatedCart();
-        router.push(step.to);
+        inFlight.current = false;
+        setPhase({ kind: "idle" });
+        if (getBrowserCartLifecycle()?.expireAuthenticatedCart() === true) router.push(step.to);
         return;
       case "go_verification":
         router.push(step.to);
@@ -100,14 +103,14 @@ export function useKaraokePurchase(options: UseKaraokePurchaseOptions): {
   }, [api, onRefresh, router, slotRef]);
 
   const start = useCallback((): void => {
-    if (inFlight.current) return;
+    if (inFlight.current || cart.state.kind === "blocked") return;
     const plan = planKaraokeProceed(session.state, slotRef);
     if (plan.kind === "go_login") {
-      router.push(plan.to);
+      if (getBrowserCartLifecycle()?.expireAuthenticatedCart() === true) router.push(plan.to);
       return;
     }
     void run();
-  }, [router, run, session.state, slotRef]);
+  }, [router, run, session.state, slotRef, cart.state.kind]);
 
   const busy = phase.kind === "holding" || phase.kind === "preparing";
   return { phase, busy, start };

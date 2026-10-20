@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { CART_STORAGE_KEY } from "./cart-count";
 import { type CartStorage, type CartStore, getBrowserCartStore } from "./cart-store";
 
@@ -8,16 +9,26 @@ export type CartLifecycleSnapshot = { kind: "ready" } | { kind: "blocked" };
 const READY: CartLifecycleSnapshot = { kind: "ready" };
 const BLOCKED: CartLifecycleSnapshot = { kind: "blocked" };
 
-type Metadata = { version: 1; provenance: CartProvenance; transitioning?: true };
+const metadataSchema = z.union([
+  z.strictObject({ version: z.literal(1), provenance: z.enum(["guest", "authenticated"]) }),
+  z.strictObject({
+    version: z.literal(1),
+    provenance: z.enum(["guest", "authenticated", "unknown"]),
+    transitioning: z.literal(true),
+  }),
+]);
+type Metadata = z.infer<typeof metadataSchema>;
+const isTransitioning = (metadata: Metadata | null): boolean =>
+  metadata !== null && "transitioning" in metadata;
 
 export interface CartLifecycle {
   initializeGuestIfEmpty(sessionKind?: "guest" | "authenticated"): void;
   markAuthenticated(): void;
-  beginTransition(): CartProvenance;
+  beginTransition(): { kind: "ready"; provenance: CartProvenance } | { kind: "blocked" };
   finishLogin(provenance: CartProvenance): void;
   abortTransition(provenance: CartProvenance): void;
   finishLogout(): void;
-  expireAuthenticatedCart(): void;
+  expireAuthenticatedCart(): boolean;
   block(): void;
   recover(provenance: CartProvenance): boolean;
   subscribe(listener: () => void): () => void;
@@ -29,19 +40,8 @@ function readMetadata(storage: CartStorage): Metadata | null {
   if (raw === null) return null;
   try {
     const value: unknown = JSON.parse(raw);
-    if (typeof value !== "object" || value === null) return null;
-    const data = value as Record<string, unknown>;
-    if (data.version !== 1) return null;
-    if (
-      data.provenance !== "guest" &&
-      data.provenance !== "authenticated" &&
-      !(data.provenance === "unknown" && data.transitioning === true)
-    )
-      return null;
-    if (data.transitioning !== undefined && data.transitioning !== true) return null;
-    return data.transitioning === true
-      ? { version: 1, provenance: data.provenance, transitioning: true }
-      : { version: 1, provenance: data.provenance };
+    const parsed = metadataSchema.safeParse(value);
+    return parsed.success ? parsed.data : null;
   } catch {
     return null;
   }
@@ -72,7 +72,6 @@ export function createCartLifecycle(
         }),
       );
     }
-    blocked = transitioning;
     notify();
   };
   const clearCart = (): void => {
@@ -81,6 +80,7 @@ export function createCartLifecycle(
 
   return {
     initializeGuestIfEmpty(sessionKind = "guest") {
+      if (blocked) return;
       try {
         if (readMetadata(storage) !== null) return;
         const rawCart = storage.getItem(CART_STORAGE_KEY);
@@ -92,29 +92,35 @@ export function createCartLifecycle(
       }
     },
     markAuthenticated() {
+      if (blocked) return;
       try {
         const metadata = readMetadata(storage);
-        if (metadata?.provenance === "guest" && !metadata.transitioning) write("authenticated");
-        else this.initializeGuestIfEmpty("authenticated");
+        // Another tab may still be settling authentication. Only completion or recovery releases it.
+        if (isTransitioning(metadata)) return;
+        if (metadata?.provenance === "authenticated") return;
+        if (metadata?.provenance !== "guest") clearCart();
+        write("authenticated");
       } catch {
         blocked = true;
         notify();
       }
     },
     beginTransition() {
-      let provenance: CartProvenance = "unknown";
+      if (blocked) return { kind: "blocked" };
       try {
         const metadata = readMetadata(storage);
-        if (metadata !== null)
-          provenance = metadata.transitioning ? "unknown" : metadata.provenance;
+        if (isTransitioning(metadata)) return { kind: "blocked" };
+        const provenance = metadata?.provenance ?? "unknown";
         write(provenance, true);
+        return { kind: "ready", provenance };
       } catch {
         blocked = true;
         notify();
+        return { kind: "blocked" };
       }
-      return provenance;
     },
     finishLogin(provenance) {
+      if (blocked) return;
       try {
         if (provenance !== "guest") clearCart();
         write("authenticated");
@@ -125,6 +131,7 @@ export function createCartLifecycle(
       }
     },
     abortTransition(provenance) {
+      if (blocked) return;
       try {
         write(provenance);
       } catch {
@@ -143,13 +150,18 @@ export function createCartLifecycle(
       }
     },
     expireAuthenticatedCart() {
+      if (blocked) return false;
       try {
-        if (readMetadata(storage)?.provenance !== "authenticated") return;
+        const metadata = readMetadata(storage);
+        if (isTransitioning(metadata)) return false;
+        if (metadata?.provenance === "guest") return true;
         clearCart();
         write("guest");
+        return true;
       } catch {
         blocked = true;
         notify();
+        return false;
       }
     },
     block() {
@@ -160,6 +172,8 @@ export function createCartLifecycle(
       try {
         clearCart();
         write(provenance);
+        blocked = false;
+        notify();
         return true;
       } catch {
         blocked = true;
@@ -184,7 +198,7 @@ export function createCartLifecycle(
       if (blocked) return BLOCKED;
       try {
         const metadata = readMetadata(storage);
-        return metadata?.transitioning ? BLOCKED : READY;
+        return isTransitioning(metadata) ? BLOCKED : READY;
       } catch {
         blocked = true;
         return BLOCKED;

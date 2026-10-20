@@ -13,6 +13,8 @@ import { SectionHeading } from "../../presentation/components/section-heading";
 import { StatusBadge } from "../../presentation/components/status-badge";
 import { Button } from "../../presentation/components/ui/button";
 import { copy } from "../../presentation/copy/ja";
+import { CartRecovery } from "../cart/cart-recovery";
+import { useCart } from "../cart/use-cart";
 import { buildKaraokeSlotModel } from "./karaoke-slot-model";
 import { type KaraokePurchasePhase, useKaraokePurchase } from "./use-karaoke-purchase";
 
@@ -57,6 +59,7 @@ function progressText(phase: KaraokePurchasePhase): string | null {
 export function KaraokeSlotPage({ slotRef }: { slotRef: Ref<"slot"> }) {
   const api = useApi();
   const session = useSession();
+  const cart = useCart();
   const [input, setInput] = useState<Loadable<KaraokeSlotDetail>>({ kind: "loading" });
   const token = useRef(0);
   const alertRef = useRef<HTMLDivElement>(null);
@@ -102,6 +105,14 @@ export function KaraokeSlotPage({ slotRef }: { slotRef: Ref<"slot"> }) {
   if (model.kind === "not_found") return <NotFoundView />;
 
   const heading = <h1 className="text-2xl font-bold">{copy.karaoke.slotDetail.heading}</h1>;
+  if (cart.state.kind === "blocked") {
+    return (
+      <div className="flex flex-col gap-5">
+        {heading}
+        <CartRecovery />
+      </div>
+    );
+  }
   if (model.kind === "loading") {
     return (
       <div className="flex flex-col gap-5">

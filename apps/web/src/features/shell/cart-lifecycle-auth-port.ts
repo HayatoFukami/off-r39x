@@ -1,5 +1,5 @@
 import type { AuthPort } from "../../auth/port";
-import type { CartLifecycle, CartProvenance } from "../cart/cart-lifecycle";
+import type { CartLifecycle } from "../cart/cart-lifecycle";
 
 type AuthLifecycle = Pick<
   CartLifecycle,
@@ -28,7 +28,7 @@ export function createCartLifecycleAuthPort(rawAuth: AuthPort, lifecycle: AuthLi
   };
 
   const waitForTransition = async (): Promise<void> => {
-    if (transition !== null) await transition;
+    while (transition !== null) await transition;
   };
 
   const synchronize = async (): Promise<void> => {
@@ -38,7 +38,6 @@ export function createCartLifecycleAuthPort(rawAuth: AuthPort, lifecycle: AuthLi
       if (transition !== null) continue;
       if (current.kind === "ok") {
         if (current.session.kind === "guest") {
-          lifecycle.expireAuthenticatedCart();
           lifecycle.initializeGuestIfEmpty?.();
         } else {
           lifecycle.markAuthenticated?.();
@@ -59,12 +58,14 @@ export function createCartLifecycleAuthPort(rawAuth: AuthPort, lifecycle: AuthLi
     });
   };
 
-  function startTransition(): CartProvenance {
-    const provenance = lifecycle.beginTransition();
+  async function startTransition(): Promise<ReturnType<CartLifecycle["beginTransition"]>> {
+    // Acquire this tab's transition before yielding, including Logout after a storage failure.
+    while (transition !== null) await transition;
+    const result = lifecycle.beginTransition();
     transition = new Promise<void>((resolve) => {
       settleTransition = resolve;
     });
-    return provenance;
+    return result;
   }
 
   function completeTransition(): void {
@@ -77,11 +78,16 @@ export function createCartLifecycleAuthPort(rawAuth: AuthPort, lifecycle: AuthLi
     }
   }
 
-  async function authenticate<T>(
+  async function authenticate<T extends { kind: string }>(
     operation: () => Promise<T>,
     succeeded: (result: T) => boolean,
-  ): Promise<T> {
-    const provenance = startTransition();
+  ): Promise<T | { kind: "unavailable" }> {
+    const started = await startTransition();
+    if (started.kind === "blocked") {
+      completeTransition();
+      return { kind: "unavailable" };
+    }
+    const { provenance } = started;
     let result: T;
     try {
       result = await operation();
@@ -111,7 +117,6 @@ export function createCartLifecycleAuthPort(rawAuth: AuthPort, lifecycle: AuthLi
         if (transition !== null) continue;
         if (result.kind === "ok") {
           if (result.session.kind === "guest") {
-            lifecycle.expireAuthenticatedCart();
             lifecycle.initializeGuestIfEmpty?.();
           } else {
             lifecycle.markAuthenticated?.();
@@ -145,7 +150,7 @@ export function createCartLifecycleAuthPort(rawAuth: AuthPort, lifecycle: AuthLi
       );
     },
     async signOut() {
-      startTransition();
+      await startTransition();
       try {
         return await rawAuth.signOut();
       } finally {

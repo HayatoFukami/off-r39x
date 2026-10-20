@@ -87,7 +87,7 @@ test.describe("TC-PG-XFN-001-671 purchase again for Goods / Entry returns the it
         if (target === undefined) throw new Error("seed order missing");
         target.state = "CANCELED";
       },
-      extra: cartEntries([goodsLine(GOODS.tshirt, 2)]),
+      extra: cartEntries([goodsLine(GOODS.tshirt, 2)], "authenticated"),
     });
     await expect(outcomeRegion(page)).toContainText(copy.order.state.CANCELED);
     await expect(headerCartLink(page, 2)).toBeVisible();
@@ -119,7 +119,7 @@ test.describe("TC-PG-XFN-001-672 purchase again for Karaoke restarts from slot s
     page,
   }) => {
     await openAs(page, `/purchase/orders/${ORDER.expired}`, {
-      extra: cartEntries([entryLine(OFFERING.regular, 2)]),
+      extra: cartEntries([entryLine(OFFERING.regular, 2)], "authenticated"),
     });
     await expect(outcomeRegion(page)).toContainText(copy.order.state.EXPIRED);
     const cartBefore = await readCartRaw(page);
@@ -145,7 +145,10 @@ test.describe("TC-PG-XFN-001-673 purchase again never overwrites an unreadable C
     page,
   }) => {
     await openAs(page, `/purchase/orders/${ORDER.paymentFailed}`, {
-      extra: { [KEYS.cart]: "{ damaged" },
+      extra: {
+        [KEYS.cart]: "{ damaged",
+        [KEYS.cartLifecycle]: JSON.stringify({ version: 1, provenance: "authenticated" }),
+      },
     });
     await actionButton(page, act.purchase_again).click();
     await expect(page).toHaveURL(/\/cart$/);

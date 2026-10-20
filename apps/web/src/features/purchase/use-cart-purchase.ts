@@ -59,8 +59,9 @@ export function useCartPurchase(options: UseCartPurchaseOptions): {
     switch (step.kind) {
       case "go_login":
         // A protected purchase operation can be the first place an expired Session is noticed.
-        getBrowserCartLifecycle()?.expireAuthenticatedCart();
-        router.push(step.to);
+        inFlight.current = false;
+        setPhase({ kind: "idle" });
+        if (getBrowserCartLifecycle()?.expireAuthenticatedCart() === true) router.push(step.to);
         return;
       case "go_verification":
         router.push(step.to);
@@ -98,14 +99,14 @@ export function useCartPurchase(options: UseCartPurchaseOptions): {
   }, [api, lines, names, onRejected, router, subtractLines]);
 
   const start = useCallback((): void => {
-    if (inFlight.current) return;
+    if (inFlight.current || cart.state.kind === "blocked") return;
     const plan = planProceed(session.state);
     if (plan.kind === "go_login") {
-      router.push(plan.to);
+      if (getBrowserCartLifecycle()?.expireAuthenticatedCart() === true) router.push(plan.to);
       return;
     }
     void run();
-  }, [router, run, session.state]);
+  }, [router, run, session.state, cart.state.kind]);
 
   const busy = phase.kind === "verifying" || phase.kind === "preparing";
   return { phase, busy, start };

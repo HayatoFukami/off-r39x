@@ -2,6 +2,9 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { type ReactNode, useEffect } from "react";
+import { getBrowserCartLifecycle } from "../features/cart/cart-lifecycle";
+import { CartRecovery } from "../features/cart/cart-recovery";
+import { useCart } from "../features/cart/use-cart";
 import { PageState } from "../presentation/components/page-state";
 import { Button } from "../presentation/components/ui/button";
 import { copy } from "../presentation/copy/ja";
@@ -15,17 +18,21 @@ import { useSession } from "./use-session";
  */
 export function AuthGate({ children }: { children: ReactNode }) {
   const { state } = useSession();
+  const cart = useCart();
   const pathname = usePathname();
   const router = useRouter();
   const decision = decideGate(state, pathname);
+  const cartBlocked = cart.state.kind === "blocked";
+  const guestRedirect = decision.kind === "redirect" && decision.reason === "guest";
   const redirectTo = decision.kind === "redirect" ? decision.to : null;
 
   useEffect(() => {
-    if (redirectTo === null) return;
+    if (redirectTo === null || (guestRedirect && cartBlocked)) return;
     // A Logout in this tab ends on Home; only a change made elsewhere sends the page to Login.
     if (isLogoutInProgress()) return;
+    if (guestRedirect && getBrowserCartLifecycle()?.expireAuthenticatedCart() !== true) return;
     router.replace(redirectTo);
-  }, [redirectTo, router]);
+  }, [redirectTo, router, cartBlocked, guestRedirect]);
 
   // A page restored from the back/forward cache re-checks the Session (SPEC-050 15.6).
   useEffect(() => {
@@ -35,6 +42,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
     window.addEventListener("pageshow", onPageShow);
     return () => window.removeEventListener("pageshow", onPageShow);
   }, []);
+
+  if (guestRedirect && cartBlocked) return <CartRecovery />;
 
   switch (decision.kind) {
     case "allow":

@@ -158,14 +158,20 @@ describe("TC-PG-CRT-001-461 the Entry / Goods detail UI and the Cart store start
   });
 });
 
-describe("TC-PG-CRT-001-462 the Cart holds references and quantities only and cannot hold Karaoke (FR-CRT-002 / 003, DEV-TS-004)", () => {
-  it("defines exactly one strict zod schema for the stored Cart (cart-model.ts); cart-count.ts and the store reuse it", () => {
+describe("TC-PG-CRT-001-462 the Cart holds references and quantities only and cannot hold Karaoke (FR-CRT-002 / 003 / 012, DEV-TS-004)", () => {
+  it("defines the stored Cart schema only in cart-model.ts; separate provenance metadata cannot redefine Cart lines", () => {
     const owners = walk(abs("src/features/cart"))
       .filter((f) => /\.(ts|tsx)$/.test(f))
       .filter((f) =>
         /strictObject\s*\(|\.strict\s*\(/.test(stripComments(readFileSync(f, "utf8"))),
       );
-    expect(owners.map(rel)).toEqual(["src/features/cart/cart-model.ts"]);
+    // FR-CRT-012 permits a separate metadata contract; DEV-TS-004 requires its runtime validation.
+    // The metadata owner cannot define a second Cart body schema containing lines.
+    const metadataOwner = "src/features/cart/cart-lifecycle.ts";
+    expect(owners.map(rel).filter((path) => path !== metadataOwner)).toEqual([
+      "src/features/cart/cart-model.ts",
+    ]);
+    expect(stripComments(read(metadataOwner))).not.toMatch(/\blines\s*:/);
     expect(stripComments(read("src/features/cart/cart-count.ts"))).toMatch(/cart-model/);
   });
 

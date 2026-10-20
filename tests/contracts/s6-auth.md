@@ -378,3 +378,17 @@ export function describeContinuation(intent: ContinuationIntent | null): Continu
 10. **`?notice=password-updated`**: Password reset 完了後の通知のための、このモックの内部 query である（Secret を含まない固定値。SPEC-050 §15.5 は成功後に PG-AUTH-003 へ遷移するとだけ定める）。
 9. **pageshow**: bfcache 復帰時の再確認は `window.location.reload()` とする（再取得を確実にするため）。E2E は `PageTransitionEvent("pageshow", { persisted: true })` を dispatch して検証する（Chromium は headless で bfcache を無効にするため、実際の bfcache 復帰は再現できない）。
 11. **検証 round 1 の訂正**: `email-verification-page.tsx`（PG-AUTH-002、SPEC-050 §15.2）は入力欄を持たないため、`noValidate` / `ErrorSummary` / `aria-busy` の form 要件（TC-PG-AUTH-003-511）の対象外とする（テスト側の誤りだった。対象は login / register / password-reset の2ページ）。
+
+## 10. Issue #8 の Cart 分離回帰契約
+
+根拠は `FR-CRT-012` と `AR-SES-007` である。削除済みRule `AR-SES-010` は参照せず、既存TC ID `TC-AR-SES-010-001/002` の識別子のみ維持する。
+
+- `tests/unit/web/cart/cart-lifecycle.test.ts` は実CartStoreと実CartLifecycleを同じstorageへ接続する。Session復元、明示Login / Session成立登録、確認待ち登録、Login失敗、Logout、別Tab通知、metadata読込・保存とCart clear障害、停止状態の持続と明示回復を検証する。
+- 内部 `beginTransition` の結果は `{ kind: "ready", provenance } | { kind: "blocked" }`、保護境界の `expireAuthenticatedCart` は成功をbooleanで返す。公開AuthPortの型は変更しない。開始前のmetadata保存失敗ではraw signIn / signUpを呼ばず既存の `unavailable` を返す。
+- `tests/e2e/auth-gate-logout.spec.ts` の既存Issue再現は、公開Login画面と失敗Loginで旧Cartの保存値が維持され、成功時に初めてclearされる順序をassertする。
+- `tests/e2e/cart-session-isolation.spec.ts` はAuthGateとCart / Karaokeの両購入Actionで、Cart clear失敗中はLoginへ移動せず、件数とCart内容・編集・購入を公開しないこと、および「カートを消去して再試行」の失敗と成功を検証する。ActionはAPIで初めて期限切れが分かる場合と、UIが既にGuestを認識している場合の双方を検証する。
+- 既存Cart fixtureはGuest / authenticatedの非識別由来を明示する。由来不明・legacy Cartは専用Unitで検証し、通常の購入ケースに紛れ込ませない。
+- 初回のlocalStorage取得不能からの回復成功時はPageを再読込し、AuthPortのlifecycle連携とHeader / Cartの購読を再初期化する。通常のstorage障害からの回復は同じPage内で完了する。
+- 同じTabのLogin / Logoutが重なっても、それぞれのcleanupを順に完了してからSession照会・通知を公開する。認証成立後のmetadata保存失敗は、確認済みUserのMypage表示と未確認UserのEmail Verificationへの遷移を妨げず、Cartだけを停止する。
+
+これらはBrowser storage境界のUnitおよび補助UI mock suiteであり、production G8、API / DB / Provider coverageではない。mock業務データがclear前後で同一であることはBrowser suite内で比較する。runner retryは0のままとする。

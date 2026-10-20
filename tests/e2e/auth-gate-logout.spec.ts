@@ -55,7 +55,7 @@ async function open(page: Page, path: string, entries: Record<string, string> = 
 
 const guestStays = (page: Page) => readSession(page).then((s) => s.kind === "guest");
 
-test.describe("TC-AR-SES-010-001 an expired prior session cannot carry its Cart into another Login (AR-SES-010, FR-CRT-012)", () => {
+test.describe("TC-AR-SES-010-001 an expired prior session cannot carry its Cart into another Login (FR-CRT-012)", () => {
   test("after the prior page closes, a Guest-state Login clears the previous authenticated user's Cart without visiting a protected page", async ({
     page,
     context,
@@ -70,6 +70,7 @@ test.describe("TC-AR-SES-010-001 an expired prior session cannot carry its Cart 
     await addButton(offering).click();
     await expect(headerCartLink(page, 1)).toBeVisible();
     expect(await readCartRaw(page)).not.toBeNull();
+    const previousCart = await readCartRaw(page);
     await page.close();
 
     const reauthenticated = await context.newPage();
@@ -82,6 +83,16 @@ test.describe("TC-AR-SES-010-001 an expired prior session cannot carry its Cart 
     );
     await gotoHydrated(reauthenticated, "/account/login");
     await expect(heading1(reauthenticated)).toHaveText(copy.auth.login.heading);
+    expect(await readCartRaw(reauthenticated)).toBe(previousCart);
+    await writeStorage(
+      reauthenticated,
+      KEYS.scenario,
+      authScenario({ login: "credential_failure" })[KEYS.scenario] as string,
+    );
+    await loginWith(reauthenticated, EMAIL.other);
+    await expect(alertsIn(reauthenticated)).toContainText(copy.auth.login.credentialFailure);
+    expect(await readCartRaw(reauthenticated)).toBe(previousCart);
+    await writeStorage(reauthenticated, KEYS.scenario, authScenario()[KEYS.scenario] as string);
     await loginWith(reauthenticated, EMAIL.other);
 
     await expect(reauthenticated).toHaveURL(/\/mypage$/);
@@ -210,7 +221,7 @@ test.describe("TC-PG-AUTH-003-311 Logout goes Home, clears the Cart, and back ne
   }) => {
     await open(page, "/cart", {
       [KEYS.session]: authenticatedSession(),
-      ...cartEntries(CART),
+      ...cartEntries(CART, "authenticated"),
     });
     await expect(headerCartLink(page, 3)).toBeVisible();
     const dbBefore = await page.evaluate((key) => window.localStorage.getItem(key), KEYS.db);

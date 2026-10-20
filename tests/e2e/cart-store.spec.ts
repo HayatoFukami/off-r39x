@@ -221,6 +221,7 @@ test.describe("TC-PG-CRT-001-523 Logout clears the Cart, a guest's first login k
     await seedLocalStorage(page, {
       [KEYS.cart]: "not-json",
       [KEYS.session]: authenticatedSession(),
+      [KEYS.cartLifecycle]: JSON.stringify({ version: 1, provenance: "authenticated" }),
     });
     await gotoHydrated(page, "/");
     expect(await readCartRaw(page)).toBe("not-json");
