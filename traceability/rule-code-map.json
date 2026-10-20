@@ -2527,7 +2527,13 @@
     {
       "rule_id": "DEV-SEC-004",
       "code_paths": ["scripts/secret-scan.mts"],
-      "test_case_ids": ["TC-DEV-SEC-004-001", "TC-DEV-SEC-004-002", "TC-DEV-SEC-004-009"],
+      "test_case_ids": [
+        "TC-DEV-SEC-004-001",
+        "TC-DEV-SEC-004-002",
+        "TC-DEV-SEC-004-006",
+        "TC-DEV-SEC-004-007",
+        "TC-DEV-SEC-004-009"
+      ],
       "notes": "implementation mapping only: secret / raw QR / PII scan; matched values are never printed"
     }
   ]
