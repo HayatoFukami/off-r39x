@@ -1,10 +1,10 @@
 import { expect, type Page, test } from "@playwright/test";
 import { copy } from "../../apps/web/src/presentation/copy/ja.ts";
+import { openPrimaryMenu, primaryMenuPanel } from "../harness/browser/header-menu.ts";
 import {
   allHrefs,
   authenticatedSession,
   FORBIDDEN_AREA,
-  isDesktop,
   KEYS,
   ORIGIN_HOST,
   pathOf,
@@ -37,7 +37,7 @@ async function loaded(page: Page, route: string): Promise<void> {
   await page.waitForLoadState("networkidle");
 }
 
-test.describe("TC-PG-PUB-001-501 no link to /admin or /staff on any page, footer or drawer (SPEC-050 31 item 23, 27)", () => {
+test.describe("TC-PG-PUB-001-501 no link to /admin or /staff on any page, footer or Header menu (SPEC-050 31 item 23, 27)", () => {
   for (const authenticated of [false, true]) {
     for (const route of ALL_ROUTES) {
       test(`${authenticated ? "authenticated" : "guest"} ${route}`, async ({ page }) => {
@@ -53,16 +53,11 @@ test.describe("TC-PG-PUB-001-501 no link to /admin or /staff on any page, footer
         let hrefs = await collect();
         expect(hrefs.length).toBeGreaterThan(5);
 
-        if (!isDesktop(page)) {
-          await header(page)
-            .getByRole("button", { name: copy.layout.drawer.open, exact: true })
-            .click();
-          await expect(
-            page.getByRole("dialog", { name: copy.layout.drawer.title, exact: true }),
-          ).toBeVisible();
-          hrefs = hrefs.concat(await collect());
-          await page.keyboard.press("Escape");
-        }
+        // The Header menu (all viewports) discloses the primary navigation links.
+        await openPrimaryMenu(page);
+        hrefs = hrefs.concat(await collect());
+        await page.keyboard.press("Escape");
+        await expect(primaryMenuPanel(page)).toHaveCount(0);
         if (authenticated) {
           await header(page)
             .getByRole("button", { name: copy.layout.account.menuButton, exact: true })
@@ -91,7 +86,7 @@ test.describe("TC-PG-PUB-001-501 no link to /admin or /staff on any page, footer
             expect(pathOf(href).startsWith("/dev"), href).toBe(false);
           }
         } else {
-          // On a /dev page the shell (header, footer, drawer, account menu) must still not link to /dev.
+          // On a /dev page the shell (header, footer, Header menu, account menu) must still not link to /dev.
           for (const href of hrefs) {
             if (isSameDocumentFragment(href)) continue;
             if (self.pathname === ROUTES.dev) continue; // the scenario panel may cross-link dev routes
@@ -175,7 +170,7 @@ test.describe("TC-PG-PUB-001-504 pages load without runtime or hydration errors"
 });
 
 test.describe("TC-DEV-WEB-012-201 MockModeBadge is a small label shown in mock mode and not part of navigation (DEV-WEB-012, design section 8)", () => {
-  test("shows one fixed label at the bottom right, outside every landmark and not interactive", async ({
+  test("shows one fixed label at the bottom left, outside every landmark and not interactive", async ({
     page,
   }) => {
     await loaded(page, ROUTES.home);
@@ -189,7 +184,8 @@ test.describe("TC-DEV-WEB-012-201 MockModeBadge is a small label shown in mock m
     expect(box).not.toBeNull();
     expect(viewport).not.toBeNull();
     if (box !== null && viewport !== null) {
-      expect(box.x + box.width / 2).toBeGreaterThan(viewport.width / 2);
+      // Moved from the bottom right to the bottom left in S10 (the Floating Ticket Button took the right).
+      expect(box.x + box.width / 2).toBeLessThan(viewport.width / 2);
       expect(box.y + box.height / 2).toBeGreaterThan(viewport.height / 2);
     }
     expect(await badge.evaluate((el) => getComputedStyle(el).position)).toMatch(/fixed|sticky/);
