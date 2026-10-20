@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-040
 title: User Flows
-version: 1.2.0
+version: 1.3.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -253,7 +253,7 @@ Trace: `BR-ORD-006`, `BR-ORD-008〜009`, `BR-SAL-007`, `BR-TKT-006`, `BR-KRK-006
 - Login / Account登録を中止した場合、Guestのまま公開領域へ戻れる。Business operationは成立しない。
 - 認証中に販売終了、売り切れ、Slot競合等が発生した場合、認証前表示を根拠に購入を保証せず、対象購入Flowの現在状態Failureへ分岐する。
 - Auth Serviceが一時障害の場合は `UF-AUTH-007` へ分岐する。
-- Cartから購入手続きへ進んだGuestが認証を求められた場合、Cartの内容（参照と数量）を保持したまま認証へ進み、認証後にCartへ戻る。この保持は、一度も認証されていないGuestに適用する（`FR-CRT-012`）。復帰時の価格・販売状態・在庫は現在状態で再取得する（`UF-CRT-001`）。
+- Cartから購入手続きへ進んだGuestが認証を求められた場合、Cartの内容（参照と数量）を保持したまま認証へ進み、認証後にCartへ戻る。この保持はGuest由来と確認できるCartに適用する（`FR-CRT-012`）。Cart由来が不明、認証利用済み、または同一Browserで有効Session中に再Loginした場合、Login成功後にCartをclearする。復帰時の価格・販売状態・在庫は現在状態で再取得する（`UF-CRT-001`）。
 
 ### 8.3 Success Postcondition
 
@@ -351,8 +351,9 @@ Email確認がSupabase Auth上で完了している。
 1. **User** はCredentialを入力してLoginを開始する。
 2. **Supabase Auth** がCredentialを検証する。
 3. 成功時、UserはAuthenticated UserとしてSessionを取得する。
-4. 認証必須Business operationでは、**API** がRequestごとに認証IdentityをServer-sideで検証する。
-5. 認証前に開始していた合理的な利用目的があれば、現在状態を再取得して継続する。
+4. **Web** はGuest由来と確認できるCartだけを維持し、由来不明または認証利用済みのCartをclearする。有効Session中にLoginした場合もCartをclearする。
+5. 認証必須Business operationでは、**API** がRequestごとに認証IdentityをServer-sideで検証する。
+6. 認証前に開始していた合理的な利用目的があれば、現在状態を再取得して継続する。
 
 ### 11.2 Failure Flow
 
@@ -360,6 +361,7 @@ Email確認がSupabase Auth上で完了している。
 2. 認証必須Business operationを継続しない。
 3. Userは再入力、Password reset、または公開領域へ戻ることができる。
 4. Login retryはOrderやTicket等のBusiness effectを発生させない。
+5. Cart内容と由来情報は変更しない。
 
 ### 11.3 Success Postcondition
 
@@ -389,7 +391,7 @@ Email確認がSupabase Auth上で完了している。
 
 1. **Authenticated User** がLogoutを選ぶ。
 2. **System** は現在の認証SessionをLogoutする。
-3. **Web** は当該BrowserのCartをclearする（`FR-CRT-012`）。
+3. **Web** は当該BrowserのCartをclearし、以後Guestが新しく作るCartをGuest由来として扱う（`FR-CRT-012`）。
 4. 以後、認証必須FlowをGuestのまま成立させない。
 5. 公開情報は引き続きGuestとして閲覧できる。
 

@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-050
 title: Page and Screen Specification
-version: 1.2.1
+version: 1.3.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -729,7 +729,7 @@ Karaokeはカートに入れられず、Slotごとに別の購入・別の支払
 - 削除: Cart ItemをCartから除く。Business effectを作らない。
 - `購入手続きへ進む`
   - Enabled条件: Cartが1件以上で、全Itemが購入可能と表示されている。購入不可Itemがある間はDisabledとし、理由と削除または数量変更の案内を周辺Textで示す。
-  - Guest: `PG-AUTH-003` へ。Continuation Intentとして `PG-CRT-001` へ戻す。一度も認証されていないGuestのCart内容は保持する。認証済みだったUserのSession期限切れでAuthentication Gateへ遷移した場合、Cartはclearされ、再Login後の `PG-CRT-001` はEmpty状態となる（`FR-CRT-012`）。
+  - Guest: `PG-AUTH-003` へ。Continuation Intentとして `PG-CRT-001` へ戻す。Guest由来と確認できるCart内容は保持し、由来不明または認証利用済みのCartはLogin成功時にclearする。同じBrowserで有効Session中に再Loginした場合もclearする。期限切れSessionを保護Page / Actionで検出した場合はAuthentication Gateへの遷移前にclearし、再Login後の `PG-CRT-001` はEmpty状態となる（`FR-CRT-012`）。
   - Authenticated User: Server-sideで全Itemを再検証し、全Itemが成立した場合のみAllocation確保とOrder `PREPARED` の作成を行う（`BR-ORD-014`）。
 - 商品へ戻る → `PG-TKT-001` / `PG-GDS-001`
 
@@ -738,6 +738,7 @@ Karaokeはカートに入れられず、Slotごとに別の購入・別の支払
 - Loading: 各Itemの現在状態を取得中であることを示す。確定値に見える金額を仮表示しない。
 - Empty: Cartが0件のときだけ「カートは空です」と表示し、`PG-TKT-001` / `PG-GDS-001` への導線を提供する。現在状態の取得Failureを空のCartとして表示しない。
 - Failure: 現在状態を取得できないことを示し、Itemを購入可能と表示せず、再取得を提供する。
+- Cartまたは由来metadataの保存・clearに失敗した場合: Cart内容と件数を表示せず、編集・購入を許可しない。「カートを消去して再試行」のActionを提供し、Cartと由来情報のclearが成功した後だけCartを再び利用可能にする。再試行が失敗した場合は停止状態を維持する。認証済みSession自体は失敗として表示しない。
 
 **Purchase start result**
 
