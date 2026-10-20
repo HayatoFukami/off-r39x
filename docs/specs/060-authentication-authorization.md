@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-060
 title: Authentication and Authorization
-version: 1.3.0
+version: 1.3.1
 status: provisional
 depends_on:
   - SPEC-000
@@ -323,9 +323,7 @@ Sessionの具体的な有効時間はSupabase Auth設定および `SPEC-140` / `
 - 購入開始Action: Cartの購入手続きは `PG-CRT-001`、Karaoke購入開始は `PG-KRK-003` をContinuationとして保持しLoginへ遷移する。
 - Staff / Administrator operation: operationを成立させず、運用領域側のAuthentication failureとして扱う。個別画面は `SPEC-130` が定義する。
 
-Authenticated UserのSessionについて上記の判定を行い、Authentication Gateへ遷移する前に当該BrowserのCartをclearする（`FR-CRT-012`）。Session expiryの判定は保護Page / 保護Actionへのアクセス時に限り、定期的なSession監視を要求しない。
-
-**AR-SES-010:** BrowserのCart lifecycleは `SPEC-020 FR-CRT-012` に従う。Cart由来metadataはAuth Subject、Account ID、Emailおよびそのhash、Role、Session credentialを含めてはならず、認証・認可の根拠としてはならない。Login / Session成立の通知により認証利用済みCartまたは由来不明Cartを他Actorへ表示してはならない。metadataまたはCartのstorage操作に失敗した場合はCartの表示・編集・購入をFail Closedとし、Login成功結果や既存Business Dataを変更してはならない。
+Authenticated UserのSessionについて上記の判定を行った場合、Authentication Gateへ遷移する前に、当該BrowserのCartのclear成功を確認する。失敗時の停止と回復は `FR-CRT-012` および `SPEC-050` に従う。本書は定期的なSession監視を要求せず、判定は保護Page / 保護Actionのアクセス時に行う。
 
 ### 10.2 Session invalid / revoke相当
 
@@ -385,8 +383,6 @@ Email確認失敗・失効は、既存Business Profile、既存Order、Ticket、
 ## 13. Login
 
 **AR-AUTH-008:** `PG-AUTH-003` Login成功はSupabase AuthがCredentialを検証し、有効Sessionが成立した場合だけとする。
-
-BrowserのCartは `SPEC-020 FR-CRT-012` に従ってSession確立前後の状態遷移を処理し、Cartの由来判定と必要なclearが完了するまでLogin成功をSession変更購読者へ公開してはならない。
 
 Login成功後:
 
@@ -1088,7 +1084,7 @@ Karaoke Sales Configurationの販売条件管理Operationも同様に、次を�
 | 本書Rule group | 主な上流Trace |
 |---|---|
 | `AR-AUTH-001〜011` | `FR-PUB-012`, `FR-AUTH-001〜014`, `UF-PUB-002`, `UF-AUTH-001〜007`, `PG-AUTH-001〜005`, `INV-010-08` |
-| `AR-SES-001〜010` | `FR-AUTH-004〜006`, `FR-AUTH-009`, `FR-AUTH-014`, `FR-CRT-012`, `FR-XFN-001〜002`, `FR-XFN-020`, `FR-XFN-032〜033`, `UF-AUTH-003〜004`, `UF-AUTH-007`, `UF-CRT-001`, `PG-AUTH-003`, `PG-CRT-001`, `PG-MYP-*`, `INV-010-01`, `INV-010-08`, `INV-010-10` |
+| `AR-SES-001〜009` | `FR-AUTH-004〜006`, `FR-AUTH-009`, `FR-AUTH-014`, `FR-XFN-001〜002`, `FR-XFN-020`, `FR-XFN-032〜033`, `UF-AUTH-003〜004`, `UF-AUTH-007`, `PG-AUTH-003`, `PG-MYP-*`, `INV-010-01`, `INV-010-08`, `INV-010-10` |
 | `AR-ID-001〜007` | `FR-AUTH-009〜013`, `FR-MYP-001〜012`, `FR-XFN-002〜003`, `FR-XFN-017`, `BR-USR-001〜006`, `DI-030-010`, `UF-AUTH-001`, `UF-AUTH-006`, `UF-MYP-001〜002`, `PG-MYP-002`, `INV-010-08` |
 | `AR-AZ-001〜016` | `FR-XFN-001〜004`, `FR-XFN-016〜017`, `FR-XFN-025`, `FR-ADM-001`, `FR-ADM-019〜020`, `FR-STF-001`, `BR-USR-002`, `BR-USR-007`, `BR-ORD-002`, `BR-CHK-*`, `DI-030-010`, `UF-MYP-002`, `UF-CHK-001〜002`, `PG-XFN-003`, `INV-010-05`, `INV-010-08` |
 | `AR-OWN-001〜008` | `FR-AUTH-010〜012`, `FR-TKT-023`, `FR-MYP-001〜012`, `FR-XFN-003`, `FR-XFN-017`, `BR-USR-001`, `BR-USR-003〜007`, `BR-TKT-008`, `BR-KRK-015`, `BR-KRK-021`, `BR-GDS-008`, `DI-030-010`, `UF-MYP-001〜002`, `PG-MYP-001〜012`, `PG-XFN-001`, `PG-XFN-003`, `INV-010-08` |
