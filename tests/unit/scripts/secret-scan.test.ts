@@ -232,9 +232,17 @@ describe("TC-DEV-SEC-004-007 build output: apps/web/.next static and server file
     expectFinding(scan(withScan({ [STATIC]: line(SAMPLE.rawQr) })), "raw-qr-token", STATIC);
     expectFinding(scan(withScan({ [STATIC]: line(SAMPLE.matrixSeed) })), "mock-seed-leak", STATIC);
     expectFinding(scan(withScan({ [HTML]: `<p>${SAMPLE.jwt}</p>\n` })), "jwt", HTML);
-    expectFinding(scan(withScan({ [SERVER_CHUNK]: line(SAMPLE.stripeLive) })), "stripe-key", SERVER_CHUNK);
+    expectFinding(
+      scan(withScan({ [SERVER_CHUNK]: line(SAMPLE.stripeLive) })),
+      "stripe-key",
+      SERVER_CHUNK,
+    );
     expectFinding(scan(withScan({ [SSR_CHUNK]: line(SAMPLE.rawQr) })), "raw-qr-token", SSR_CHUNK);
-    expectFinding(scan(withScan({ [MIDDLEWARE]: line(SAMPLE.matrixSeed) })), "mock-seed-leak", MIDDLEWARE);
+    expectFinding(
+      scan(withScan({ [MIDDLEWARE]: line(SAMPLE.matrixSeed) })),
+      "mock-seed-leak",
+      MIDDLEWARE,
+    );
   });
 
   it("mock-seed-field: the field name is a finding only in server/app prerendered output", () => {
@@ -247,6 +255,13 @@ describe("TC-DEV-SEC-004-007 build output: apps/web/.next static and server file
     expectNoFinding(scan(withScan({ [SERVER_CHUNK]: `a.${SAMPLE.matrixSeedField};\n` })));
     expectNoFinding(scan(withScan({ [SSR_CHUNK]: `a.${SAMPLE.matrixSeedField};\n` })));
     expectNoFinding(scan(withScan({ [MIDDLEWARE]: `a.${SAMPLE.matrixSeedField};\n` })));
+    expectNoFinding(
+      scan(
+        withScan({
+          "apps/web/.next/server/application/routes.js": `a.${SAMPLE.matrixSeedField};\n`,
+        }),
+      ),
+    );
   });
 
   it("detects a server/app field name even when a secret value appears on the same line", () => {
