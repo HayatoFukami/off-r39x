@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-050
 title: Page and Screen Specification
-version: 1.4.0
+version: 1.4.1
 status: provisional
 depends_on:
   - SPEC-000
@@ -488,6 +488,7 @@ Sponsor Logoは共通Footer（§8.5）に表示し、本Page固有のSectionと�
 **Cart追加の結果**
 
 - Cart追加はBrowser側のCartへの追加であり、販売確保も購入成立も意味しない。成功時は「Cartに追加しました。購入はまだ確定していません」と示し、Cartを見る導線を提供する。追加結果は状態変化の通知として支援技術にも伝える（§25）。
+- `FR-CRT-012` によるCart停止中は数量SelectorとCart追加を無効にし、認証処理中またはCart復旧が必要な状態を示す。Guestでも販売Pageの閲覧は継続できる。
 - 購入可否・容量・Purchase Limitは、購入手続き（`PG-CRT-001`）でServer-sideが再検証する。本Pageの表示を購入保証として扱わない。
 - 数量Selectorの入力検証（正の整数、案内された上限を超えない）は本Pageで行ってよいが、最終判定はServer-sideである。
 - 購入手続きと、Allocation / Orderの作成、Checkout開始、その失敗表示は `PG-CRT-001` と `PG-XFN-001` が扱う。
@@ -677,6 +678,7 @@ Hold具体秒数、残り秒数の厳密な算出方法は本書で定義しな�
 **Cart追加の結果**
 
 - Cart追加はBrowser側のCartへの追加であり、在庫確保も購入成立も意味しない。成功時は「Cartに追加しました。購入はまだ確定していません」と示し、Cartを見る導線を提供する。追加結果は支援技術にも伝える（§25）。
+- `FR-CRT-012` によるCart停止中は数量SelectorとCart追加を無効にし、認証処理中またはCart復旧が必要な状態を示す。GuestでもGoods詳細の閲覧は継続できる。
 - 販売条件とInventoryは、購入手続き（`PG-CRT-001`）でServer-sideが再検証する。Inventory競合でAllocationを取得できない場合の表示は `PG-CRT-001` が扱う。
 - `PENDING_PAYMENT` Goods Order Itemを受け取り可能と表示しない。
 
@@ -948,6 +950,8 @@ Trace: `FR-AUTH-006`, `UF-AUTH-004`, `INV-010-01`, `INV-010-08`.
 | `REVIEW_REQUIRED` | 購入状態を確認中 | 通常成功と表示しない。未確定権利を有効表示しない | 「状態を再確認」。新権利生成につながるretryを出さない |
 
 Entry Ticket、Goods、またはその複合Orderの `PAYMENT_FAILED` / `CANCELED` / `EXPIRED` における「もう一度購入する」は、Orderに含まれていたItemの参照と数量をCartへ再投入して `PG-CRT-001` へ遷移する。再投入は新Orderを作らず、価格・販売状態・在庫は現在状態で表示し直す。Karaokeの「もう一度購入する」は新Slot / Hold取得（Slot選択）から開始する。
+
+Entry Ticket / Goodsの「もう一度購入する」は、`FR-CRT-012` によるCartの認証処理中または停止中は無効にする。認証処理中は待機状態を示し、停止中は `PG-CRT-001` と同じCart復旧を提供する。Karaokeの再購入はCartの状態に影響されない。
 
 ### 16.5 Domain-specific `CONFIRMED` content
 
