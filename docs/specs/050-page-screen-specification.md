@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-050
 title: Page and Screen Specification
-version: 1.4.1
+version: 1.4.2
 status: provisional
 depends_on:
   - SPEC-000
@@ -604,6 +604,7 @@ Sponsor Logoは共通Footer（§8.5）に表示し、本Page固有のSectionと�
 **Purchase start**
 
 1. Guestなら認証へ遷移し、認証後に本Slotへ復帰する。遷移前のCart clearは `FR-CRT-012` に従い、clearが必要なCartをclearできない場合に限り遷移を止めて回復を示す。Cart停止中もSlot情報を表示し、Authenticated Userの購入開始を妨げない。
+   - 別Tabの認証遷移中はGuest handoffを開始せず、Slot情報を表示したまま待機中と示す。認証処理の終了後に再試行できる。
 2. Authenticated UserがActionするとServer-sideでSlot current stateとPurchase Limitを再検証する。
 3. Hold取得中は「枠を確保しています」と表示する。
 4. Hold競合で失敗した場合、「他の利用者が先に確保したため購入を開始できない」と表示し、`PG-KRK-002` へ戻るActionを出す。
