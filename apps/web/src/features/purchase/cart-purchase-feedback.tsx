@@ -22,7 +22,11 @@ export function CartPurchaseFeedback({ phase }: { phase: CartPurchasePhase }) {
       ? copy.cart.purchase.verifying
       : phase.kind === "preparing"
         ? copy.cart.purchase.preparing
-        : "";
+        : phase.kind === "cart_busy"
+          ? copy.cart.lifecycleBusy.description
+          : phase.kind === "cart_recovery"
+            ? copy.cart.lifecycleBlocked.description
+            : "";
 
   return (
     <div className="flex flex-col gap-2">

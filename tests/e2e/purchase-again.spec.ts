@@ -169,3 +169,32 @@ test.describe("TC-PG-XFN-001-673 purchase again never overwrites an unreadable C
     expect(await readCartRaw(page)).toBeNull();
   });
 });
+
+test("TC-FR-CRT-012-010 Entry/Goods purchase-again waits for explicit Cart recovery", async ({
+  page,
+}) => {
+  await openAs(page, `/purchase/orders/${ORDER.paymentFailed}`, {
+    extra: {
+      ...cartEntries([entryLine(OFFERING.regular, 2)], "authenticated"),
+      [KEYS.cartLifecycle]: JSON.stringify({
+        version: 1,
+        provenance: "authenticated",
+        transitioning: true,
+      }),
+    },
+  });
+  await expect(outcomeRegion(page)).toContainText(copy.order.state.PAYMENT_FAILED);
+  const purchaseAgain = actionButton(page, act.purchase_again);
+  const cartBefore = await readCartRaw(page);
+  await expect(purchaseAgain).toBeDisabled();
+  await expect(mainOf(page)).toContainText(copy.cart.lifecycleBlocked.description);
+  await expect.poll(() => readCartRaw(page)).toBe(cartBefore);
+
+  await mainOf(page)
+    .getByRole("button", { name: copy.cart.lifecycleBlocked.retry, exact: true })
+    .click();
+  await expect(purchaseAgain).toBeEnabled();
+  await expect.poll(() => readCartRaw(page)).toBeNull();
+  await purchaseAgain.click();
+  await expect(page).toHaveURL(/\/cart$/);
+});

@@ -29,6 +29,7 @@ export function OrderOutcome({
   liveMessage,
   alertMessage,
   pending,
+  disableCartPurchaseAgain = false,
   onAction,
 }: {
   model: Ready;
@@ -37,6 +38,7 @@ export function OrderOutcome({
   /** A failure notice for the action that was just run; at most one alert is shown. */
   alertMessage: string | null;
   pending: OrderOutcomePending;
+  disableCartPurchaseAgain?: boolean;
   onAction: (action: OutcomeButtonAction) => void;
 }) {
   const baseId = useId();
@@ -90,7 +92,12 @@ export function OrderOutcome({
                 key={action.kind}
                 type="button"
                 variant="outline"
-                disabled={pending !== null}
+                disabled={
+                  pending !== null ||
+                  (disableCartPurchaseAgain &&
+                    action.kind === "purchase_again" &&
+                    action.target === "cart")
+                }
                 aria-busy={busy ? true : undefined}
                 onClick={() => onAction(action)}
               >
