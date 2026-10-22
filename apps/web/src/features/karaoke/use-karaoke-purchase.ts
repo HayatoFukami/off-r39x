@@ -6,7 +6,6 @@ import { useApi } from "../../api-client/provider";
 import type { CheckoutStart, KaraokePurchaseStart, Ref } from "../../api-client/types";
 import { useSession } from "../../auth/use-session";
 import { getBrowserCartLifecycle } from "../cart/cart-lifecycle";
-import { useCart } from "../cart/use-cart";
 import {
   interpretKaraokeCheckout,
   interpretKaraokeStart,
@@ -21,7 +20,9 @@ export type KaraokePurchasePhase =
   | { kind: "limit" }
   | { kind: "not_on_sale" }
   | { kind: "unavailable" }
-  | { kind: "expired" };
+  | { kind: "expired" }
+  | { kind: "cart_busy" }
+  | { kind: "cart_recovery" };
 
 export type UseKaraokePurchaseOptions = {
   slotRef: Ref<"slot">;
@@ -29,17 +30,16 @@ export type UseKaraokePurchaseOptions = {
   onRefresh: () => void;
 };
 
-// Karaoke purchase start (SPEC-050 13.3). Every decision comes from the port result; each attempt uses a
-// fresh idempotency key. The Cart is never involved (BR-ORD-019).
+// Karaoke purchase start (SPEC-050 13.3). Cart contents never enter the purchase; Guest hand-off applies FR-CRT-012.
 export function useKaraokePurchase(options: UseKaraokePurchaseOptions): {
   phase: KaraokePurchasePhase;
   busy: boolean;
   start: () => void;
+  dismissCartRecovery: () => void;
 } {
   const api = useApi();
   const router = useRouter();
   const session = useSession();
-  const cart = useCart();
   const [phase, setPhase] = useState<KaraokePurchasePhase>({ kind: "idle" });
   const inFlight = useRef(false);
   const { slotRef, onRefresh } = options;
@@ -52,12 +52,18 @@ export function useKaraokePurchase(options: UseKaraokePurchaseOptions): {
       .catch((): KaraokePurchaseStart => ({ kind: "unavailable" }));
     const step = interpretKaraokeStart(result, slotRef);
     switch (step.kind) {
-      case "go_login":
+      case "go_login": {
         // A protected purchase operation can be the first place an expired Session is noticed.
         inFlight.current = false;
-        setPhase({ kind: "idle" });
-        if (getBrowserCartLifecycle()?.expireAuthenticatedCart() === true) router.push(step.to);
+        const result = getBrowserCartLifecycle()?.expireAuthenticatedCart() ?? "done";
+        if (result === "done") {
+          setPhase({ kind: "idle" });
+          router.push(step.to);
+        } else {
+          setPhase({ kind: result === "busy" ? "cart_busy" : "cart_recovery" });
+        }
         return;
+      }
       case "go_verification":
         router.push(step.to);
         return;
@@ -103,15 +109,22 @@ export function useKaraokePurchase(options: UseKaraokePurchaseOptions): {
   }, [api, onRefresh, router, slotRef]);
 
   const start = useCallback((): void => {
-    if (inFlight.current || cart.state.kind === "blocked") return;
+    if (inFlight.current) return;
     const plan = planKaraokeProceed(session.state, slotRef);
     if (plan.kind === "go_login") {
-      if (getBrowserCartLifecycle()?.expireAuthenticatedCart() === true) router.push(plan.to);
+      const result = getBrowserCartLifecycle()?.expireAuthenticatedCart() ?? "done";
+      if (result === "done") router.push(plan.to);
+      else setPhase({ kind: result === "busy" ? "cart_busy" : "cart_recovery" });
       return;
     }
     void run();
-  }, [router, run, session.state, slotRef, cart.state.kind]);
+  }, [router, run, session.state, slotRef]);
 
   const busy = phase.kind === "holding" || phase.kind === "preparing";
-  return { phase, busy, start };
+  return {
+    phase,
+    busy,
+    start,
+    dismissCartRecovery: () => setPhase({ kind: "idle" }),
+  };
 }

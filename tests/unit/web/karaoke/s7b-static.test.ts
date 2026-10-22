@@ -134,6 +134,9 @@ describe("TC-DEV-WEB-001-704 the container and the hook wire the purchase start 
       expect(code).not.toMatch(/\bcart\.(add|setQuantity|remove|reset|subtractLines)\s*\(/);
       expect(code).not.toMatch(/copy\.sales\.(add|viewCart|addSucceeded)\b/);
     }
+    expect(hook).not.toMatch(/useCart|cart\.state/);
+    expect(hook).toMatch(/expireAuthenticatedCart/);
+    expect(page).toMatch(/CartRecovery/);
   });
 
   it("the container reads the slot through the port after mount and shows the contracted states", () => {

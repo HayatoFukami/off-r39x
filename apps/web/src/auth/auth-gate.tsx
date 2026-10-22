@@ -23,16 +23,21 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const router = useRouter();
   const decision = decideGate(state, pathname);
   const cartBlocked = cart.state.kind === "blocked";
+  const cartBusy = cart.state.kind === "busy";
   const guestRedirect = decision.kind === "redirect" && decision.reason === "guest";
   const redirectTo = decision.kind === "redirect" ? decision.to : null;
 
   useEffect(() => {
-    if (redirectTo === null || (guestRedirect && cartBlocked)) return;
+    if (redirectTo === null || (guestRedirect && (cartBlocked || cartBusy))) return;
     // A Logout in this tab ends on Home; only a change made elsewhere sends the page to Login.
     if (isLogoutInProgress()) return;
-    if (guestRedirect && getBrowserCartLifecycle()?.expireAuthenticatedCart() !== true) return;
+    if (
+      guestRedirect &&
+      (getBrowserCartLifecycle()?.expireAuthenticatedCart() ?? "done") !== "done"
+    )
+      return;
     router.replace(redirectTo);
-  }, [redirectTo, router, cartBlocked, guestRedirect]);
+  }, [redirectTo, router, cartBlocked, cartBusy, guestRedirect]);
 
   // A page restored from the back/forward cache re-checks the Session (SPEC-050 15.6).
   useEffect(() => {
@@ -44,6 +49,13 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }, []);
 
   if (guestRedirect && cartBlocked) return <CartRecovery />;
+  if (guestRedirect && cartBusy) {
+    return (
+      <p role="status" className="text-sm text-foreground/80">
+        {copy.cart.lifecycleBusy.description}
+      </p>
+    );
+  }
 
   switch (decision.kind) {
     case "allow":

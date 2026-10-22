@@ -16,6 +16,7 @@ import { Input } from "../../presentation/components/ui/input";
 import { copy } from "../../presentation/copy/ja";
 import { CartPurchaseFeedback } from "../purchase/cart-purchase-feedback";
 import { useCartPurchase } from "../purchase/use-cart-purchase";
+import { CartRecovery } from "./cart-recovery";
 import { buildCartPageModel, type CartRow } from "./cart-view-model";
 import { parseQuantityInput } from "./quantity";
 import { useCart } from "./use-cart";
@@ -159,7 +160,10 @@ export function CartPage() {
     resolution.signature !== null &&
     (resolution.signature !== signatureOf(lines) || resolution.session !== session);
   const model = buildCartPageModel({
-    cart: cart.state.kind === "blocked" ? { kind: "loading" } : cart.state,
+    cart:
+      cart.state.kind === "ready" || cart.state.kind === "corrupted"
+        ? cart.state
+        : { kind: "loading" },
     resolutions: resolution.value,
     refreshing,
   });
@@ -176,26 +180,20 @@ export function CartPage() {
     purchase.start();
   };
 
-  if (cart.state.kind === "blocked") {
+  if (cart.state.kind === "blocked" || cart.state.kind === "storage_unavailable") {
     return (
       <div className="flex flex-col gap-4">
         <h1 className="text-2xl font-bold">{copy.cart.heading}</h1>
-        <div
-          role="alert"
-          className="flex flex-col items-start gap-2 rounded-base border border-tone-failure-fg/30 bg-tone-failure-bg p-3 text-tone-failure-fg"
-        >
-          <p className="font-bold">{copy.cart.lifecycleBlocked.title}</p>
-          <p>{copy.cart.lifecycleBlocked.description}</p>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() =>
-              cart.recover(session.status === "ready" ? session.session.kind : "unknown")
-            }
-          >
-            {copy.cart.lifecycleBlocked.retry}
-          </Button>
-        </div>
+        <CartRecovery />
+      </div>
+    );
+  }
+
+  if (cart.state.kind === "busy") {
+    return (
+      <div className="flex flex-col gap-4">
+        <h1 className="text-2xl font-bold">{copy.cart.heading}</h1>
+        <p role="status">{copy.cart.lifecycleBusy.description}</p>
       </div>
     );
   }

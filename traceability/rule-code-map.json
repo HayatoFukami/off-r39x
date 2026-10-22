@@ -2376,6 +2376,7 @@
         "apps/web/src/features/entry/entry-page.tsx",
         "apps/web/src/features/cart/cart-page.tsx",
         "apps/web/src/features/cart/cart-lifecycle.ts",
+        "apps/web/src/features/cart/cart-transition-lock.ts",
         "apps/web/src/features/cart/cart-recovery.tsx",
         "apps/web/src/features/shell/cart-lifecycle-auth-port.ts",
         "apps/web/src/auth/auth-gate.tsx",
@@ -2399,7 +2400,11 @@
         "TC-FR-CRT-012-004",
         "TC-FR-CRT-012-005",
         "TC-FR-CRT-012-006",
-        "TC-FR-CRT-012-007"
+        "TC-FR-CRT-012-007",
+        "TC-FR-CRT-012-008",
+        "TC-FR-CRT-012-009",
+        "TC-FR-CRT-012-010",
+        "TC-FR-CRT-012-011"
       ],
       "notes": "Browser Cart isolation across authentication and protected boundaries; real CartStore unit faults and UI mock E2E only, not API/DB/provider coverage."
     },

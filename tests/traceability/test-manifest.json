@@ -14055,7 +14055,8 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "Only confirmed Guest provenance permits first-login Cart preservation; restored authenticated Cart requires valid provenance; Login failures and public Guest queries do not clear prior Cart"
+        "Only confirmed Guest provenance permits first-login Cart preservation; restored authenticated Cart requires valid provenance; Login failures and public Guest queries do not clear prior Cart",
+        "Active authentication is reported as transient busy; Web Locks serialize tabs; abandoned transition metadata stays blocked until explicit recovery"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -14079,7 +14080,8 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "Storage failures block Cart access, do not publish a successful clear, preserve established Auth result and require successful explicit clear plus metadata recovery",
-        "Simultaneous Login, Logout and session reads serialize their own cleanup and publish only settled Cart state"
+        "Simultaneous Login, Logout and session reads serialize their own cleanup and publish only settled Cart state",
+        "Same-tab fallback keeps transition ownership in memory; metadata acquisition failure reports recoverable Cart blocking"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -14102,7 +14104,8 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "Failed clear keeps protected content hidden and URL unchanged; header suppresses count; visible clear retry stays blocked on failure, succeeds only after storage recovers; mock business data remains identical"
+        "Failed clear keeps protected content hidden and URL unchanged; header suppresses count; visible clear retry stays blocked on failure, succeeds only after storage recovers; mock business data remains identical",
+        "A Guest Karaoke handoff keeps Slot details visible while required Cart recovery is pending"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -14125,7 +14128,8 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "Failed clear keeps protected content hidden and URL unchanged; header suppresses count; visible clear retry stays blocked on failure, succeeds only after storage recovers; mock business data remains identical"
+        "Failed Cart clear keeps the target protected action pending until recovery, while Karaoke Slot details stay visible",
+        "Authenticated Karaoke purchase remains available when the Cart lifecycle is blocked"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -14148,8 +14152,102 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "Initial unavailable Cart stays blocked, successful explicit recovery reloads and restores Header subscriptions and Auth decoration; Guest Cart survives Login and Logout clears it",
+        "Initial unavailable Cart stays blocked, failed retry shows the storage reason, successful explicit recovery reloads and restores Header subscriptions and Auth decoration; Guest Cart survives Login and Logout clears it",
+        "Storage acquisition denial does not block AuthGate redirection or Karaoke Slot browsing",
         "Final metadata failure preserves successful verified/unverified Auth navigation and authenticated Session; Cart alone stays blocked until successful explicit clear"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-FR-CRT-012-008",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": ["FR-CRT-012"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Authenticated synthetic session with a persisted abandoned Cart transition marker; Karaoke Slot available",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Karaoke Slot information remains visible and authenticated purchase starts despite blocked Cart lifecycle",
+        "Cart storage remains byte-for-byte unchanged by the separate Karaoke purchase"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-FR-CRT-012-009",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": ["FR-CRT-012", "AR-SES-007"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Guest Login or registration form with a persisted abandoned Cart transition marker",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Login is not called while an abandoned transition is blocked; explicit recovery clears Cart and metadata, after which Login can proceed"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-FR-CRT-012-010",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": ["FR-CRT-012"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Terminal Entry/Goods Order status page with a persisted abandoned Cart transition marker",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Entry/Goods purchase-again remains disabled and does not alter Cart until explicit recovery clears it; purchase-again is then available"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-FR-CRT-012-011",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": ["FR-CRT-012"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Entry sales page with a persisted abandoned Cart transition marker and a purchasable offering",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Sale details remain visible while quantity selection and Cart addition are disabled; stored Cart remains unchanged"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],

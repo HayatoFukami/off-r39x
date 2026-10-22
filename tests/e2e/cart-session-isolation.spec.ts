@@ -54,12 +54,15 @@ async function expectBlocked(
   await expect(headerCartLink(page, 2)).toHaveCount(0);
   await retry(page).click({ timeout: 5_000 });
   await expect(retry(page)).toBeVisible();
+  await expect(mainOf(page)).toContainText(copy.cart.lifecycleBlocked.failed);
+  await expect(retry(page)).toBeEnabled();
   expect(new URL(page.url()).pathname).toBe(path);
   expect(await readCartRaw(page)).toBe(cartBefore);
 }
 
 async function enableClear(page: Page): Promise<void> {
   await page.evaluate(() => window.sessionStorage.setItem("test-only-clear-enabled", "yes"));
+  await expect(retry(page)).toBeEnabled();
   await retry(page).click({ timeout: 5_000 });
   await expect.poll(() => readCartRaw(page)).toBeNull();
 }
@@ -81,7 +84,7 @@ test.describe("TC-FR-CRT-012-005 protected page expiry cleanup must succeed befo
 });
 
 test.describe("TC-FR-CRT-012-007 initial storage denial and successful Auth remain recoverable (FR-CRT-012)", () => {
-  for (const path of ["/cart", "/mypage"]) {
+  for (const path of ["/cart"]) {
     test(`${path}: storage acquisition denial recovers all subscriptions and Auth decoration`, async ({
       page,
     }) => {
@@ -109,6 +112,7 @@ test.describe("TC-FR-CRT-012-007 initial storage denial and successful Auth rema
       await expect(headerCartLink(page, null)).toBeVisible();
       await retry(page).click();
       await expect(retry(page)).toBeVisible();
+      await expect(mainOf(page)).toContainText(copy.cart.lifecycleBlocked.failed);
       expect(new URL(page.url()).pathname).toBe(path);
       await page.evaluate(() => window.sessionStorage.setItem("test-only-storage-enabled", "yes"));
       await Promise.all([page.waitForEvent("load"), retry(page).click()]);
@@ -132,6 +136,36 @@ test.describe("TC-FR-CRT-012-007 initial storage denial and successful Auth rema
       await expect(headerCartLink(page, null)).toBeVisible();
     });
   }
+  test("/mypage: storage denial does not block AuthGate from sending a Guest to Login", async ({
+    page,
+  }) => {
+    await fixClock(page);
+    await page.addInitScript(
+      ({ entries }) => {
+        const storage = window.localStorage;
+        if (window.sessionStorage.getItem("test-only-denial-seeded") !== "yes") {
+          for (const [key, value] of Object.entries(entries)) storage.setItem(key, value);
+          window.sessionStorage.setItem("test-only-denial-seeded", "yes");
+        }
+        Object.defineProperty(window, "localStorage", {
+          configurable: true,
+          get() {
+            if (window.sessionStorage.getItem("test-only-storage-enabled") !== "yes")
+              throw new DOMException("test-only storage denial", "SecurityError");
+            return storage;
+          },
+        });
+      },
+      { entries: cartEntries(CART, "authenticated") },
+    );
+    await gotoHydrated(page, "/mypage");
+    await expect(page).toHaveURL(/\/account\/login\?continue=mypage$/);
+    await expect(retry(page)).toBeVisible();
+    await expect(headerCartLink(page, null)).toBeVisible();
+    await expect(mainOf(page)).toContainText(copy.auth.login.heading);
+    await expect(mainOf(page)).toContainText(copy.cart.lifecycleBlocked.storageTitle);
+    await expect(mainOf(page)).toContainText(copy.cart.lifecycleBlocked.storageUnavailable);
+  });
   for (const email of [EMAIL.other, EMAIL.unverified]) {
     test(`${email === EMAIL.other ? "verified" : "unverified"}: final metadata failure preserves successful Auth navigation`, async ({
       page,
@@ -200,6 +234,14 @@ test.describe("TC-FR-CRT-012-006 protected purchase expiry and raw Guest preflig
             : purchaseButton(page)
         ).click({ timeout: 5_000 });
         await expectBlocked(page, path, cartBefore, dbBefore);
+        if (target === "karaoke") {
+          await expect(
+            mainOf(page).getByRole("heading", {
+              name: copy.karaoke.slotDetail.heading,
+              exact: true,
+            }),
+          ).toBeVisible();
+        }
         if (target === "cart") {
           await expect(mainOf(page).getByRole("listitem")).toHaveCount(0);
           await expect(mainOf(page).getByRole("spinbutton")).toHaveCount(0);
@@ -218,4 +260,112 @@ test.describe("TC-FR-CRT-012-006 protected purchase expiry and raw Guest preflig
       });
     }
   }
+});
+
+test("TC-FR-CRT-012-008 a blocked Cart does not stop authenticated Karaoke browsing or purchase", async ({
+  page,
+}) => {
+  const path = slotRoute(SLOT.d1_1000);
+  await openAs(page, path, {
+    lines: CART,
+    extra: {
+      [KEYS.cartLifecycle]: JSON.stringify({
+        version: 1,
+        provenance: "authenticated",
+        transitioning: true,
+      }),
+    },
+  });
+  const cartBefore = await readCartRaw(page);
+  await expect(
+    mainOf(page).getByRole("region", { name: copy.karaoke.slotDetail.infoHeading, exact: true }),
+  ).toBeVisible();
+  await expect(headerCartLink(page, null)).toBeVisible();
+  await purchaseButton(page).click();
+  await page.waitForURL(/\/dev\/mock-checkout\/[0-9a-f-]{36}$/, { timeout: 30_000 });
+  expect(await readCartRaw(page)).toBe(cartBefore);
+});
+
+test("TC-FR-CRT-012-009 Login screen recovers an abandoned Cart transition before authentication", async ({
+  page,
+}) => {
+  await openAs(page, "/account/login", {
+    session: null,
+    lines: CART,
+    extra: {
+      [KEYS.cartLifecycle]: JSON.stringify({
+        version: 1,
+        provenance: "guest",
+        transitioning: true,
+      }),
+    },
+  });
+  await expect(retry(page)).toBeVisible();
+  await expect(page).toHaveURL(/\/account\/login$/);
+  await expect.poll(() => readCartRaw(page)).not.toBeNull();
+  await expect(
+    mainOf(page).getByRole("button", { name: copy.auth.login.submit, exact: true }),
+  ).toBeDisabled();
+
+  await retry(page).click();
+  await expect(retry(page)).toHaveCount(0);
+  await expect.poll(() => readCartRaw(page)).toBeNull();
+  await expect(
+    mainOf(page).getByRole("button", { name: copy.auth.login.submit, exact: true }),
+  ).toBeEnabled();
+  await loginWith(page, EMAIL.other);
+  await expect(page).toHaveURL(/\/mypage$/);
+});
+
+test("TC-FR-CRT-012-009 Register screen offers the same explicit abandoned-transition recovery", async ({
+  page,
+}) => {
+  await openAs(page, "/account/register", {
+    session: null,
+    lines: CART,
+    extra: {
+      [KEYS.cartLifecycle]: JSON.stringify({
+        version: 1,
+        provenance: "guest",
+        transitioning: true,
+      }),
+    },
+  });
+  await expect(retry(page)).toBeVisible();
+  await expect(
+    mainOf(page).getByRole("button", { name: copy.auth.register.submit, exact: true }),
+  ).toBeDisabled();
+  await retry(page).click();
+  await expect(retry(page)).toHaveCount(0);
+  await expect.poll(() => readCartRaw(page)).toBeNull();
+  await expect(
+    mainOf(page).getByRole("button", { name: copy.auth.register.submit, exact: true }),
+  ).toBeEnabled();
+});
+
+test("TC-FR-CRT-012-011 sale details remain viewable while Cart additions are blocked", async ({
+  page,
+}) => {
+  await openAs(page, "/entry", {
+    lines: CART,
+    extra: {
+      [KEYS.cartLifecycle]: JSON.stringify({
+        version: 1,
+        provenance: "authenticated",
+        transitioning: true,
+      }),
+    },
+  });
+  const offering = mainOf(page)
+    .getByRole("listitem")
+    .filter({
+      has: page.getByRole("heading", { name: offeringName(OFFERING.regular), exact: true }),
+    });
+  const cartBefore = await readCartRaw(page);
+  await expect(offering).toBeVisible();
+  await expect(addButton(offering)).toBeDisabled();
+  await expect(offering.getByRole("spinbutton")).toBeDisabled();
+  await expect(mainOf(page)).toContainText(copy.cart.lifecycleBlocked.description);
+  await expect(headerCartLink(page, null)).toBeVisible();
+  expect(await readCartRaw(page)).toBe(cartBefore);
 });

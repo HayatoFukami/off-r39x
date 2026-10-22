@@ -384,9 +384,11 @@ export function describeContinuation(intent: ContinuationIntent | null): Continu
 根拠は `FR-CRT-012` と `AR-SES-007` である。削除済みRule `AR-SES-010` は参照せず、既存TC ID `TC-AR-SES-010-001/002` の識別子のみ維持する。
 
 - `tests/unit/web/cart/cart-lifecycle.test.ts` は実CartStoreと実CartLifecycleを同じstorageへ接続する。Session復元、明示Login / Session成立登録、確認待ち登録、Login失敗、Logout、別Tab通知、metadata読込・保存とCart clear障害、停止状態の持続と明示回復を検証する。
-- 内部 `beginTransition` の結果は `{ kind: "ready", provenance } | { kind: "blocked" }`、保護境界の `expireAuthenticatedCart` は成功をbooleanで返す。公開AuthPortの型は変更しない。開始前のmetadata保存失敗ではraw signIn / signUpを呼ばず既存の `unavailable` を返す。
+- 内部 `beginTransition` は `{ kind: "ready", provenance } | { kind: "busy" } | { kind: "blocked" }` を返し、保護境界の `expireAuthenticatedCart` は `done | busy | blocked` を返す。AuthPortは同一Browser内のCart遷移中と復旧必要状態を `cart_busy` / `cart_blocked` としてLogin / 登録画面へ伝える。
+- Web Locks対応Browserでは認証遷移をTab間で排他する。未対応Browserでは同一Tab内のメモリ状態だけを使い、認証遷移中のmetadataを永続化しない。残存metadataと有効Lockが一致しない場合は認証を開始せず、Login / 登録からCartをclearして復旧する。
+- metadata / Cart storageが利用できない場合、Cartだけを停止する。確立済みのAuth結果は維持し、AuthGateとCartを使わないKaraoke閲覧・認証済み購入は継続する。
 - `tests/e2e/auth-gate-logout.spec.ts` の既存Issue再現は、公開Login画面と失敗Loginで旧Cartの保存値が維持され、成功時に初めてclearされる順序をassertする。
-- `tests/e2e/cart-session-isolation.spec.ts` はAuthGateとCart / Karaokeの両購入Actionで、Cart clear失敗中はLoginへ移動せず、件数とCart内容・編集・購入を公開しないこと、および「カートを消去して再試行」の失敗と成功を検証する。ActionはAPIで初めて期限切れが分かる場合と、UIが既にGuestを認識している場合の双方を検証する。
+- `tests/e2e/cart-session-isolation.spec.ts` はAuthGateとCart / Guest KaraokeのLogin handoffで、必要なCart clear失敗中は遷移しないこと、AuthGateのstorage取得不可時はLoginへ進むことを検証する。Karaoke Slotは表示を保ち、Authenticated Userの購入開始がCart停止中も進むことを検証する。ActionはAPIで初めて期限切れが分かる場合と、UIが既にGuestを認識している場合の双方を検証する。
 - 既存Cart fixtureはGuest / authenticatedの非識別由来を明示する。由来不明・legacy Cartは専用Unitで検証し、通常の購入ケースに紛れ込ませない。
 - 初回のlocalStorage取得不能からの回復成功時はPageを再読込し、AuthPortのlifecycle連携とHeader / Cartの購読を再初期化する。通常のstorage障害からの回復は同じPage内で完了する。
 - 同じTabのLogin / Logoutが重なっても、それぞれのcleanupを順に完了してからSession照会・通知を公開する。認証成立後のmetadata保存失敗は、確認済みUserのMypage表示と未確認UserのEmail Verificationへの遷移を妨げず、Cartだけを停止する。

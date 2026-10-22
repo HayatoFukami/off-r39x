@@ -200,21 +200,24 @@ export function getBrowserCartStore(): CartStore | null;   // window.localStorag
 ### 2.4 `features/cart/use-cart.ts` / `use-cart-count.ts`
 
 ```ts
-export type CartState = { readonly kind: "loading" } | CartSnapshot;
+export type CartState = { readonly kind: "loading" | "busy" | "blocked" | "storage_unavailable" } | CartSnapshot;
+export type CartWriteOutcome = CartWriteResult | { kind: "busy" } | { kind: "blocked" };
+export type CartAddOutcome = CartAddResult | { kind: "busy" } | { kind: "blocked" };
 export function useCart(): {
   state: CartState;                       // server snapshot と最初の描画は { kind: "loading" }
-  add(line: CartLine): CartAddResult;
-  setQuantity(lineKey: string, quantity: number): CartWriteResult;
-  remove(lineKey: string): CartWriteResult;
-  removeLines(lineKeys: readonly string[]): CartWriteResult;
-  subtractLines(lines: readonly CartLine[]): CartWriteResult;
-  addFromOrder(items: readonly OrderItem[]): CartAddResult;
-  reset(): CartWriteResult;
-  clear(): CartWriteResult;
+  add(line: CartLine): CartAddOutcome;
+  setQuantity(lineKey: string, quantity: number): CartWriteOutcome;
+  remove(lineKey: string): CartWriteOutcome;
+  removeLines(lineKeys: readonly string[]): CartWriteOutcome;
+  subtractLines(lines: readonly CartLine[]): CartWriteOutcome;
+  addFromOrder(items: readonly OrderItem[]): CartAddOutcome;
+  reset(): CartWriteOutcome;
+  clear(): CartWriteOutcome;
 };
 ```
 
 - `useCart` は `getBrowserCartStore()` を `useSyncExternalStore` で購読する。store が `null` のとき操作（`clear` を含む）は `{ kind: "storage_unavailable" }` を返す。
+- FR-CRT-012 の認証遷移中は追加・編集・購入操作を無効化して待機中と示す。Cart停止 / storage取得不可では追加を無効化し、Cart停止は `/cart` の復旧、storage取得不可は理由と再試行を提供する。販売情報の閲覧は継続できる。
 - `useCartCount(): number | null` は同じ store を購読する。`ready` → `cartTotalQuantity`、`corrupted` / store なし → `null`、server snapshot は `null`。S3 の表示規則（1 以上のときだけ数字、accessible name `カート（n点）`）は変えない。**同一 tab での追加・変更・削除、他 tab の変更、`localStorage.clear()` のいずれでも Header の数が更新される。**
 
 ## 3. `canProceed` と Cart view model
@@ -364,6 +367,7 @@ focus 順は DOM 順と一致させる。Entry / Goods では**数量入力の�
 | `tests/e2e/goods-detail.spec.ts` | §5.2 |
 | `tests/e2e/cart-page.spec.ts` | §5.3 |
 | `tests/e2e/cart-store.spec.ts` | 永続、Header の即時更新、他 tab、壊れた保存内容、FR-CRT-012 |
+| `tests/e2e/cart-session-isolation.spec.ts` | TC-FR-CRT-012-011: lifecycle停止中も販売Pageを表示し、Cart追加を無効にする |
 | `tests/e2e/cart-common.spec.ts` | §6（title、見出し、runtime error、外部 origin、href、横 scroll、Cache-Control、404） |
 
 ## 8. 曖昧さ・仕様の不足についてテスト担当が決めたこと

@@ -2,21 +2,30 @@
 
 import { useRef, useSyncExternalStore } from "react";
 import type { CartLine, OrderItem } from "../../api-client/types";
+import type { CartRecoveryResult } from "./cart-lifecycle";
 import { getBrowserCartLifecycle } from "./cart-lifecycle";
 import {
   type CartAddResult,
   type CartSnapshot,
+  type CartStore,
   type CartWriteResult,
   getBrowserCartStore,
 } from "./cart-store";
 
-export type CartState = { readonly kind: "loading" } | { readonly kind: "blocked" } | CartSnapshot;
+export type CartState =
+  | { readonly kind: "loading" }
+  | { readonly kind: "busy" }
+  | { readonly kind: "blocked" }
+  | { readonly kind: "storage_unavailable" }
+  | CartSnapshot;
+export type CartWriteOutcome = CartWriteResult | { kind: "busy" } | { kind: "blocked" };
+export type CartAddOutcome = CartAddResult | { kind: "busy" } | { kind: "blocked" };
 
 const LOADING: CartState = { kind: "loading" };
+const BUSY: CartState = { kind: "busy" };
 const BLOCKED: CartState = { kind: "blocked" };
-// A store that cannot be reached is not an empty Cart: its content is unknown.
-const UNREADABLE: CartState = { kind: "corrupted" };
-const UNAVAILABLE: CartWriteResult = { kind: "storage_unavailable" };
+const STORAGE_UNAVAILABLE: CartState = { kind: "storage_unavailable" };
+const UNAVAILABLE = { kind: "storage_unavailable" } as const;
 
 function subscribe(listener: () => void): () => void {
   const store = getBrowserCartStore();
@@ -31,18 +40,25 @@ function subscribe(listener: () => void): () => void {
 
 function getSnapshot(): CartState {
   const lifecycle = getBrowserCartLifecycle();
-  if (lifecycle === null) return BLOCKED;
-  if (lifecycle.getSnapshot().kind === "blocked") return BLOCKED;
+  if (lifecycle === null) return STORAGE_UNAVAILABLE;
+  const transition = lifecycle.getSnapshot();
+  if (transition.kind === "blocked") return BLOCKED;
+  if (transition.kind === "busy") return BUSY;
   const store = getBrowserCartStore();
-  return store === null ? UNREADABLE : store.getSnapshot();
+  return store === null ? STORAGE_UNAVAILABLE : store.getSnapshot();
 }
 
-function writableStore() {
-  return getBrowserCartLifecycle()?.getSnapshot().kind === "ready" ? getBrowserCartStore() : null;
-}
-
-function writeCart<T extends CartWriteResult | CartAddResult>(operation: () => T): T {
-  const result = operation();
+function writeCart<T extends CartWriteResult | CartAddResult>(
+  operation: (store: CartStore) => T,
+): T | { kind: "busy" } | { kind: "blocked" } | { kind: "storage_unavailable" } {
+  const lifecycle = getBrowserCartLifecycle();
+  if (lifecycle === null) return UNAVAILABLE;
+  const transition = lifecycle.getSnapshot();
+  if (transition.kind === "busy") return { kind: "busy" };
+  if (transition.kind === "blocked") return { kind: "blocked" };
+  const store = getBrowserCartStore();
+  if (store === null) return UNAVAILABLE;
+  const result = operation(store);
   if (result.kind === "storage_unavailable") getBrowserCartLifecycle()?.block();
   return result;
 }
@@ -52,34 +68,34 @@ const getServerSnapshot = (): CartState => LOADING;
 
 export function useCart(): {
   state: CartState;
-  add(line: CartLine): CartAddResult;
-  setQuantity(lineKey: string, quantity: number): CartWriteResult;
-  remove(lineKey: string): CartWriteResult;
-  removeLines(lineKeys: readonly string[]): CartWriteResult;
-  subtractLines(lines: readonly CartLine[]): CartWriteResult;
-  addFromOrder(items: readonly OrderItem[]): CartAddResult;
-  reset(): CartWriteResult;
-  clear(): CartWriteResult;
-  recover(provenance: "guest" | "authenticated" | "unknown"): boolean;
+  add(line: CartLine): CartAddOutcome;
+  setQuantity(lineKey: string, quantity: number): CartWriteOutcome;
+  remove(lineKey: string): CartWriteOutcome;
+  removeLines(lineKeys: readonly string[]): CartWriteOutcome;
+  subtractLines(lines: readonly CartLine[]): CartWriteOutcome;
+  addFromOrder(items: readonly OrderItem[]): CartAddOutcome;
+  reset(): CartWriteOutcome;
+  clear(): CartWriteOutcome;
+  recover(provenance: "guest" | "authenticated" | "unknown"): Promise<CartRecoveryResult>;
 } {
   const initiallyUnavailable = useRef(getBrowserCartLifecycle() === null);
   const state = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   return {
     state,
-    add: (line) => writeCart(() => writableStore()?.add(line) ?? UNAVAILABLE),
-    setQuantity: (lineKey, quantity) =>
-      writeCart(() => writableStore()?.setQuantity(lineKey, quantity) ?? UNAVAILABLE),
-    remove: (lineKey) => writeCart(() => writableStore()?.remove(lineKey) ?? UNAVAILABLE),
-    removeLines: (lineKeys) =>
-      writeCart(() => writableStore()?.removeLines(lineKeys) ?? UNAVAILABLE),
-    subtractLines: (lines) => writeCart(() => writableStore()?.subtractLines(lines) ?? UNAVAILABLE),
-    addFromOrder: (items) => writeCart(() => writableStore()?.addFromOrder(items) ?? UNAVAILABLE),
-    reset: () => writeCart(() => writableStore()?.reset() ?? UNAVAILABLE),
-    clear: () => writeCart(() => getBrowserCartStore()?.clear() ?? UNAVAILABLE),
-    recover: (provenance) => {
-      const recovered = getBrowserCartLifecycle()?.recover(provenance) ?? false;
+    add: (line) => writeCart((store) => store.add(line)),
+    setQuantity: (lineKey, quantity) => writeCart((store) => store.setQuantity(lineKey, quantity)),
+    remove: (lineKey) => writeCart((store) => store.remove(lineKey)),
+    removeLines: (lineKeys) => writeCart((store) => store.removeLines(lineKeys)),
+    subtractLines: (lines) => writeCart((store) => store.subtractLines(lines)),
+    addFromOrder: (items) => writeCart((store) => store.addFromOrder(items)),
+    reset: () => writeCart((store) => store.reset()),
+    clear: () => writeCart((store) => store.clear()),
+    recover: async (provenance) => {
+      const lifecycle = getBrowserCartLifecycle();
+      if (lifecycle === null) return "failed";
+      const recovered = await lifecycle.recover(provenance);
       // Initial storage denial also prevented Header/Auth subscriptions. Reinitialize all wiring.
-      if (recovered && initiallyUnavailable.current) window.location.reload();
+      if (recovered === "recovered" && initiallyUnavailable.current) window.location.reload();
       return recovered;
     },
   };
