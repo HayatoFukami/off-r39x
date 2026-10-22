@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-040
 title: User Flows
-version: 1.3.1
+version: 1.3.2
 status: provisional
 depends_on:
   - SPEC-000
@@ -641,7 +641,7 @@ Cartは参照と数量だけを保持するBrowser側の購入前補助であり
 2. **Web** はBrowser側のCartへ参照と数量だけを保存する。Order、Allocation、Hold、Inventoryは変化しない。
 3. **User** はCartを開く。**Web / API** は各Itemの現在の価格と販売状態をServer-sideの現在値から取得して表示する。小計は表示用であり、購入時の権威値ではない。
 4. **User** は数量変更・削除を行う。購入不可のItemがある場合、Itemごとに購入不可理由が示される。
-5. **User** は「購入手続きへ進む」を選ぶ。Guest（一度も認証されていない）なら `UF-PUB-002` へ分岐し、Cart内容は保持される（`FR-CRT-012`）。
+5. **User** は「購入手続きへ進む」を選ぶ。Guestなら `UF-PUB-002` へ分岐する。Cartの保持・clearは `FR-CRT-012` に従う。
 6. **API** は認証Identityを検証し、Cart内の全Itemについて、販売期間、Sale Control State、容量または在庫、Purchase Limit、価格をServer-sideの現在状態から再検証する。Cartに保持された価格・在庫・販売可否は採用しない。
 7. 全Itemが成立する場合のみ、**Business Database** は全Entry Sales Allocationと全Goods Sales Allocationを `HELD` として確保し、Order Purposeを決定し（`BR-ORD-013`）、購入時価格Snapshotを持つOrderを `PREPARED` として永続化する。Goods Order Itemは `PENDING_PAYMENT` である。
 8. Order作成後、**Web** は当該OrderのItemをCartから除去する。
