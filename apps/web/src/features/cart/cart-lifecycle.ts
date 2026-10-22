@@ -1,12 +1,20 @@
 import { z } from "zod";
 import { CART_STORAGE_KEY } from "./cart-count";
 import { type CartStorage, type CartStore, getBrowserCartStore } from "./cart-store";
+import {
+  type CartTransitionCoordinator,
+  createMemoryCartTransitionCoordinator,
+  getBrowserCartTransitionCoordinator,
+} from "./cart-transition-lock";
 
 export const CART_LIFECYCLE_STORAGE_KEY = "r39x.cart-lifecycle.v1";
 
 export type CartProvenance = "guest" | "authenticated" | "unknown";
-export type CartLifecycleSnapshot = { kind: "ready" } | { kind: "blocked" };
+export type CartLifecycleSnapshot = { kind: "ready" } | { kind: "busy" } | { kind: "blocked" };
+export type CartLifecycleResult = "done" | "busy" | "blocked";
+export type CartRecoveryResult = "recovered" | "busy" | "failed";
 const READY: CartLifecycleSnapshot = { kind: "ready" };
+const BUSY: CartLifecycleSnapshot = { kind: "busy" };
 const BLOCKED: CartLifecycleSnapshot = { kind: "blocked" };
 
 const metadataSchema = z.union([
@@ -22,21 +30,22 @@ const isTransitioning = (metadata: Metadata | null): boolean =>
   metadata !== null && "transitioning" in metadata;
 
 export interface CartLifecycle {
-  initializeGuestIfEmpty(sessionKind?: "guest" | "authenticated"): void;
+  initializeGuestIfEmpty(): void;
   markAuthenticated(): void;
-  beginTransition(): { kind: "ready"; provenance: CartProvenance } | { kind: "blocked" };
+  beginTransition(
+    lockAcquired?: boolean,
+  ): { kind: "ready"; provenance: CartProvenance } | { kind: "busy" } | { kind: "blocked" };
   finishLogin(provenance: CartProvenance): void;
   abortTransition(provenance: CartProvenance): void;
   finishLogout(): void;
-  expireAuthenticatedCart(): boolean;
+  expireAuthenticatedCart(): CartLifecycleResult;
   block(): void;
-  recover(provenance: CartProvenance): boolean;
+  recover(provenance: CartProvenance): Promise<CartRecoveryResult>;
   subscribe(listener: () => void): () => void;
   getSnapshot(): CartLifecycleSnapshot;
 }
 
-function readMetadata(storage: CartStorage): Metadata | null {
-  const raw = storage.getItem(CART_LIFECYCLE_STORAGE_KEY);
+function parseMetadata(raw: string | null): Metadata | null {
   if (raw === null) return null;
   try {
     const value: unknown = JSON.parse(raw);
@@ -51,13 +60,27 @@ export function createCartLifecycle(
   storage: CartStorage,
   cart: CartStore,
   subscribeExternal?: (onChange: () => void) => () => void,
+  coordinator: CartTransitionCoordinator = createMemoryCartTransitionCoordinator(),
 ): CartLifecycle {
   const listeners = new Set<() => void>();
   let blocked = false;
+  let localTransition = false;
+  let externalTransition = false;
+  let orphanedTransition = false;
   let releaseExternal: (() => void) | null = null;
+  let releaseCoordinator: (() => void) | null = null;
+  let cachedMetadata: { raw: string | null; value: Metadata | null } | null = null;
+  let transitionProbe: Promise<void> | null = null;
 
   const notify = (): void => {
     for (const listener of [...listeners]) listener();
+  };
+  const readMetadata = (): Metadata | null => {
+    const raw = storage.getItem(CART_LIFECYCLE_STORAGE_KEY);
+    if (cachedMetadata !== null && cachedMetadata.raw === raw) return cachedMetadata.value;
+    const value = parseMetadata(raw);
+    cachedMetadata = { raw, value };
+    return value;
   };
   const write = (provenance: CartProvenance, transitioning = false): void => {
     if (provenance === "unknown" && !transitioning) {
@@ -72,20 +95,66 @@ export function createCartLifecycle(
         }),
       );
     }
+    cachedMetadata = null;
     notify();
   };
   const clearCart = (): void => {
     if (cart.clear().kind !== "ok") throw new Error("Cart storage unavailable");
   };
 
+  const reconcileTransition = (): void => {
+    if (localTransition || blocked) return;
+    let metadata: Metadata | null;
+    try {
+      metadata = readMetadata();
+    } catch {
+      blocked = true;
+      notify();
+      return;
+    }
+    if (!isTransitioning(metadata)) {
+      externalTransition = false;
+      orphanedTransition = false;
+      notify();
+      return;
+    }
+    if (!coordinator.crossTab) {
+      externalTransition = false;
+      orphanedTransition = true;
+      notify();
+      return;
+    }
+    if (transitionProbe !== null) return;
+    transitionProbe = coordinator
+      .isHeld()
+      .then((held) => {
+        const latestMetadata = readMetadata();
+        if (!isTransitioning(latestMetadata)) {
+          externalTransition = false;
+          orphanedTransition = false;
+        } else {
+          externalTransition = held;
+          orphanedTransition = !held;
+        }
+        notify();
+      })
+      .catch(() => {
+        blocked = true;
+        notify();
+      })
+      .finally(() => {
+        transitionProbe = null;
+      });
+  };
+
   return {
-    initializeGuestIfEmpty(sessionKind = "guest") {
+    initializeGuestIfEmpty() {
       if (blocked) return;
       try {
-        if (readMetadata(storage) !== null) return;
+        if (readMetadata() !== null) return;
         const rawCart = storage.getItem(CART_STORAGE_KEY);
         if (rawCart !== null) return;
-        write(sessionKind);
+        write("guest");
       } catch {
         blocked = true;
         notify();
@@ -94,9 +163,11 @@ export function createCartLifecycle(
     markAuthenticated() {
       if (blocked) return;
       try {
-        const metadata = readMetadata(storage);
-        // Another tab may still be settling authentication. Only completion or recovery releases it.
-        if (isTransitioning(metadata)) return;
+        const metadata = readMetadata();
+        if (isTransitioning(metadata)) {
+          reconcileTransition();
+          return;
+        }
         if (metadata?.provenance === "authenticated") return;
         if (metadata?.provenance !== "guest") clearCart();
         write("authenticated");
@@ -105,15 +176,35 @@ export function createCartLifecycle(
         notify();
       }
     },
-    beginTransition() {
-      if (blocked) return { kind: "blocked" };
+    beginTransition(lockAcquired = false) {
+      if (blocked || orphanedTransition) return { kind: "blocked" };
+      if (localTransition || externalTransition) return { kind: "busy" };
       try {
-        const metadata = readMetadata(storage);
-        if (isTransitioning(metadata)) return { kind: "blocked" };
+        const metadata = readMetadata();
+        if (isTransitioning(metadata)) {
+          if (lockAcquired) {
+            orphanedTransition = true;
+            notify();
+            return { kind: "blocked" };
+          }
+          if (coordinator.crossTab) {
+            reconcileTransition();
+            return { kind: "busy" };
+          }
+          orphanedTransition = true;
+          notify();
+          return { kind: "blocked" };
+        }
         const provenance = metadata?.provenance ?? "unknown";
-        write(provenance, true);
+        localTransition = true;
+        externalTransition = false;
+        orphanedTransition = false;
+        // Without Web Locks, transition ownership is intentionally memory-only.
+        if (coordinator.crossTab) write(provenance, true);
+        else notify();
         return { kind: "ready", provenance };
       } catch {
+        localTransition = false;
         blocked = true;
         notify();
         return { kind: "blocked" };
@@ -124,8 +215,13 @@ export function createCartLifecycle(
       try {
         if (provenance !== "guest") clearCart();
         write("authenticated");
+        localTransition = false;
+        externalTransition = false;
+        orphanedTransition = false;
+        notify();
       } catch (error) {
         blocked = true;
+        localTransition = false;
         notify();
         throw error;
       }
@@ -134,7 +230,12 @@ export function createCartLifecycle(
       if (blocked) return;
       try {
         write(provenance);
+        localTransition = false;
+        externalTransition = false;
+        orphanedTransition = false;
+        notify();
       } catch {
+        localTransition = false;
         blocked = true;
         notify();
       }
@@ -143,62 +244,94 @@ export function createCartLifecycle(
       try {
         clearCart();
         write("guest");
+        blocked = false;
+        localTransition = false;
+        externalTransition = false;
+        orphanedTransition = false;
       } catch (error) {
         blocked = true;
+        localTransition = false;
         notify();
         throw error;
       }
     },
     expireAuthenticatedCart() {
-      if (blocked) return false;
+      if (blocked || orphanedTransition) return "blocked";
+      if (localTransition || externalTransition) return "busy";
       try {
-        const metadata = readMetadata(storage);
-        if (isTransitioning(metadata)) return false;
-        if (metadata?.provenance === "guest") return true;
+        const metadata = readMetadata();
+        if (isTransitioning(metadata)) {
+          reconcileTransition();
+          return coordinator.crossTab ? "busy" : "blocked";
+        }
+        if (metadata?.provenance === "guest") return "done";
         clearCart();
         write("guest");
-        return true;
+        return "done";
       } catch {
         blocked = true;
         notify();
-        return false;
+        return "blocked";
       }
     },
     block() {
       blocked = true;
       notify();
     },
-    recover(provenance) {
+    async recover(provenance) {
+      const lock = await coordinator.acquire();
+      if (lock.kind === "busy") return "busy";
+      if (lock.kind === "unavailable") return "failed";
       try {
+        if (localTransition || externalTransition) return "busy";
         clearCart();
         write(provenance);
         blocked = false;
+        localTransition = false;
+        externalTransition = false;
+        orphanedTransition = false;
         notify();
-        return true;
+        return "recovered";
       } catch {
         blocked = true;
         notify();
-        return false;
+        return "failed";
+      } finally {
+        lock.release();
       }
     },
     subscribe(listener) {
       listeners.add(listener);
-      if (listeners.size === 1 && subscribeExternal !== undefined) {
-        releaseExternal = subscribeExternal(notify);
+      if (listeners.size === 1) {
+        const externalStop = subscribeExternal?.(() => {
+          notify();
+          reconcileTransition();
+        });
+        const coordinatorStop = coordinator.subscribe(() => reconcileTransition());
+        releaseExternal = () => externalStop?.();
+        releaseCoordinator = coordinatorStop;
+        reconcileTransition();
       }
       return () => {
         if (!listeners.delete(listener)) return;
-        if (listeners.size === 0 && releaseExternal !== null) {
-          releaseExternal();
+        if (listeners.size === 0) {
+          releaseExternal?.();
           releaseExternal = null;
+          releaseCoordinator?.();
+          releaseCoordinator = null;
         }
       };
     },
     getSnapshot() {
-      if (blocked) return BLOCKED;
+      if (blocked || orphanedTransition) return BLOCKED;
       try {
-        const metadata = readMetadata(storage);
-        return isTransitioning(metadata) ? BLOCKED : READY;
+        const metadata = readMetadata();
+        if (isTransitioning(metadata) && !coordinator.crossTab && !localTransition) {
+          orphanedTransition = true;
+          return BLOCKED;
+        }
+        if (localTransition || externalTransition || isTransitioning(metadata)) return BUSY;
+        return READY;
       } catch {
         blocked = true;
         return BLOCKED;
@@ -216,13 +349,27 @@ export function getBrowserCartLifecycle(): CartLifecycle | null {
     const storage = window.localStorage;
     const store = getBrowserCartStore();
     if (store === null) return null;
-    const lifecycle = createCartLifecycle(storage, store, (onChange) => {
-      const handler = (event: StorageEvent): void => {
-        if (event.key === CART_LIFECYCLE_STORAGE_KEY || event.key === null) onChange();
-      };
-      window.addEventListener("storage", handler);
-      return () => window.removeEventListener("storage", handler);
-    });
+    const coordinator = getBrowserCartTransitionCoordinator();
+    if (coordinator === null) return null;
+    const lifecycle = createCartLifecycle(
+      storage,
+      store,
+      (onChange) => {
+        const handler = (event: StorageEvent): void => {
+          if (event.key === CART_LIFECYCLE_STORAGE_KEY || event.key === null) onChange();
+        };
+        const refresh = (): void => onChange();
+        window.addEventListener("storage", handler);
+        window.addEventListener("focus", refresh);
+        document.addEventListener("visibilitychange", refresh);
+        return () => {
+          window.removeEventListener("storage", handler);
+          window.removeEventListener("focus", refresh);
+          document.removeEventListener("visibilitychange", refresh);
+        };
+      },
+      coordinator,
+    );
     browserLifecycle = lifecycle;
     return browserLifecycle;
   } catch {

@@ -1,22 +1,13 @@
 import type { AuthPort } from "../../auth/port";
-import type { CartLifecycle } from "../cart/cart-lifecycle";
+import type { CartLifecycle, CartProvenance } from "../cart/cart-lifecycle";
+import type { CartTransitionCoordinator } from "../cart/cart-transition-lock";
 
-type AuthLifecycle = Pick<
-  CartLifecycle,
-  | "beginTransition"
-  | "finishLogin"
-  | "abortTransition"
-  | "finishLogout"
-  | "expireAuthenticatedCart"
-  | "subscribe"
-  | "getSnapshot"
-> & {
-  initializeGuestIfEmpty?: CartLifecycle["initializeGuestIfEmpty"];
-  markAuthenticated?: CartLifecycle["markAuthenticated"];
-};
-
-/** Internal decorator: Cart lifecycle is settled before an AuthPort result or event is observable. */
-export function createCartLifecycleAuthPort(rawAuth: AuthPort, lifecycle: AuthLifecycle): AuthPort {
+/** Internal decorator: lifecycle cleanup is settled before an Auth result or event is observable. */
+export function createCartLifecycleAuthPort(
+  rawAuth: AuthPort,
+  lifecycle: CartLifecycle,
+  coordinator: CartTransitionCoordinator,
+): AuthPort {
   const listeners = new Set<() => void>();
   let releaseRaw: (() => void) | null = null;
   let transition: Promise<void> | null = null;
@@ -37,11 +28,8 @@ export function createCartLifecycleAuthPort(rawAuth: AuthPort, lifecycle: AuthLi
       const current = await rawAuth.getSession();
       if (transition !== null) continue;
       if (current.kind === "ok") {
-        if (current.session.kind === "guest") {
-          lifecycle.initializeGuestIfEmpty?.();
-        } else {
-          lifecycle.markAuthenticated?.();
-        }
+        if (current.session.kind === "guest") lifecycle.initializeGuestIfEmpty();
+        else lifecycle.markAuthenticated();
       }
       return;
     }
@@ -58,20 +46,37 @@ export function createCartLifecycleAuthPort(rawAuth: AuthPort, lifecycle: AuthLi
     });
   };
 
-  async function startTransition(): Promise<ReturnType<CartLifecycle["beginTransition"]>> {
-    // Acquire this tab's transition before yielding, including Logout after a storage failure.
+  async function startTransition(
+    wait: boolean,
+    forceLogout = false,
+  ): Promise<
+    | { kind: "ready"; provenance: CartProvenance; release: () => void }
+    | { kind: "busy" }
+    | { kind: "blocked" }
+  > {
     while (transition !== null) await transition;
-    const result = lifecycle.beginTransition();
+    const lock = await coordinator.acquire(wait);
+    if (lock.kind === "busy") return { kind: "busy" };
+    if (lock.kind === "unavailable" && !forceLogout) return { kind: "blocked" };
+
+    const release = lock.kind === "acquired" ? lock.release : () => undefined;
+    const result = lifecycle.beginTransition(lock.kind === "acquired");
+    if (result.kind !== "ready" && !forceLogout) {
+      release();
+      return result;
+    }
+    const provenance = result.kind === "ready" ? result.provenance : "unknown";
     transition = new Promise<void>((resolve) => {
       settleTransition = resolve;
     });
-    return result;
+    return { kind: "ready", provenance, release };
   }
 
-  function completeTransition(): void {
+  function completeTransition(release: () => void): void {
     transition = null;
     settleTransition?.();
     settleTransition = null;
+    release();
     if (pendingNotification) {
       pendingNotification = false;
       publish();
@@ -81,32 +86,29 @@ export function createCartLifecycleAuthPort(rawAuth: AuthPort, lifecycle: AuthLi
   async function authenticate<T extends { kind: string }>(
     operation: () => Promise<T>,
     succeeded: (result: T) => boolean,
-  ): Promise<T | { kind: "unavailable" }> {
-    const started = await startTransition();
-    if (started.kind === "blocked") {
-      completeTransition();
-      return { kind: "unavailable" };
-    }
-    const { provenance } = started;
-    let result: T;
+  ): Promise<T | { kind: "unavailable" | "cart_busy" | "cart_blocked" }> {
+    const started = await startTransition(false);
+    if (started.kind === "busy") return { kind: "cart_busy" };
+    if (started.kind === "blocked") return { kind: "cart_blocked" };
+
     try {
-      result = await operation();
-    } catch (error) {
-      lifecycle.abortTransition(provenance);
-      completeTransition();
-      throw error;
-    }
-    if (succeeded(result)) {
-      try {
-        lifecycle.finishLogin(provenance);
-      } catch {
-        // Authentication remains successful. The lifecycle keeps Cart access blocked for recovery.
+      const result = await operation();
+      if (succeeded(result)) {
+        try {
+          lifecycle.finishLogin(started.provenance);
+        } catch {
+          // Authentication remains successful. The Cart stays hidden until explicit recovery.
+        }
+      } else {
+        lifecycle.abortTransition(started.provenance);
       }
-    } else {
-      lifecycle.abortTransition(provenance);
+      return result;
+    } catch (error) {
+      lifecycle.abortTransition(started.provenance);
+      throw error;
+    } finally {
+      completeTransition(started.release);
     }
-    completeTransition();
-    return result;
   }
 
   return {
@@ -116,11 +118,8 @@ export function createCartLifecycleAuthPort(rawAuth: AuthPort, lifecycle: AuthLi
         const result = await rawAuth.getSession();
         if (transition !== null) continue;
         if (result.kind === "ok") {
-          if (result.session.kind === "guest") {
-            lifecycle.initializeGuestIfEmpty?.();
-          } else {
-            lifecycle.markAuthenticated?.();
-          }
+          if (result.session.kind === "guest") lifecycle.initializeGuestIfEmpty();
+          else lifecycle.markAuthenticated();
         }
         return result;
       }
@@ -150,16 +149,28 @@ export function createCartLifecycleAuthPort(rawAuth: AuthPort, lifecycle: AuthLi
       );
     },
     async signOut() {
-      await startTransition();
+      const started = await startTransition(true, true);
+      if (started.kind !== "ready") {
+        // Logout must still discard this Browser's Session if storage or the lock manager fails.
+        try {
+          return await rawAuth.signOut();
+        } finally {
+          try {
+            lifecycle.finishLogout();
+          } catch {
+            // Keep Cart contents hidden until recovery succeeds.
+          }
+        }
+      }
       try {
         return await rawAuth.signOut();
       } finally {
         try {
           lifecycle.finishLogout();
         } catch {
-          // Logout remains complete; the lifecycle blocks Cart access until recovery succeeds.
+          // Logout remains complete; the Cart stays hidden until recovery succeeds.
         } finally {
-          completeTransition();
+          completeTransition(started.release);
         }
       }
     },

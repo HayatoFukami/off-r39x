@@ -1,18 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AuthPort } from "../../../../apps/web/src/auth/port.ts";
+import type { CartLifecycle } from "../../../../apps/web/src/features/cart/cart-lifecycle.ts";
+import { createMemoryCartTransitionCoordinator } from "../../../../apps/web/src/features/cart/cart-transition-lock.ts";
 import { createCartLifecycleAuthPort } from "../../../../apps/web/src/features/shell/cart-lifecycle-auth-port.ts";
 
 type Provenance = "guest" | "authenticated" | "unknown";
-
-type Lifecycle = {
-  beginTransition(): { kind: "ready"; provenance: Provenance } | { kind: "blocked" };
-  finishLogin(provenance: Provenance): void;
-  abortTransition(provenance: Provenance): void;
-  finishLogout(): void;
-  expireAuthenticatedCart(): boolean;
-  subscribe(listener: () => void): () => void;
-  getSnapshot(): { kind: "ready" } | { kind: "blocked" };
-};
+type Lifecycle = CartLifecycle;
 
 function rawAuth(overrides: Partial<AuthPort> = {}): AuthPort {
   return {
@@ -30,16 +23,23 @@ function rawAuth(overrides: Partial<AuthPort> = {}): AuthPort {
 
 function lifecycle(overrides: Partial<Lifecycle> = {}): Lifecycle {
   return {
+    initializeGuestIfEmpty: () => undefined,
+    markAuthenticated: () => undefined,
     beginTransition: () => ({ kind: "ready", provenance: "guest" }),
     finishLogin: () => undefined,
     abortTransition: () => undefined,
     finishLogout: () => undefined,
-    expireAuthenticatedCart: () => true,
+    block: () => undefined,
+    expireAuthenticatedCart: () => "done",
+    recover: async () => "recovered",
     subscribe: () => () => undefined,
     getSnapshot: () => ({ kind: "ready" }),
     ...overrides,
   };
 }
+
+const decorate = (raw: AuthPort, cartLifecycle: Lifecycle) =>
+  createCartLifecycleAuthPort(raw, cartLifecycle, createMemoryCartTransitionCoordinator());
 
 describe("TC-AR-SES-010-002 AuthPort lifecycle decorator orders Cart cleanup and session notifications (FR-CRT-012)", () => {
   it("finishes Login cleanup before forwarding an early raw session notification", async () => {
@@ -56,7 +56,7 @@ describe("TC-AR-SES-010-002 AuthPort lifecycle decorator orders Cart cleanup and
         return { kind: "signed_in", emailVerified: true } as const;
       }),
     });
-    const port = createCartLifecycleAuthPort(
+    const port = decorate(
       raw,
       lifecycle({
         beginTransition: () => {
@@ -84,7 +84,7 @@ describe("TC-AR-SES-010-002 AuthPort lifecycle decorator orders Cart cleanup and
       const raw = rawAuth({
         signIn: vi.fn(async () => ({ kind: "signed_in", emailVerified: true }) as const),
       });
-      const port = createCartLifecycleAuthPort(
+      const port = decorate(
         raw,
         lifecycle({ beginTransition: () => ({ kind: "ready", provenance }), finishLogin }),
       );
@@ -101,7 +101,7 @@ describe("TC-AR-SES-010-002 AuthPort lifecycle decorator orders Cart cleanup and
     const finishLogin = vi.fn();
     const failure = { kind: "credential_failure" } as const;
     const raw = rawAuth({ signIn: vi.fn(async () => failure) });
-    const port = createCartLifecycleAuthPort(
+    const port = decorate(
       raw,
       lifecycle({
         beginTransition: () => ({ kind: "ready", provenance: "guest" }),
@@ -120,7 +120,9 @@ describe("TC-AR-SES-010-002 AuthPort lifecycle decorator orders Cart cleanup and
 
   it("preserves a successful Auth result but blocks Cart use when cleanup fails", async () => {
     const result = { kind: "signed_in", emailVerified: true } as const;
-    let snapshot: { kind: "ready" } | { kind: "blocked" } = { kind: "ready" };
+    let snapshot: { kind: "ready" } | { kind: "busy" } | { kind: "blocked" } = {
+      kind: "ready",
+    };
     const cartLifecycle = lifecycle({
       finishLogin: () => {
         snapshot = { kind: "blocked" };
@@ -129,11 +131,27 @@ describe("TC-AR-SES-010-002 AuthPort lifecycle decorator orders Cart cleanup and
       getSnapshot: () => snapshot,
     });
     const raw = rawAuth({ signIn: vi.fn(async () => result) });
-    const port = createCartLifecycleAuthPort(raw, cartLifecycle);
+    const port = decorate(raw, cartLifecycle);
 
     await expect(port.signIn({ email: "new@example.com", password: "synthetic" })).resolves.toBe(
       result,
     );
     expect(cartLifecycle.getSnapshot()).toEqual({ kind: "blocked" });
   });
+
+  it.each([
+    { state: { kind: "busy" } as const, expected: { kind: "cart_busy" } as const },
+    { state: { kind: "blocked" } as const, expected: { kind: "cart_blocked" } as const },
+  ])(
+    "does not call raw authentication when the Cart lifecycle is $state.kind",
+    async ({ state, expected }) => {
+      const signIn = vi.fn(async () => ({ kind: "signed_in", emailVerified: true }) as const);
+      const port = decorate(rawAuth({ signIn }), lifecycle({ beginTransition: () => state }));
+
+      await expect(
+        port.signIn({ email: "new@example.com", password: "synthetic" }),
+      ).resolves.toEqual(expected);
+      expect(signIn).not.toHaveBeenCalled();
+    },
+  );
 });

@@ -3,6 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { getBrowserCartLifecycle } from "../features/cart/cart-lifecycle";
+import { getBrowserCartTransitionCoordinator } from "../features/cart/cart-transition-lock";
 import { createCartLifecycleAuthPort } from "../features/shell/cart-lifecycle-auth-port";
 import { continuationForPath } from "./continuation";
 import { createAuthPort } from "./index";
@@ -17,7 +18,10 @@ export function SessionProvider({ children, port }: { children: ReactNode; port?
   const [auth] = useState<AuthPort>(() => {
     const raw = port ?? createAuthPort();
     const lifecycle = getBrowserCartLifecycle();
-    return lifecycle === null ? raw : createCartLifecycleAuthPort(raw, lifecycle);
+    const coordinator = getBrowserCartTransitionCoordinator();
+    return lifecycle === null || coordinator === null
+      ? raw
+      : createCartLifecycleAuthPort(raw, lifecycle, coordinator);
   });
   const [state, setState] = useState<SessionState>({ status: "loading" });
 

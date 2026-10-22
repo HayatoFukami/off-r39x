@@ -6,6 +6,10 @@ import {
   createCartLifecycle,
 } from "../../apps/web/src/features/cart/cart-lifecycle.ts";
 import { type CartStorage, createCartStore } from "../../apps/web/src/features/cart/cart-store.ts";
+import {
+  type CartTransitionCoordinator,
+  createMemoryCartTransitionCoordinator,
+} from "../../apps/web/src/features/cart/cart-transition-lock.ts";
 import { createCartLifecycleAuthPort } from "../../apps/web/src/features/shell/cart-lifecycle-auth-port.ts";
 
 // Test-only storage fault injector and synthetic AuthPort; never imported by production.
@@ -19,7 +23,10 @@ export const metadata = (provenance: "guest" | "authenticated") =>
   JSON.stringify({ version: 1, provenance });
 export const input = { email: "new@example.com", password: "test-only" };
 
-export function setupCartLifecycle(marker: string | null = metadata("guest")) {
+export function setupCartLifecycle(
+  marker: string | null = metadata("guest"),
+  coordinator: CartTransitionCoordinator = createMemoryCartTransitionCoordinator(),
+) {
   const data = new Map<string, string>([[CART_STORAGE_KEY, CART]]);
   if (marker !== null) data.set(CART_LIFECYCLE_STORAGE_KEY, marker);
   const faults = { read: false, write: false, clear: false, writesRemaining: 0 };
@@ -41,12 +48,17 @@ export function setupCartLifecycle(marker: string | null = metadata("guest")) {
   };
   const store = createCartStore({ storage });
   let external: (() => void) | undefined;
-  const lifecycle = createCartLifecycle(storage, store, (listener) => {
-    external = listener;
-    return () => {
-      external = undefined;
-    };
-  });
+  const lifecycle = createCartLifecycle(
+    storage,
+    store,
+    (listener) => {
+      external = listener;
+      return () => {
+        external = undefined;
+      };
+    },
+    coordinator,
+  );
   const raw: AuthPort = {
     getSession: vi.fn(async () => ({ kind: "ok", session: { kind: "guest" } }) as const),
     onSessionChange: vi.fn(() => () => undefined),
@@ -62,8 +74,9 @@ export function setupCartLifecycle(marker: string | null = metadata("guest")) {
     faults,
     store,
     lifecycle,
+    coordinator,
     raw,
-    port: createCartLifecycleAuthPort(raw, lifecycle),
+    port: createCartLifecycleAuthPort(raw, lifecycle, coordinator),
     external: () => external?.(),
   };
 }

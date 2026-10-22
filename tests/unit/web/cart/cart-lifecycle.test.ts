@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { CART_STORAGE_KEY } from "../../../../apps/web/src/features/cart/cart-count.ts";
 import { CART_LIFECYCLE_STORAGE_KEY } from "../../../../apps/web/src/features/cart/cart-lifecycle.ts";
+import { createWebCartTransitionCoordinator } from "../../../../apps/web/src/features/cart/cart-transition-lock.ts";
 import {
   CART,
   input,
@@ -13,7 +14,67 @@ function expectEmpty(s: ReturnType<typeof setup>) {
   expect(s.store.getSnapshot()).toEqual({ kind: "ready", cart: { version: 1, lines: [] } });
 }
 
+class TestLockManager {
+  private held = false;
+
+  async request<T>(
+    name: string,
+    options: { mode: "exclusive"; ifAvailable?: boolean },
+    callback: (lock: { name: string } | null) => T | Promise<T>,
+  ): Promise<T> {
+    if (this.held) {
+      if (options.ifAvailable) return callback(null);
+      throw new Error("test lock request would wait");
+    }
+    this.held = true;
+    try {
+      return await callback({ name });
+    } finally {
+      this.held = false;
+    }
+  }
+}
+
 describe("TC-FR-CRT-012-003 real Cart store lifecycle isolation (FR-CRT-012)", () => {
+  it("keeps an active authentication transition temporarily busy and releases it after settlement", () => {
+    const s = setup();
+    const started = s.lifecycle.beginTransition();
+    expect(started).toMatchObject({ kind: "ready", provenance: "guest" });
+    expect(s.lifecycle.getSnapshot()).toEqual({ kind: "busy" });
+    expect(s.lifecycle.beginTransition()).toEqual({ kind: "busy" });
+    if (started.kind === "ready") s.lifecycle.abortTransition(started.provenance);
+    expect(s.lifecycle.getSnapshot()).toEqual({ kind: "ready" });
+  });
+
+  it("returns busy instead of starting authentication while another tab owns the Web Lock", async () => {
+    const locks = new TestLockManager();
+    const otherTab = createWebCartTransitionCoordinator(locks);
+    const currentTab = createWebCartTransitionCoordinator(locks);
+    const lease = await otherTab.acquire();
+    expect(lease.kind).toBe("acquired");
+    if (lease.kind !== "acquired") return;
+
+    const s = setup(metadata("guest"), currentTab);
+    await expect(s.port.signIn(input)).resolves.toEqual({ kind: "cart_busy" });
+    expect(s.raw.signIn).not.toHaveBeenCalled();
+    lease.release();
+  });
+
+  it("treats an abandoned transition marker as blocked and recovers it explicitly", async () => {
+    const locks = new TestLockManager();
+    const s = setup(
+      JSON.stringify({ version: 1, provenance: "guest", transitioning: true }),
+      createWebCartTransitionCoordinator(locks),
+    );
+
+    await expect(s.port.signIn(input)).resolves.toEqual({ kind: "cart_blocked" });
+    expect(s.raw.signIn).not.toHaveBeenCalled();
+    expect(s.lifecycle.getSnapshot()).toEqual({ kind: "blocked" });
+    await expect(s.lifecycle.recover("guest")).resolves.toBe("recovered");
+    expectEmpty(s);
+    expect(s.lifecycle.getSnapshot()).toEqual({ kind: "ready" });
+  });
+
   it.each([
     null,
     "not-json",
@@ -102,7 +163,7 @@ describe("TC-FR-CRT-012-003 real Cart store lifecycle isolation (FR-CRT-012)", (
     await s.port.getSession();
     expect(s.lifecycle.getSnapshot()).toEqual({ kind: "blocked" });
     expect(s.data.get(CART_STORAGE_KEY)).toBe(CART);
-    expect(s.lifecycle.recover("authenticated")).toBe(true);
+    await expect(s.lifecycle.recover("authenticated")).resolves.toBe("recovered");
     expectEmpty(s);
   });
   it("logout clears Cart and starts new Guest provenance", async () => {
@@ -167,29 +228,29 @@ describe("TC-FR-CRT-012-004 real storage faults and authentication preflight (FR
     ]);
   });
   it.each(["signIn", "signUp"] as const)(
-    "%s never invokes raw authentication after transition marker cannot be persisted",
+    "%s preserves Auth success when final metadata cannot be persisted",
     async (method) => {
       const s = setup();
       s.faults.writesRemaining = 1;
-      await expect(s.port[method](input)).resolves.toEqual({ kind: "unavailable" });
-      expect(s.raw[method]).not.toHaveBeenCalled();
+      await expect(s.port[method](input)).resolves.toMatchObject({ kind: "signed_in" });
+      expect(s.raw[method]).toHaveBeenCalledTimes(1);
       expect(s.data.get(CART_STORAGE_KEY)).toBe(CART);
       expect(s.lifecycle.getSnapshot()).toEqual({ kind: "blocked" });
       // Later writes becoming available cannot silently restore the unvalidated Cart.
       await s.port.getSession();
       expect(s.lifecycle.getSnapshot()).toEqual({ kind: "blocked" });
-      expect(s.lifecycle.recover("guest")).toBe(true);
+      await expect(s.lifecycle.recover("guest")).resolves.toBe("recovered");
       expectEmpty(s);
     },
   );
   it("metadata read faults stop raw authentication and require explicit recovery", async () => {
     const s = setup();
     s.faults.read = true;
-    await expect(s.port.signIn(input)).resolves.toEqual({ kind: "unavailable" });
+    await expect(s.port.signIn(input)).resolves.toEqual({ kind: "cart_blocked" });
     expect(s.raw.signIn).not.toHaveBeenCalled();
     s.faults.read = false;
     expect(s.lifecycle.getSnapshot()).toEqual({ kind: "blocked" });
-    expect(s.lifecycle.recover("guest")).toBe(true);
+    await expect(s.lifecycle.recover("guest")).resolves.toBe("recovered");
     expectEmpty(s);
   });
   it.each(["clear", "write"] as const)(
@@ -205,13 +266,13 @@ describe("TC-FR-CRT-012-004 real storage faults and authentication preflight (FR
         emailVerified: true,
       });
       expect(s.lifecycle.getSnapshot()).toEqual({ kind: "blocked" });
-      expect(s.lifecycle.recover("authenticated")).toBe(false);
+      await expect(s.lifecycle.recover("authenticated")).resolves.toBe("failed");
       expect(s.lifecycle.getSnapshot()).toEqual({ kind: "blocked" });
       s.faults[fault] = false;
       // Ordinary synchronization must not remove the sticky failure.
       await s.port.getSession();
       expect(s.lifecycle.getSnapshot()).toEqual({ kind: "blocked" });
-      expect(s.lifecycle.recover("authenticated")).toBe(true);
+      await expect(s.lifecycle.recover("authenticated")).resolves.toBe("recovered");
       expectEmpty(s);
       expect(s.lifecycle.getSnapshot()).toEqual({ kind: "ready" });
     },
@@ -226,7 +287,7 @@ describe("TC-FR-CRT-012-004 real storage faults and authentication preflight (FR
     expect(s.lifecycle.getSnapshot()).toEqual({ kind: "blocked" });
     expect(s.data.get(CART_STORAGE_KEY)).toBe(CART);
     s.faults.write = false;
-    expect(s.lifecycle.recover("authenticated")).toBe(true);
+    await expect(s.lifecycle.recover("authenticated")).resolves.toBe("recovered");
     expectEmpty(s);
   });
   it("failed Login with failed rollback persistence stays blocked", async () => {
@@ -247,7 +308,7 @@ describe("TC-FR-CRT-012-004 real storage faults and authentication preflight (FR
     expect(s.lifecycle.getSnapshot()).toEqual({ kind: "blocked" });
     expect(s.data.get(CART_STORAGE_KEY)).toBe(CART);
     s.faults.clear = false;
-    expect(s.lifecycle.recover("guest")).toBe(true);
+    await expect(s.lifecycle.recover("guest")).resolves.toBe("recovered");
     expectEmpty(s);
   });
   it("restoration cleanup failure hides the Cart until explicit recovery", async () => {
@@ -264,16 +325,16 @@ describe("TC-FR-CRT-012-004 real storage faults and authentication preflight (FR
     expect(s.lifecycle.getSnapshot()).toEqual({ kind: "blocked" });
     expect(s.data.get(CART_STORAGE_KEY)).toBe(CART);
   });
-  it("protected expiry returns its clear result; genuine Guest Cart is retained", () => {
+  it("protected expiry returns its clear result; genuine Guest Cart is retained", async () => {
     const guest = setup();
-    expect(guest.lifecycle.expireAuthenticatedCart()).toBe(true);
+    expect(guest.lifecycle.expireAuthenticatedCart()).toBe("done");
     expect(guest.data.get(CART_STORAGE_KEY)).toBe(CART);
     const s = setup(metadata("authenticated"));
     s.faults.clear = true;
-    expect(s.lifecycle.expireAuthenticatedCart()).toBe(false);
+    expect(s.lifecycle.expireAuthenticatedCart()).toBe("blocked");
     expect(s.lifecycle.getSnapshot()).toEqual({ kind: "blocked" });
     s.faults.clear = false;
-    expect(s.lifecycle.recover("guest")).toBe(true);
+    await expect(s.lifecycle.recover("guest")).resolves.toBe("recovered");
     expectEmpty(s);
   });
   it("external transition metadata blocks subscribers and is released on unsubscribe", () => {
@@ -285,11 +346,12 @@ describe("TC-FR-CRT-012-004 real storage faults and authentication preflight (FR
       JSON.stringify({ version: 1, provenance: "guest", transitioning: true }),
     );
     s.external();
-    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalled();
     expect(s.lifecycle.getSnapshot()).toEqual({ kind: "blocked" });
+    const callsBeforeUnsubscribe = listener.mock.calls.length;
     stop();
     s.external();
-    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledTimes(callsBeforeUnsubscribe);
   });
   it.each([false, true])(
     "session notification sees cleanup or blocked state before publication (clear fault=%s)",
