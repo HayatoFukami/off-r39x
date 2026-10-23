@@ -14115,6 +14115,56 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-FR-CRT-012-013",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["FR-CRT-012"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Native-style LockManager doubles: absent API, pre-callback SecurityError, unknown failures, pending request and acquired lease faults; real CartLifecycle and AuthPort",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "SecurityError before callback can downgrade only with no pending requests or leases and readable metadata without a transition marker; other errors remain unavailable",
+        "Normal contention remains busy; unknown acquired-lock ownership never allows fallback, including after local release",
+        "One memory coordinator serializes same-tab authentication and queued leases; residual markers block Login and unsafe memory-only recovery"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-FR-CRT-012-014",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": ["FR-CRT-012"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Chromium UI mock with missing Locks, injected asynchronous request failures or real Web Lock held by another tab",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Absent API and pre-callback SecurityError permit Login while retaining a known Guest Cart; subsequent Login clears authenticated Cart; combined initial storage denial and unavailable Locks still permit explicit clear recovery and reload",
+        "Unknown errors and unreadable or transitioning metadata do not permit authentication or memory-only recovery; restored native Locks allow explicit clear recovery",
+        "Real cross-tab Web Lock and transition metadata hide Cart contents and counts and prevent authentication until released"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-FR-CRT-012-005",
       "level": "E2E",
       "suite": "e2e-ui-mock",

@@ -386,6 +386,8 @@ export function describeContinuation(intent: ContinuationIntent | null): Continu
 - `tests/unit/web/cart/cart-lifecycle.test.ts` は実CartStoreと実CartLifecycleを同じstorageへ接続する。Session復元、明示Login / Session成立登録、確認待ち登録、Login失敗、Logout、別Tab通知、metadata読込・保存とCart clear障害、停止状態の持続と明示回復を検証する。
 - 内部 `beginTransition` は `{ kind: "ready", provenance } | { kind: "busy" } | { kind: "blocked" }` を返し、保護境界の `expireAuthenticatedCart` は `done | busy | blocked` を返す。AuthPortは同一Browser内のCart遷移中と復旧必要状態を `cart_busy` / `cart_blocked` としてLogin / 登録画面へ伝える。
 - Web Locks対応Browserでは認証遷移をTab間で排他する。未対応Browserでは同一Tab内のメモリ状態だけを使い、認証遷移中のmetadataを永続化しない。残存metadataと有効Lockが一致しない場合は認証を開始せず、Login / 登録からCartをclearして復旧する。
+- 実行時の同期・非同期エラーでは、callback開始前の `DOMException(SecurityError)` だけをLock Manager取得不能と判定する（[Web Locks request手順](https://w3c.github.io/web-locks/#dom-lockmanager-request)）。同一Coordinatorに未完了の要求や保有Leaseがなく、metadataが取得でき、欠落または有効な非遷移metadataである場合だけメモリ制御へ切り替える。正常な競合は `busy` のまま扱い、原因不明・Abort・非active Document・不正optionsのエラーを利用不能と混同しない。メモリ制御へ切替後も各取得時にmetadataを再確認する（`TC-FR-CRT-012-013/014`）。
+- 遷移マーカーがある場合は、実行時フォールバックでその所有者を確認できないため、認証開始とメモリ制御によるclear復旧を許可しない。切替前ならWeb Locks復旧後の明示的操作でLockを取得してclearできる。切替後に新たなマーカーを検出した場合や、取得済みLeaseの要求が異常rejectして所有状態が不明になった場合は、再読込してWeb Locksを再評価するまで停止を維持する。単にマーカーを削除して停止を解除しない。
 - metadata / Cart storageが利用できない場合、Cartだけを停止する。確立済みのAuth結果は維持し、AuthGateとCartを使わないKaraoke閲覧・認証済み購入は継続する。
 - `tests/e2e/auth-gate-logout.spec.ts` の既存Issue再現は、公開Login画面と失敗Loginで旧Cartの保存値が維持され、成功時に初めてclearされる順序をassertする。
 - `tests/e2e/cart-session-isolation.spec.ts` はAuthGateとCart / Guest KaraokeのLogin handoffで、必要なCart clear失敗中は遷移しないこと、AuthGateのstorage取得不可時はLoginへ進むことを検証する。Karaoke Slotは表示を保ち、Authenticated Userの購入開始がCart停止中も進むことを検証する。ActionはAPIで初めて期限切れが分かる場合と、UIが既にGuestを認識している場合の双方を検証する。

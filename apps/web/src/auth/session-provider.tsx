@@ -18,10 +18,10 @@ export function SessionProvider({ children, port }: { children: ReactNode; port?
   const [auth] = useState<AuthPort>(() => {
     const raw = port ?? createAuthPort();
     const lifecycle = getBrowserCartLifecycle();
+    // Let the lifecycle supply its metadata guard when storage is explicitly recovered later.
+    if (lifecycle === null) return raw;
     const coordinator = getBrowserCartTransitionCoordinator();
-    return lifecycle === null || coordinator === null
-      ? raw
-      : createCartLifecycleAuthPort(raw, lifecycle, coordinator);
+    return coordinator === null ? raw : createCartLifecycleAuthPort(raw, lifecycle, coordinator);
   });
   const [state, setState] = useState<SessionState>({ status: "loading" });
 

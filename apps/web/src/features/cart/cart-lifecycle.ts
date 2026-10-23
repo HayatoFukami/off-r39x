@@ -364,7 +364,11 @@ function createBrowserCartLifecycle(): CartLifecycle | null {
     const storage = window.localStorage;
     const store = getBrowserCartStore();
     if (store === null) return null;
-    const coordinator = getBrowserCartTransitionCoordinator();
+    const coordinator = getBrowserCartTransitionCoordinator(() => {
+      const raw = storage.getItem(CART_LIFECYCLE_STORAGE_KEY);
+      const metadata = parseMetadata(raw);
+      return raw === null || (metadata !== null && !isTransitioning(metadata));
+    });
     if (coordinator === null) return null;
     return createCartLifecycle(
       storage,
