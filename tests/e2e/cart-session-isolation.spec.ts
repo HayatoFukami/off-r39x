@@ -84,6 +84,88 @@ test.describe("TC-FR-CRT-012-005 protected page expiry cleanup must succeed befo
 });
 
 test.describe("TC-FR-CRT-012-007 initial storage denial and successful Auth remain recoverable (FR-CRT-012)", () => {
+  for (const { login, fault } of [
+    { login: false, fault: null },
+    { login: true, fault: null },
+    { login: true, fault: "clear" },
+    { login: true, fault: "metadata" },
+  ] as const) {
+    test(`storage recovery alone never reveals old Cart across client navigation (Login=${login}, fault=${fault})`, async ({
+      page,
+    }) => {
+      await fixClock(page);
+      await page.addInitScript(
+        (entries) => {
+          const storage = window.localStorage;
+          if (window.sessionStorage.getItem("test-only-denial-seeded") !== "yes") {
+            for (const [key, value] of Object.entries(entries)) storage.setItem(key, value);
+            window.sessionStorage.setItem("test-only-denial-seeded", "yes");
+          }
+          Object.defineProperty(window, "localStorage", {
+            configurable: true,
+            get() {
+              if (window.sessionStorage.getItem("test-only-storage-enabled") !== "yes")
+                throw new DOMException("test-only storage denial", "SecurityError");
+              return storage;
+            },
+          });
+        },
+        cartEntries(CART, "authenticated"),
+      );
+      await gotoHydrated(page, "/account/login");
+      const documentStart = await page.evaluate(() => performance.timeOrigin);
+      await expect(retry(page)).toBeVisible();
+      if (login) {
+        await loginWith(page, EMAIL.other);
+        await expect(page).toHaveURL(/\/mypage$/);
+        await expect(mainOf(page)).toContainText(EMAIL.other);
+      }
+      await page.evaluate(() => window.sessionStorage.setItem("test-only-storage-enabled", "yes"));
+      await headerCartLink(page, null).click();
+      await expect(page).toHaveURL(/\/cart$/);
+      expect(await page.evaluate(() => performance.timeOrigin)).toBe(documentStart);
+      await expect(retry(page)).toBeVisible();
+      await expect(headerCartLink(page, 2)).toHaveCount(0);
+      await expect(mainOf(page).getByRole("listitem")).toHaveCount(0);
+      await expect(mainOf(page).getByRole("spinbutton")).toHaveCount(0);
+      await expect(proceedButton(page)).toHaveCount(0);
+      expect(await readCartRaw(page)).not.toBeNull();
+      if (fault !== null) {
+        await page.evaluate(
+          ({ fault, cart, metadata }) => {
+            const remove = Storage.prototype.removeItem;
+            const set = Storage.prototype.setItem;
+            const enabled = () =>
+              window.sessionStorage.getItem("test-only-recovery-enabled") === "yes";
+            Storage.prototype.removeItem = function (key) {
+              if (fault === "clear" && key === cart && !enabled())
+                throw new DOMException("test-only clear failure", "SecurityError");
+              return remove.call(this, key);
+            };
+            Storage.prototype.setItem = function (key, value) {
+              if (fault === "metadata" && key === metadata && !enabled())
+                throw new DOMException("test-only metadata failure", "SecurityError");
+              return set.call(this, key, value);
+            };
+          },
+          { fault, cart: KEYS.cart, metadata: KEYS.cartLifecycle },
+        );
+        await retry(page).click();
+        await expect(mainOf(page)).toContainText(copy.cart.lifecycleBlocked.failed);
+        await expect(headerCartLink(page, 2)).toHaveCount(0);
+        await expect(mainOf(page).getByRole("listitem")).toHaveCount(0);
+        await page.evaluate(() =>
+          window.sessionStorage.setItem("test-only-recovery-enabled", "yes"),
+        );
+        await expect(retry(page)).toBeVisible();
+      }
+      await Promise.all([page.waitForEvent("load"), retry(page).click()]);
+      await waitForHydration(page);
+      await expect(mainOf(page)).toContainText(copy.cart.empty);
+      expect(await readCartRaw(page)).toBeNull();
+      await expect(headerCartLink(page, 2)).toHaveCount(0);
+    });
+  }
   for (const path of ["/cart"]) {
     test(`${path}: storage acquisition denial recovers all subscriptions and Auth decoration`, async ({
       page,

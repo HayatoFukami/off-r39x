@@ -391,6 +391,7 @@ export function describeContinuation(intent: ContinuationIntent | null): Continu
 - `tests/e2e/cart-session-isolation.spec.ts` はAuthGateとCart / Guest KaraokeのLogin handoffで、必要なCart clear失敗中は遷移しないこと、AuthGateのstorage取得不可時はLoginへ進むことを検証する。Karaoke Slotは表示を保ち、Authenticated Userの購入開始がCart停止中も進むことを検証する。ActionはAPIで初めて期限切れが分かる場合と、UIが既にGuestを認識している場合の双方を検証する。
 - 既存Cart fixtureはGuest / authenticatedの非識別由来を明示する。由来不明・legacy Cartは専用Unitで検証し、通常の購入ケースに紛れ込ませない。
 - 初回のlocalStorage取得不能からの回復成功時はPageを再読込し、AuthPortのlifecycle連携とHeader / Cartの購読を再初期化する。通常のstorage障害からの回復は同じPage内で完了する。
+- 初回取得不能はPage内で固定し、storageだけが復旧した場合や、その間にLoginしてclient navigationした場合もCartの内容・件数・編集・購入を再表示しない。明示的回復だけがstorageを再取得し、Cart clearとmetadata更新を行う。いずれかが失敗した場合は停止を維持し、成功後も再読込まではLifecycleを公開しない（`TC-FR-CRT-012-012` と `TC-FR-CRT-012-007`）。
 - 同じTabのLogin / Logoutが重なっても、それぞれのcleanupを順に完了してからSession照会・通知を公開する。認証成立後のmetadata保存失敗は、確認済みUserのMypage表示と未確認UserのEmail Verificationへの遷移を妨げず、Cartだけを停止する。
 
 これらはBrowser storage境界のUnitおよび補助UI mock suiteであり、production G8、API / DB / Provider coverageではない。mock業務データがclear前後で同一であることはBrowser suite内で比較する。runner retryは0のままとする。

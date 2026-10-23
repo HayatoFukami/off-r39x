@@ -3,7 +3,7 @@
 import { useRef, useSyncExternalStore } from "react";
 import type { CartLine, OrderItem } from "../../api-client/types";
 import type { CartRecoveryResult } from "./cart-lifecycle";
-import { getBrowserCartLifecycle } from "./cart-lifecycle";
+import { getBrowserCartLifecycle, recoverBrowserCartLifecycle } from "./cart-lifecycle";
 import {
   type CartAddResult,
   type CartSnapshot,
@@ -91,9 +91,7 @@ export function useCart(): {
     reset: () => writeCart((store) => store.reset()),
     clear: () => writeCart((store) => store.clear()),
     recover: async (provenance) => {
-      const lifecycle = getBrowserCartLifecycle();
-      if (lifecycle === null) return "failed";
-      const recovered = await lifecycle.recover(provenance);
+      const recovered = await recoverBrowserCartLifecycle(provenance);
       // Initial storage denial also prevented Header/Auth subscriptions. Reinitialize all wiring.
       if (recovered === "recovered" && initiallyUnavailable.current) window.location.reload();
       return recovered;

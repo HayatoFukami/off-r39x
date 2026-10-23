@@ -2404,7 +2404,8 @@
         "TC-FR-CRT-012-008",
         "TC-FR-CRT-012-009",
         "TC-FR-CRT-012-010",
-        "TC-FR-CRT-012-011"
+        "TC-FR-CRT-012-011",
+        "TC-FR-CRT-012-012"
       ],
       "notes": "Browser Cart isolation across authentication and protected boundaries; real CartStore unit faults and UI mock E2E only, not API/DB/provider coverage."
     },

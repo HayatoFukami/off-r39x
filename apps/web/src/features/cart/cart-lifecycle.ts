@@ -340,10 +340,25 @@ export function createCartLifecycle(
   };
 }
 
-let browserLifecycle: CartLifecycle | null = null;
+// undefined = not initialized, null = initial Browser storage acquisition failed.
+// Keep that failure for this document: Auth may already be running without Cart decoration.
+let browserLifecycle: CartLifecycle | null | undefined;
 
 export function getBrowserCartLifecycle(): CartLifecycle | null {
-  if (browserLifecycle !== null) return browserLifecycle;
+  if (typeof window === "undefined") return null;
+  if (browserLifecycle === undefined) browserLifecycle = createBrowserCartLifecycle();
+  return browserLifecycle;
+}
+
+/** Initial denial recovery is private until reload reinitializes Auth and Cart together. */
+export async function recoverBrowserCartLifecycle(
+  provenance: CartProvenance,
+): Promise<CartRecoveryResult> {
+  const lifecycle = getBrowserCartLifecycle() ?? createBrowserCartLifecycle();
+  return lifecycle === null ? "failed" : lifecycle.recover(provenance);
+}
+
+function createBrowserCartLifecycle(): CartLifecycle | null {
   if (typeof window === "undefined") return null;
   try {
     const storage = window.localStorage;
@@ -351,7 +366,7 @@ export function getBrowserCartLifecycle(): CartLifecycle | null {
     if (store === null) return null;
     const coordinator = getBrowserCartTransitionCoordinator();
     if (coordinator === null) return null;
-    const lifecycle = createCartLifecycle(
+    return createCartLifecycle(
       storage,
       store,
       (onChange) => {
@@ -370,8 +385,6 @@ export function getBrowserCartLifecycle(): CartLifecycle | null {
       },
       coordinator,
     );
-    browserLifecycle = lifecycle;
-    return browserLifecycle;
   } catch {
     return null;
   }
