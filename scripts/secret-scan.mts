@@ -10,7 +10,7 @@ const USAGE =
   "USAGE node scripts/secret-scan.mts [--root <dir>] [--build-dir <path>] [--require-build]";
 const DEFAULT_BUILD_DIR = "apps/web/.next";
 const MAX_BYTES = 5 * 1024 * 1024;
-const SOURCE_DIRS = ["apps", "packages", "scripts", "tests", "traceability"];
+const SOURCE_DIRS = ["apps", "packages", "scripts", "tests", "traceability", ".github"];
 const EXCLUDED_DIRS = new Set([
   "node_modules",
   ".git",
@@ -30,6 +30,7 @@ type Area = "source" | "build-static" | "build-server";
 interface Scope {
   readonly area: Area;
   readonly inTests: boolean;
+  readonly inServerApp: boolean;
 }
 
 interface Rule {
@@ -129,7 +130,7 @@ const RULES: readonly Rule[] = [
   { id: "mock-seed-leak", applies: (scope) => !scope.inTests, detect: test(/mock-seed-\d+/) },
   {
     id: "mock-seed-field",
-    applies: (scope) => scope.area === "build-server",
+    applies: (scope) => scope.area === "build-server" && scope.inServerApp,
     detect: (line) => line.includes("mockMatrixSeed"),
   },
   { id: "real-email", applies: sourceOnly, detect: hasRealEmail },
@@ -269,18 +270,27 @@ function main(): void {
   for (const file of sourceFiles) {
     if (SKIPPED_FILES.has(file.split(/[\\/]/).pop() ?? "")) continue;
     const path = rel(file);
-    const scope: Scope = { area: "source", inTests: path.startsWith("tests/") };
+    const scope: Scope = {
+      area: "source",
+      inTests: path.startsWith("tests/"),
+      inServerApp: false,
+    };
     if (scanFile(file, path, scope, findings)) scanned += 1;
   }
 
   if (isDirectory(buildRoot)) {
     const areas: [string, Area][] = [
       [join(buildRoot, "static"), "build-static"],
-      [join(buildRoot, "server", "app"), "build-server"],
+      [join(buildRoot, "server"), "build-server"],
     ];
     for (const [dir, area] of areas) {
       for (const file of walk(dir, () => false)) {
-        if (scanFile(file, rel(file), { area, inTests: false }, findings)) scanned += 1;
+        const relativeToServer = posix(relative(join(buildRoot, "server"), file));
+        const inServerApp =
+          area === "build-server" &&
+          (relativeToServer === "app" || relativeToServer.startsWith("app/"));
+        if (scanFile(file, rel(file), { area, inTests: false, inServerApp }, findings))
+          scanned += 1;
       }
     }
   } else if (requireBuild) {
