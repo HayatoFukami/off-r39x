@@ -12,6 +12,7 @@ import { AccessDeniedView } from "../../presentation/components/access-denied-vi
 import type { Loadable } from "../../presentation/components/list-state";
 import { PageState } from "../../presentation/components/page-state";
 import { copy } from "../../presentation/copy/ja";
+import { CartRecovery } from "../cart/cart-recovery";
 import { useCart } from "../cart/use-cart";
 import { interpretCheckoutStart } from "./cart-purchase-flow";
 import { OrderOutcome, type OrderOutcomePending, type OutcomeButtonAction } from "./order-outcome";
@@ -145,10 +146,26 @@ export function PurchaseStatusPage({
       router.push(plan.href);
       return;
     }
+    if (cart.state.kind !== "ready" && cart.state.kind !== "corrupted") {
+      setAlertMessage(
+        cart.state.kind === "busy"
+          ? copy.cart.lifecycleBusy.description
+          : copy.cart.lifecycleBlocked.description,
+      );
+      return;
+    }
     const written = cart.addFromOrder(plan.items);
     // An unreadable Cart is left as it is: the Cart page explains it.
     if (written.kind === "storage_unavailable") {
       setAlertMessage(copy.sales.addFailed);
+      return;
+    }
+    if (written.kind === "busy") {
+      setAlertMessage(copy.cart.lifecycleBusy.description);
+      return;
+    }
+    if (written.kind === "blocked") {
+      setAlertMessage(copy.cart.lifecycleBlocked.description);
       return;
     }
     router.push(plan.href);
@@ -171,6 +188,17 @@ export function PurchaseStatusPage({
   };
 
   const model = variant.buildModel(read);
+  const hasCartPurchaseAgain =
+    model.kind === "ready" &&
+    model.actions.some((action) => action.kind === "purchase_again" && action.target === "cart");
+  const cartUnavailable =
+    cart.state.kind === "busy" ||
+    cart.state.kind === "blocked" ||
+    cart.state.kind === "storage_unavailable" ||
+    cart.state.kind === "loading";
+  const needsCartRecovery =
+    hasCartPurchaseAgain &&
+    (cart.state.kind === "blocked" || cart.state.kind === "storage_unavailable");
 
   // Ownership failure: nothing of the Order was rendered before this view (SPEC-050 26.2).
   if (model.kind === "denied") {
@@ -191,11 +219,17 @@ export function PurchaseStatusPage({
       {model.kind === "ready" ? (
         <OrderOutcome
           model={model}
-          liveMessage={liveMessage}
-          alertMessage={alertMessage}
+          liveMessage={
+            cart.state.kind === "busy" ? copy.cart.lifecycleBusy.description : liveMessage
+          }
+          alertMessage={needsCartRecovery ? null : alertMessage}
           pending={pending}
+          disableCartPurchaseAgain={hasCartPurchaseAgain && cartUnavailable}
           onAction={handleAction}
         />
+      ) : null}
+      {needsCartRecovery ? (
+        <CartRecovery {...(alertMessage === null ? {} : { message: alertMessage })} />
       ) : null}
       {model.kind === "ready" && variant.backLink !== null ? (
         <p>

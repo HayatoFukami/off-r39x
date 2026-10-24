@@ -132,7 +132,9 @@ function entriesFor(options: OpenOptions): Record<string, string> {
     ...(options.session === null
       ? {}
       : { [KEYS.session]: options.session ?? authenticatedSession() }),
-    ...(options.lines === undefined ? {} : cartEntries(options.lines)),
+    ...(options.lines === undefined
+      ? {}
+      : cartEntries(options.lines, options.session === null ? "guest" : "authenticated")),
     ...(options.extra ?? {}),
   };
 }

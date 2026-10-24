@@ -41,7 +41,7 @@ async function failCartReads(page: Page): Promise<void> {
 }
 
 test.describe("TC-PG-CRT-001-541 a failed Cart write on the Cart page is never shown as saved or removed (SPEC-050 26.4, 9.3)", () => {
-  test("a quantity that cannot be saved shows the failure, keeps the stored Cart and the Header count", async ({
+  test("a quantity that cannot be saved keeps storage unchanged and blocks Cart contents and count", async ({
     page,
   }) => {
     const lines = [entryLine(OFFERING.regular, 2)];
@@ -52,13 +52,17 @@ test.describe("TC-PG-CRT-001-541 a failed Cart write on the Cart page is never s
     await expect(rows(page)).toHaveCount(1);
     const before = await readCartRaw(page);
     await quantityInput(rows(page).nth(0)).fill("5");
-    await expect(main(page).getByRole("alert")).toContainText(copy.sales.addFailed);
+    await expect(main(page).getByRole("alert")).toContainText(copy.cart.lifecycleBlocked.title);
     expect(await readCartRaw(page)).toBe(before);
-    await expect(headerCartLink(page, 2)).toBeVisible();
+    await expect(headerCartLink(page, null)).toBeVisible();
+    await expect(rows(page)).toHaveCount(0);
+    await expect(proceedButton(page)).toHaveCount(0);
     await expect(liveRegion(page)).toHaveCount(0);
   });
 
-  test("a line that cannot be removed stays in the Cart and in storage", async ({ page }) => {
+  test("a failed removal preserves storage and stops Cart display and editing", async ({
+    page,
+  }) => {
     const lines = [entryLine(OFFERING.regular, 2), goodsLine(GOODS.tshirt, 1)];
     await fixClock(page);
     await seedLocalStorage(page, cartEntries(lines));
@@ -67,9 +71,11 @@ test.describe("TC-PG-CRT-001-541 a failed Cart write on the Cart page is never s
     await expect(rows(page)).toHaveCount(2);
     const before = await readCartRaw(page);
     await removeButton(rows(page).nth(0)).click();
-    await expect(rows(page)).toHaveCount(2);
+    await expect(main(page).getByRole("alert")).toContainText(copy.cart.lifecycleBlocked.title);
+    await expect(rows(page)).toHaveCount(0);
     expect(await readCartRaw(page)).toBe(before);
-    await expect(headerCartLink(page, 3)).toBeVisible();
+    await expect(headerCartLink(page, null)).toBeVisible();
+    await expect(proceedButton(page)).toHaveCount(0);
   });
 });
 
@@ -96,7 +102,7 @@ test.describe("TC-PG-CRT-001-542 a Cart store that cannot be read is an unknown 
     await fixClock(page);
     await failCartReads(page);
     await gotoHydrated(page, "/cart");
-    await expect(main(page).getByRole("alert")).toContainText(copy.cart.corrupted.title);
+    await expect(main(page).getByRole("alert")).toContainText(copy.cart.lifecycleBlocked.title);
     await expect(main(page)).not.toContainText(copy.cart.empty);
     await expect(rows(page)).toHaveCount(0);
     await expect(proceedButton(page)).toHaveCount(0);

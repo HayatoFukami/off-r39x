@@ -14,6 +14,8 @@ import { ErrorSummary } from "../../presentation/components/error-summary";
 import { FormField } from "../../presentation/components/form-field";
 import { Button } from "../../presentation/components/ui/button";
 import { copy } from "../../presentation/copy/ja";
+import { CartRecovery } from "../cart/cart-recovery";
+import { useCart } from "../cart/use-cart";
 import { ContinuationNoticeView } from "./continuation-notice";
 import { describeContinuation } from "./continuation-view";
 import {
@@ -28,12 +30,13 @@ import { useErrorSummaryFocus } from "./use-error-summary-focus";
 
 const linkClass = "text-brand underline underline-offset-4";
 
-type Failure = "rejected" | "unavailable" | null;
+type Failure = "rejected" | "unavailable" | "cart_busy" | "cart_blocked" | null;
 
 // PG-AUTH-001. The secret is passed to the port and never stored, logged or put in a URL
 // (SEC-AUTH-016 / 018); it is not trimmed.
 function RegisterForm() {
   const auth = useAuth();
+  const cart = useCart();
   const router = useRouter();
   const searchParams = useSearchParams();
   const intent = parseContinuation(searchParams.get(CONTINUATION_PARAM));
@@ -51,6 +54,9 @@ function RegisterForm() {
   const [errors, setErrors] = useState<readonly FieldError[]>([]);
   const [failure, setFailure] = useState<Failure>(null);
   const [submitting, setSubmitting] = useState(false);
+  const cartBlocked = failure === "cart_blocked" || cart.state.kind === "blocked";
+  const cartNeedsRecovery = cartBlocked || cart.state.kind === "storage_unavailable";
+  const cartBusy = failure === "cart_busy" || cart.state.kind === "busy";
   const submittingRef = useRef(false);
   const { summaryRef, requestFocus } = useErrorSummaryFocus();
 
@@ -83,7 +89,13 @@ function RegisterForm() {
         router.push(continuationPath(intent ?? { key: "mypage", ref: null }));
         return;
       }
-      setFailure(result.kind);
+      setFailure(
+        result.kind === "cart_busy"
+          ? "cart_busy"
+          : result.kind === "cart_blocked"
+            ? "cart_blocked"
+            : result.kind,
+      );
     } catch {
       setFailure("unavailable");
     }
@@ -105,6 +117,8 @@ function RegisterForm() {
       {failure === "unavailable" ? (
         <ServiceFailure message={copy.auth.register.unavailable} />
       ) : null}
+      {cartBusy ? <p role="status">{copy.auth.register.cartBusy}</p> : null}
+      {cartNeedsRecovery ? <CartRecovery onRecovered={() => setFailure(null)} /> : null}
       <form
         noValidate
         onSubmit={onSubmit}
@@ -140,7 +154,7 @@ function RegisterForm() {
           error={errorOf("passwordConfirm")}
         />
         <div>
-          <Button type="submit" disabled={submitting}>
+          <Button type="submit" disabled={submitting || cartBlocked}>
             {submitting ? copy.auth.form.submitting : copy.auth.register.submit}
           </Button>
         </div>

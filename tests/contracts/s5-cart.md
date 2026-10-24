@@ -200,21 +200,24 @@ export function getBrowserCartStore(): CartStore | null;   // window.localStorag
 ### 2.4 `features/cart/use-cart.ts` / `use-cart-count.ts`
 
 ```ts
-export type CartState = { readonly kind: "loading" } | CartSnapshot;
+export type CartState = { readonly kind: "loading" | "busy" | "blocked" | "storage_unavailable" } | CartSnapshot;
+export type CartWriteOutcome = CartWriteResult | { kind: "busy" } | { kind: "blocked" };
+export type CartAddOutcome = CartAddResult | { kind: "busy" } | { kind: "blocked" };
 export function useCart(): {
   state: CartState;                       // server snapshot と最初の描画は { kind: "loading" }
-  add(line: CartLine): CartAddResult;
-  setQuantity(lineKey: string, quantity: number): CartWriteResult;
-  remove(lineKey: string): CartWriteResult;
-  removeLines(lineKeys: readonly string[]): CartWriteResult;
-  subtractLines(lines: readonly CartLine[]): CartWriteResult;
-  addFromOrder(items: readonly OrderItem[]): CartAddResult;
-  reset(): CartWriteResult;
-  clear(): CartWriteResult;
+  add(line: CartLine): CartAddOutcome;
+  setQuantity(lineKey: string, quantity: number): CartWriteOutcome;
+  remove(lineKey: string): CartWriteOutcome;
+  removeLines(lineKeys: readonly string[]): CartWriteOutcome;
+  subtractLines(lines: readonly CartLine[]): CartWriteOutcome;
+  addFromOrder(items: readonly OrderItem[]): CartAddOutcome;
+  reset(): CartWriteOutcome;
+  clear(): CartWriteOutcome;
 };
 ```
 
 - `useCart` は `getBrowserCartStore()` を `useSyncExternalStore` で購読する。store が `null` のとき操作（`clear` を含む）は `{ kind: "storage_unavailable" }` を返す。
+- FR-CRT-012 の認証遷移中は追加・編集・購入操作を無効化して待機中と示す。Cart停止 / storage取得不可では追加を無効化し、Cart停止は `/cart` の復旧、storage取得不可は理由と再試行を提供する。販売情報の閲覧は継続できる。
 - `useCartCount(): number | null` は同じ store を購読する。`ready` → `cartTotalQuantity`、`corrupted` / store なし → `null`、server snapshot は `null`。S3 の表示規則（1 以上のときだけ数字、accessible name `カート（n点）`）は変えない。**同一 tab での追加・変更・削除、他 tab の変更、`localStorage.clear()` のいずれでも Header の数が更新される。**
 
 ## 3. `canProceed` と Cart view model
@@ -359,11 +362,12 @@ focus 順は DOM 順と一致させる。Entry / Goods では**数量入力の�
 | `tests/unit/web/cart/cart-view-model.test.ts` | §3.2 |
 | `tests/unit/web/cart/sales-models.test.ts` | §4 |
 | `tests/unit/web/cart/s5-copy.test.ts` | §1 |
-| `tests/unit/web/cart/s5-static.test.ts` | §0 と静的検査（構成、page 殻、直書き、Karaoke 不在、購入開始不在、単一 schema） |
+| `tests/unit/web/cart/s5-static.test.ts` | §0 と静的検査（構成、page 殻、直書き、Karaoke 不在、購入開始不在、Cart本体の単一 schema。FR-CRT-012の別由来metadataは独立したruntime schemaを許す） |
 | `tests/e2e/entry-sales.spec.ts` | §5.1 |
 | `tests/e2e/goods-detail.spec.ts` | §5.2 |
 | `tests/e2e/cart-page.spec.ts` | §5.3 |
 | `tests/e2e/cart-store.spec.ts` | 永続、Header の即時更新、他 tab、壊れた保存内容、FR-CRT-012 |
+| `tests/e2e/cart-session-isolation.spec.ts` | TC-FR-CRT-012-011: lifecycle停止中も販売Pageを表示し、Cart追加を無効にする |
 | `tests/e2e/cart-common.spec.ts` | §6（title、見出し、runtime error、外部 origin、href、横 scroll、Cache-Control、404） |
 
 ## 8. 曖昧さ・仕様の不足についてテスト担当が決めたこと
@@ -380,7 +384,7 @@ focus 順は DOM 順と一致させる。Entry / Goods では**数量入力の�
 10. **title**: `copy.pageTitle` は S4 のテストが全 key を固定しているため、S5 の title は `copy.entry` / `copy.cart` / `copy.goods.detail` の `pageTitle` に置く。
 11. **Cache-Control**: `/entry` と `/cart` は静的 route として S4 §4 と同じ扱い（`private` / `no-store` を含まない）。
 12. **Goods 詳細の `not_found`**: S4 の Announcement 詳細と同じく、client が Not Found 表示（HTTP 200）。不正な UUID だけ server の `notFound()`（HTTP 404）。
-13. **Logout と Cart（マージ済み仕様 SPEC-050 §15.6 / SPEC-020 FR-CRT-012 / SPEC-040 UF-AUTH-004 / SPEC-060 AR-SES-009 に合わせる）**: 旧契約「Login / Logout は Cart に触れない」は破棄。Logout 後は Home へ遷移し Cart を clear する。壊れた Cart も Logout で消える（`clear()` は snapshot を読まず `removeItem` するので `corrupted` を返さない）。clear は `reset()`（空の Cart を書く）ではなく key の削除（`removeItem`）で行い、key なし = 検証済みの空の Cart とする（契約 §2.1 の `parseCart(null)`）。clear は Logout 操作にだけ結びつけ、session の authenticated → guest の遷移（期限切れ）には結びつけない。順序は signOut → Home への遷移 → clear（signOut が reject しても clear する）。`removeItem` が失敗しても Logout は妨げず、エラーも表示しない（書込みも削除もできない localStorage は前の Cart を残しうる。保存領域の制約）。
+13. **認証とCart lifecycle**: Login・Logout・Session復元・保護Page / Actionでの期限切れ判定は `FR-CRT-012` に従う。Cart本体とは別の非識別metadataを使い、必要なclearと停止状態の確定後に認証結果を公開する。LogoutはHomeへ戻り、clearのstorage障害でも認証結果を維持する。storage障害では保存値を成功として扱わず、内容・件数・編集・購入を停止し、明示的なclear再試行を提供する。公開PageのGuest照会だけではclearしない。
 14. **session 変化での再取得**: Entry / Cart の販売状態は現在のユーザーの購入済み数量に依存するため、Guest で開いたまま別 tab でログインした画面は Guest 時の状態を残してはならない（SPEC-050 §14A.1: 現在の販売状態を Server-side の値で表示）。Cart store は session を知らないまま。`SessionProvider` は `sameSessionState` で、実際に変わったときだけ state の参照を変える（他 tab の Cart 書き込みの `storage` event だけでは再取得しない）。session が `loading` の間は読まない。再取得の間は前の表示を残し、Cart ページは購入手続きだけを無効にする。
 15. **数量 overflow**: UI から到達できる（Cart ページの数量入力は上限なしで `9007199254740991` を保存でき、その後 Entry / Goods で 1 を追加すると合算が overflow）。保存先に書けない失敗（`storage_unavailable`）とは別の原因なので、別の結果 kind（`quantity_overflow`）と別の文言（`copy.sales.addQuantityOverflow`）で示す。例外 class（`CartQuantityOverflowError extends RangeError`）で区別し、UI で `instanceof RangeError` を使わない。
 

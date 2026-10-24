@@ -225,6 +225,8 @@ export function planPurchaseAgain(purpose: OrderPurpose, items: readonly OrderIt
 ```
 
 - `purchaseAgainTarget(purpose)`（S1）が `karaoke` → `{ kind: "karaoke", href: "/karaoke" }`（Cart へ何も入れない。新 Slot / Hold 取得から。§16.4）。`cart` → `{ kind: "cart", href: "/cart", items }`。`items` は `ENTRY_TICKET` と `GOODS` の明細だけを元の順で残す（`KARAOKE` は除く。FR-CRT-002）。空でも `cart`。入力を変更しない。
+- Entry Ticket / Goodsの再購入は、Cartが認証処理中または停止中なら無効化する。停止中はCart復旧を示し、Karaokeの再購入はCart lifecycleに影響されない。
+- Entry Ticket / Goodsの再購入は、Cartが認証処理中または停止中なら無効化する。停止中はCart復旧を示し、Karaokeの再購入はCart lifecycleに影響されない。
 
 ## 4. Cart の購入手続き（`CartPage` / `useCartPurchase` / `CartPurchaseFeedback`）
 
@@ -233,7 +235,8 @@ export function planPurchaseAgain(purpose: OrderPurpose, items: readonly OrderIt
 ```ts
 export type CartPurchasePhase =
   | { kind: "idle" } | { kind: "verifying" } | { kind: "preparing" }
-  | { kind: "rejected"; rejections: readonly RejectionLine[] } | { kind: "unavailable" };
+  | { kind: "rejected"; rejections: readonly RejectionLine[] } | { kind: "unavailable" }
+  | { kind: "cart_busy" } | { kind: "cart_recovery" };
 ```
 
 流れ（SPEC-050 §14A.1 Actions / Purchase start result、設計 §6）:
@@ -312,7 +315,7 @@ DOM（`CartPurchaseFeedback`。`ready` / `unavailable` の Cart で表示）:
 | `tests/e2e/purchase-cart-start.spec.ts` | §4（E2E 3 / 7 の前半 / 24 後半 / 26。TC-PG-CRT-001-615: 応答待ちの編集と Order に含めた数量だけを Cart から外す規則、同 tab の増減・削除、別 tab の編集、Cart write 失敗でも Checkout へ進む） |
 | `tests/e2e/mock-checkout.spec.ts` | §5（PAY-BRW-001〜003） |
 | `tests/e2e/purchase-status.spec.ts` | §6.1 / §6.2（E2E 7 / 8 / 9 / 10 / 11 / 19 XFN / 27）。TC-PG-XFN-001-669: 最後に開始した read だけの反映（遅い read・連続操作・read 中の離脱・unavailable 後の遅い retry。helper は `tests/harness/browser/order-reads.ts`） |
-| `tests/e2e/purchase-again.spec.ts` | §6.2 もう一度購入する（E2E 12） |
+| `tests/e2e/purchase-again.spec.ts` | §6.2 もう一度購入する（E2E 12）とTC-FR-CRT-012-010の停止中disabled / recovery |
 | `tests/e2e/purchase-ownership.spec.ts` | §6 Ownership、§6.3、§7 の保護（E2E 20 の XFN-001 部分、§26.2） |
 | `tests/e2e/purchase-common.spec.ts` | §7 |
 

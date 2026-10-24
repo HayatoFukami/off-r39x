@@ -16,6 +16,7 @@ import { Input } from "../../presentation/components/ui/input";
 import { copy } from "../../presentation/copy/ja";
 import { CartPurchaseFeedback } from "../purchase/cart-purchase-feedback";
 import { useCartPurchase } from "../purchase/use-cart-purchase";
+import { CartRecovery } from "./cart-recovery";
 import { buildCartPageModel, type CartRow } from "./cart-view-model";
 import { parseQuantityInput } from "./quantity";
 import { useCart } from "./use-cart";
@@ -158,7 +159,14 @@ export function CartPage() {
     lines !== null &&
     resolution.signature !== null &&
     (resolution.signature !== signatureOf(lines) || resolution.session !== session);
-  const model = buildCartPageModel({ cart: cart.state, resolutions: resolution.value, refreshing });
+  const model = buildCartPageModel({
+    cart:
+      cart.state.kind === "ready" || cart.state.kind === "corrupted"
+        ? cart.state
+        : { kind: "loading" },
+    resolutions: resolution.value,
+    refreshing,
+  });
 
   const names = new Map<string, string | null>(
     model.kind === "ready" || model.kind === "unavailable"
@@ -171,6 +179,24 @@ export function CartPage() {
   const handleProceed = (): void => {
     purchase.start();
   };
+
+  if (cart.state.kind === "blocked" || cart.state.kind === "storage_unavailable") {
+    return (
+      <div className="flex flex-col gap-4">
+        <h1 className="text-2xl font-bold">{copy.cart.heading}</h1>
+        <CartRecovery />
+      </div>
+    );
+  }
+
+  if (cart.state.kind === "busy") {
+    return (
+      <div className="flex flex-col gap-4">
+        <h1 className="text-2xl font-bold">{copy.cart.heading}</h1>
+        <p role="status">{copy.cart.lifecycleBusy.description}</p>
+      </div>
+    );
+  }
 
   const setQuantity = (lineKey: string, quantity: number): boolean =>
     cart.setQuantity(lineKey, quantity).kind === "ok";

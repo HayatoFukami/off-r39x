@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-050
 title: Page and Screen Specification
-version: 1.2.1
+version: 1.4.2
 status: provisional
 depends_on:
   - SPEC-000
@@ -333,7 +333,7 @@ GuestがCartからの購入手続き、Karaoke購入、Mypage等の認証必須A
 
 例:
 
-- Cartの購入手続き（Entry Ticket / Goods） → `PG-CRT-001` へ復帰。Cart内容（参照と数量）はBrowser側のCartに保持され、Continuation Intentには含めない。この保持は、一度も認証されていないGuestに適用する（`FR-CRT-012`）
+- Cartの購入手続き（Entry Ticket / Goods） → `PG-CRT-001` へ復帰。Cart内容（参照と数量）はBrowser側のCartに保持され、Continuation Intentには含めない。保持・clearは `FR-CRT-012` に従う。
 - Karaoke Slot購入 → `PG-KRK-003` の対象Slotへ復帰
 - Mypage → `PG-MYP-001` へ復帰
 
@@ -488,6 +488,7 @@ Sponsor Logoは共通Footer（§8.5）に表示し、本Page固有のSectionと�
 **Cart追加の結果**
 
 - Cart追加はBrowser側のCartへの追加であり、販売確保も購入成立も意味しない。成功時は「Cartに追加しました。購入はまだ確定していません」と示し、Cartを見る導線を提供する。追加結果は状態変化の通知として支援技術にも伝える（§25）。
+- `FR-CRT-012` によるCart停止中は数量SelectorとCart追加を無効にし、認証処理中またはCart復旧が必要な状態を示す。Guestでも販売Pageの閲覧は継続できる。
 - 購入可否・容量・Purchase Limitは、購入手続き（`PG-CRT-001`）でServer-sideが再検証する。本Pageの表示を購入保証として扱わない。
 - 数量Selectorの入力検証（正の整数、案内された上限を超えない）は本Pageで行ってよいが、最終判定はServer-sideである。
 - 購入手続きと、Allocation / Orderの作成、Checkout開始、その失敗表示は `PG-CRT-001` と `PG-XFN-001` が扱う。
@@ -602,7 +603,8 @@ Sponsor Logoは共通Footer（§8.5）に表示し、本Page固有のSectionと�
 
 **Purchase start**
 
-1. Guestなら認証へ遷移し、認証後に本Slotへ復帰する。
+1. Guestなら認証へ遷移し、認証後に本Slotへ復帰する。遷移前のCart clearは `FR-CRT-012` に従い、clearが必要なCartをclearできない場合に限り遷移を止めて回復を示す。Cart停止中もSlot情報を表示し、Authenticated Userの購入開始を妨げない。
+   - 別Tabの認証遷移中はGuest handoffを開始せず、Slot情報を表示したまま待機中と示す。認証処理の終了後に再試行できる。
 2. Authenticated UserがActionするとServer-sideでSlot current stateとPurchase Limitを再検証する。
 3. Hold取得中は「枠を確保しています」と表示する。
 4. Hold競合で失敗した場合、「他の利用者が先に確保したため購入を開始できない」と表示し、`PG-KRK-002` へ戻るActionを出す。
@@ -677,6 +679,7 @@ Hold具体秒数、残り秒数の厳密な算出方法は本書で定義しな�
 **Cart追加の結果**
 
 - Cart追加はBrowser側のCartへの追加であり、在庫確保も購入成立も意味しない。成功時は「Cartに追加しました。購入はまだ確定していません」と示し、Cartを見る導線を提供する。追加結果は支援技術にも伝える（§25）。
+- `FR-CRT-012` によるCart停止中は数量SelectorとCart追加を無効にし、認証処理中またはCart復旧が必要な状態を示す。GuestでもGoods詳細の閲覧は継続できる。
 - 販売条件とInventoryは、購入手続き（`PG-CRT-001`）でServer-sideが再検証する。Inventory競合でAllocationを取得できない場合の表示は `PG-CRT-001` が扱う。
 - `PENDING_PAYMENT` Goods Order Itemを受け取り可能と表示しない。
 
@@ -729,7 +732,7 @@ Karaokeはカートに入れられず、Slotごとに別の購入・別の支払
 - 削除: Cart ItemをCartから除く。Business effectを作らない。
 - `購入手続きへ進む`
   - Enabled条件: Cartが1件以上で、全Itemが購入可能と表示されている。購入不可Itemがある間はDisabledとし、理由と削除または数量変更の案内を周辺Textで示す。
-  - Guest: `PG-AUTH-003` へ。Continuation Intentとして `PG-CRT-001` へ戻す。一度も認証されていないGuestのCart内容は保持する。認証済みだったUserのSession期限切れでAuthentication Gateへ遷移した場合、Cartはclearされ、再Login後の `PG-CRT-001` はEmpty状態となる（`FR-CRT-012`）。
+  - Guest: `PG-AUTH-003` へ。Continuation Intentとして `PG-CRT-001` へ戻す。Cartの保持・clearは `FR-CRT-012` に従う。期限切れSessionのCartをclearできない場合はLoginへ遷移せず、下記の停止状態を表示する。
   - Authenticated User: Server-sideで全Itemを再検証し、全Itemが成立した場合のみAllocation確保とOrder `PREPARED` の作成を行う（`BR-ORD-014`）。
 - 商品へ戻る → `PG-TKT-001` / `PG-GDS-001`
 
@@ -738,6 +741,9 @@ Karaokeはカートに入れられず、Slotごとに別の購入・別の支払
 - Loading: 各Itemの現在状態を取得中であることを示す。確定値に見える金額を仮表示しない。
 - Empty: Cartが0件のときだけ「カートは空です」と表示し、`PG-TKT-001` / `PG-GDS-001` への導線を提供する。現在状態の取得Failureを空のCartとして表示しない。
 - Failure: 現在状態を取得できないことを示し、Itemを購入可能と表示せず、再取得を提供する。
+- Cartまたは由来metadataを安全に更新・clearできない場合: `FR-CRT-012` に従い、Cart内容・件数・編集・購入を停止する。「カートを消去して再試行」を提供し、Cartのclearとmetadataの更新が成功した後だけ利用を再開する。失敗時は停止状態を維持し、成立済みの認証結果は変更しない。
+- 認証処理中: Cart内容・件数・編集・購入を一時停止し、待機中であることを示す。認証処理の完了後にCartを再評価し、障害がなければ利用を再開する。
+- Browser storage取得不可: Cartの内容・件数・編集・購入を停止し、空のCartとして表示しない。認証への遷移とCartを使わない機能は妨げない。明示的な再試行に失敗した場合はstorageの取得またはclearに失敗した理由を示し、停止を維持する。
 
 **Purchase start result**
 
@@ -790,6 +796,9 @@ Passwordの具体Policy、Credential処理、Session構築は `SPEC-060` が定�
 - 入力validation errorは対象Fieldと関連付ける。
 - Auth Service rejectionはAccount登録未成立として表示する。
 - Auth Service一時障害は「登録を完了できない」とし、購入等を認証済みとして進めない。
+- Cart認証遷移中は登録を開始せず、少し待ってから再試行する案内を示す。
+- Cart復旧が必要な場合は、Cartの内容がclearされることを明示した復旧操作を示す。clear成功後に利用者が登録を再試行できるようにし、復旧失敗時は理由を示して登録を開始しない。
+- Browser storage取得不可はCart機能だけを停止し、登録への遷移を妨げない。明示的な再試行の失敗理由を表示する。
 
 **Trace:** `FR-AUTH-001〜003`, `FR-AUTH-008〜009`, `FR-EML-001`, `BR-USR-001`, `DI-030-010`, `UF-AUTH-001`, `UF-AUTH-007`, `INV-010-08`.
 
@@ -838,6 +847,9 @@ Continuation Intentがある場合、Page上部に「この操作にはLoginが�
 
 - Credential failure: Login未成立。Business operationへ進めない。
 - Auth Service unavailable: 未検証UserをAuthenticated Userとして扱わない。
+- Cart認証遷移中: Auth操作を開始せず、「認証処理中です。少し待ってからもう一度お試しください」と表示し、再試行可能にする。
+- Cart復旧が必要: Cartの内容がclearされることを明示した復旧操作を表示する。clear成功後に利用者がLoginを再試行できるようにする。復旧失敗時は理由を示し、Loginを開始しない。
+- Browser storage取得不可: Cart機能だけを停止し、Login自体は妨げない。明示的な再試行の失敗理由を表示する。
 - 失敗時にCredentialのどの要素が一致したかを不必要に開示しない。
 
 **Success / Navigation Out**
@@ -939,6 +951,8 @@ Trace: `FR-AUTH-006`, `UF-AUTH-004`, `INV-010-01`, `INV-010-08`.
 | `REVIEW_REQUIRED` | 購入状態を確認中 | 通常成功と表示しない。未確定権利を有効表示しない | 「状態を再確認」。新権利生成につながるretryを出さない |
 
 Entry Ticket、Goods、またはその複合Orderの `PAYMENT_FAILED` / `CANCELED` / `EXPIRED` における「もう一度購入する」は、Orderに含まれていたItemの参照と数量をCartへ再投入して `PG-CRT-001` へ遷移する。再投入は新Orderを作らず、価格・販売状態・在庫は現在状態で表示し直す。Karaokeの「もう一度購入する」は新Slot / Hold取得（Slot選択）から開始する。
+
+Entry Ticket / Goodsの「もう一度購入する」は、`FR-CRT-012` によるCartの認証処理中または停止中は無効にする。認証処理中は待機状態を示し、停止中は `PG-CRT-001` と同じCart復旧を提供する。Karaokeの再購入はCartの状態に影響されない。
 
 ### 16.5 Domain-specific `CONFIRMED` content
 

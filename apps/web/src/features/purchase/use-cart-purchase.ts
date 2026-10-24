@@ -5,6 +5,7 @@ import { useCallback, useRef, useState } from "react";
 import { useApi } from "../../api-client/provider";
 import type { CartPurchaseStart, CheckoutStart } from "../../api-client/types";
 import { useSession } from "../../auth/use-session";
+import { getBrowserCartLifecycle } from "../cart/cart-lifecycle";
 import { useCart } from "../cart/use-cart";
 import {
   describeRejections,
@@ -20,7 +21,9 @@ export type CartPurchasePhase =
   | { kind: "verifying" }
   | { kind: "preparing" }
   | { kind: "rejected"; rejections: readonly RejectionLine[] }
-  | { kind: "unavailable" };
+  | { kind: "unavailable" }
+  | { kind: "cart_busy" }
+  | { kind: "cart_recovery" };
 
 export type UseCartPurchaseOptions = {
   /** The names of the Cart lines by line key (read through the port by the Cart page). */
@@ -56,7 +59,15 @@ export function useCartPurchase(options: UseCartPurchaseOptions): {
       .catch((): CartPurchaseStart => ({ kind: "unavailable" }));
     const step = interpretCartStart(result);
     switch (step.kind) {
-      case "go_login":
+      case "go_login": {
+        // A protected purchase operation can be the first place an expired Session is noticed.
+        inFlight.current = false;
+        setPhase({ kind: "idle" });
+        const expiry = getBrowserCartLifecycle()?.expireAuthenticatedCart() ?? "done";
+        if (expiry === "done") router.push(step.to);
+        else setPhase({ kind: expiry === "busy" ? "cart_busy" : "cart_recovery" });
+        return;
+      }
       case "go_verification":
         router.push(step.to);
         return;
@@ -93,14 +104,16 @@ export function useCartPurchase(options: UseCartPurchaseOptions): {
   }, [api, lines, names, onRejected, router, subtractLines]);
 
   const start = useCallback((): void => {
-    if (inFlight.current) return;
+    if (inFlight.current || cart.state.kind !== "ready") return;
     const plan = planProceed(session.state);
     if (plan.kind === "go_login") {
-      router.push(plan.to);
+      const expiry = getBrowserCartLifecycle()?.expireAuthenticatedCart() ?? "done";
+      if (expiry === "done") router.push(plan.to);
+      else setPhase({ kind: expiry === "busy" ? "cart_busy" : "cart_recovery" });
       return;
     }
     void run();
-  }, [router, run, session.state]);
+  }, [router, run, session.state, cart.state.kind]);
 
   const busy = phase.kind === "verifying" || phase.kind === "preparing";
   return { phase, busy, start };

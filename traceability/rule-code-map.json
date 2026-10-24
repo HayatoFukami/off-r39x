@@ -2374,7 +2374,16 @@
         "apps/web/src/auth/session-provider.tsx",
         "apps/web/src/auth/session-equality.ts",
         "apps/web/src/features/entry/entry-page.tsx",
-        "apps/web/src/features/cart/cart-page.tsx"
+        "apps/web/src/features/cart/cart-page.tsx",
+        "apps/web/src/features/cart/cart-lifecycle.ts",
+        "apps/web/src/features/cart/cart-transition-lock.ts",
+        "apps/web/src/features/cart/cart-recovery.tsx",
+        "apps/web/src/features/shell/cart-lifecycle-auth-port.ts",
+        "apps/web/src/auth/auth-gate.tsx",
+        "apps/web/src/features/purchase/use-cart-purchase.ts",
+        "apps/web/src/features/karaoke/use-karaoke-purchase.ts",
+        "apps/web/src/features/karaoke/karaoke-slot-page.tsx",
+        "apps/web/src/features/cart/use-cart.ts"
       ],
       "test_case_ids": [
         "TC-PG-CRT-001-424",
@@ -2384,9 +2393,23 @@
         "TC-PG-CRT-001-426",
         "TC-PG-TKT-001-412",
         "TC-PG-TKT-001-509",
-        "TC-PG-CRT-001-513"
+        "TC-PG-CRT-001-513",
+        "TC-AR-SES-010-001",
+        "TC-AR-SES-010-002",
+        "TC-FR-CRT-012-003",
+        "TC-FR-CRT-012-004",
+        "TC-FR-CRT-012-005",
+        "TC-FR-CRT-012-006",
+        "TC-FR-CRT-012-007",
+        "TC-FR-CRT-012-008",
+        "TC-FR-CRT-012-009",
+        "TC-FR-CRT-012-010",
+        "TC-FR-CRT-012-011",
+        "TC-FR-CRT-012-012",
+        "TC-FR-CRT-012-013",
+        "TC-FR-CRT-012-014"
       ],
-      "notes": "implementation mapping only: S5 cart / entry sales / goods detail (UI mock, not API/DB/provider coverage)"
+      "notes": "Browser Cart isolation across authentication and protected boundaries; real CartStore unit faults and UI mock E2E only, not API/DB/provider coverage."
     },
     {
       "rule_id": "DEV-REP-006",

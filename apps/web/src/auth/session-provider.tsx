@@ -2,6 +2,9 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { getBrowserCartLifecycle } from "../features/cart/cart-lifecycle";
+import { getBrowserCartTransitionCoordinator } from "../features/cart/cart-transition-lock";
+import { createCartLifecycleAuthPort } from "../features/shell/cart-lifecycle-auth-port";
 import { continuationForPath } from "./continuation";
 import { createAuthPort } from "./index";
 import { beginLogout, endLogout } from "./logout-signal";
@@ -12,7 +15,14 @@ import { SessionContext, type SessionState } from "./use-session";
 export function SessionProvider({ children, port }: { children: ReactNode; port?: AuthPort }) {
   const router = useRouter();
   // Created once (lazy initializer). SSR and the first client render always start as "loading".
-  const [auth] = useState<AuthPort>(() => port ?? createAuthPort());
+  const [auth] = useState<AuthPort>(() => {
+    const raw = port ?? createAuthPort();
+    const lifecycle = getBrowserCartLifecycle();
+    // Let the lifecycle supply its metadata guard when storage is explicitly recovered later.
+    if (lifecycle === null) return raw;
+    const coordinator = getBrowserCartTransitionCoordinator();
+    return coordinator === null ? raw : createCartLifecycleAuthPort(raw, lifecycle, coordinator);
+  });
   const [state, setState] = useState<SessionState>({ status: "loading" });
 
   useEffect(() => {
