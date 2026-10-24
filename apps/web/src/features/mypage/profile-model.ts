@@ -28,6 +28,15 @@ export function buildProfileModel(input: Loadable<Profile>): ProfileModel {
   }
 }
 
+/** After a save: keep what the user typed meanwhile; adopt the saved name only if the input is unchanged. */
+export function resolveInputAfterSave(input: {
+  current: string;
+  submitted: string;
+  saved: string;
+}): string {
+  return input.current === input.submitted ? input.saved : input.current;
+}
+
 export type ProfileSaveStep =
   | { kind: "saved"; displayName: string }
   | { kind: "invalid"; message: string }

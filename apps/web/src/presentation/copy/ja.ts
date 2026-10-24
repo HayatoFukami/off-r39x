@@ -178,6 +178,8 @@ export const copy = {
       stateLabel: "この枠の状態",
       purchasableLabel: "予約購入可能",
       purchasableDescription: "この枠は現在購入できます。購入手続きに進むと、この枠を確保します。",
+      notPurchasableLabel: "現在購入不可",
+      notPurchasableDescription: "この枠は現在購入できません。",
       separateNote:
         "Karaokeの購入はカートを使いません。Entry TicketやGoodsとは別の購入、別の支払いになります。",
       proceed: "購入手続きへ進む",
@@ -190,6 +192,8 @@ export const copy = {
         SOLD: "この枠は販売済みのため、購入手続きへ進めません。",
         SALES_STOPPED: "この枠は販売停止のため、購入手続きへ進めません。",
         NOT_ON_SALE: "現在は販売期間外または販売停止中のため、購入手続きへ進めません。",
+        NOT_PURCHASABLE:
+          "現在この枠は購入できないため、購入手続きへ進めません。空き状況から別の枠を選んでください。",
       },
       failure: {
         conflict: "他の利用者が先に確保したため購入を開始できません",
@@ -285,6 +289,21 @@ export const copy = {
       reset: "カートをリセットする",
       goToCart: "カートを確認する",
     },
+    lifecycleBlocked: {
+      title: "カートを利用できません",
+      description:
+        "カートの安全な状態を確認できません。復旧すると、現在のカート内容は消去されます。",
+      retry: "カートを消去して続行",
+      failed: "カートを復旧できませんでした。ブラウザのストレージ設定を確認してください。",
+      storageTitle: "カートのストレージを利用できません",
+      storageUnavailable:
+        "ブラウザのストレージを利用できないため、カートを表示できません。利用者の操作後にもう一度確認できます。",
+    },
+    lifecycleBusy: {
+      title: "認証処理中です",
+      description: "カートを一時停止しています。処理が終わってから、もう一度お試しください。",
+      retry: "確認しています",
+    },
     purchase: {
       verifying: "購入条件を確認しています",
       preparing: "支払い画面を準備中です。購入はまだ確定していません",
@@ -353,6 +372,8 @@ export const copy = {
     add: "Cartに追加",
     addSucceeded: "Cartに追加しました。購入はまだ確定していません",
     addFailed: "ブラウザの保存領域に書き込めなかったため、Cartを更新できませんでした",
+    addQuantityOverflow:
+      "Cartの数量が扱える範囲を超えるため、Cartに追加できませんでした。Cartで数量を確認してください",
     viewCart: "Cartを見る",
     displayTotalLabel: "表示用合計",
     displayTotalNote: "購入時の金額はサーバーで再計算されます",
@@ -491,6 +512,7 @@ export const copy = {
       toLogin: "ログインへ",
       rejected: "アカウントを登録できませんでした。入力内容を確認してください",
       unavailable: "登録を完了できません。時間をおいて、もう一度お試しください",
+      cartBusy: "認証処理中です。少し待ってからもう一度お試しください",
     },
     verify: {
       pageTitle: "メールアドレスの確認",
@@ -511,6 +533,7 @@ export const copy = {
       credentialFailure:
         "メールアドレスまたはパスワードが正しくありません。ログインできませんでした",
       unavailable: "ログインを完了できません。時間をおいて、もう一度お試しください",
+      cartBusy: "認証処理中です。少し待ってからもう一度お試しください",
       toPasswordReset: "パスワードをお忘れの方",
       toRegister: "アカウント登録へ",
       cancel: "ログインせずに戻る",

@@ -14,6 +14,8 @@ export interface AuthPort {
     | { kind: "signed_in" }
     | { kind: "rejected" }
     | { kind: "unavailable" }
+    | { kind: "cart_busy" }
+    | { kind: "cart_blocked" }
   >;
   verifyEmail(i: {
     context: string | null;
@@ -25,6 +27,8 @@ export interface AuthPort {
     | { kind: "signed_in"; emailVerified: boolean }
     | { kind: "credential_failure" }
     | { kind: "unavailable" }
+    | { kind: "cart_busy" }
+    | { kind: "cart_blocked" }
   >;
   /** The local session is always discarded, even when the provider fails (AR-SES-009). */
   signOut(): Promise<{ kind: "signed_out" }>;

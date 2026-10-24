@@ -4,12 +4,14 @@ import {
   addFromOrder,
   addLine,
   type Cart,
+  CartQuantityOverflowError,
   EMPTY_CART,
   parseCart,
   removeLine,
   removeLines,
   serializeCart,
   setLineQuantity,
+  subtractLines,
 } from "./cart-model";
 
 // Browser Cart store (SPEC-050 14A.1 Cartの保持, 22, 26.4). The persisted text is the only state; the
@@ -31,15 +33,19 @@ export type CartWriteResult =
   | { kind: "corrupted" }
   | { kind: "storage_unavailable" };
 
+export type CartAddResult = CartWriteResult | { kind: "quantity_overflow" };
+
 export interface CartStore {
   getSnapshot(): CartSnapshot;
   subscribe(listener: () => void): () => void;
-  add(line: CartLine): CartWriteResult;
+  add(line: CartLine): CartAddResult;
   setQuantity(lineKey: string, quantity: number): CartWriteResult;
   remove(lineKey: string): CartWriteResult;
   removeLines(lineKeys: readonly string[]): CartWriteResult;
-  addFromOrder(items: readonly OrderItem[]): CartWriteResult;
+  subtractLines(lines: readonly CartLine[]): CartWriteResult;
+  addFromOrder(items: readonly OrderItem[]): CartAddResult;
   reset(): CartWriteResult;
+  clear(): CartWriteResult;
 }
 
 export type CartStoreDeps = {
@@ -96,6 +102,19 @@ export function createCartStore(deps: CartStoreDeps): CartStore {
     return write(update(snapshot.cart));
   }
 
+  function changeAdding(update: (cart: Cart) => Cart): CartAddResult {
+    const snapshot = getSnapshot();
+    if (snapshot.kind === "corrupted") return { kind: "corrupted" };
+    let next: Cart;
+    try {
+      next = update(snapshot.cart);
+    } catch (failure) {
+      if (failure instanceof CartQuantityOverflowError) return { kind: "quantity_overflow" };
+      throw failure;
+    }
+    return write(next);
+  }
+
   return {
     getSnapshot,
     subscribe(listener) {
@@ -112,12 +131,29 @@ export function createCartStore(deps: CartStoreDeps): CartStore {
         }
       };
     },
-    add: (line) => change((cart) => addLine(cart, line)),
+    add: (line) => changeAdding((cart) => addLine(cart, line)),
     setQuantity: (lineKey, quantity) => change((cart) => setLineQuantity(cart, lineKey, quantity)),
     remove: (lineKey) => change((cart) => removeLine(cart, lineKey)),
     removeLines: (lineKeys) => change((cart) => removeLines(cart, lineKeys)),
-    addFromOrder: (items) => change((cart) => addFromOrder(cart, items)),
+    subtractLines(lines) {
+      const snapshot = getSnapshot();
+      if (snapshot.kind === "corrupted") return { kind: "corrupted" };
+      const next = subtractLines(snapshot.cart, lines);
+      if (next === snapshot.cart) return { kind: "ok", cart: next };
+      return write(next);
+    },
+    addFromOrder: (items) => changeAdding((cart) => addFromOrder(cart, items)),
     reset: () => write(EMPTY_CART),
+    // Removes the key without reading it, so it also succeeds on a damaged Cart.
+    clear() {
+      try {
+        storage.removeItem(CART_STORAGE_KEY);
+      } catch {
+        return { kind: "storage_unavailable" };
+      }
+      notify();
+      return { kind: "ok", cart: EMPTY_CART };
+    },
   };
 }
 

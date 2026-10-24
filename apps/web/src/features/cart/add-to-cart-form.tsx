@@ -7,14 +7,13 @@ import { CART_HREF } from "../../config/site";
 import { Button } from "../../presentation/components/ui/button";
 import { Input } from "../../presentation/components/ui/input";
 import { copy } from "../../presentation/copy/ja";
-import type { CartWriteResult } from "./cart-store";
 import { formatDisplayTotal, parseQuantityInput, type QuantityParse } from "./quantity";
-import { useCart } from "./use-cart";
+import { type CartAddOutcome, useCart } from "./use-cart";
 
 // Quantity + "add to Cart" control shared by the Entry sales page and the Goods detail page
 // (SPEC-050 12.1, 14.2, 25). It stores a reference and a quantity only; adding is not a purchase.
 
-export type AddResult = { kind: "idle" } | CartWriteResult;
+export type AddResult = { kind: "idle" } | CartAddOutcome;
 
 function invalidMessage(parse: QuantityParse, max: number | null): string | null {
   if (parse.kind === "valid") return null;
@@ -28,8 +27,20 @@ export function AddResultNotice({ result }: { result: AddResult }) {
   return (
     <div className="flex flex-col gap-2">
       <p role="status" className="text-sm font-medium text-tone-success-fg">
-        {result.kind === "ok" ? copy.sales.addSucceeded : ""}
+        {result.kind === "ok"
+          ? copy.sales.addSucceeded
+          : result.kind === "busy"
+            ? copy.cart.lifecycleBusy.description
+            : ""}
       </p>
+      {result.kind === "blocked" ? (
+        <p role="alert" className="text-sm text-tone-failure-fg">
+          {copy.cart.lifecycleBlocked.description}{" "}
+          <Link href={CART_HREF} prefetch={false} className="underline underline-offset-4">
+            {copy.cart.corrupted.goToCart}
+          </Link>
+        </p>
+      ) : null}
       {result.kind === "corrupted" ? (
         <div
           role="alert"
@@ -40,6 +51,14 @@ export function AddResultNotice({ result }: { result: AddResult }) {
             {copy.cart.corrupted.goToCart}
           </Link>
         </div>
+      ) : null}
+      {result.kind === "quantity_overflow" ? (
+        <p
+          role="alert"
+          className="rounded-base border border-tone-failure-fg/30 bg-tone-failure-bg p-3 text-tone-failure-fg"
+        >
+          {copy.sales.addQuantityOverflow}
+        </p>
       ) : null}
       {result.kind === "storage_unavailable" ? (
         <p
@@ -83,14 +102,29 @@ export function AddToCartForm({
   const parse = parseQuantityInput(raw, maxSelectableQuantity);
   const error = invalidMessage(parse, maxSelectableQuantity);
   const invalid = error !== null;
+  const cartBusy = cart.state.kind === "busy";
+  const cartBlocked = cart.state.kind === "blocked";
+  const cartStorageUnavailable = cart.state.kind === "storage_unavailable";
+  const cartLoading = cart.state.kind === "loading";
+  const cartActionDisabled = cartBusy || cartBlocked || cartStorageUnavailable || cartLoading;
+  const cartStatusId = `${baseId}-cart-status`;
+  const cartStatus = cartBusy
+    ? copy.cart.lifecycleBusy.description
+    : cartBlocked
+      ? copy.cart.lifecycleBlocked.description
+      : cartStorageUnavailable
+        ? copy.cart.lifecycleBlocked.storageUnavailable
+        : null;
 
   const describedBy = [
     maxSelectableQuantity !== null ? hintId : null,
     invalid ? errorId : null,
   ].filter((id): id is string => id !== null);
-  const buttonDescribedBy = [invalid ? errorId : null, addable ? null : reasonId].filter(
-    (id): id is string => id !== null,
-  );
+  const buttonDescribedBy = [
+    invalid ? errorId : null,
+    addable ? null : reasonId,
+    cartActionDisabled && cartStatus !== null ? cartStatusId : null,
+  ].filter((id): id is string => id !== null);
 
   const handleChange = (event: ChangeEvent<HTMLInputElement>): void => {
     setRaw(event.target.value);
@@ -98,13 +132,8 @@ export function AddToCartForm({
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
-    if (!addable || parse.kind !== "valid") return;
-    try {
-      onResult(cart.add(buildLine(parse.quantity)));
-    } catch (failure) {
-      if (!(failure instanceof RangeError)) throw failure;
-      onResult({ kind: "storage_unavailable" });
-    }
+    if (!addable || cartActionDisabled || parse.kind !== "valid") return;
+    onResult(cart.add(buildLine(parse.quantity)));
   };
 
   return (
@@ -119,18 +148,28 @@ export function AddToCartForm({
           inputMode="numeric"
           value={raw}
           onChange={handleChange}
-          disabled={!addable}
+          disabled={!addable || cartActionDisabled}
           aria-invalid={invalid ? true : undefined}
           aria-describedby={describedBy.length > 0 ? describedBy.join(" ") : undefined}
         />
         <Button
           type="submit"
-          disabled={!addable || invalid}
+          disabled={!addable || invalid || cartActionDisabled}
           aria-describedby={buttonDescribedBy.length > 0 ? buttonDescribedBy.join(" ") : undefined}
         >
           {copy.sales.add}
         </Button>
       </div>
+      {cartStatus !== null ? (
+        <p id={cartStatusId} className="text-sm text-tone-failure-fg">
+          {cartStatus}{" "}
+          {cartBlocked || cartStorageUnavailable ? (
+            <Link href={CART_HREF} prefetch={false} className="underline underline-offset-4">
+              {copy.cart.corrupted.goToCart}
+            </Link>
+          ) : null}
+        </p>
+      ) : null}
       {maxSelectableQuantity !== null ? (
         <p id={hintId} className="text-sm text-foreground/80">
           {copy.quantity.guidance(maxSelectableQuantity)}

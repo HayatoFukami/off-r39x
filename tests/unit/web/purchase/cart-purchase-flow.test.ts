@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type {
+  CartLine,
   CartPurchaseStart,
   CartRejectionReasonCode,
   CheckoutStart,
@@ -11,6 +12,7 @@ import {
   interpretCartStart,
   interpretCheckoutStart,
   isSafeCheckoutUrl,
+  orderedLines,
   planProceed,
 } from "../../../../apps/web/src/features/purchase/cart-purchase-flow.ts";
 import { copy } from "../../../../apps/web/src/presentation/copy/ja.ts";
@@ -267,5 +269,55 @@ describe("TC-PG-CRT-001-623 describeRejections names each rejected line with a d
     const before = structuredClone(rejections);
     describeRejections(rejections, names);
     expect(rejections).toEqual(before);
+  });
+});
+
+describe("TC-PG-CRT-001-624 orderedLines returns the sent lines the Order included, at the sent quantity (FR-CRT-011, BR-ORD-014)", () => {
+  const entryLine: CartLine = {
+    kind: "ENTRY_TICKET",
+    offeringRef: "e0000000-0000-4000-8000-000000000001" as Ref<"offering">,
+    quantity: 2,
+  };
+  const goodsLine: CartLine = {
+    kind: "GOODS",
+    goodsRef: "a0000000-0000-4000-8000-000000000001" as Ref<"goods">,
+    quantity: 3,
+  };
+  const otherGoods: CartLine = {
+    kind: "GOODS",
+    goodsRef: "a0000000-0000-4000-8000-000000000002" as Ref<"goods">,
+    quantity: 1,
+  };
+  const keyOf = (line: CartLine): string =>
+    line.kind === "ENTRY_TICKET" ? `ENTRY_TICKET:${line.offeringRef}` : `GOODS:${line.goodsRef}`;
+
+  it("returns the included lines in the snapshot order with the sent quantities", () => {
+    const sent = [entryLine, goodsLine, otherGoods];
+    expect(orderedLines(sent, [keyOf(otherGoods), keyOf(entryLine)])).toEqual([
+      entryLine,
+      otherGoods,
+    ]);
+  });
+
+  it("leaves out the sent lines the Order did not include", () => {
+    expect(orderedLines([entryLine, goodsLine], [keyOf(goodsLine)])).toEqual([goodsLine]);
+    expect(orderedLines([entryLine, goodsLine], [])).toEqual([]);
+  });
+
+  it("does not count a line twice when the included keys repeat", () => {
+    const result = orderedLines([entryLine], [keyOf(entryLine), keyOf(entryLine)]);
+    expect(result).toEqual([entryLine]);
+  });
+
+  it("ignores an included key that was never sent", () => {
+    expect(orderedLines([entryLine], [keyOf(entryLine), keyOf(otherGoods)])).toEqual([entryLine]);
+  });
+
+  it("does not mutate its inputs", () => {
+    const sent = Object.freeze([Object.freeze({ ...entryLine }), Object.freeze({ ...goodsLine })]);
+    const keys = Object.freeze([keyOf(entryLine)]);
+    const before = JSON.stringify({ sent, keys });
+    orderedLines(sent, keys);
+    expect(JSON.stringify({ sent, keys })).toBe(before);
   });
 });

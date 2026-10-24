@@ -13,6 +13,7 @@ import { SectionHeading } from "../../presentation/components/section-heading";
 import { StatusBadge } from "../../presentation/components/status-badge";
 import { Button } from "../../presentation/components/ui/button";
 import { copy } from "../../presentation/copy/ja";
+import { CartRecovery } from "../cart/cart-recovery";
 import { buildKaraokeSlotModel } from "./karaoke-slot-model";
 import { type KaraokePurchasePhase, useKaraokePurchase } from "./use-karaoke-purchase";
 
@@ -35,6 +36,8 @@ function failureText(phase: KaraokePurchasePhase): string | null {
       return detail.failure.expired;
     case "unavailable":
       return detail.failure.unavailable;
+    case "cart_busy":
+    case "cart_recovery":
     case "idle":
     case "holding":
     case "preparing":
@@ -49,11 +52,11 @@ function failureText(phase: KaraokePurchasePhase): string | null {
 function progressText(phase: KaraokePurchasePhase): string | null {
   if (phase.kind === "holding") return detail.holding;
   if (phase.kind === "preparing") return copy.purchase.checkoutPreparing;
+  if (phase.kind === "cart_busy") return copy.cart.lifecycleBusy.description;
   return null;
 }
 
-// PG-KRK-003 container: reads the slot after mount through the port. The purchase start goes through the
-// port only and never touches the Cart (BR-ORD-019).
+// PG-KRK-003 container: reads the slot after mount through the port. Karaoke purchase contents never enter the Cart.
 export function KaraokeSlotPage({ slotRef }: { slotRef: Ref<"slot"> }) {
   const api = useApi();
   const session = useSession();
@@ -126,7 +129,8 @@ export function KaraokeSlotPage({ slotRef }: { slotRef: Ref<"slot"> }) {
   const guest = session.state.status === "ready" && session.state.session.kind === "guest";
   const failure = failureText(purchase.phase);
   const progress = progressText(purchase.phase);
-  const blockedByPhase = phaseKind === "limit" || phaseKind === "expired";
+  const blockedByPhase =
+    phaseKind === "limit" || phaseKind === "expired" || phaseKind === "cart_recovery";
   const describedBy = !model.purchasable ? REASON_ID : blockedByPhase ? FAILURE_ID : undefined;
   const withWayBack = phaseKind === "conflict" || phaseKind === "expired";
 
@@ -190,6 +194,9 @@ export function KaraokeSlotPage({ slotRef }: { slotRef: Ref<"slot"> }) {
             ) : null}
           </div>
         )}
+        {phaseKind === "cart_recovery" ? (
+          <CartRecovery onRecovered={purchase.dismissCartRecovery} />
+        ) : null}
         <p className="text-sm">{detail.separateNote}</p>
         <p>
           <Link href={model.dayHref} prefetch={false} className={linkClass}>

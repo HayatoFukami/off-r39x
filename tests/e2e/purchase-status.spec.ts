@@ -6,10 +6,16 @@ import {
   expectedGoodsDetail,
   expectedOfferings,
   goodsLine,
+  headerCartLink,
   readCartRaw,
   readDbRaw,
   writeStorage,
 } from "../harness/browser/cart.ts";
+import {
+  exerciseLeaveDuringRecheck,
+  exerciseRetryAfterUnavailable,
+  exerciseSlowConsecutiveReads,
+} from "../harness/browser/order-reads.ts";
 import { hasLevelSkip, mainHeadingLevels, seedState } from "../harness/browser/public.ts";
 import {
   actionButton,
@@ -692,5 +698,40 @@ test.describe("TC-PG-XFN-001-668 a failed read is not an empty or denied page, a
     await expect(mainOf(page)).not.toContainText(label.CONFIRMED);
     await expect(mainOf(page)).not.toContainText(/[¥￥]\s*\d/);
     await expect(outcomeRegion(page)).toBeVisible({ timeout: 15_000 });
+  });
+});
+
+test.describe("TC-PG-XFN-001-669 the Purchase Status page reflects only the last-started Order read, and a read that is not reflected never leaves the page busy or announcing (E2E 22, DEV-WEB-009, SPEC-050 9.1, 21, 22, PAY-BRW-002)", () => {
+  const path = `/purchase/orders/${ORDER.awaiting}`;
+
+  test("slow reads: one read on mount and one per press, the pending state and the announcement end with each read, and the last press decides", async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    await exerciseSlowConsecutiveReads(page, path, ORDER.awaiting);
+  });
+
+  test("leaving the page during a recheck: the abandoned read completes but the destination shows nothing of it and nothing is thrown", async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    await exerciseLeaveDuringRecheck(
+      page,
+      path,
+      ORDER.awaiting,
+      async () => {
+        await headerCartLink(page).click();
+        await expect(page).toHaveURL(/\/cart$/);
+        await expect(heading1(page)).toHaveText(copy.cart.heading);
+      },
+      [copy.purchase.heading],
+    );
+  });
+
+  test("an unavailable read followed by a slow retry: the loading state is shown, then the Order, after exactly one more read", async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    await exerciseRetryAfterUnavailable(page, path, ORDER.awaiting);
   });
 });

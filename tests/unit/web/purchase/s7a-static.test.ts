@@ -158,7 +158,7 @@ describe("TC-PG-CRT-001-651 the Cart page wires the purchase start through one h
     expect(cartPage).not.toMatch(/\b(startCartPurchase|startCheckout|location\.assign)\b/);
   });
 
-  it("the hook uses the three pure decisions, a fresh idempotency key per attempt and removeLines for the included lines", () => {
+  it("the hook uses the three pure decisions, a fresh idempotency key per attempt and subtractLines over orderedLines (only the ordered quantities leave the Cart)", () => {
     const hook = stripComments(read("src/features/purchase/use-cart-purchase.ts"));
     expect(hook).toMatch(/^\s*["']use client["']/);
     expect(hook).toMatch(/planProceed/);
@@ -168,7 +168,9 @@ describe("TC-PG-CRT-001-651 the Cart page wires the purchase start through one h
     expect(hook).toMatch(/startCheckout/);
     expect(hook).toMatch(/idempotencyKey/);
     expect(hook).toMatch(/crypto\.randomUUID/);
-    expect(hook).toMatch(/removeLines/);
+    expect(hook).toMatch(/subtractLines/);
+    expect(hook).toMatch(/orderedLines/);
+    expect(hook).not.toMatch(/\bremoveLines\s*\(/);
     expect(hook).toMatch(/describeRejections/);
     expect(hook).not.toMatch(/startKaraokePurchase/);
     expect(hook).not.toMatch(/from\s+["'][^"']*\/mock\//);
@@ -201,6 +203,15 @@ describe("TC-PG-XFN-001-651 the Purchase Status container reads the Order once p
     expect(code).not.toMatch(/createApiPort|createMockApi|from\s+["'][^"']*\/mock\//);
     expect(code).not.toMatch(/\b(localStorage|sessionStorage|document\.cookie|fetch)\b/);
     expect(code).not.toMatch(/\bconsole\s*\./);
+  });
+
+  it("only the latest read is shown: mount, reload, recheck and the retry follow-up all go through the latest-request guard", () => {
+    expect(code).toMatch(/from\s+["'][^"']*api-client\/latest-request["']/);
+    expect((code.match(/\bapplyIfLatest\s*\(/g) ?? []).length).toBeGreaterThanOrEqual(4);
+    expect(code).toMatch(/\binvalidateRequests\b/);
+    expect(code).not.toMatch(/\blet\s+active\b/);
+    expect(code).not.toMatch(/\bawait\s+settleRead\s*\(/);
+    expect(code).not.toMatch(/settleRead\s*\([^;]*\)\s*\.then\s*\(/);
   });
 
   it("starts no cart purchase, no Karaoke purchase and no second Order from this page", () => {

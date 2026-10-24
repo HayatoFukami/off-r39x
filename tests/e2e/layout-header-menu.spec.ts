@@ -252,4 +252,92 @@ test.describe("TC-PG-PUB-001-309 the site name goes to the top page, and scrolls
     await siteName(page).click();
     await expect.poll(() => page.evaluate(() => window.scrollY), { timeout: 1000 }).toBe(0);
   });
+
+  test("on / a click with Control, Meta, Shift or Alt keeps the default link behaviour (not prevented by the app, no scroll)", async ({
+    page,
+  }) => {
+    type Rec = {
+      prevented: boolean;
+      ctrl: boolean;
+      meta: boolean;
+      shift: boolean;
+      alt: boolean;
+      button: number;
+    };
+    type W = { r39xMarker?: number; r39xClicks?: Rec[] };
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await gotoHydrated(page, "/");
+    await page.evaluate(() => {
+      const w = window as unknown as W;
+      w.r39xMarker = 1;
+      w.r39xClicks = [];
+      // Bubble phase on window: runs after the app's and Next Link's handlers.
+      // Test-only: it cancels the browser default (new tab / window / download) so no side effect happens.
+      window.addEventListener("click", (e) => {
+        const target = e.target as Element | null;
+        if (!target?.closest('header a[href="/"]')) return;
+        w.r39xClicks?.push({
+          prevented: e.defaultPrevented,
+          ctrl: e.ctrlKey,
+          meta: e.metaKey,
+          shift: e.shiftKey,
+          alt: e.altKey,
+          button: e.button,
+        });
+        e.preventDefault();
+      });
+    });
+    const count = () => page.evaluate(() => (window as unknown as W).r39xClicks?.length ?? 0);
+    const last = () =>
+      page.evaluate(() => {
+        const list = (window as unknown as W).r39xClicks ?? [];
+        return list[list.length - 1] as Rec;
+      });
+    const scrollY = () => page.evaluate(() => window.scrollY);
+    const settle = () =>
+      page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+      );
+
+    const modifiers = [
+      { key: "Control", flag: "ctrl" },
+      { key: "Meta", flag: "meta" },
+      { key: "Shift", flag: "shift" },
+      { key: "Alt", flag: "alt" },
+    ] as const;
+    for (const { key, flag } of modifiers) {
+      await scrollToFraction(page, 0.6);
+      const y0 = await scrollY();
+      const before = await count();
+      // Raw mouse input at the link's box: Locator.click scrolls the element into view itself, which would
+      // move scrollY for a reason unrelated to the app and mask the assertion below.
+      const box = await siteName(page).boundingBox();
+      expect(box, "the site name is laid out").not.toBeNull();
+      await page.keyboard.down(key);
+      await page.mouse.click((box?.x ?? 0) + 5, (box?.y ?? 0) + 5);
+      await page.keyboard.up(key);
+      await expect.poll(count, { timeout: 5000 }).toBe(before + 1);
+      const record = await last();
+      expect(record[flag], `${key} flag is set on the click`).toBe(true);
+      expect(record.prevented, `${key}+click is not default-prevented by the app`).toBe(false);
+      await settle();
+      const drift = Math.abs((await scrollY()) - y0);
+      expect(drift, `${key}+click does not scroll`).toBeLessThanOrEqual(2);
+    }
+
+    // Control case: a plain click is taken over by the app (proves the observer runs after the app's handler).
+    await scrollToFraction(page, 0.6);
+    const before = await count();
+    await siteName(page).click();
+    await expect.poll(count, { timeout: 5000 }).toBe(before + 1);
+    expect((await last()).prevented, "a plain click is default-prevented by the app").toBe(true);
+    await expect.poll(scrollY, { timeout: 5000 }).toBe(0);
+
+    await expect(page).toHaveURL(/\/$/);
+    const marker = await page.evaluate(() => (window as unknown as W).r39xMarker);
+    expect(marker, "no full page reload").toBe(1);
+  });
 });

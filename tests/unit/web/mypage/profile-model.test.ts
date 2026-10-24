@@ -3,6 +3,7 @@ import type { Profile, ProfileUpdate } from "../../../../apps/web/src/api-client
 import {
   buildProfileModel,
   interpretProfileSave,
+  resolveInputAfterSave,
 } from "../../../../apps/web/src/features/mypage/profile-model.ts";
 import { copy } from "../../../../apps/web/src/presentation/copy/ja.ts";
 import { createBackend, dbFingerprint, okData } from "../../../harness/mock-backend.ts";
@@ -76,5 +77,38 @@ describe("TC-PG-MYP-002-622 the save result becomes a distinct step per outcome 
     await backend.signOut();
     await backend.signInAs(EMAIL.other);
     expect(okData(await backend.api.self.getProfile()).displayName).toBe("他の人");
+  });
+});
+
+describe("TC-PG-MYP-002-623 the input after a save keeps what the user typed meanwhile (SPEC-050 18.2, DEV-WEB-009)", () => {
+  it("takes the server value when the input still equals the submitted value", () => {
+    expect(
+      resolveInputAfterSave({
+        current: "新しい名前",
+        submitted: "新しい名前",
+        saved: "新しい名前",
+      }),
+    ).toBe("新しい名前");
+  });
+
+  it("takes the server-normalized value when the input is unchanged since the submit", () => {
+    expect(resolveInputAfterSave({ current: " A ", submitted: " A ", saved: "A" })).toBe("A");
+  });
+
+  it("keeps the current input when it was edited after the submit (the newer edit is never overwritten)", () => {
+    expect(
+      resolveInputAfterSave({
+        current: "新しい名前2",
+        submitted: "新しい名前",
+        saved: "新しい名前",
+      }),
+    ).toBe("新しい名前2");
+    expect(resolveInputAfterSave({ current: " A b", submitted: " A ", saved: "A" })).toBe(" A b");
+  });
+
+  it("keeps an emptied input as empty", () => {
+    expect(
+      resolveInputAfterSave({ current: "", submitted: "新しい名前", saved: "新しい名前" }),
+    ).toBe("");
   });
 });

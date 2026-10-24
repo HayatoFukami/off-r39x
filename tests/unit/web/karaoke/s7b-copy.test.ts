@@ -44,6 +44,11 @@ describe("TC-PG-KRK-003-601 the Karaoke slot detail copy is the contracted wordi
     expect(detail.disabledReason.SOLD).toContain("販売済み");
     expect(detail.disabledReason.SALES_STOPPED).toContain("販売停止");
     expect(detail.disabledReason.NOT_ON_SALE).toContain("販売期間外");
+    expect(detail.notPurchasableLabel).toBe("現在購入不可");
+    expect(detail.notPurchasableDescription).toBe("この枠は現在購入できません。");
+    expect(detail.disabledReason.NOT_PURCHASABLE).toBe(
+      "現在この枠は購入できないため、購入手続きへ進めません。空き状況から別の枠を選んでください。",
+    );
     expect(detail.separateNote).toBe(
       "Karaokeの購入はカートを使いません。Entry TicketやGoodsとは別の購入、別の支払いになります。",
     );
@@ -65,6 +70,8 @@ describe("TC-PG-KRK-003-602 no copy fragment contains another, so negative asser
     ["disabledReason.SOLD", detail.disabledReason.SOLD],
     ["disabledReason.SALES_STOPPED", detail.disabledReason.SALES_STOPPED],
     ["disabledReason.NOT_ON_SALE", detail.disabledReason.NOT_ON_SALE],
+    ["disabledReason.NOT_PURCHASABLE", detail.disabledReason.NOT_PURCHASABLE],
+    ["notPurchasableDescription", detail.notPurchasableDescription],
     ["failure.conflict", detail.failure.conflict],
     ["failure.limit", detail.failure.limit],
     ["failure.notOnSale", detail.failure.notOnSale],
@@ -81,6 +88,12 @@ describe("TC-PG-KRK-003-602 no copy fragment contains another, so negative asser
         expect(a.includes(b), `${nameA} contains ${nameB}`).toBe(false);
       }
     }
+  });
+
+  it("the not-purchasable label is not part of any group member and does not contain the purchasable label", () => {
+    for (const [name, text] of group)
+      expect(text.includes(detail.notPurchasableLabel), name).toBe(false);
+    expect(detail.notPurchasableLabel.includes(detail.purchasableLabel)).toBe(false);
   });
 
   it("the purchasable label is not part of any group member, nor of the day-page slot labels", () => {

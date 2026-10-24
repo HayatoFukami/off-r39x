@@ -2,11 +2,11 @@
 
 テスト担当が定義した S10 の実装契約。コーディング担当は `apps/web/**`（presentation / features / config / app）だけを変更する。S1〜S9 と同じ契約先行の流れで、失敗するテストを先に書いてある。
 
-根拠: SPEC-050 v1.2.0 §8.5（Global Header、Floating Ticket Button、サイト名）、§24.1、§24.3、§25（Dialog / Drawer、Link と Button、見出しのフェードイン）。DEV-WEB-001〜013、DEV-DEP-006、TST-UNT-004、TST-E2E-003 / 004、TST-FLK-001。UI mock suite は補助 suite（G8 ではない）で、manifest は `critical:false`、`api_operation_ids` / `db_constraint_names` は空、runner retry は 0。
+根拠: SPEC-050 v1.2.1 §8.5（Global Header、Floating Ticket Button、サイト名。サイト名の scroll は通常の主ボタンクリックと Enter だけ）、§24.1、§24.3、§25（Dialog / Drawer、Link と Button、見出しのフェードイン）。DEV-WEB-001〜013、DEV-DEP-006、TST-UNT-004、TST-E2E-003 / 004、TST-FLK-001。UI mock suite は補助 suite（G8 ではない）で、manifest は `critical:false`、`api_operation_ids` / `db_constraint_names` は空、runner retry は 0。
 
 対応テスト:
 
-- Vitest: `tests/unit/web/layout/{floating-ticket-visibility,s10-static,layout-copy,shell-static}.test.ts`
+- Vitest: `tests/unit/web/layout/{floating-ticket-visibility,plain-primary-click,s10-static,layout-copy,shell-static}.test.ts`
 - Playwright（`desktop-chromium` = 1280x720、`mobile-chromium` = Pixel 7 の 412 幅。両 project で同じテストが走る）: `tests/e2e/{layout-header,layout-header-menu,layout-floating-ticket,reveal-headings}.spec.ts` と、旧挙動を主張していた既存 spec の更新（§7）。
 - ハーネス: `tests/harness/browser/header-menu.ts`（ロケータと menu 操作）。
 
@@ -19,6 +19,7 @@ Tailwind の `md` breakpoint（768px）未満を mobile とする（既存 `isDe
 | `apps/web/src/presentation/layout/header-menu.tsx`（新規） | client view | `HeaderMenu({ currentPath, showRegister })`。`mobile-nav-drawer.tsx` を**置き換える**（旧ファイルは削除する） |
 | `apps/web/src/presentation/layout/global-header.tsx` | view | 常時表示の desktop `PrimaryNav` と `MobileNavDrawer` を外し、`HeaderMenu` を置く |
 | `apps/web/src/presentation/layout/floating-ticket-visibility.ts`（新規） | 純粋 | `isFloatingTicketVisible(pathname: string): boolean`（§4.1） |
+| `apps/web/src/presentation/layout/plain-primary-click.ts`（新規） | 純粋 | `isPlainPrimaryClick(event: ClickLike): boolean`（§3）。import なし |
 | `apps/web/src/presentation/layout/floating-ticket-button.tsx`（新規） | view | `FloatingTicketButton`（Link。§4.2） |
 | `apps/web/src/features/shell/` 配下の container（名前は任意） | client | `usePathname()` を読み、`FloatingTicketButton` へ props で渡す。`app/layout.tsx` が描画する |
 | `apps/web/src/presentation/components/section-heading.tsx` | view | §6 のフェードイン属性と挙動（実装は client 部品へ委譲してよい） |
@@ -62,6 +63,7 @@ floatingTicket: { label: "入場券を手に入れる" }, // 差し替え可能�
 - `<header>` 内のサイト名 Link は `href="/"` のまま、accessible name は `SITE_NAME`（ロゴ未設定時）。
 - `/` 以外の Page: 通常の client-side 遷移で `/` へ。
 - すでに `/` を表示している場合: 既定の遷移を止め、ページ先頭へ scroll する（`window.scrollTo({ top: 0 })`。`prefers-reduced-motion: reduce` のときは smooth にしない）。URL は `/` のまま、full reload にならない（window の状態が保たれる）。クリックでも Enter でも同じ。
+- 修飾キー（Ctrl / Meta(Cmd) / Shift / Alt）付きのクリック、または主ボタン以外（`button !== 0`）のクリックでは既定の動作を止めず、scroll もしない（新しいタブ・ウィンドウ・ダウンロード等、ブラウザ既定の Link 動作を保つ）。判定は純粋関数 `isPlainPrimaryClick`（`button === 0` かつ ctrl / meta / shift / alt が全て false）。SPEC-050 v1.2.1 §8.5 に明記。実際のタブ生成は E2E で検証しない（Issue #17）。
 - 判定は `usePathname()` 相当の pathname が `"/"` かどうか。クエリや hash は無視してよい。
 
 ## 4. Floating Ticket Button（SPEC-050 §8.5）
@@ -147,10 +149,11 @@ segment 境界で比較する: `/entry` と `/entry/` と `/entry/x` は false�
 |---|---|---|
 | `TC-PG-PUB-001-241` | Unit `floating-ticket-visibility.test.ts` | §4.1 の表示規則 |
 | `TC-PG-PUB-001-242` | Unit `layout-copy.test.ts`（同ファイルの `-221` 更新と別 describe） | `copy.layout.menu` / `floatingTicket` の制約 |
-| `TC-PG-PUB-001-243` | Unit `s10-static.test.ts` | ファイル、safe area、viewport、badge、reveal CSS の静的検査 |
+| `TC-PG-PUB-001-243` | Unit `s10-static.test.ts` | ファイル、safe area、viewport、badge、reveal CSS、サイト名の `isPlainPrimaryClick` 配線の静的検査 |
+| `TC-PG-PUB-001-244` | Unit `plain-primary-click.test.ts` | §3 の判定規則（`isPlainPrimaryClick`） |
 | `TC-PG-PUB-001-307` | E2E `layout-header-menu.spec.ts` | メニューの開閉、内容、a11y 属性 |
 | `TC-PG-PUB-001-308` | E2E 同上 | Escape / focus return / 外側 / 選択 / Route 変更で閉じる |
-| `TC-PG-PUB-001-309` | E2E 同上 | サイト名（`/` 以外から `/`、`/` で先頭へ scroll） |
+| `TC-PG-PUB-001-309` | E2E 同上 | サイト名（`/` 以外から `/`、`/` で先頭へ scroll。修飾 / 主ボタン以外のクリックは既定の動作を保つ） |
 | `TC-PG-PUB-001-311` | E2E `layout-floating-ticket.spec.ts` | Route 別の表示 / 非表示（client 遷移を含む） |
 | `TC-PG-PUB-001-312` | E2E 同上 | 固定位置、scroll 追従、遷移、DOM 位置、名前の一意性 |
 | `TC-PG-PUB-001-313` | E2E 同上 | Page 末尾で Footer・操作要素を覆わない、Badge と重ならない |

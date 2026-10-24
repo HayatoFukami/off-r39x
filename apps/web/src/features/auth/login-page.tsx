@@ -15,6 +15,8 @@ import { ErrorSummary } from "../../presentation/components/error-summary";
 import { FormField } from "../../presentation/components/form-field";
 import { Button } from "../../presentation/components/ui/button";
 import { copy } from "../../presentation/copy/ja";
+import { CartRecovery } from "../cart/cart-recovery";
+import { useCart } from "../cart/use-cart";
 import { ContinuationNoticeView } from "./continuation-notice";
 import { describeContinuation } from "./continuation-view";
 import {
@@ -31,12 +33,13 @@ const linkClass = "text-brand underline underline-offset-4";
 // Named so the destination calls below read as page names, not as data.
 const RESET_PAGE = "password-reset";
 
-type Failure = "credential" | "unavailable" | null;
+type Failure = "credential" | "unavailable" | "cart_busy" | "cart_blocked" | null;
 
 // PG-AUTH-003. Credentials live only in the inputs while typing: they are passed to the port and
 // never stored, logged or put in a URL (SEC-AUTH-018).
 function LoginForm() {
   const auth = useAuth();
+  const cart = useCart();
   const router = useRouter();
   const searchParams = useSearchParams();
   const intent = parseContinuation(searchParams.get(CONTINUATION_PARAM));
@@ -51,6 +54,9 @@ function LoginForm() {
   const [errors, setErrors] = useState<readonly FieldError[]>([]);
   const [failure, setFailure] = useState<Failure>(null);
   const [submitting, setSubmitting] = useState(false);
+  const cartBlocked = failure === "cart_blocked" || cart.state.kind === "blocked";
+  const cartNeedsRecovery = cartBlocked || cart.state.kind === "storage_unavailable";
+  const cartBusy = failure === "cart_busy" || cart.state.kind === "busy";
   const submittingRef = useRef(false);
   const { summaryRef, requestFocus } = useErrorSummaryFocus();
 
@@ -84,7 +90,9 @@ function LoginForm() {
         );
         return;
       }
-      setFailure(result.kind === "credential_failure" ? "credential" : "unavailable");
+      if (result.kind === "cart_busy") setFailure("cart_busy");
+      else if (result.kind === "cart_blocked") setFailure("cart_blocked");
+      else setFailure(result.kind === "credential_failure" ? "credential" : "unavailable");
     } catch {
       setFailure("unavailable");
     }
@@ -111,6 +119,8 @@ function LoginForm() {
         <ServiceFailure message={copy.auth.login.credentialFailure} />
       ) : null}
       {failure === "unavailable" ? <ServiceFailure message={copy.auth.login.unavailable} /> : null}
+      {cartBusy ? <p role="status">{copy.auth.login.cartBusy}</p> : null}
+      {cartNeedsRecovery ? <CartRecovery onRecovered={() => setFailure(null)} /> : null}
       <form
         noValidate
         onSubmit={onSubmit}
@@ -136,7 +146,7 @@ function LoginForm() {
           error={errorOf("password")}
         />
         <div>
-          <Button type="submit" disabled={submitting}>
+          <Button type="submit" disabled={submitting || cartBlocked}>
             {submitting ? copy.auth.form.submitting : copy.auth.login.submit}
           </Button>
         </div>

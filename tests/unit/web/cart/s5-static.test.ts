@@ -121,6 +121,12 @@ describe("TC-DEV-WEB-001-403 the S5 containers read through the port after mount
     });
   }
 
+  for (const path of ["src/features/entry/entry-page.tsx", "src/features/cart/cart-page.tsx"]) {
+    it(`${path} reads the session state so that a session change re-fetches the sales state (FR-CRT-005, FR-CRT-012)`, () => {
+      expect(stripComments(read(path))).toMatch(/\buseSession\s*\(/);
+    });
+  }
+
   it("the Header count and the Cart page share one store (same-tab updates, SPEC-050 8.5)", () => {
     expect(stripComments(read("src/features/cart/use-cart-count.ts"))).toMatch(
       /cart-store|use-cart/,
@@ -152,14 +158,20 @@ describe("TC-PG-CRT-001-461 the Entry / Goods detail UI and the Cart store start
   });
 });
 
-describe("TC-PG-CRT-001-462 the Cart holds references and quantities only and cannot hold Karaoke (FR-CRT-002 / 003, DEV-TS-004)", () => {
-  it("defines exactly one strict zod schema for the stored Cart (cart-model.ts); cart-count.ts and the store reuse it", () => {
+describe("TC-PG-CRT-001-462 the Cart holds references and quantities only and cannot hold Karaoke (FR-CRT-002 / 003 / 012, DEV-TS-004)", () => {
+  it("defines the stored Cart schema only in cart-model.ts; separate provenance metadata cannot redefine Cart lines", () => {
     const owners = walk(abs("src/features/cart"))
       .filter((f) => /\.(ts|tsx)$/.test(f))
       .filter((f) =>
         /strictObject\s*\(|\.strict\s*\(/.test(stripComments(readFileSync(f, "utf8"))),
       );
-    expect(owners.map(rel)).toEqual(["src/features/cart/cart-model.ts"]);
+    // FR-CRT-012 permits a separate metadata contract; DEV-TS-004 requires its runtime validation.
+    // The metadata owner cannot define a second Cart body schema containing lines.
+    const metadataOwner = "src/features/cart/cart-lifecycle.ts";
+    expect(owners.map(rel).filter((path) => path !== metadataOwner)).toEqual([
+      "src/features/cart/cart-model.ts",
+    ]);
+    expect(stripComments(read(metadataOwner))).not.toMatch(/\blines\s*:/);
     expect(stripComments(read("src/features/cart/cart-count.ts"))).toMatch(/cart-model/);
   });
 
@@ -186,7 +198,7 @@ describe("TC-PG-CRT-001-462 the Cart holds references and quantities only and ca
     );
   });
 
-  it("the Cart store does not read a session or an account (Login / Logout never change the Cart, FR-CRT-012)", () => {
+  it("the Cart store does not read a session or an account (FR-CRT-012: the store knows no account; Logout clearing lives in the shell)", () => {
     for (const path of [
       "src/features/cart/cart-model.ts",
       "src/features/cart/cart-store.ts",
@@ -277,6 +289,13 @@ describe("TC-PG-TKT-001-461 the quantity control and live region follow SPEC-050
   it("announces the add result through a status live region", () => {
     expect(source).toMatch(/role=["']status["']/);
     expect(source).toMatch(/copy\.sales\.addSucceeded/);
+  });
+
+  it("separates a quantity overflow from a storage failure without reading exception classes", () => {
+    expect(source).not.toMatch(/instanceof\s+RangeError/);
+    expect(source).toMatch(/quantity_overflow/);
+    expect(source).toMatch(/copy\.sales\.addQuantityOverflow/);
+    expect(source).toMatch(/copy\.sales\.addFailed/);
   });
 
   it("shows the display total through formatDisplayTotal and the recalculation note", () => {

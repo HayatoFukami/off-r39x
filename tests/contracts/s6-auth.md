@@ -333,9 +333,9 @@ export function describeContinuation(intent: ContinuationIntent | null): Continu
 
 ### 6.7 Logout と Header
 
-- Account menu の `copy.layout.account.logout` button → 同じ tab で `/` へ遷移して終わる（Home。Login や `/mypage` ではない）。Session は guest（`r39x.mock.session.v1`）。Cart（`r39x.cart.v1`）と mock DB は**変更しない**（FR-CRT-012。既存 Order 等を削除・取消したように見せない）。
+- Account menu の `copy.layout.account.logout` button → 同じ tab で `/` へ遷移して終わる（Home。Login や `/mypage` ではない）。Session は guest（`r39x.mock.session.v1`）。Cart（`r39x.cart.v1`）は clear（key 削除）する。mock DB は**変更しない**（Cart の clear は既存 Order 等を変えない。FR-CRT-012、SPEC-050 §15.6、AR-SES-009、UF-AUTH-004）。Logout 後の `/cart` は Empty。
 - Logout 後の Browser back で `/mypage` へ戻る → 保護 Content（`copy.mypage.heading` / `protectedMarker`）を一度も表示せず、`/account/login?continue=mypage` へ遷移する。
-- Header（S3 の挙動を変えない）: Guest は `copy.layout.account.login` Link があり、`copy.layout.account.mypage` / Account menu button が無い。Authenticated は逆。Login / Logout の直後に追加の reload なしで切り替わる。Login / Logout で Header の Cart 数は変わらない。
+- Header（S3 の挙動を変えない）: Guest は `copy.layout.account.login` Link があり、`copy.layout.account.mypage` / Account menu button が無い。Authenticated は逆。Login / Logout の直後に追加の reload なしで切り替わる。Login（Guest → 初回 Login）では Cart 数は変わらない。Logout 後は件数なしの Cart link になる。
 
 ### 6.8 no-store と共通（`/account/*`、`/mypage`）
 
@@ -378,3 +378,22 @@ export function describeContinuation(intent: ContinuationIntent | null): Continu
 10. **`?notice=password-updated`**: Password reset 完了後の通知のための、このモックの内部 query である（Secret を含まない固定値。SPEC-050 §15.5 は成功後に PG-AUTH-003 へ遷移するとだけ定める）。
 9. **pageshow**: bfcache 復帰時の再確認は `window.location.reload()` とする（再取得を確実にするため）。E2E は `PageTransitionEvent("pageshow", { persisted: true })` を dispatch して検証する（Chromium は headless で bfcache を無効にするため、実際の bfcache 復帰は再現できない）。
 11. **検証 round 1 の訂正**: `email-verification-page.tsx`（PG-AUTH-002、SPEC-050 §15.2）は入力欄を持たないため、`noValidate` / `ErrorSummary` / `aria-busy` の form 要件（TC-PG-AUTH-003-511）の対象外とする（テスト側の誤りだった。対象は login / register / password-reset の2ページ）。
+
+## 10. Issue #8 の Cart 分離回帰契約
+
+根拠は `FR-CRT-012` と `AR-SES-007` である。削除済みRule `AR-SES-010` は参照せず、既存TC ID `TC-AR-SES-010-001/002` の識別子のみ維持する。
+
+- `tests/unit/web/cart/cart-lifecycle.test.ts` は実CartStoreと実CartLifecycleを同じstorageへ接続する。Session復元、明示Login / Session成立登録、確認待ち登録、Login失敗、Logout、別Tab通知、metadata読込・保存とCart clear障害、停止状態の持続と明示回復を検証する。
+- 内部 `beginTransition` は `{ kind: "ready", provenance } | { kind: "busy" } | { kind: "blocked" }` を返し、保護境界の `expireAuthenticatedCart` は `done | busy | blocked` を返す。AuthPortは同一Browser内のCart遷移中と復旧必要状態を `cart_busy` / `cart_blocked` としてLogin / 登録画面へ伝える。
+- Web Locks対応Browserでは認証遷移をTab間で排他する。未対応Browserでは同一Tab内のメモリ状態だけを使い、認証遷移中のmetadataを永続化しない。残存metadataと有効Lockが一致しない場合は認証を開始せず、Login / 登録からCartをclearして復旧する。
+- 実行時の同期・非同期エラーでは、callback開始前の `DOMException(SecurityError)` だけをLock Manager取得不能と判定する（[Web Locks request手順](https://w3c.github.io/web-locks/#dom-lockmanager-request)）。同一Coordinatorに未完了の要求や保有Leaseがなく、metadataが取得でき、欠落または有効な非遷移metadataである場合だけメモリ制御へ切り替える。正常な競合は `busy` のまま扱い、原因不明・Abort・非active Document・不正optionsのエラーを利用不能と混同しない。メモリ制御へ切替後も各取得時にmetadataを再確認する（`TC-FR-CRT-012-013/014`）。
+- 遷移マーカーがある場合は、実行時フォールバックでその所有者を確認できないため、認証開始とメモリ制御によるclear復旧を許可しない。切替前ならWeb Locks復旧後の明示的操作でLockを取得してclearできる。切替後に新たなマーカーを検出した場合や、取得済みLeaseの要求が異常rejectして所有状態が不明になった場合は、再読込してWeb Locksを再評価するまで停止を維持する。単にマーカーを削除して停止を解除しない。
+- metadata / Cart storageが利用できない場合、Cartだけを停止する。確立済みのAuth結果は維持し、AuthGateとCartを使わないKaraoke閲覧・認証済み購入は継続する。
+- `tests/e2e/auth-gate-logout.spec.ts` の既存Issue再現は、公開Login画面と失敗Loginで旧Cartの保存値が維持され、成功時に初めてclearされる順序をassertする。
+- `tests/e2e/cart-session-isolation.spec.ts` はAuthGateとCart / Guest KaraokeのLogin handoffで、必要なCart clear失敗中は遷移しないこと、AuthGateのstorage取得不可時はLoginへ進むことを検証する。Karaoke Slotは表示を保ち、Authenticated Userの購入開始がCart停止中も進むことを検証する。ActionはAPIで初めて期限切れが分かる場合と、UIが既にGuestを認識している場合の双方を検証する。
+- 既存Cart fixtureはGuest / authenticatedの非識別由来を明示する。由来不明・legacy Cartは専用Unitで検証し、通常の購入ケースに紛れ込ませない。
+- 初回のlocalStorage取得不能からの回復成功時はPageを再読込し、AuthPortのlifecycle連携とHeader / Cartの購読を再初期化する。通常のstorage障害からの回復は同じPage内で完了する。
+- 初回取得不能はPage内で固定し、storageだけが復旧した場合や、その間にLoginしてclient navigationした場合もCartの内容・件数・編集・購入を再表示しない。明示的回復だけがstorageを再取得し、Cart clearとmetadata更新を行う。いずれかが失敗した場合は停止を維持し、成功後も再読込まではLifecycleを公開しない（`TC-FR-CRT-012-012` と `TC-FR-CRT-012-007`）。
+- 同じTabのLogin / Logoutが重なっても、それぞれのcleanupを順に完了してからSession照会・通知を公開する。認証成立後のmetadata保存失敗は、確認済みUserのMypage表示と未確認UserのEmail Verificationへの遷移を妨げず、Cartだけを停止する。
+
+これらはBrowser storage境界のUnitおよび補助UI mock suiteであり、production G8、API / DB / Provider coverageではない。mock業務データがclear前後で同一であることはBrowser suite内で比較する。runner retryは0のままとする。

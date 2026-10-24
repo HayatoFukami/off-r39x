@@ -8,6 +8,7 @@ export const KEYS = {
   session: "r39x.mock.session.v1",
   db: "r39x.mock.db.v1",
   cart: "r39x.cart.v1",
+  cartLifecycle: "r39x.cart-lifecycle.v1",
 } as const;
 
 // Fixed site name (pinned to config/site.ts SITE_NAME by unit/web/layout/site-config.test.ts).

@@ -25,8 +25,14 @@ export const goodsLine = (goodsRef: string, quantity = 1): StoredLine => ({
 });
 
 /** localStorage entries that preseed a valid Cart. */
-export function cartEntries(lines: readonly StoredLine[]): Record<string, string> {
-  return { [KEYS.cart]: JSON.stringify({ version: 1, lines }) };
+export function cartEntries(
+  lines: readonly StoredLine[],
+  provenance: "guest" | "authenticated" = "guest",
+): Record<string, string> {
+  return {
+    [KEYS.cart]: JSON.stringify({ version: 1, lines }),
+    [KEYS.cartLifecycle]: JSON.stringify({ version: 1, provenance }),
+  };
 }
 
 export const EMPTY_CART_JSON = JSON.stringify({ version: 1, lines: [] });

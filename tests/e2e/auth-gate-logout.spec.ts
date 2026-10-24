@@ -20,11 +20,14 @@ import {
   watchForProtectedText,
 } from "../harness/browser/auth.ts";
 import {
+  addButton,
   cartEntries,
   entryLine,
   goodsLine,
   headerCartLink,
+  offeringName,
   openSecondTab,
+  quantityInput,
   readCartRaw,
   writeStorage,
 } from "../harness/browser/cart.ts";
@@ -51,6 +54,60 @@ async function open(page: Page, path: string, entries: Record<string, string> = 
 }
 
 const guestStays = (page: Page) => readSession(page).then((s) => s.kind === "guest");
+
+test.describe("TC-AR-SES-010-001 an expired prior session cannot carry its Cart into another Login (FR-CRT-012)", () => {
+  test("after the prior page closes, a Guest-state Login clears the previous authenticated user's Cart without visiting a protected page", async ({
+    page,
+    context,
+  }) => {
+    await open(page, "/entry", { [KEYS.session]: authenticatedSession() });
+    const offering = page
+      .getByRole("main")
+      .getByRole("listitem")
+      .filter({
+        has: page.getByRole("heading", { name: offeringName(OFFERING.regular), exact: true }),
+      });
+    await addButton(offering).click();
+    await expect(headerCartLink(page, 1)).toBeVisible();
+    expect(await readCartRaw(page)).not.toBeNull();
+    const previousCart = await readCartRaw(page);
+    await page.close();
+
+    const reauthenticated = await context.newPage();
+    await fixClock(reauthenticated);
+    // Model an expired session discovered while the browser is away: only the auth session is gone.
+    // The Cart and its lifecycle metadata remain in this same browser storage.
+    await reauthenticated.addInitScript(
+      (key: string) => window.localStorage.removeItem(key),
+      KEYS.session,
+    );
+    await gotoHydrated(reauthenticated, "/account/login");
+    await expect(heading1(reauthenticated)).toHaveText(copy.auth.login.heading);
+    expect(await readCartRaw(reauthenticated)).toBe(previousCart);
+    await writeStorage(
+      reauthenticated,
+      KEYS.scenario,
+      authScenario({ login: "credential_failure" })[KEYS.scenario] as string,
+    );
+    await loginWith(reauthenticated, EMAIL.other);
+    await expect(alertsIn(reauthenticated)).toContainText(copy.auth.login.credentialFailure);
+    expect(await readCartRaw(reauthenticated)).toBe(previousCart);
+    await writeStorage(reauthenticated, KEYS.scenario, authScenario()[KEYS.scenario] as string);
+    await loginWith(reauthenticated, EMAIL.other);
+
+    await expect(reauthenticated).toHaveURL(/\/mypage$/);
+    expect(await readSession(reauthenticated)).toEqual({
+      kind: "authenticated",
+      email: EMAIL.other,
+      emailVerified: true,
+    });
+    await expect.poll(() => readCartRaw(reauthenticated)).toBeNull();
+    await expect(headerCartLink(reauthenticated, null)).toBeVisible();
+    await gotoHydrated(reauthenticated, "/cart");
+    await expect(mainOf(reauthenticated)).toContainText(copy.cart.empty);
+    await expect(mainOf(reauthenticated).getByRole("listitem")).toHaveCount(0);
+  });
+});
 
 test.describe("TC-AR-SES-007-301 AuthGate keeps protected content from a guest (AR-SES-007, SPEC-050 17.1)", () => {
   test("a guest opening /mypage is sent to Login with continue=mypage and never sees the protected content", async ({
@@ -119,7 +176,7 @@ test.describe("TC-AR-SES-007-301 AuthGate keeps protected content from a guest (
   });
 });
 
-test.describe("TC-PG-AUTH-003-311 Logout goes Home, keeps the Cart, and back never shows protected content (SPEC-050 15.6, AR-SES-009, FR-CRT-012)", () => {
+test.describe("TC-PG-AUTH-003-311 Logout goes Home, clears the Cart, and back never shows protected content (SPEC-050 15.6, AR-SES-009, FR-CRT-012)", () => {
   test("Logout from Mypage ends on Home (/), as a guest, and stays there", async ({ page }) => {
     await open(page, "/mypage", { [KEYS.session]: authenticatedSession() });
     await expect(heading1(page)).toHaveText(copy.mypage.heading);
@@ -159,20 +216,27 @@ test.describe("TC-PG-AUTH-003-311 Logout goes Home, keeps the Cart, and back nev
     expect(await readSession(page)).toEqual({ kind: "guest" });
   });
 
-  test("Logout from a public page also ends on Home and does not touch the Cart or the mock DB (FR-CRT-012)", async ({
+  test("Logout from a public page also ends on Home, clears the Cart and leaves the mock DB untouched (FR-CRT-012)", async ({
     page,
   }) => {
     await open(page, "/cart", {
       [KEYS.session]: authenticatedSession(),
-      ...cartEntries(CART),
+      ...cartEntries(CART, "authenticated"),
     });
     await expect(headerCartLink(page, 3)).toBeVisible();
-    const cartBefore = await readCartRaw(page);
     const dbBefore = await page.evaluate((key) => window.localStorage.getItem(key), KEYS.db);
     await logoutViaMenu(page);
     await expect(page).toHaveURL(/\/$/);
-    await expect(headerCartLink(page, 3)).toBeVisible();
-    expect(await readCartRaw(page)).toBe(cartBefore);
+    await expect.poll(() => readCartRaw(page)).toBeNull();
+    await expect(headerCartLink(page, null)).toBeVisible();
+    await expect(
+      page.getByRole("banner").getByRole("link", { name: /カート（\d+点）/ }),
+    ).toHaveCount(0);
+    expect(await page.evaluate((key) => window.localStorage.getItem(key), KEYS.db)).toBe(dbBefore);
+    await gotoHydrated(page, "/cart");
+    await expect(mainOf(page)).toContainText(copy.cart.empty);
+    await expect(mainOf(page).getByRole("listitem")).toHaveCount(0);
+    expect(await readCartRaw(page)).toBeNull();
     expect(await page.evaluate((key) => window.localStorage.getItem(key), KEYS.db)).toBe(dbBefore);
   });
 
@@ -223,10 +287,22 @@ test.describe("TC-AR-SES-007-302 the gate follows session changes made elsewhere
 });
 
 test.describe("TC-PG-AUTH-003-312 Header and Cart across Login and Logout (SPEC-050 8.2 / 8.3, 31 item 24 second half, FR-CRT-012)", () => {
-  test("Login then Logout: the Header switches both ways without a reload and the Cart is unchanged throughout", async ({
+  test("Login then Logout: the Header switches both ways without a reload; the Cart is kept on Login and cleared on Logout", async ({
     page,
   }) => {
-    await open(page, "/account/login", cartEntries(CART));
+    await open(page, "/entry");
+    const entry = page
+      .getByRole("main")
+      .getByRole("listitem")
+      .filter({
+        has: page.getByRole("heading", { name: offeringName(OFFERING.regular), exact: true }),
+      });
+    await quantityInput(entry).fill("2");
+    await addButton(entry).click();
+    await gotoHydrated(page, `/goods/${GOODS.tshirt}`);
+    await addButton(mainOf(page)).click();
+    await expect(headerCartLink(page, 3)).toBeVisible();
+    await gotoHydrated(page, "/account/login");
     const cartRaw = await readCartRaw(page);
     await expect(headerLogin(page)).toBeVisible();
     await expect(accountMenuButton(page)).toHaveCount(0);
@@ -244,8 +320,11 @@ test.describe("TC-PG-AUTH-003-312 Header and Cart across Login and Logout (SPEC-
     await expect(page).toHaveURL(/\/$/);
     await expect(headerLogin(page)).toBeVisible();
     await expect(headerMypage(page)).toHaveCount(0);
-    await expect(headerCartLink(page, 3)).toBeVisible();
-    expect(await readCartRaw(page)).toBe(cartRaw);
+    await expect.poll(() => readCartRaw(page)).toBeNull();
+    await expect(headerCartLink(page, null)).toBeVisible();
+    await expect(
+      page.getByRole("banner").getByRole("link", { name: /カート（\d+点）/ }),
+    ).toHaveCount(0);
   });
 
   test("a guest adds to the Cart, logs in from the Cart flow, and the lines are still there on /cart", async ({

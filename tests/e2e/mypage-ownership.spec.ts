@@ -43,6 +43,10 @@ type Kind = {
   listLabel: () => string;
   /** Text that exists only on the ready page of this kind (never on the Access Denied view). */
   readyOnly: () => string[];
+  /**
+   * Text that may appear while loading (the route-determined purpose title) but never in the final Access Denied view.
+   */
+  deniedNever?: () => string[];
 };
 
 const MISSING = (prefix: string): string => `${prefix}-0000-4000-8000-0000000009ff`;
@@ -91,7 +95,8 @@ const KINDS: Kind[] = [
     ],
     listHref: PATH.entryTickets,
     listLabel: () => copy.accessDenied.entryTicketsLink,
-    readyOnly: () => [copy.mypage.qr.ticketStateLabel, copy.mypage.qr.mockNotice, copy.qr.ENTRY],
+    readyOnly: () => [copy.mypage.qr.ticketStateLabel, copy.mypage.qr.mockNotice],
+    deniedNever: () => [copy.qr.ENTRY],
   },
   {
     name: "Reservation detail",
@@ -123,9 +128,9 @@ const KINDS: Kind[] = [
     readyOnly: () => [
       copy.mypage.qr.reservationStateLabel,
       copy.mypage.qr.mockNotice,
-      copy.qr.KARAOKE,
       "14:00-14:15",
     ],
+    deniedNever: () => [copy.qr.KARAOKE],
   },
   {
     name: "Goods detail",
@@ -177,7 +182,8 @@ test.describe("TC-PG-XFN-003-701 another user's reference, a missing one, a malf
         await expect(qrImages(page)).toHaveCount(0);
         const text = await mainOf(page).innerText();
         expect(text, where).not.toMatch(/他の|存在|所有/);
-        for (const needle of [...kind.readyOnly(), ...stateLabels]) {
+        const absent = [...kind.readyOnly(), ...(kind.deniedNever?.() ?? []), ...stateLabels];
+        for (const needle of absent) {
           expect(text, `${where}: ${needle}`).not.toContain(needle);
         }
         texts.push(text);

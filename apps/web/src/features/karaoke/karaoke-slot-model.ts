@@ -9,8 +9,9 @@ import { presentSlot } from "../../presentation/state-mapping/karaoke";
 import { presentKaraokeSaleStatus } from "../../presentation/state-mapping/karaoke-sale-status";
 import type { Tone } from "../../presentation/state-mapping/order";
 
-// View model for PG-KRK-003 (SPEC-050 13.3). The port result decides purchasability; the flag from the
-// port is double-checked here (INV-010-04) and a slot state always wins over the sale status.
+// View model for PG-KRK-003 (SPEC-050 13.3). The port result decides purchasability. The port flag is part
+// of the condition (INV-010-04): an inconsistent flag is not purchasable. A slot state wins over the sale
+// status, and the sale status wins over the flag.
 
 export type KaraokeSlotModel =
   | { kind: "loading" }
@@ -58,6 +59,15 @@ function describeState(data: KaraokeSlotDetail): Status {
       tone: sale.tone,
       purchasable: false,
       disabledReason: reasons.NOT_ON_SALE,
+    };
+  }
+  if (data.purchasable !== true) {
+    return {
+      stateLabel: copy.karaoke.slotDetail.notPurchasableLabel,
+      description: copy.karaoke.slotDetail.notPurchasableDescription,
+      tone: "neutral",
+      purchasable: false,
+      disabledReason: reasons.NOT_PURCHASABLE,
     };
   }
   return {

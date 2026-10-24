@@ -456,7 +456,7 @@ export function buildSeed(now: UtcInstant): DbState;
 7. それ以外 → `ON_SALE`、`maxSelectableQuantity = min(remaining, perAccountLimit - viewerUsed)`（`perAccountLimit` が null なら `remaining`）。mock は `null` を返さない。
 
 - 一覧（`listEntryOfferings` / `listGoods`）は `quantity = 1` で評価する。guest の `viewerUsed` は 0。
-- `resolveCartLines` と `startCartPurchase` は同じ関数を、その line の `quantity` で評価する。`ON_SALE` 以外が拒否理由になり、理由は availability の `kind` と同名（`PURCHASE_LIMIT_EXCEEDED` など）。非公開・存在しない ref は `NOT_PUBLIC`（resolve では `not_public`）。
+- `resolveCartLines` と `startCartPurchase` は同じ関数を、その line の `quantity` で評価する。`resolveCartLines` は line ごとに独立して評価し、同じ ref の重複 line を集計しない（重複を渡すと各 line は個別には `ON_SALE` と表示され得るが、購入開始で拒否される）。`startCartPurchase` は §11.1-5 の逐次評価で、draft の残数と使用数を使う。`ON_SALE` 以外が拒否理由になり、理由は availability の `kind` と同名（`PURCHASE_LIMIT_EXCEEDED` など）。非公開・存在しない ref は `NOT_PUBLIC`（resolve では `not_public`）。
 - `remaining` は Order 作成時に数量分だけ減り（Allocation / Inventory の確保）、`PAYMENT_FAILED` / `CANCELED` / `EXPIRED` へ遷移した Order の数量分が戻る。`CONFIRMED` では戻さない。
 
 ## 10. 認証 / 認可の共通規則（`createMockApi`）
@@ -479,9 +479,9 @@ session は `SESSION_STORAGE_KEY` から読む。
 2. `scenario.cart.purchaseStart === "unavailable"` → `{ kind: "unavailable" }`（状態を変えない）。
 3. `lines` が空、または quantity が 1 以上の整数でない場合は **Promise を reject**（`RangeError`）する。UI は `canProceed` で防ぐ。
 4. 同じ session の user・同じ `idempotencyKey` で、以前に `created` を返していれば、**同じ結果を返し**、新しい Order を作らず、`idGenerator` も呼ばない（内容が違っても最初の結果を返す）。`rejected` は記録しない（状態が変われば再評価する）。
-5. 各 line を §9 で評価する。さらに scenario `cart.purchaseStart`: `reject_one` なら**先頭の line**を `ALLOCATION_CONFLICT` で拒否に加える、`limit` なら先頭の line を `PURCHASE_LIMIT_EXCEEDED` で拒否に加える（自然な拒否が先頭にもある場合は自然な理由を優先する）。
-6. 1 件でも拒否があれば `{ kind: "rejected", rejections }` を返す。`rejections` は**拒否された line だけ**を、入力順に `{ lineKey, reason }` で並べる（`lineKey` は `cartLineKey`）。**Order、Allocation（remaining）、idempotency 記録を含む DB の状態を一切変えない**（`load()` の JSON が呼び出し前後で一致する）。BR-ORD-014。
-7. すべて成立したら Order を 1 件作る: `purpose = decidePurpose(...)`、`state = "PREPARED"`、`createdAt = clock.now()`、明細は現在の単価の Snapshot、`total` は小計の合計、各 line の `remaining` を数量分減らす。`{ kind: "created", orderRef, includedLineKeys }`（`includedLineKeys` は入力順の全 lineKey）。`orderRef` は `idGenerator()` の値。
+5. 各 line を**入力順**に §9 で評価する（変更前の同じ state に対する独立評価ではない）。`cartLineKey` が同じ line ごとに、それより前に**受理された** line の数量合計 `taken` を持ち、`remaining - taken` と（Entry のみ）`viewerUsed + taken` で §9 を評価する。受理された（`ON_SALE` と判定された）line だけが `taken` を増やす。このため、重複 line の合計が在庫や `perAccountLimit` を超えると、超えた側の line が §9 の自然な結果（`SOLD_OUT` / `INSUFFICIENT_QUANTITY` / `PURCHASE_LIMIT_EXCEEDED`）で拒否される。前に受理された同じ key の line は `rejections` に含めない。さらに scenario `cart.purchaseStart`: `reject_one` なら**先頭の line**を `ALLOCATION_CONFLICT` で拒否に加える、`limit` なら先頭の line を `PURCHASE_LIMIT_EXCEEDED` で拒否に加える（自然な拒否が先頭にもある場合は自然な理由を優先する）。scenario の上書きは自然な評価の後に行い、`taken` は戻さない。
+6. 1 件でも拒否があれば `{ kind: "rejected", rejections }` を返す。`rejections` は**拒否された line だけ**を、入力順に `{ lineKey, reason }` で並べる（`lineKey` は `cartLineKey`）。**Order、Allocation（remaining）、idempotency 記録を含む DB の状態を一切変えない**（`load()` の JSON が呼び出し前後で一致し、`idGenerator` も呼ばない）。重複 line による在庫・上限超過でも**例外を投げず**この `rejected` を返す。BR-ORD-014、BR-ORD-017。
+7. すべて成立したら Order を 1 件作る: `purpose = decidePurpose(...)`、`state = "PREPARED"`、`createdAt = clock.now()`、明細は現在の単価の Snapshot、`total` は小計の合計、各 line の `remaining` を数量分減らす。`{ kind: "created", orderRef, includedLineKeys }`（`includedLineKeys` は重複を含む入力順の全 lineKey）。`orderRef` は `idGenerator()` の値。重複 line も line ごとに明細（Goods は goods item も）を 1 件ずつ作る。`remaining` は合計分だけ減り、0 未満にならない。
 
 ### 11.2 `startKaraokePurchase(slotRef, { idempotencyKey })`
 
@@ -493,7 +493,7 @@ session は `SESSION_STORAGE_KEY` から読む。
 ### 11.3 `startCheckout(orderRef, { idempotencyKey })`
 
 1. latency → session 判定（guest / 未確認は `auth_required`）→ 所有権（他者・不存在は `state_conflict`）。
-2. 以前に同じ user・同じ `idempotencyKey` で `redirect` を返していれば、同じ結果を返す（状態を再遷移させない）。
+2. 以前に同じ user・同じ `idempotencyKey` で `redirect` を返していれば、同じ結果（最初の `url`）を返す（状態を再遷移させず、idempotency 記録も増やさず、`idGenerator` も呼ばない）。replay は **user + key だけ**で判定し、`orderRef` は比較しない（別の Order に同じ key を使っても最初の Order の redirect が返り、その別の Order は `PREPARED` のまま）。実 API（SPEC-110 §18、API-CHK-001）では、同じ key で別の Order（fingerprint が違う）は `409 IDEMPOTENCY_KEY_REUSED` になるが、mock はこれを単純化して最初の結果を返す（`CheckoutStart` にこの結果の kind はない）。mock は API contract の検証根拠ではない（DEV-WEB-010）。実 api-client の実装時は SPEC-110 §18 / API-CHK-001 に従って 409 を返すこと。
 3. Order が `PREPARED` でなければ `{ kind: "state_conflict" }`。
 4. scenario `checkout === "start_failed"` → `{ kind: "start_failed" }`。Order は `PREPARED` のまま（**同じ Order を再利用**して、scenario を `ok` に戻した後の再試行（新しい `idempotencyKey`）が成功する。新しい Order は作られない）。
 5. scenario `checkout === "opportunity_expired"`、または Order が Karaoke で `karaokeHold === "expire_before_checkout"` → Order を `EXPIRED` にし、確保（remaining / slot の HELD）を解放して `{ kind: "opportunity_expired" }`。
@@ -571,8 +571,9 @@ export function createMockAuth(deps: MockAuthDeps): AuthPort;
 | `tests/unit/web/mock/purpose.test.ts`, `karaoke-buckets.test.ts`, `latency.test.ts` | §4, §6 |
 | `tests/unit/web/mock/public-api.test.ts`（seed の公開データも含む） | §8, §9, §13 |
 | `tests/unit/web/mock/cart-purchase.test.ts` | §9, §11.1 |
+| `tests/unit/web/mock/review-gaps.test.ts` | §11.1（重複 line）, 静的走査 |
 | `tests/unit/web/mock/karaoke-purchase.test.ts` | §11.2 |
-| `tests/unit/web/mock/checkout-payment.test.ts` | §11.3, §11.4 |
+| `tests/unit/web/mock/checkout-payment.test.ts` | §11.3（key のみの replay を含む）, §11.4 |
 | `tests/unit/web/mock/self-api.test.ts` | §10, §12 |
 | `tests/unit/web/mock/mock-auth.test.ts` | §14 |
 | `tests/unit/web/ports/ports.test.ts` | §1, §2, §3 の型、`zod` 依存、Hold TTL の不在 |
@@ -586,3 +587,5 @@ export function createMockAuth(deps: MockAuthDeps): AuthPort;
 5. `karaokeSales` を scenario に追加した（PG-KRK-001 の販売前 / 終了 / 停止、`not_on_sale` を再現するため）。設計書 §8 の一覧外の追加 switch。
 6. Purchase Limit の閲覧者別可否・`notice`・`ENTRY_GOODS_PURCHASE` の port は Operation ID が無い（UCR-110-001）。
 7. `KaraokeSales` には `usage` / 整備時間の数値を持たせない（Hold TTL との混同を避け、時間帯は slot の `usageStart` / `usageEnd` から導く）。
+8. 同じ Goods / Entry Offering の重複 line（Cart 契約で許容）は、入力順に draft へ割り当てて判定する（`taken`）。1 件でも不成立なら全体を破棄する（All-or-Nothing、BR-ORD-014 / BR-ORD-017）。Order 明細は line ごとに 1 件のまま集計しない。
+9. Checkout の idempotency replay は user + key のみで判定する（`orderRef` を含めない）。SPEC-110 §18 の `409 IDEMPOTENCY_KEY_REUSED` との差は mock の意図的な単純化で、実 API の検証根拠にしない。

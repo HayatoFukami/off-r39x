@@ -52,6 +52,11 @@ describe("TC-PG-PUB-001-243 S10 structure: Header menu, Floating Ticket Button, 
     expect(button).toMatch(/CTA_HREF|["']\/entry["']/);
   });
 
+  it("guards the site name scroll with isPlainPrimaryClick so modified and non-primary clicks keep the default link behaviour", () => {
+    const link = read("src/presentation/layout/site-name-link.tsx");
+    expect(link).toMatch(/isPlainPrimaryClick/);
+  });
+
   it("wires the Floating Ticket Button into the root layout and enables viewport-fit=cover", () => {
     const layout = read("app/layout.tsx");
     expect(layout).toMatch(/FloatingTicket/);
