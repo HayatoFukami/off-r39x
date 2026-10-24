@@ -1,8 +1,10 @@
 # データベース ER 図ガイド（初心者向け）
 
-- 対象: off r39'x in 大阪らへん2027 のBusiness Database（Supabase PostgreSQL の `app` スキーマ）
-- 根拠: `SPEC-100 Database Design`（version 1.0.1、`provisional`）。HEAD 時点の本文に基づく。
+- 対象: off r39'x in 大阪らへん2027 のBusiness Database（Neon PostgreSQL の `app` スキーマ）
+- 根拠: `SPEC-100 Database Design`（version 1.0.2、`provisional`）の現行本文。`SPEC-100` が未反映の変更要求（UCR）は、実装の根拠にしないため、図には含めない（§8）。
 - 位置づけ: **理解のための解説資料**であり、正式仕様ではない。table / column / 制約の正は常に `SPEC-100` である。食い違いがあれば `SPEC-100` を優先する。
+- Neon への変更: DB の提供元は Supabase から **Neon** に変更する方針である。ただし `SPEC-010` と `SPEC-100` の現行本文は Supabase PostgreSQL / Supabase Auth のままで、仕様への反映は済んでいない。本書は仕様書を変更せず、提供元の呼称だけを Neon に読み替えている。テーブル構成・列・制約は現行の `SPEC-100` のままで、変えていない。
+- 認証基盤: **Neon Auth** を正とする。Better Auth を自前運用する場合の違いは §8 の「認証基盤ごとの違い」にまとめた（`d1-migration-review.md` §6、`fg-stack-summary.md`）。
 - 図の簡略化: 読みやすさのため、図には主要なカラムだけを載せている。`created_at` / `updated_at`、`public_ref` などの共通カラムは §3 でまとめて説明し、図では省略する（省略した図には明記する）。
 
 ## 目次
@@ -99,7 +101,7 @@ erDiagram
 
 | ルール | 内容 | 理由 |
 |---|---|---|
-| スキーマ | 業務テーブルは `app` スキーマに置く。`public` スキーマには置かない | Supabase が管理する領域と混ざらないようにするため |
+| スキーマ | 業務テーブルは `app` スキーマに置く。`public` スキーマには置かない | Neon Auth が使う `neon_auth` スキーマなど、他が管理する領域と混ざらないようにするため |
 | 主キー `id` | `bigint` の自動採番（`GENERATED ALWAYS AS IDENTITY`）。通常は更新しない | 内部の結び付けに使う番号 |
 | 公開用ID `public_ref` | `uuid`（ランダムな識別子）。主要なテーブルだけが持つ。重複不可 | URLやAPIでブラウザへ渡す用。連番の `id` は外へ出さない。**知っているだけでは権限にならない**（DB-ID-001） |
 | 日時 | `timestamptz`（タイムゾーン付き）。DB接続はUTC、表示のときに `Asia/Tokyo` へ変換 | 日時のずれを防ぐ |
@@ -234,7 +236,7 @@ erDiagram
     business_profiles {
         bigint id PK
         uuid public_ref UK
-        uuid auth_subject UK "Supabase Authのユーザー識別子"
+        uuid auth_subject UK "Neon Authのユーザー識別子"
     }
     role_assignments {
         bigint id PK
@@ -251,7 +253,7 @@ erDiagram
 
 | テーブル | 役割 | ポイント |
 |---|---|---|
-| `business_profiles` | Supabase Authのログイン情報と、このシステムの「お客さん」を1対1で結び付ける | パスワード等は**一切持たない**（認証はSupabase Authの担当）。`auth_subject` に重複不可の制約があり、同じログイン者から2つのProfileができない。氏名や電話番号などの列は、現行仕様では**意図的に持たない** |
+| `business_profiles` | Neon Authのログイン情報と、このシステムの「お客さん」を1対1で結び付ける | パスワード等は**一切持たない**（認証はNeon Authの担当）。`auth_subject` に重複不可の制約があり、同じログイン者から2つのProfileができない。氏名や電話番号などの列は、現行仕様では**意図的に持たない** |
 | `role_assignments` | 「誰が、いつ、どの役割（スタッフ / 管理者）を持ったか」の履歴 | 取り消しても行は消さず、`state` を `REVOKED` にする。同じ人に同じ役割が**有効（ACTIVE）なまま2件**できないよう、部分一意制約を使う（§6参照） |
 
 - `business_profiles` から `role_assignments` への線が2本あるのは、同じ表が「役割を持つ人」「付与した人」「取り消した人」の3通りで `business_profiles` を指しているため。
@@ -389,7 +391,8 @@ erDiagram
 
 #### orders（注文）と order_items（注文の明細）
 
-- **1つの注文は、1つの目的（purpose）だけ**を持つ。入場券とグッズを同時に買うことはできず、別々の注文になる。
+- **1つの注文は、1つの目的（purpose）だけ**を持つ。現行の `SPEC-100` は目的を上の3値に限り、入場券とグッズを同じ注文にまとめる形（複合Order、purpose は `ENTRY_GOODS_PURCHASE`）を、まだDBの制約として定義していない。複合Order自体は `SPEC-030` §11.2・§11.9 が定めており、DB側は**未反映の変更要求 `UCR-100-003`** で検討中である。反映されるまで、DBの `CHECK` 制約は複合Orderを拒否する。
+- カラオケは、複合Orderにしない。1つの注文には、1つの排他的な枠の購入だけが入る（`SPEC-030` `BR-ORD-013`）。
 - 注文の `state`（状態）は次の7種類:
 
 | state | 意味 |
@@ -804,7 +807,7 @@ erDiagram
 
 | 手順 | 何が起きるか | 作成・更新される表 |
 |---|---|---|
-| 1 | Aさんがログイン。初回なら、Supabase Authのユーザー識別子と結び付く Profile が作られる | `business_profiles`（`auth_subject` が重複不可なので、同時リクエストでも1件） |
+| 1 | Aさんがログイン。初回なら、Neon Authのユーザー識別子と結び付く Profile が作られる | `business_profiles`（`auth_subject` が重複不可なので、同時リクエストでも1件） |
 | 2 | 購入を開始（2枚）。1つのトランザクションで、枠の確認と同時に在庫を確保 | `orders`（`PREPARED`）、`order_items`（数量2）、`entry_sales_allocations`（`HELD`）、`entry_ticket_offerings.held_quantity` +2 |
 | 3 | Stripeの決済画面を発行 | `checkout_attempts`、`payment_bindings`、`orders`（`AWAITING_PAYMENT`） |
 | 4 | Aさんが支払う。Stripeから Webhook が届く | `webhook_receipts`（`RECEIVED`） |
@@ -820,14 +823,31 @@ erDiagram
 
 | 項目 | 内容 |
 |---|---|
-| ログイン情報（パスワード等） | **Business Database には保存しない**。Supabase Auth が管理する。`business_profiles.auth_subject` は `auth.users` への外部キーも張らない（認証側の削除が業務履歴に波及しないため） |
+| ログイン情報（パスワード等） | **`app` スキーマ（Business Database）には保存しない**。Neon Auth が管理する。`business_profiles.auth_subject` は Neon Auth のユーザー表への外部キーも張らない（認証側の削除が業務履歴に波及しないため）。Neon Auth のユーザーとセッションは、同じ Neon DB の別スキーマ `neon_auth` に入る。このため、業務DBに資格情報を置かないルール（`AR-AUTH-011`、`SEC-AUTH-006`）との関係は、解釈または分離の方法を決める必要がある（`d1-migration-review.md` §6） |
 | QRの平文 | 保存しない。検索用ハッシュと暗号化済みデータのみ |
 | Stripeの生Webhook本文 | 保存しない。必要最小限の写しだけを `canonical_snapshot` に持つ |
 | 氏名・電話・住所 | 現行の `business_profiles` には**ない**。表示名（Display name）は、**未反映の変更要求 `UCR-100-001`** で検討中。正式な仕様に反映されるまで、実装の根拠にしない |
+| 協賛ロゴ（Sponsor Logo）の表 | 現行の `SPEC-100` には**ない**（`SPEC-030` §8.4 は定義済み）。**未反映の変更要求 `UCR-100-002`** で検討中。本書の30テーブルにも含めない |
+| 入場券とグッズの複合Order | 現行の `SPEC-100` の `orders.purpose` は3値で、複合Orderは拒否される（§5.4）。**未反映の変更要求 `UCR-100-003`** で検討中 |
 | 汎用の監査ログ表 | `SPEC-100` では作らない（`SPEC-160` が後から追加する） |
 | PostgreSQLのenum型 | 使わない。`text` + CHECK で表す |
 | 保留中のindex | `UCR-130-005`（運用向けの検索index）は保留中。先回りして追加しない |
-| 実装状況 | 現在のリポジトリは仕様書のみで、migration / スキーマのコードはまだない。この図は**計画上の設計**である |
+| 実装状況 | UI mock（`apps/web`）はあるが、migration / スキーマのコードはまだない（`packages/db` は空）。この図は**計画上の設計**である |
+
+### 認証基盤ごとの違い
+
+認証は **Neon Auth** を正とする。Better Auth を自前運用する場合に変わる点は次のとおり。`business_profiles` を含む `app` スキーマの構成は、どちらでも変わらない。
+
+| 項目 | Neon Auth（正） | Better Auth（自前運用） |
+|---|---|---|
+| 位置づけ | Better Auth のマネージド版 | OSS の Better Auth を Hono にマウントして自分で運用する |
+| ユーザー・セッションの置き場 | 同じ Neon DB の `neon_auth` スキーマ | 自分で決める。パスワードは `account` テーブルに入るため、業務DBとは別DBまたは別スキーマ・別ロールに分ける |
+| `business_profiles` との関係 | `auth_subject` がユーザーの識別子を指す。外部キーは張らない | 同じ。`auth_subject` が Better Auth のユーザーの識別子を指し、外部キーは張らない |
+| `auth_subject` の型 | 現行仕様は `uuid`。Neon Auth のユーザー識別子の型は未確認 | 同じく、型の確認が必要 |
+| 運用責任 | 提供元 | 自分 |
+| 業務DBへの影響 | `neon_auth` スキーマが同じDBに入る点の解釈または分離が必要 | 認証用のテーブルを別に用意する分、設計と運用が増える |
+
+どちらを選んでも、`SPEC-060` の認証要件（JWT の寿命、パスワード長など）を満たせるかの確認が残っている。詳細は `d1-migration-review.md` §6.3・§6.5 を参照。
 
 ---
 
@@ -846,7 +866,7 @@ erDiagram
 | Partial unique（部分一意制約） | 条件を満たす行の間だけで、重複を禁止する制約 |
 | Public Reference（`public_ref`） | ブラウザやAPIに渡す、推測されにくい公開用のID |
 | Snapshot（スナップショット） | 購入や確定の時点の値を、写して保存したもの |
-| System of Record | そのデータの「正本」を持つ場所。認証はSupabase Auth、業務データはPostgreSQL、決済の確定はStripe |
+| System of Record | そのデータの「正本」を持つ場所。認証はNeon Auth、業務データはNeon PostgreSQL、決済の確定はStripe |
 | Webhook | Stripeなどの外部サービスが、出来事（支払い完了など）をこちらへ知らせてくる通知 |
 
 ---
