@@ -6966,7 +6966,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "Mock mode; localStorage Cart reads forced to fail",
+      "preconditions": "Mock mode; Guest; no Cart lifecycle metadata (storage not seeded); localStorage Cart reads forced to fail",
       "fixture_ids": [],
       "clock_instant": "2027-03-01T03:00:00Z",
       "concurrency_seed": null,

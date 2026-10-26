@@ -101,7 +101,7 @@ async function cartKeyStored(page: Page): Promise<boolean> {
   return page.evaluate((key: string) => Object.keys(window.localStorage).includes(key), KEYS.cart);
 }
 
-test.describe("TC-PG-CRT-001-542 a Cart store that cannot be read is an unknown state, never an empty Cart, and stops Cart additions (SPEC-050 9.2, 12.1, 14A.1, 21, FR-CRT-012)", () => {
+test.describe("TC-PG-CRT-001-542 a Cart store that cannot be read (Guest, no Cart lifecycle metadata) is an unknown state, never an empty Cart, and stops Cart additions (SPEC-050 9.2, 12.1, 14A.1, 21, FR-CRT-012)", () => {
   test("the Cart page reports a failure, shows no empty wording, no rows and no proceed button", async ({
     page,
   }) => {
