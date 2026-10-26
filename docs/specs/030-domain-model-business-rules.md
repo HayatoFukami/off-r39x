@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-030
 title: Domain Model and Business Rules
-version: 2.0.0
+version: 2.1.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -315,12 +315,14 @@ stateDiagram-v2
 `Sponsor Logo` は少なくとも以下の論理情報を持つ。
 
 - 表示名称（画像の代替テキストを兼ねる）
-- 画像への参照
+- 外部HTTPS画像URL（画像アップロードは提供しない）
 - リンク先（任意。運営が設定した公開可能な外部URL）
 - 表示順
 - Publication State
 
 画像そのものの制作・取得元は運営が用意する素材であり、本書は権利関係や画像形式を定義しない。Sponsor Logoの追加・変更・公開状態の変更は、コード変更を前提とせず運営が行える。
+
+画像URLは環境設定で許可されたexact HTTPS originに限定する。任意リンクもHTTPSのみとし、安全なURLの検証は `SPEC-140`、許可originとCSPの配置は `SPEC-180` が所有する。APIは画像・リンク先を取得／proxyしない。公開順は `sort_order`、同値時はPublic Reference昇順とする。通常運用でhard deleteせずPublication Stateで公開を制御する。
 
 ## 9. User / Business Profile / Ownership Domain
 
@@ -341,6 +343,8 @@ Password CredentialやNeon Auth内部のCredential状態をBusiness Profileへ�
 ### 9.2 Business ProfileのOwner
 
 Business ProfileのOwnerは対応するAuth Identity本人である。本人向けProfile参照・更新では、Requestで指定された任意のuser identifierではなく、Server-sideで検証したAuth Identityから対象Business Profileを解決する。
+
+本人編集可能な項目は任意のDisplay nameとする。保存前にECMAScript `String.prototype.trim()` 相当で前後空白を除去し、空文字は未設定（NULL）へ正規化する。設定値は1〜80 Unicode code pointsで、内部の制御文字（Unicode General Category `Cc`）を許可しない。Neon Authの氏名とは独立し、メール・氏名等から推測して補完しない。未設定でも登録・購入を妨げず、画面では個人情報を使わない「未設定」を表示する。型・CHECKは `SPEC-100`、PATCHの省略／nullの意味は `SPEC-110` が所有する。
 
 ### 9.3 Customerの導出
 
@@ -1420,19 +1424,19 @@ Supports: `INV-010-01`, `INV-010-07`, `INV-010-10`
 
 下流仕様は、本書のState名・Business Rule ID・Domain Invariantを参照し、同じ概念へ別のCanonical state名を無断で導入してはならない。
 
-### 26.1 SPEC-030 1.1.0により下流仕様で整合が必要な事項
+### 26.1 複合Order・Sponsor Logo・Profileの下流接続
 
-以下の下流仕様は、本改訂時点ではOrder Purposeを3値として記述しており、本書の4値と整合していない。該当仕様は、本書を正として改訂する。改訂が完了するまでの間、複合Orderと協賛ロゴに関しては本書の記述を正とし、下流の旧記述を根拠に複合Orderを禁止または未定義として扱ってはならない。
+本節の下流整合事項は各Canonical Ownerの本文へ反映する。UCR提案ではなく、次のOwnerの現行契約を参照する。APIの追加で既存単品購入Operationを廃止しない。
 
 | SPEC | 整合が必要な事項 |
 |---|---|
-| SPEC-100 | `orders.purpose` の許可値とPurposeとpurchase sourceの組合せ制約、複合Orderの購入時Transaction、Sponsor Logoの物理設計（table、表示名称、画像参照、リンク先、表示順、Publication State、公開取得用のIndex、通常運用でのhard delete禁止。§8.4、`BR-EVT-005`） |
-| SPEC-110 | Cartからの購入開始API（複数ItemのRequest、All-or-Nothingの結果、不成立Itemの識別）、Order Purposeの許可値、Sponsor Logoの公開取得 |
-| SPEC-120 | 複合Orderの確認通知（Entry TicketとGoodsの両方を含む場合の通知内容） |
-| SPEC-130 | Sponsor Logoの管理画面と操作、Order一覧・詳細での複合Order表示 |
-| SPEC-170 / SPEC-200 | 複合Orderの確定・解放、Cart購入開始のAll-or-Nothing、Sponsor Logoの公開制御に対するTest CaseとAcceptance |
+| SPEC-100 | 4値Purpose、明細sourceとAllocation／TicketのFK、複合購入・確定・解放のTransaction、Sponsor Logo、任意Display name |
+| SPEC-110 | `API-PUR-CART-001`（単品互換API維持）、`API-PUR-ELG-001`（本人向け参照のみの一括購入可否）、4値Order応答、Logo公開・管理API、Profile更新、Order通知サマリー |
+| SPEC-120 | 複合専用の `ENTRY_GOODS_PURCHASE_CONFIRMED` を1件生成し、Entry／Goods双方を1通で通知。所有者向け通知サマリーの射影 |
+| SPEC-130 | 外部HTTPS画像URL方式のSponsor Logo管理、4値Purposeの注文表示 |
+| SPEC-170 / SPEC-200 | 全Current Canonical `DI-030-*` の100%追跡、複合Orderの確保・確定・解放、Logo公開制御等の個別CaseとAcceptance |
 
-SPEC-070のPAY-ORD-004等のPurpose記述は、本改訂と同時にSPEC-070 1.1.0で最小限整合させる。
+SPEC-070の `PAY-ORD-004` と `PAY-CFM-012〜014` は同じ4値Purpose／複合確定契約を維持する。
 
 ## 27. 受入条件
 

@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-060
 title: Authentication and Authorization
-version: 2.0.0
+version: 2.1.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -654,14 +654,14 @@ Role Assignment対象は:
 
 | Capability | 意味 |
 |---|---|
-| `public.read` | 公開Event / Announcement / sales情報を閲覧 |
+| `public.read` | 公開Event / Announcement / sales情報 / PUBLISHED Sponsor Logoを閲覧 |
 | `profile.self.read` | 自身のBusiness Profile参照 |
 | `profile.self.update` | 自身の更新可能Profile項目を更新 |
 | `orders.self.read` | 自身のOrder参照 |
 | `tickets.self.read` | 自身のEntry Ticket参照 / QR到達 |
 | `karaoke.self.read` | 自身のReservation / Karaoke Ticket参照 / QR到達 |
 | `goods.self.read` | 自身のGoods購入 / Handoff参照 |
-| `purchase.start` | Cartからの購入手続き開始（Entry Ticket / Goods）、Karaokeの購入開始 |
+| `purchase.start` | Cartからの購入手続き開始（Entry Ticket / Goods）、Karaokeの購入開始、および本人の購入条件の参照専用事前判定 |
 | `entry_checkin.execute` | Entry QR検証と通常Check-in実行 |
 | `karaoke_checkin.execute` | Karaoke QR検証と通常Check-in実行 |
 | `goods_handoff.execute` | Goods Handoff対象確認と通常完了 |
@@ -673,7 +673,7 @@ Role Assignment対象は:
 | `karaoke_reservations.manage.read` | Karaoke Reservation運用参照 |
 | `goods_inventory.manage` | Goods公開情報 / 販売状態 / Inventory管理 |
 | `goods_handoff.manage` | AdministratorとしてGoods Handoff状態を確認・許可された更新を実行 |
-| `public_content.manage` | Event / FAQ / Announcement等の運営公開情報管理 |
+| `public_content.manage` | Event / FAQ / Announcement / Sponsor Logoの運営公開情報管理 |
 | `role_assignment.manage` | Staff / Administrator Role Assignment管理 |
 | `recovery.review` | Recovery / consistency review対象の参照 |
 | `recovery.exception.execute` | `SPEC-150` 等で明示された特定Recovery operationの実行。汎用Invariant bypassではない |
@@ -711,6 +711,8 @@ Role Assignment対象は:
 ### 24.1 Matrix解釈
 
 **AR-ROLE-011:** Staff / Administratorも一人のAuthenticated Userとして自分自身のBusiness DataをOwnership Pathで利用できる。Operational Roleが自己所有権を上書きするわけではない。
+
+`API-PUR-ELG-001` はverified emailと既存Business Profileを要求し、本人だけのPurchase Limitを評価する。新CapabilityやRoleは追加しない。`purchase.start` を持っていてもこの参照OperationでOrder／Allocation／Hold／Profileを作成・更新してはならず、事前判定を後続購入の認可・在庫保証として再利用しない。Display nameは任意であり、未設定を認証・購入の追加条件にしない。
 
 **AR-ROLE-012:** `ADMINISTRATOR` は `STAFF` を継承しない。Check-inを行うAdministratorは `STAFF` Roleも必要とする。
 
