@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-030
 title: Domain Model and Business Rules
-version: 1.1.1
+version: 2.1.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -70,7 +70,7 @@ related_specs:
 - `SPEC-010 System Overview`: Actor、System Boundary、System of Record、主要Data Flow、Security Principle、`INV-010-*`
 - `SPEC-020 Functional Requirements`: 完成システムの `FR-*`
 
-本書のDomain Entityは、Supabase PostgreSQLがBusiness Databaseであること、および業務状態のSystem of Recordであることを前提とする。一方、Supabase Auth IdentityのCredential状態はSupabase Auth、外部決済処理の権威ある結果はStripeが保持するという上流の責務分離を維持する。
+本書のDomain Entityは、Neon PostgreSQLがBusiness Databaseであること、および業務状態のSystem of Recordであることを前提とする。一方、Neon Auth IdentityのCredential状態はNeon Auth、外部決済処理の権威ある結果はStripeが保持するという上流の責務分離を維持する。
 
 ## 4. Canonical Domain Terms
 
@@ -78,7 +78,7 @@ related_specs:
 
 | Term | Canonicalな意味 |
 |---|---|
-| Business Profile | Supabase Auth Identityと1対1で対応し、業務データ上の本人・所有者を表すEntity |
+| Business Profile | Neon Auth Identityと1対1で対応し、業務データ上の本人・所有者を表すEntity |
 | Event | 本Webシステムが扱う対象イベントの業務上のルート情報 |
 | Entry Ticket Offering | Entry Ticketとして販売する種別と販売条件を表すConfiguration Entity |
 | Sales Period | 新規購入を許可する日時範囲。開始を含み終了を含まない半開区間 |
@@ -315,32 +315,36 @@ stateDiagram-v2
 `Sponsor Logo` は少なくとも以下の論理情報を持つ。
 
 - 表示名称（画像の代替テキストを兼ねる）
-- 画像への参照
+- 外部HTTPS画像URL（画像アップロードは提供しない）
 - リンク先（任意。運営が設定した公開可能な外部URL）
 - 表示順
 - Publication State
 
 画像そのものの制作・取得元は運営が用意する素材であり、本書は権利関係や画像形式を定義しない。Sponsor Logoの追加・変更・公開状態の変更は、コード変更を前提とせず運営が行える。
 
+画像URLは環境設定で許可されたexact HTTPS originに限定する。任意リンクもHTTPSのみとし、安全なURLの検証は `SPEC-140`、許可originとCSPの配置は `SPEC-180` が所有する。APIは画像・リンク先を取得／proxyしない。公開順は `sort_order`、同値時はPublic Reference昇順とする。通常運用でhard deleteせずPublication Stateで公開を制御する。
+
 ## 9. User / Business Profile / Ownership Domain
 
 ### 9.1 Auth IdentityとBusiness Profile
 
-Supabase Auth Identityは認証IdentityのSystem of Recordであり、Business ProfileはBusiness Databaseに存在する業務上の本人Entityである。
+Neon Auth Identityは認証IdentityのSystem of Recordであり、Business ProfileはBusiness Databaseに存在する業務上の本人Entityである。
 
 Cardinalityは以下とする。
 
 ```text
-Supabase Auth Identity 1 ─── 1 Business Profile
+Neon Auth Identity 1 ─── 1 Business Profile
 ```
 
 認証済みIdentityが本システムの業務機能を利用する場合、対応するBusiness Profileが一意に存在しなければならない。同一Auth Identityに複数のBusiness Profileを対応させてはならず、1つのBusiness Profileを複数Auth Identityで共有してはならない。
 
-Password CredentialやSupabase Auth内部のCredential状態をBusiness Profileへ保存しない。
+Password CredentialやNeon Auth内部のCredential状態をBusiness Profileへ保存しない。
 
 ### 9.2 Business ProfileのOwner
 
 Business ProfileのOwnerは対応するAuth Identity本人である。本人向けProfile参照・更新では、Requestで指定された任意のuser identifierではなく、Server-sideで検証したAuth Identityから対象Business Profileを解決する。
+
+本人編集可能な項目は任意のDisplay nameとする。保存前にECMAScript `String.prototype.trim()` 相当で前後空白を除去し、空文字は未設定（NULL）へ正規化する。設定値は1〜80 Unicode code pointsで、内部の制御文字（Unicode General Category `Cc`）を許可しない。Neon Authの氏名とは独立し、メール・氏名等から推測して補完しない。未設定でも登録・購入を妨げず、画面では個人情報を使わない「未設定」を表示する。型・CHECKは `SPEC-100`、PATCHの省略／nullの意味は `SPEC-110` が所有する。
 
 ### 9.3 Customerの導出
 
@@ -370,7 +374,7 @@ Administrator / Staff権限はCustomer関係から導出してはならない。
 
 | Rule ID | Rule | 関連FR | 関連Invariant |
 |---|---|---|---|
-| BR-USR-001 | 認証済み業務操作はServer-sideで検証したSupabase Auth Identityから一意のBusiness Profileを解決しなければならない。 | FR-AUTH-009〜012, FR-XFN-002〜003 | INV-010-08 |
+| BR-USR-001 | 認証済み業務操作はServer-sideで検証したNeon Auth Identityから一意のBusiness Profileを解決しなければならない。 | FR-AUTH-009〜012, FR-XFN-002〜003 | INV-010-08 |
 | BR-USR-002 | Customerは業務関係から導出し、独立した高権限Roleとして保存または認可根拠に使用してはならない。 | FR-AUTH-013 | INV-010-08 |
 | BR-USR-003 | OrderのCustomerはOrder作成時に確定し、その後の通常操作で別Business Profileへ変更してはならない。 | FR-TKT-008, FR-MYP-002, FR-XFN-017 | INV-010-08 |
 | BR-USR-004 | Entry Ticket、Karaoke Reservation、Karaoke Ticket、Goods Order ItemのOwner / Customerは、それらを成立させたOrderのCustomerと一致しなければならない。 | FR-TKT-019〜023, FR-KRK-018, FR-KRK-024〜025, FR-GDS-012〜013, FR-MYP-003〜010 | INV-010-08 |
@@ -1255,7 +1259,7 @@ Supports: `INV-010-01`, `INV-010-07`, `INV-010-10`
 | FR-PUB-007〜010 | Entry Ticket Offering, Karaoke Sales Configuration, Goods, Sale Control State, Sales Availability, BR-SAL-001〜005 |
 | FR-PUB-012 | BR-USR-001, BR-SAL-005。認証UI詳細はSPEC-040/050/060 |
 | FR-PUB-013〜014 | Domain data sourceはEvent / Sales Configuration。Failure UX / NavigationはSPEC-040/050 |
-| FR-AUTH-001〜009 | Auth IdentityはSupabase Authの責務。Business Profileとの1:1関係はBR-USR-001 |
+| FR-AUTH-001〜009 | Auth IdentityはNeon Authの責務。Business Profileとの1:1関係はBR-USR-001 |
 | FR-AUTH-010〜012 | Business Profile ownership, BR-USR-001, BR-USR-006 |
 | FR-AUTH-013 | Customer導出Rule, BR-USR-002 |
 | FR-AUTH-014 | 既存Domain state保持, BR-ORD-010, DI-030-001 |
@@ -1330,7 +1334,7 @@ Supports: `INV-010-01`, `INV-010-07`, `INV-010-10`
 | FR-ADM-021 | `REVIEW_REQUIRED`, Consistency Review Case |
 | FR-ADM-022 | 監査可能なDomain event対象。SchemaはSPEC-160 |
 | FR-STF-001〜016 | Entry/Karaoke Check-in, Ticket state, BR-CHK-001〜008, BR-USR-007 |
-| FR-EML-001 | Auth通知はSupabase Auth。Business通知とは別責務 |
+| FR-EML-001 | Auth通知はNeon Auth。Business通知とは別責務 |
 | FR-EML-002〜011 | Notification Request state, BR-NTF-001〜006 |
 | FR-EML-012 | Template / Retry詳細はSPEC-120/150 |
 
@@ -1420,26 +1424,26 @@ Supports: `INV-010-01`, `INV-010-07`, `INV-010-10`
 
 下流仕様は、本書のState名・Business Rule ID・Domain Invariantを参照し、同じ概念へ別のCanonical state名を無断で導入してはならない。
 
-### 26.1 SPEC-030 1.1.0により下流仕様で整合が必要な事項
+### 26.1 複合Order・Sponsor Logo・Profileの下流接続
 
-以下の下流仕様は、本改訂時点ではOrder Purposeを3値として記述しており、本書の4値と整合していない。該当仕様は、本書を正として改訂する。改訂が完了するまでの間、複合Orderと協賛ロゴに関しては本書の記述を正とし、下流の旧記述を根拠に複合Orderを禁止または未定義として扱ってはならない。
+本節の下流整合事項は各Canonical Ownerの本文へ反映する。UCR提案ではなく、次のOwnerの現行契約を参照する。APIの追加で既存単品購入Operationを廃止しない。
 
 | SPEC | 整合が必要な事項 |
 |---|---|
-| SPEC-100 | `orders.purpose` の許可値とPurposeとpurchase sourceの組合せ制約、複合Orderの購入時Transaction、Sponsor Logoの物理設計（table、表示名称、画像参照、リンク先、表示順、Publication State、公開取得用のIndex、通常運用でのhard delete禁止。§8.4、`BR-EVT-005`） |
-| SPEC-110 | Cartからの購入開始API（複数ItemのRequest、All-or-Nothingの結果、不成立Itemの識別）、Order Purposeの許可値、Sponsor Logoの公開取得 |
-| SPEC-120 | 複合Orderの確認通知（Entry TicketとGoodsの両方を含む場合の通知内容） |
-| SPEC-130 | Sponsor Logoの管理画面と操作、Order一覧・詳細での複合Order表示 |
-| SPEC-170 / SPEC-200 | 複合Orderの確定・解放、Cart購入開始のAll-or-Nothing、Sponsor Logoの公開制御に対するTest CaseとAcceptance |
+| SPEC-100 | 4値Purpose、明細sourceとAllocation／TicketのFK、複合購入・確定・解放のTransaction、Sponsor Logo、任意Display name |
+| SPEC-110 | `API-PUR-CART-001`（単品互換API維持）、`API-PUR-ELG-001`（本人向け参照のみの一括購入可否）、4値Order応答、Logo公開・管理API、Profile更新、Order通知サマリー |
+| SPEC-120 | 複合専用の `ENTRY_GOODS_PURCHASE_CONFIRMED` を1件生成し、Entry／Goods双方を1通で通知。所有者向け通知サマリーの射影 |
+| SPEC-130 | 外部HTTPS画像URL方式のSponsor Logo管理、4値Purposeの注文表示 |
+| SPEC-170 / SPEC-200 | 全Current Canonical `DI-030-*` の100%追跡、複合Orderの確保・確定・解放、Logo公開制御等の個別CaseとAcceptance |
 
-SPEC-070のPAY-ORD-004等のPurpose記述は、本改訂と同時にSPEC-070 1.1.0で最小限整合させる。
+SPEC-070の `PAY-ORD-004` と `PAY-CFM-012〜014` は同じ4値Purpose／複合確定契約を維持する。
 
 ## 27. 受入条件
 
 本仕様書は以下をすべて満たす場合に成立する。
 
 1. Event、Business Profile、Sales Configuration、Order、Order Item、Entry Ticket、Karaoke Slot、Karaoke Hold、Karaoke Reservation、Karaoke Ticket、Goods、Inventory、Goods Handoff、Check-in、Notification RequestがDomain上明示されている。
-2. Supabase Auth IdentityとBusiness Profileが1対1であり、Credentialと業務Profileが分離されている。
+2. Neon Auth IdentityとBusiness Profileが1対1であり、Credentialと業務Profileが分離されている。
 3. Customerが独立高権限Roleではなく業務関係から導出される。
 4. Orderが外部決済遷移前に `PREPARED` として存在する。
 5. Browser redirectだけでOrderを `CONFIRMED` にしない。

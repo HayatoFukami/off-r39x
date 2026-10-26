@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-200
 title: System Acceptance Criteria
-version: 1.1.0
+version: 2.1.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -136,9 +136,11 @@ related_specs:
 
 `UCR-130-001〜004/006`、`UCR-150-001〜002`、`UCR-170-001` は対象Canonical Owner（`SPEC-060` / `SPEC-110` / `SPEC-120` / `SPEC-130`）へ反映済みであり、System Acceptanceは対応するcanonical contractのE2E evidenceを要求する。未反映として扱うのは `UCR-130-005`（deferred operational index）だけである。
 
+本改訂では `UCR-100-001〜003` と `UCR-110-001` も `INCORPORATED` とする。SPEC-100／110のOwner本文へProfile／Logo／複合Order／eligibility／通知サマリーが反映され、§15.1とSPEC-170 §27.2のCaseへ接続されている。これは仕様契約の反映状態であり、実装済み・Test実行済み・System Acceptance済みの意味ではない。
+
 **ACC-GEN-003:** UCRは対象Canonical Owner本文へ反映されるまでCanonical behaviorではない。反映済みoperation familyはCanonical contractとしてAcceptance対象とし、未反映 `UCR-130-005` と将来のnoncanonical proposalだけを先取りしない。
 
-**ACC-GEN-004:** Acceptance Manifestは各UCRの `ucr_id`, `target_spec`, `current_status`, `acceptance_impact`, `affected_current_rule_ids[]`, `blocking` を持ち、`UCR-130-005` のみ `DEFERRED_NONBLOCKING`、それ以外は `INCORPORATED` として記録する。
+**ACC-GEN-004:** Acceptance Manifestは各UCRの `ucr_id`, `target_spec`, `current_status`, `acceptance_impact`, `affected_current_rule_ids[]`, `blocking` を持つ。本節の既知一覧は `UCR-130-005` のみ `DEFERRED_NONBLOCKING`、他は `INCORPORATED` として記録する。追加UCRのstatusはOwner本文で個別確認し、自動的に反映済みと推定しない。
 
 ### 4.1 Sales management（`UCR-130-001〜002`）
 
@@ -239,7 +241,7 @@ release_manifest_sha256
 git_sha
 migration_set_sha256
 api_image_digest
-Vercel deployment identity
+Cloudflare Pages deployment identity
 Railway deployment identity set
 spec_versions
 ```
@@ -250,7 +252,7 @@ spec_versions
 
 **ACC-GEN-010:** 別commit、別migration set、別OCI digest、別spec version setのTest resultを同一releaseのEvidenceとして混在させない。
 
-**ACC-GEN-011:** VercelとRailwayでEnvironment別buildが存在しても、`SPEC-180` が要求する共通identity fieldが一致しない場合は同一releaseとみなさない。
+**ACC-GEN-011:** Cloudflare PagesとRailwayでEnvironment別buildが存在しても、`SPEC-180` が要求する共通identity fieldが一致しない場合は同一releaseとみなさない。
 
 ### 7.2 Spec Version Set
 
@@ -285,7 +287,7 @@ Spec Version Setには次を含める。
 | Mergeable | merge candidateがsource / test gateを満たす | `SPEC-170/190/180` merge gate、static validation、traceability | G1〜G8 failure、Critical failure、static / traceability failure |
 | Staging Deployable | merge commitをstagingへ配置できる | immutable release identity、migration applicability、staging config | artifact / migration / config identity failure |
 | Production Promotable | same releaseをProductionへpromoteしてよい | staging G1〜G10 required evidence、G9、security / infra / backup / approval | required suite failure、G9 unavailable/fail、backup/config mismatch |
-| Production Deployed | Productionへの配置・healthが成功 | migration、readiness、staged smoke、domain promotion、post-deploy smoke | readiness / migration / smoke / critical alert failure |
+| Production Deployed | Productionへの配置・healthが成功 | migration、readiness、保護preview成果物検査、本番再upload、post-deploy smoke | readiness / migration / smoke / critical alert failure |
 | System Accepted | Production deployment後も全System Acceptanceが成立 | 全Blocking ACC rule、post-deploy evidence、identity一致 | Critical invariant/security/reliability/infra/test/evidence failure |
 
 **ACC-RELSE-001:** Merge可能であることをSystem Acceptedとみなさない。
@@ -500,7 +502,7 @@ Acceptance Manifest、Release Manifest、最終gate summary、approval reference
 
 **ACC-BIZ-001:** Current Canonical `FR-*` は100% Acceptance traceを持たなければならない。各`FR-*`は少なくとも1つの `ACC-BIZ-*` またはdomain-specific `ACC-*` にmapし、そのAcceptance IDはnon-quarantined Test / config / provider / deployment evidenceへ到達しなければならない。
 
-**ACC-BIZ-002:** `DI-030-001〜012` はすべて`SPEC-170`のsemantic coverageを満たし、Acceptance Manifestから対応Test Caseへjoinできなければならない。
+**ACC-BIZ-002:** Current Canonical `DI-030-*` 全件（`DI-030-013`を含む）は`SPEC-170`のsemantic coverageを満たし、Acceptance Manifestから対応Test Caseへjoinできなければならない。対象はSPEC-030本文の現行定義から取得し、新規DIを固定番号範囲で除外しない。未追跡・未実行は不合格とする。
 
 **ACC-BIZ-003:** Critical `BR-*` はstate / invariant groupごとにpositive + negative evidenceを持つ。Business RuleをUIの見た目だけでacceptしない。
 
@@ -532,13 +534,42 @@ Acceptance Manifest、Release Manifest、最終gate summary、approval reference
 
 **ACC-BIZ-026:** Current Canonical `FR-*` の未実装を「今回releaseの対象外」としてSystem Acceptanceから除外しない。完成システムAcceptanceではmandatory Current Requirementは全件対象である。
 
+### 15.1 修正契約の個別Acceptance接続
+
+次は必須契約であり、仕様の記載だけでは受入済みとしない。実装・実行済みEvidenceは別途必要で、既存のUI mockだけでDB／Providerの保証を代替しない。
+
+| Acceptance ID | Current Canonical requirements | Required Test Cases / groups | Pass condition |
+|---|---|---|---|
+| `ACC-BIZ-027` | `FR-CRT-007〜011`, `BR-ORD-013〜019`, `DI-030-013`, `API-PUR-CART-001` | `TC-API-004-001〜004`; G1/G3/G4/G6/G8/G10 | 4値Purpose、単品互換API維持、複数Itemの単一Order・単一決済、全体確保／確定／解放、Fault／再送／並行時に部分確定や二重販売なし。複合full refundは双方の通常条件を満たす |
+| `ACC-BIZ-028` | `FR-PUB-011,015`, `FR-ADM-018`, `BR-EVT-005`, `API-PUB-012`, `API-ADM-CNT-017〜021`, `PG-ADM-027`, `SEC-WEB-026` | `TC-API-006-001〜006`; G1/G3/G4/G5/G8＋設定検証 | 外部HTTPS画像方式の永続化・公開／管理、PUBLISHED限定、順序・0件・独立Failure、正規Publication遷移／認可／競合／Audit、APIとCSPの画像origin一致 |
+| `ACC-BIZ-029` | `FR-AUTH-010〜012`, `API-AUTH-002/004`, `SPEC-030` §9.2 | `TC-API-007-001`; G1/G3/G4/G5/G8 | 任意Display nameのtrim・80 code points・空欄NULL・制御文字拒否・本人限定保存、未設定の安全表示、登録／購入を阻害しない |
+| `ACC-BIZ-030` | `FR-CRT-005,007`, `API-PUR-ELG-001`, `SEC-API-029` | `TC-API-005-001`; G1/G3/G4/G5/G8 | 本人向け一括判定のreason／数量／秘匿、private/no-store、業務DB無変更、取得障害の非偽装、購入開始時の再検証 |
+| `ACC-BIZ-031` | `FR-EML-002,004,006〜011`, `ENTRY_GOODS_PURCHASE_CONFIRMED`, `BR-ORD-015` | `TC-EML-002-001`; G1/G3/G6/G9 | 全Entry／Goods明細・合計・受取案内を専用1通に集約、同一Causeで1要求、単独通知との重複なし、失敗時も権利維持、raw QR非包含 |
+| `ACC-BIZ-032` | `API-ORD-003`, `EML-NTF-003`, `SEC-API-029`, `PG-XFN-001` | `TC-API-008-001`; G1/G3/G4/G5/G8 | 所有者だけに最小通知サマリー、射影優先順とnullの意味、SENT≠配送保証、部分障害でOrder成功維持、認可／本体障害を隠蔽せず内部情報非開示 |
+
+`ACC-BIZ-002` と `ACC-BIZ-027` は監査 `AUD-007` のInvariant追跡欠落を直接覆う。上記の全Current Requirementは `ACC-TRC-003` のblocking判定対象である。
+
+監査修正の対応追跡（各方針は所有者への単一選択ヒアリングで確定）:
+
+| 監査ID | 採用方針 / Canonical接続 | 対応Acceptance |
+|---|---|---|
+| AUD-001 | 統一Cart API追加＋既存単品API維持、4値Purpose／原子Transaction | ACC-BIZ-027 |
+| AUD-002 | 外部HTTPS画像URL、専用Logo DB／公開・管理API／画面 | ACC-BIZ-028 |
+| AUD-003 | 任意Display name、trim後80 code points、空欄NULL | ACC-BIZ-029 |
+| AUD-004 | 複合専用の確認通知を1通生成 | ACC-BIZ-031 |
+| AUD-005 | 本人向け一括eligibility、参照のみ・private/no-store | ACC-BIZ-030 |
+| AUD-006 | Orderへ最小通知サマリー、部分障害はnullで非阻害 | ACC-BIZ-032 |
+| AUD-007 | 全Current DIの100%追跡、DI-030-013の個別Case | ACC-BIZ-002／027 |
+
+各行の契約反映はSystem AcceptanceのPassや実装Evidenceを代替しない。仕様書のstatusは引き続きprovisionalとする。
+
 ---
 
 # Part V — Authentication / Authorization Acceptance
 
 ## 16. Authentication / Authorization
 
-**ACC-AUTH-001:** Supabase Auth identity / sessionはHono APIでServer-side verificationされ、Browser / Next.jsの「ログイン済み」表示だけをBusiness authorization根拠にしないことをG4/G5 evidenceで証明する。
+**ACC-AUTH-001:** 業務APIへ送るNeon Auth JWTと現在のIdentity / Email確認状態はHono APIでServer-side verificationされ、Browser / React SPAの「ログイン済み」表示だけをBusiness authorization根拠にしないことをG4/G5 evidenceで証明する。Provider SessionとAPI用JWTを区別し、Logout後の残存は `SPEC-060` の最大15分に従う。
 
 **ACC-AUTH-002:** Auth SubjectからBusiness Profileを一意に解決し、owner resourceはPublic Reference単独ではなくverified Profile relationを含むowner-safe lookupを使用することを証明する。
 
@@ -650,7 +681,7 @@ Acceptance Manifest、Release Manifest、最終gate summary、approval reference
 
 **ACC-EML-002:** Notification retry / recoveryは元Order / Refund / Reservation / Ticket / Goods transactionを再実行しない。
 
-**ACC-EML-003:** recipient authorityはBusiness Profile → Auth Subject → Supabase Auth server-side lookupであり、Client email / Stripe emailをauthorityにしない。
+**ACC-EML-003:** recipient authorityはBusiness Profile → Auth Subject → Neon Auth server-side lookupであり、Client email / Stripe emailをauthorityにしない。
 
 **ACC-EML-004:** first provider send前にrecipient snapshot / template contractをCurrent Canonical semanticsどおり固定し、自動retryで暗黙変更しない。
 
@@ -726,13 +757,13 @@ Database AcceptanceはUnit mockだけでは成立しない。
 
 Security AcceptanceはCritical Blocking Criterionである。
 
-**ACC-SEC-001:** Supabase Auth token / Sessionはserver-sideでissuer / signature / expiry等を検証し、安全に検証できない場合Fail Closedする。
+**ACC-SEC-001:** Neon Auth token / Sessionはserver-sideでissuer / signature / expiry等を検証し、安全に検証できない場合Fail Closedする。
 
 **ACC-SEC-002:** Session / Credential / Password / reset token / verification tokenをBusiness Database、Application Log、Client-readable persistent storageへ不必要に保存しない。
 
 **ACC-SEC-003:** owner-safe authorization、Administrator / Staff current Capability enforcement、Administrator非generic-superuser、Administrator非Staff暗黙継承をG5でnegative testする。
 
-**ACC-SEC-004:** Browser / Next.jsのCSRF、CORS、XSS / escaping、CSP / Security Headerが`SEC-*`のCurrent Canonical controlと一致するconfig / E2E / security evidenceを持つ。
+**ACC-SEC-004:** Browser / React SPAのCSRF、CORS、XSS / escaping、CSP / Security Headerが`SEC-*`のCurrent Canonical controlと一致するconfig / E2E / security evidenceを持つ。
 
 **ACC-SEC-005:** credentialed CORSにwildcard originを使用せず、state-changing Browser requestのCSRF / exact origin等のCurrent controlを維持する。
 
@@ -800,7 +831,7 @@ SPEC-200はretry count、backoff、jitter、timeout、reconciliation cadence、c
 
 **ACC-OBS-004:** replay可能key / sensitive correlationはraw値で記録せずCurrent HMAC fingerprint contractを使用し、Production / nonproduction key separationを維持する。
 
-**ACC-OBS-005:** deployment resource attributeはRelease Ref / git SHA / Vercel deployment / Railway deployment / image digestへjoin可能である。
+**ACC-OBS-005:** deployment resource attributeはRelease Ref / git SHA / Cloudflare Pages deployment / Railway deployment / image digestへjoin可能である。
 
 **ACC-OBS-006:** Metric labelはbounded cardinalityを維持し、Public Reference、raw provider event、Email等をunbounded labelへ入れない。
 
@@ -870,7 +901,9 @@ G10 hot-concurrency
 
 **ACC-TST-006:** Provider Test DoubleはProvider contract surfaceとfailure injectionに使用し、Provider Contract Smokeの代替にしない。
 
-**ACC-TST-007:** Provider Contract Smokeはprotected nonproduction credentialでStripe / Resend / Supabase AuthのCurrent contract surfaceを確認する。
+**ACC-TST-007:** Provider Contract Smokeはprotected nonproduction credentialでStripe / Resend / Neon AuthのCurrent contract surfaceを確認する。
+
+Pages / Railway / Neonへの移行は `SPEC-170 §18.1` の `TC-STACK-001〜010` を満たすことを必要条件とする。認証4方式の実Provider・Safari互換性、同一Subject連携、Directory最小権限、JWTの最大15分残存、静的SPAのURL / headersと成果物検査をmockで代替しない。未確認の契約はProductionをblockedとし、仕様書だけの改定を実装完了・テストPassと報告しない。
 
 **ACC-TST-008:** Deterministic Clock / deterministic Random / fixed seed / barrier等を利用し、time / randomness / concurrency-sensitive Testを再現可能にする。
 
@@ -890,9 +923,11 @@ G10 hot-concurrency
 
 ## 28. Environment / runtime identity
 
-**ACC-INF-002:** `production`, `staging`, `development`, `test` のCanonical EnvironmentがVercel / Railway / Supabase / Stripe / Resend / observability / secretで分離される。
+**ACC-INF-002:** `production`, `staging`, `development`, `test` のCanonical EnvironmentがCloudflare Pages / Railway / Neon / Stripe / Resend / observability / secretで分離される。
 
 **ACC-INF-003:** deployed Node / PostgreSQL major、extensions、runtime process identityは`SPEC-180`のCurrent Canonical valueと一致する。SPEC-200はmajor version値を所有しない。
+
+Pagesは静的SPAのみとしNode server runtimeを持たない。Node majorはCI / Railwayに適用する。API / worker / DB / AuthのSingapore配置と4環境別project、非本番への本番認証データ複製禁止を検証する。
 
 **ACC-INF-004:** API runtime、Email Worker、Reconciliation Worker、migration、Audit read / purge、backup、emergency recoveryのDB role / machine identity separationがCurrent `INF-*`に一致する。
 
@@ -932,13 +967,15 @@ G10 hot-concurrency
 
 **ACC-INF-016:** restoreでStripe charge / Refund / Resend acceptance等のProvider side effectを巻き戻したとみなさず、post-restore reconciliationへ接続する。
 
+認証データはNeon側の7日間の復旧範囲のみを保護対象とし、R2の業務`app` backupには含めない。R2だけで全アカウントを復元できると扱わず、復元後のSession再使用防止・既発行JWTの期限・Auth Subjectと業務所有権の対応確認をProduction再公開前に満たす。
+
 ---
 
 ## 32. Production deployment
 
 **ACC-INF-017:** Production deployはapproved protected Environmentからimmutable release identityを使用する。
 
-**ACC-INF-018:** Production deployment sequenceはCurrent `SPEC-180`のmigration → Railway API / workers → readiness → Vercel staged deployment → smoke → domain promotion → post-deploy observation順序を維持する。
+**ACC-INF-018:** Production deployment sequenceはCurrent `SPEC-180`のmigration → Railway API / workers → readiness → Access保護Pages previewで本番API / Auth通信を遮断した成果物検査 → 承認 → 同一outputのproduction Direct Upload → post-deploy smoke / observation順序を維持する。previewの昇格を前提にせず、両deployment IDとoutput hashを記録する。
 
 **ACC-INF-019:** staging evidenceとProduction deploymentがsame release identityを参照する。
 
@@ -964,7 +1001,7 @@ G10 hot-concurrency
 
 **ACC-DEV-005:** Browser / WebからBusiness Database / Drizzle / `pg`へのBusiness direct accessが存在しないことをsource graph / import / code scanで証明する。
 
-**ACC-DEV-006:** DB transaction中にStripe / Resend / Supabase Auth等のexternal network callを実行しないことをcode review / static rule / integration evidenceで確認する。
+**ACC-DEV-006:** DB transaction中にStripe / Resend / Neon Auth等のexternal network callを実行しないことをcode review / static rule / integration evidenceで確認する。
 
 ---
 
@@ -1081,7 +1118,7 @@ failure_outcome
 | `ACC-GEN-009` | Release identity | `INF-DEP-*` | manifest validator | release-manifest hash | staging + Production IDs | Yes | all identity joins equal |
 | `ACC-TRC-001` | Spec set completeness | `SPEC-000`, `TST-TRC-*`, `DEV-TRC-*` | manifest validation | spec set hash | none | Yes | no unknown / missing Current rule owner |
 | `ACC-INV-001〜010` | System invariants | `INV-010-01〜10` | §13 exact cases + G3/G4/G5/G6/G8/G10 as applicable | DB/provider config as applicable | same release deployment | Yes | all invariant criteria PASS |
-| `ACC-BIZ-001〜024` | Functional / Domain capability | `FR-*`, `BR-*`, `DI-030-*` | G1/G3/G4/G8 + domain required groups | feature/current config | staging smoke | Yes | semantic coverage + observable outcome PASS |
+| `ACC-BIZ-001〜032` | Functional / Domain capability | `FR-*`, `BR-*`, `DI-030-*` | G1/G3/G4/G8 + domain required groups、§15.1の個別Case | feature/current config | staging smoke | Yes | 全Current DIのsemantic coverage + observable outcome PASS |
 | `ACC-AUTH-001〜008` | Authentication / Authorization | `AR-*`, `SEC-AUTH-*`, `SEC-AZ-*` | G4/G5/G8/G10 | Auth / role / secret config | environment identity | Yes | server-side fail-closed + owner-safe |
 | `ACC-PAY-001〜009` | Payment / Refund | `PAY-*` | G3/G4/G5/G6/G9/G10 | Stripe nonprod smoke config / Prod secret identity | webhook + Production deploy evidence | Yes | authority/idempotency/atomicity/unknown PASS |
 | `ACC-TQR-001〜009` | Ticket / QR / Check-in | `TQR-*`, `SEC-QR-*` | G3/G4/G5/G8/G10 | QR keyring config validation | Production secret identity | Yes | purpose/single-use/crypto/fail-closed PASS |
@@ -1272,9 +1309,9 @@ NON_BLOCKING_CLARIFICATION
 Acceptance artifact / CI artifact / release noteは次を含めてはならない。
 
 - raw QR token / payload / decrypted QR material
-- Supabase access / refresh token
+- Neon access / refresh token
 - Password / reset / verification token
-- Stripe / Resend / Supabase / DB Secret
+- Stripe / Resend / Neon / DB Secret
 - QR HMAC / AEAD key
 - raw webhook body
 - full provider response / error object

@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-190
 title: AI Development Guidelines
-version: 1.2.1
+version: 2.0.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -46,9 +46,9 @@ related_specs:
 - pnpm workspace / monorepo organization
 - Web / API / worker / shared packageのsource配置
 - package / layer dependency direction
-- TypeScript、Next.js、Hono、Zod、Drizzle ORM、`pg`、React Emailの実装規約
+- TypeScript、React SPA、Hono、Zod、Drizzle ORM、`pg`、React Emailの実装規約
 - Database transaction / migration実装境界
-- Supabase Auth / Stripe / Resend provider adapter実装境界
+- Neon Auth / Stripe / Resend provider adapter実装境界
 - Secret / Configuration reader boundary
 - Reliability / recovery / observability support code
 - Production sourceとTest Harnessの分離
@@ -105,7 +105,7 @@ related_specs:
 | `DEV-REP-*` | Repository organization |
 | `DEV-DEP-*` | Dependency direction |
 | `DEV-TS-*` | TypeScript |
-| `DEV-WEB-*` | Next.js / React |
+| `DEV-WEB-*` | React SPA / React |
 | `DEV-API-*` | Hono / Zod / RPC |
 | `DEV-DB-*` | Drizzle / pg / transaction / migration |
 | `DEV-AUTH-*` | Authentication / Authorization |
@@ -129,9 +129,11 @@ Rule IDはrepository内で一意とし、別意味へ再利用しない。
 ```text
 .
 ├─ apps/
-│  ├─ web/                         # Next.js App Router, Vercel
-│  │  ├─ app/
+│  ├─ web/                         # Vite / React Router SPA, Cloudflare Pages static hosting
+│  │  ├─ index.html
+│  │  ├─ public/
 │  │  └─ src/
+│  │     ├─ routes/
 │  │     ├─ features/
 │  │     ├─ api-client/
 │  │     ├─ auth/
@@ -159,11 +161,11 @@ Rule IDはrepository内で一意とし、別意味へ再利用しない。
 │  │  ├─ src/repositories/
 │  │  ├─ src/transactions/
 │  │  └─ migrations/
-│  ├─ auth/                        # Supabase Auth server verification / principal construction
+│  ├─ auth/                        # Neon Auth server verification / principal construction
 │  ├─ providers/
 │  │  ├─ stripe/
 │  │  ├─ resend/
-│  │  └─ supabase-auth/
+│  │  └─ neon-auth/
 │  ├─ email/                       # React Email templates + renderer contracts
 │  │  ├─ templates/
 │  │  └─ src/
@@ -217,7 +219,7 @@ Rule IDはrepository内で一意とし、別意味へ再利用しない。
 - `api-contract`: HTTP/RPC wire schema、Hono RPC public type。DB entity / provider SDK typeをexportしない。
 - `db`: physical schema、repository adapter、transaction / lock helper。HTTP / Reactへ依存しない。
 - `auth`: verified principal構築。UI stateへ依存しない。
-- `providers`: Stripe / Resend / Supabase AuthのSDK adapter。Domain Stateを独自に定義しない。
+- `providers`: Stripe / Resend / Neon AuthのSDK adapter。Domain Stateを独自に定義しない。
 - `security`: keyring / encryption / HMAC / redaction。raw secretを返す汎用dump APIを持たない。
 - `reliability`: timeout / retry / Clock / classification。Canonical値はSPEC-150 registryからcode constantへ写像する。
 - `observability`: schema-validated log / metric / audit helper。Business authorityを持たない。
@@ -248,7 +250,7 @@ worker entrypoint
 
 **DEV-DEP-003:** React componentからrepository、provider SDK、secret readerへ直接依存してはならない。
 
-**DEV-DEP-004:** domain packageへStripe / Resend / Supabase SDK、Hono、Next.js、Drizzle、`pg`をimportしてはならない。
+**DEV-DEP-004:** domain packageへStripe / Resend / Neon SDK、Hono、React SPA、Drizzle、`pg`をimportしてはならない。
 
 **DEV-DEP-005:** package間circular importは禁止する。
 
@@ -311,34 +313,34 @@ OperationExecutionId
 
 **DEV-TS-016:** generated typeがCanonical Spec / runtime schemaと不一致ならgenerated typeを正としてSpecを変更してはならない。
 
-# Part IV — Next.js / Web
+# Part IV — React SPA / Web
 
-## 13. App Router boundary
+## 13. React Router boundary
 
-Canonical route groupは概念上次へ分離する。
+React Routerのroute定義を概念上次へ分離する。Next.js filesystem route / route group / server runtimeは使用しない。
 
 ```text
-apps/web/app/
-  (public)/
-  (auth)/
-  (self)/
-  (admin)/
-  (staff)/
+apps/web/src/routes/
+  public/
+  auth/
+  self/
+  admin/
+  staff/
 ```
 
 実URLはSPEC-050 / SPEC-130を維持し、route group名をURLへ露出しない。
 
-**DEV-WEB-001:** Server Componentをdefaultとし、browser API、interactive local state、scanner操作等が必要な最小leafだけClient Componentへする。
+**DEV-WEB-001:** Vite / React / React Routerの静的SPAとする。全画面はBrowserで実行し、既存のcontainer / presentation分離を維持する。SSR / Server Component / Web側BFFを追加しない。既存URLの直接アクセスはPages fallbackとRouterで成立させる。
 
 **DEV-WEB-002:** Client ComponentへSecret、service role、DB credential、provider secret、QR keyringをimport可能なmoduleを依存させない。
 
-**DEV-WEB-003:** Server ActionをBusiness mutation authorityとして使用してはならない。Server Actionを使用する場合もHono RPC/APIを呼ぶthin adapterに限定し、Business Databaseを直接更新しない。
+**DEV-WEB-003:** Server Actionを使用しない。Business mutationはBrowserのHono RPC/API clientを通してRailway Honoへ送り、認証・認可・業務判断・DB更新はAPIで実行する。
 
-**DEV-WEB-004:** Web / BrowserからBusiness Database / Drizzle / `pg`へ直接query/mutationしない。認証用途のSupabase Auth integrationとBusiness Database accessを混同しない。
+**DEV-WEB-004:** Web / BrowserからBusiness Database / Drizzle / `pg`へ直接query/mutationしない。認証用途のNeon Auth integrationとBusiness Database accessを混同しない。
 
 ## 14. Session / RPC / cache
 
-**DEV-WEB-005:** Supabase Auth Sessionの復元 / refreshはSPEC-060 / SPEC-140のserver-side integrationへ従い、UI local stateだけで認証済みと判定しない。
+**DEV-WEB-005:** Neon SDKはRailway認証中継を通してHttpOnly Sessionを利用する。API用JWTは `authClient.token()` で取得してメモリーだけに保持し、業務requestへBearerで付加する。Session token / refresh credentialをJWTに流用しない。UI local stateは権威値ではなく、APIは毎回検証する。Logout時にJWT / protected cacheを破棄し、既発行JWTの最大15分残存を即時失効と偽装しない。
 
 **DEV-WEB-006:** Hono RPC clientは `apps/web/src/api-client/` に集約し、page/componentごとのad-hoc `fetch` でprotected contractを複製しない。
 
@@ -350,11 +352,11 @@ apps/web/app/
 
 **DEV-WEB-010:** Hono API clientが未実装の間に限り、`apps/web/src/mock/` にUI mock（api-client portとauth portのmock実装、合成data、開発用scenario切替）を置いてよい。UI mockはSPEC-050の画面確認だけを目的とし、API contract、DB制約、Provider動作の検証根拠として扱わない。
 
-**DEV-WEB-011:** UI mockは `NEXT_PUBLIC_UI_MOCK=1` のときだけ選択する。それ以外では実api-client portを使い、実装が存在しない場合はfail closedとする。本番deploy用のbuildで `NEXT_PUBLIC_UI_MOCK=1` が有効な場合、buildを失敗させなければならない。
+**DEV-WEB-011:** 移行後のUI mockは `VITE_UI_MOCK=1` のときだけ選択する。それ以外では実api-client portを使い、実装が存在しない場合はfail closedとする。本番deploy用のbuildで `VITE_UI_MOCK=1` が有効な場合、buildを失敗させなければならない。今回の仕様改定は既存Next.js mock / `NEXT_PUBLIC_UI_MOCK` / 実行scriptの移行を実施しない。既存mockの通過をSPA移行の証明にしない。
 
-**DEV-WEB-012:** `apps/web/src/mock/` をimportしてよいのは、port factory（`apps/web/src/api-client/index.ts`、`apps/web/src/auth/index.ts`）、`apps/web/app/dev/**`、およびMock Mode表示の差し込みに限る。許可listは `scripts/check-import-boundaries.mts` で機械検査し、`presentation` / `features` からのimportを禁止する。`/dev/*` はUI mock無効時に `notFound` を返し、一般利用者向けNavigationからLinkしない。
+**DEV-WEB-012:** `apps/web/src/mock/` をimportしてよいのは、port factory（`apps/web/src/api-client/index.ts`、`apps/web/src/auth/index.ts`）、`apps/web/src/routes/dev/**`、およびMock Mode表示の差し込みに限る。許可listは `scripts/check-import-boundaries.mts` で機械検査し、`presentation` / `features` からのimportを禁止する。`/dev/*` はUI mock無効時にNot Found surfaceとし、一般利用者向けNavigationからLinkしない。
 
-**DEV-WEB-013:** UI mockの認証、合成data、scenario切替は本番の認証・業務dataとして扱わない。実api-client / Supabase Auth integrationを導入する際は、`apps/web/src/mock/` と `apps/web/app/dev/**` を削除でき、画面側の変更を必要としないportの形を維持する。UI mockにpassword、Secret、実QR Token、実個人情報を保存・記録してはならない。
+**DEV-WEB-013:** UI mockの認証、合成data、scenario切替は本番の認証・業務dataとして扱わない。実api-client / Neon Auth integrationを導入する際は、`apps/web/src/mock/` と `apps/web/src/routes/dev/**` を削除でき、画面側の変更を必要としないportの形を維持する。UI mockにpassword、Secret、実QR Token、実個人情報を保存・記録してはならない。
 
 # Part V — Hono / API
 
@@ -424,7 +426,7 @@ Authentication/validation orderingでSecurity上必要な先行処理がSPEC-110
 
 **DEV-DB-009:** row lock順序、advisory lock、`FOR UPDATE SKIP LOCKED`はSPEC-100/120/150の対象処理どおりに実装し、performance理由で削除しない。
 
-**DEV-DB-010:** DB transaction中にStripe、Resend、Supabase Authその他remote network callを実行しない。
+**DEV-DB-010:** DB transaction中にStripe、Resend、Neon Authその他remote network callを実行しない。
 
 **DEV-DB-011:** commit応答喪失等でcommit result unknownとなった場合は同一transactionを無条件再送せず、Business Cause / current state / provider correlationからSPEC-150のreconciliationへ移行する。
 
@@ -456,11 +458,11 @@ Authentication/validation orderingでSecurity上必要な先行処理がSPEC-110
 
 **DEV-AUTH-006:** service role / DB credential / migration credentialをBrowser bundleへ渡さない。
 
-**DEV-AUTH-007:** Session / reset token / verification token等をBusiness Databaseへ保存しない。
+**DEV-AUTH-007:** Session / reset token / verification token等を本システム所有の`app` / `auth_read`へ保存しない。同居するProvider所有`neon_auth`のCredential管理はNeonへ委譲し、applicationから管理・複製しない。
 
 **DEV-AUTH-008:** Security Configuration failureをwarning-onlyにせずFail Closedする。
 
-**DEV-AUTH-009:** test用auth bypassをProduction code pathへ残さない。DEV-WEB-010〜013のUI mockが提供するmock認証は、`DEV-WEB-011` の条件（`NEXT_PUBLIC_UI_MOCK=1`）のときだけ選択され、本番の認証経路として扱わない。
+**DEV-AUTH-009:** test用auth bypassをProduction code pathへ残さない。DEV-WEB-010〜013のUI mockが提供するmock認証は、`DEV-WEB-011` の移行後条件（`VITE_UI_MOCK=1`）のときだけ選択され、本番の認証経路として扱わない。
 
 ## 22. Authorization source ownership
 
@@ -489,7 +491,7 @@ Codeは少なくとも次を個別named secretとして扱う。
 ```text
 DB runtime credential
 DB migration credential
-Supabase Auth server credential / verifier config
+Neon Auth server credential / verifier config
 Stripe API secret
 Stripe webhook secret
 Resend API secret
@@ -553,7 +555,7 @@ QR keyring representationは `current_version`, `allowed_previous_versions`, `ke
 
 **DEV-EML-001:** Notification Request生成とBusiness Transactionを分離し、Resend送信成功をBusiness Confirmation条件にしない。
 
-**DEV-EML-002:** recipient authorityはSPEC-120のBusiness Profile→Auth Subject→Supabase Auth server lookupから解決し、Client / Stripe Emailをauthorityにしない。
+**DEV-EML-002:** recipient authorityはSPEC-120のBusiness Profile→Auth Subject→Neon Auth server lookupから解決し、Client / Stripe Emailをauthorityにしない。
 
 **DEV-EML-003:** recipient snapshotはSPEC-120のタイミングでのみ作成し、logへfull Emailを不要に出さない。
 
@@ -635,7 +637,7 @@ unnecessary PII
 **DEV-INF-001:** 通常feature taskは次を変更してはならない。
 
 - `production` / `staging` / `development` / `test` topology
-- Vercel / Railway / Supabase境界
+- Cloudflare Pages / Railway / Neon境界
 - Railway API / Email Worker / Reconciliation Worker topology
 - Node.js major / PostgreSQL major
 - Database role separation
@@ -934,7 +936,7 @@ SPEC-190は以下を全て満たすとき受入可能である。
 29. 長期運用される完成システムを対象とする。
 30. 未確定表現を残さない。
 31. Canonical化済みoperation family（sales management / Handoff / authoritative read・filter / `API-ADM-REC-003〜007`）は `SPEC-110` canonical Operation ID / capability / recovery contractへtraceされ、deferred `UCR-130-005` とfuture proposalのみが未反映として扱われる。
-32. UI mock（DEV-WEB-010〜013）が `NEXT_PUBLIC_UI_MOCK=1` のときだけ選択され、許可listからのみimportされ、本番buildで無効であり、API contract / DB / Providerの検証根拠として扱われていない。
+32. 移行後のUI mock（DEV-WEB-010〜013）が `VITE_UI_MOCK=1` のときだけ選択され、許可listからのみimportされ、本番buildで無効であり、API contract / DB / Providerの検証根拠として扱われていない。
 
 # Part XXIII — Upstream Change Requests
 
@@ -949,10 +951,10 @@ SPEC-190は以下を全て満たすとき受入可能である。
 本仕様の実装agentは、少なくとも次をしてはならない。
 
 - 上流Specより既存Codeを優先する。
-- Browser / Next.js WebからBusiness DBへBusiness mutationを追加する。
+- Browser / React SPAからBusiness DBへBusiness mutationを追加する。
 - `ADMINISTRATOR`へ暗黙`STAFF`権限を与える。
 - Provider SDKをDomain decision layerへ持ち込む。
-- DB transaction内にStripe / Resend / Supabase Auth callを置く。
+- DB transaction内にStripe / Resend / Neon Auth callを置く。
 - `23505` / `23P01`をblind retryする。
 - startupでmigrationを実行する。
 - Payment / Email Unknown Resultへnew provider idempotency keyでblind retryする。
@@ -961,4 +963,3 @@ SPEC-190は以下を全て満たすとき受入可能である。
 - Critical Testをretry / quarantineで緑にする。
 - Feature taskへInfrastructure topology変更を混ぜる。
 - deferred UCR（`UCR-130-005`）またはfuture proposalのみのoperationをcurrent APIとして実装する。
-

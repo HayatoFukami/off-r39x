@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-020
 title: Functional Requirements
-version: 1.4.0
+version: 2.0.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -71,7 +71,7 @@ related_specs:
 | Term | 本書での意味 |
 |---|---|
 | Guest | 認証されていない一般閲覧者 |
-| Authenticated User | Supabase Authにより認証済みの利用者 |
+| Authenticated User | Neon Authにより認証済みの利用者 |
 | Customer | Order、Ticket、Reservation、Goods購入等の顧客関係を持つAuthenticated User。独立した権限Roleではない |
 | Staff | 当日受付等の限定運用権限を持つ認証済み運用者 |
 | Administrator | 管理機能および運用設定を扱う認証済み管理者 |
@@ -85,7 +85,7 @@ related_specs:
 | 購入開始 | Authenticated Userの操作により、Server-sideで販売条件を再検証し、Business Databaseへ `PREPARED` Orderを永続化する業務操作。Cartへの追加・数量変更・削除は購入開始ではない |
 | 複合Order | Entry Ticket Order ItemとGoods Order Itemの両方を含む1つのOrder。1回の外部決済へ対応する |
 | Sponsor Logo | 協賛者の表示名、画像、任意のリンク先、表示順、公開状態を持つ公開情報 |
-| Business Database | Supabase PostgreSQL上の業務データストア |
+| Business Database | Neon PostgreSQL上の業務データストア |
 
 Karaokeの時間構造では、参加者が実際に利用できる時間を**利用時間**、次の利用に備える非販売利用区間を**整備時間**と呼ぶ。
 
@@ -151,20 +151,24 @@ Role Permission Matrix、Role細分化、Session詳細は `SPEC-060`、Admin/Sta
 
 | Requirement ID | Functional Requirement |
 |---|---|
-| FR-AUTH-001 | Guestは、Supabase Authを利用する新規Account登録を開始できなければならない。 |
-| FR-AUTH-002 | システムは、登録されたIdentityについて、Supabase Authが提供するメール確認フローを完了できなければならない。 |
+| FR-AUTH-001 | Guestは、Neon Authを利用する新規Account登録を開始できなければならない。 |
+| FR-AUTH-002 | システムは、登録されたIdentityについて、Neon Authが提供するメール確認フローを完了できなければならない。 |
 | FR-AUTH-003 | メール確認が要求される認証状態では、確認未完了のIdentityを確認済みとして扱ってはならない。具体的なSession・Access可否は `SPEC-060` が定義する。 |
 | FR-AUTH-004 | 登録済み利用者は、正しいCredentialでログインしAuthenticated UserとしてSessionを取得できなければならない。 |
 | FR-AUTH-005 | 認証失敗時、システムは業務操作を認証済みとして継続させず、ログインが成立していない結果を返さなければならない。 |
 | FR-AUTH-006 | Authenticated Userは、現在のSessionからログアウトできなければならない。 |
 | FR-AUTH-007 | Guestまたはログイン不能な利用者は、登録済みIdentityに対するパスワード再設定フローを開始できなければならない。 |
-| FR-AUTH-008 | パスワード再設定の認証基盤処理はSupabase Authへ委譲し、Business DatabaseにPassword Credentialを保存してはならない。 |
-| FR-AUTH-009 | システムは、認証が必要なAPI操作ごとにSupabase Authの認証IdentityをServer-sideで確認し、Browserが申告したuser IDだけで本人性を確定してはならない。 |
+| FR-AUTH-008 | パスワード再設定の認証基盤処理はNeon Authへ委譲し、Business DatabaseにPassword Credentialを保存してはならない。 |
+| FR-AUTH-009 | システムは、認証が必要なAPI操作ごとにNeon Authの認証IdentityをServer-sideで確認し、Browserが申告したuser IDだけで本人性を確定してはならない。 |
 | FR-AUTH-010 | Authenticated Userは、自身の業務プロフィールを参照できなければならない。 |
 | FR-AUTH-011 | Authenticated Userは、運営上更新可能と定義された自身のプロフィール項目を更新できなければならない。具体的なFieldは `SPEC-030` / `SPEC-050` が定義する。 |
 | FR-AUTH-012 | プロフィール更新時、システムは更新対象が認証Identityに対応する本人のプロフィールであることをServer-sideで検証しなければならない。 |
 | FR-AUTH-013 | Customer分類はOrder、Ticket、Reservation、Goods購入等の業務関係から導出されなければならず、独立した高権限Roleとして利用してはならない。 |
 | FR-AUTH-014 | 認証Serviceが一時的に利用不能な場合、認証必須操作を未検証のまま成立させてはならず、既存の確定済み業務データを削除または取消してはならない。 |
+
+`FR-AUTH-001/004` の認証方式はメール＋パスワード、Google、Email OTP、Magic Linkの4方式とする。すべて初回登録を許可し、パスワード登録を他方式の利用条件にしない。メール確認済みの要件は全方式に適用する。同じ確認済みメールの方式連携はNeon Authが保証する同一Auth Subject内でのみ成立させ、メール一致だけで別Subjectの購入履歴・所有権を統合しない。詳細は `SPEC-060` とする。
+
+`FR-AUTH-006` のLogoutは現在BrowserのSession終了・JWTと保護Dataの破棄を要求する。発行済みJWTの即時失効は保証せず最大15分の残存を許容するが、APIでの現在のRole / Ownership再評価は維持する。
 
 ## 9. 入場チケット Functional Requirements
 
@@ -344,7 +348,7 @@ Entry TicketとGoodsは、Cartを経由して1回の外部決済へまとめて�
 
 | Requirement ID | Functional Requirement |
 |---|---|
-| FR-EML-001 | システムは、Supabase Authの認証フローに必要なメール確認・パスワード再設定等の認証関連通知を利用できなければならない。 |
+| FR-EML-001 | システムは、Neon Authの認証フローに必要なメール確認・パスワード再設定等の認証関連通知を利用できなければならない。 |
 | FR-EML-002 | 支払確定したEntry Ticket購入について、システムは購入完了通知を送信対象として生成できなければならない。 |
 | FR-EML-003 | 支払確定したKaraoke Reservationについて、システムは予約内容を含む購入・予約完了通知を送信対象として生成できなければならない。 |
 | FR-EML-004 | 支払確定したGoods購入について、システムは購入内容と会場受け取りに必要な案内を含む通知を送信対象として生成できなければならない。 |
@@ -362,11 +366,11 @@ Entry TicketとGoodsは、Cartを経由して1回の外部決済へまとめて�
 | Requirement ID | Functional Requirement |
 |---|---|
 | FR-XFN-001 | システムは、公開操作と認証必須操作を区別し、認証必須操作をGuestに成立させてはならない。 |
-| FR-XFN-002 | 認証必須Requestについて、Hono APIはSupabase AuthのIdentityをServer-sideで検証しなければならない。 |
+| FR-XFN-002 | 認証必須Requestについて、Hono APIはNeon AuthのIdentityをServer-sideで検証しなければならない。 |
 | FR-XFN-003 | Authenticated User向け自己所有データの参照・更新では、APIは認証Identityと対象業務データの所有関係をServer-sideで検証しなければならない。 |
 | FR-XFN-004 | AdministratorおよびStaffの全高権限操作はAPI側で認可し、Web UIのRoute制御または表示制御だけを権限境界としてはならない。 |
-| FR-XFN-005 | 業務データを読み書きする基本経路は `Browser → Next.js Web → Hono API → Supabase PostgreSQL` とし、Next.js WebまたはBrowserからBusiness Databaseへ直接アクセスする機能を実装してはならない。 |
-| FR-XFN-006 | Supabase Authは認証IdentityのSystem of Recordとして利用し、Order、Ticket、Reservation、Goods、Check-in等の業務状態を認証Metadataだけで確定してはならない。 |
+| FR-XFN-005 | 業務データを読み書きする基本経路は `Browser → React SPA → Hono API → Neon PostgreSQL` とし、React SPAまたはBrowserからBusiness Databaseへ直接アクセスする機能を実装してはならない。 |
+| FR-XFN-006 | Neon Authは認証IdentityのSystem of Recordとして利用し、Order、Ticket、Reservation、Goods、Check-in等の業務状態を認証Metadataだけで確定してはならない。 |
 | FR-XFN-007 | Order、Ticket、Reservation、Goods、Check-in等の業務状態はBusiness DatabaseをSystem of Recordとして参照・更新しなければならない。 |
 | FR-XFN-008 | 本システムはStripe Checkoutを利用し、カード番号その他の機微なカード情報をBusiness DatabaseまたはClient保存領域へ保持してはならない。 |
 | FR-XFN-009 | 決済対象の購入試行は、Stripeへ遷移する前に追跡可能なOrderとしてBusiness Databaseへ永続化しなければならない。 |
@@ -380,7 +384,7 @@ Entry TicketとGoodsは、Cartを経由して1回の外部決済へまとめて�
 | FR-XFN-017 | 公開識別子または内部識別子を知っていることだけを根拠に、他者のOrder、Ticket、Reservation、Profile、Goods購入情報へアクセスさせてはならない。 |
 | FR-XFN-018 | Entry QRとKaraoke QRは別の権利・用途として検証し、相互利用を許可してはならない。 |
 | FR-XFN-019 | Business Transactionが確定した後のEmail配送失敗は通知処理の失敗として分離し、確定済み業務状態をRollbackしてはならない。 |
-| FR-XFN-020 | Stripe、Resend、Supabase Authその他外部Serviceの一時障害が発生しても、既にBusiness Databaseへ確定済みの業務データを障害の副作用として削除または消失させてはならない。 |
+| FR-XFN-020 | Stripe、Resend、Neon Authその他外部Serviceの一時障害が発生しても、既にBusiness Databaseへ確定済みの業務データを障害の副作用として削除または消失させてはならない。 |
 | FR-XFN-021 | 外部Service呼び出しを含む処理で単一Database Transactionに収められない非同期状態が生じる場合、後続仕様で再試行・再同期・運用確認できる追跡可能な業務状態を持たなければならない。 |
 | FR-XFN-022 | システムは、運営側が決める外部事実および販売条件を変更可能な業務データまたは運用設定として保持・適用できなければならない。 |
 | FR-XFN-023 | Administratorが変更可能な外部事実・販売条件について、変更後の値は新規の公開表示および新規業務判定へ反映できなければならない。既存確定権利への影響ルールは各Domain Canonical Ownerが定義する。 |
@@ -492,8 +496,8 @@ Entry TicketとGoodsは、Cartを経由して1回の外部決済へまとめて�
 1. 公開サイト、Account、Entry Ticket、Karaoke、Goods、Mypage、Administrator、Staff、Emailの各機能領域に一意なRequirement IDが存在する。
 2. Guest、Authenticated User、Customer、Staff、AdministratorのCapability境界が `SPEC-010` と整合する。
 3. Customerが独立Roleではなく業務上のActor分類として維持されている。
-4. Business Databaseアクセスの基本経路と、Next.js WebからBusiness Databaseへ直接アクセスしない原則が機能要件として維持されている。
-5. Supabase AuthとBusiness DatabaseのSystem of Record責務が分離されている。
+4. Business Databaseアクセスの基本経路と、React SPAからBusiness Databaseへ直接アクセスしない原則が機能要件として維持されている。
+5. Neon AuthとBusiness DatabaseのSystem of Record責務が分離されている。
 6. Stripeへ遷移する前にOrderを永続化する要件がある。
 7. Browser redirectではなく検証済みStripe Webhookを支払確定根拠とする要件がある。
 8. Order二重確定、Ticket二重発行、Entry Ticket販売上限超過、Karaoke Slot二重販売、Goods在庫超過、QR二重Check-inを防ぐ要件がある。

@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-140
 title: Security Specification
-version: 1.1.0
+version: 2.1.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -30,7 +30,7 @@ related_specs:
 
 ## 1. 目的
 
-本書は、**off r39'x in 大阪らへん2027** Webシステムの完成形におけるSecurity Architecture、Trust Boundary、Threat Model、Authentication / Session security、Authorization enforcement、Browser / Next.js security、Hono API security、CSRF / CORS、XSS / Content security、Security Header、Supabase PostgreSQL access control、Secret / Key management、Stripe / Resend / Webhook security、Ticket / QR token protection、Administrator / Staff privileged operation security、Personal Data minimization、rate limit / abuse protection、error disclosure、environment separation、およびsecurity failure時のFail Closed behaviorを定義する。
+本書は、**off r39'x in 大阪らへん2027** Webシステムの完成形におけるSecurity Architecture、Trust Boundary、Threat Model、Authentication / Session security、Authorization enforcement、Browser / React SPA security、Hono API security、CSRF / CORS、XSS / Content security、Security Header、Neon PostgreSQL access control、Secret / Key management、Stripe / Resend / Webhook security、Ticket / QR token protection、Administrator / Staff privileged operation security、Personal Data minimization、rate limit / abuse protection、error disclosure、environment separation、およびsecurity failure時のFail Closed behaviorを定義する。
 
 本書は **Security Control / Security BoundaryのCanonical Owner** である。
 
@@ -45,7 +45,7 @@ related_specs:
 - `SPEC-130` のAdministrator / Staff Page / Route / UX contract
 - `SPEC-010` のSystem Boundaryと `INV-010-01〜10`
 
-Security Controlを理由として、Client申告RoleをAuthorityへ昇格させる、Administratorをgeneric superuserへする、Public Referenceをcredentialへする、Browser / Next.js WebからBusiness Databaseを直接更新する、Provider result unknownを成功扱いする等の上流変更を行ってはならない。
+Security Controlを理由として、Client申告RoleをAuthorityへ昇格させる、Administratorをgeneric superuserへする、Public Referenceをcredentialへする、Browser / React SPAからBusiness Databaseを直接更新する、Provider result unknownを成功扱いする等の上流変更を行ってはならない。
 
 本書はMVP、Step1、Step2、初期リリース等でSecurity Controlを分断しない。長期運用される完成システムのSecurity baselineを定義する。
 
@@ -59,7 +59,7 @@ Security Controlを理由として、Client申告RoleをAuthorityへ昇格させ
 - trust boundaryとthreat / abuse case
 - Authentication token verificationとSession / Cookie policy
 - Authorization enforcement / least privilege
-- Browser / Next.js Web security
+- Browser / React SPA security
 - Hono API transport / request security
 - CSRF / CORS
 - XSS / Public Content / HTML rendering policy
@@ -131,8 +131,8 @@ Security Controlを理由として、Client申告RoleをAuthorityへ昇格させ
 |---|---|
 | Protected Asset | 漏えい、改ざん、破壊、重複実行、権限外利用から守る対象 |
 | Trust Boundary | 一方の入力をAuthorityとして信頼する前に検証が必要となる境界 |
-| Browser-facing Boundary | BrowserとNext.js Web間の境界 |
-| Business API Boundary | Next.js Web / trusted server callerとHono API間の境界 |
+| Browser-facing Boundary | BrowserとReact SPA間の境界 |
+| Business API Boundary | Browser内のReact SPA等のcallerとHono API間の境界。SPAをtrusted serverとみなさない |
 | Provider Webhook Boundary | Stripe / ResendからHono APIへ到達する署名付き外部入力境界 |
 | Authorization Principal | `SPEC-060` のverified Auth Subject + Business Profile + current Role Assignment |
 | Security Fail Closed | Security条件を安全に評価できない場合、権限や成功を推測せずoperationを拒否すること |
@@ -154,7 +154,7 @@ Security Controlを理由として、Client申告RoleをAuthorityへ昇格させ
 | `SEC-TRU-*` | Trust Boundary / Threat Model |
 | `SEC-AUTH-*` | Authentication / Session / Cookie |
 | `SEC-AZ-*` | Authorization / least privilege |
-| `SEC-WEB-*` | Browser / Next.js / CSP / Security Headers |
+| `SEC-WEB-*` | Browser / React SPA / CSP / Security Headers |
 | `SEC-API-*` | API / CORS / CSRF / request security |
 | `SEC-DB-*` | Database / SQL / credential boundary |
 | `SEC-KEY-*` | Secret / cryptographic key management |
@@ -179,7 +179,7 @@ Security Controlを理由として、Client申告RoleをAuthorityへ昇格させ
 
 | Asset | Security objective |
 |---|---|
-| Supabase Auth Session / access / refresh material | 本人以外が再利用できないこと、Client JSやlogへ不必要に露出しないこと |
+| Neon Auth Session / access / refresh material | 本人以外が再利用できないこと、Client JSやlogへ不必要に露出しないこと |
 | Business Profile / Ownership relation | 別人への付け替え、IDOR、enumerationを防止すること |
 | Role Assignment / Capability | Client申告、古いSession、UI stateから権限昇格できないこと |
 | Order / Payment / Refund | 金額改ざん、二重確定、二重Refund、fake provider eventを防止すること |
@@ -203,12 +203,12 @@ Canonical data flowは次とする。
 
 ```text
 Browser
-  -> HTTPS -> Next.js Web / Vercel
+  -> HTTPS -> React SPA / Cloudflare Pages
   -> HTTPS + Bearer Auth -> Hono API / Railway
-  -> TLS -> Supabase PostgreSQL
+  -> TLS -> Neon PostgreSQL
 
-Browser / Next.js Web <-> Supabase Auth
-Hono API <-> Supabase Auth
+Browser / React SPA <-> Neon Auth
+Hono API <-> Neon Auth
 Hono API <-> Stripe
 Hono API / Email Worker <-> Resend
 
@@ -220,7 +220,7 @@ Resend -> HTTPS signed webhook -> Hono API
 
 **SEC-TRU-003:** Browser inputは、認証状態、Role、owner、price、payment result、inventory、Slot availability、QR validity、Notification recipientのAuthorityではない。
 
-**SEC-TRU-004:** Next.js Webはtrusted presentation / BFF layerではあるが、最終Authorization Authorityではない。Hono APIはprotected requestごとにPrincipalとCapability / Ownershipを再評価する。
+**SEC-TRU-004:** React SPAはBrowser内のpresentation layerであり、trusted server / BFF / 最終Authorization Authorityではない。Hono APIはprotected requestごとにPrincipalとCapability / Ownershipを再評価する。
 
 **SEC-TRU-005:** Stripe / ResendからのHTTP requestは、署名検証前はInternet上の任意requestと同じuntrusted inputとして扱う。
 
@@ -257,9 +257,9 @@ Resend -> HTTPS signed webhook -> Hono API
 
 `SPEC-110` のprotected APIは `Authorization: Bearer <access-token>` を使用する。
 
-**SEC-AUTH-001:** Hono APIはprotected requestごとにSupabase Auth access tokenをServer-sideで検証する。JWT payloadをdecodeしただけの処理をAuthenticationとみなしてはならない。
+**SEC-AUTH-001:** Hono APIはprotected requestごとにNeon Auth access tokenをServer-sideで検証する。JWT payloadをdecodeしただけの処理をAuthenticationとみなしてはならない。
 
-検証はSupabase Authが現在提供する公式server verification方式または等価な標準JWT verificationを使用し、最低限次を成立させる。
+検証はNeon Authが現在提供する公式server verification方式または等価な標準JWT verificationを使用し、最低限次を成立させる。
 
 1. signatureがtrusted key / JWKSにより有効
 2. expected issuerがenvironment設定とexact match
@@ -274,26 +274,26 @@ JWKS URL / issuer / audienceはenvironment-specific server configurationとし�
 
 **SEC-AUTH-002:** key取得cacheは許可するが、署名検証失敗時に「cacheが古いかもしれない」という理由でtokenをacceptしてはならない。必要ならtrusted JWKSを再取得して一度だけ再検証し、それでも成立しなければFail Closedとする。
 
-**SEC-AUTH-003:** Email確認がrequiredなoperationでは、`SPEC-060` のEmail verified stateをSupabase AuthのServer-side authorityから確認する。Client-visible email string、Business Profile、Stripe Emailをverification根拠にしない。
+**SEC-AUTH-003:** Email確認がrequiredなoperationでは、`SPEC-060` のEmail verified stateをNeon AuthのServer-side authorityから確認する。Client-visible email string、Business Profile、Stripe Emailをverification根拠にしない。
 
 ## 10. Access token lifetime / refresh boundary
 
-**SEC-AUTH-004:** Production Supabase Auth access token lifetimeは **900秒（15分）** をSecurity baselineとする。Environmentがこれより長いaccess token lifetimeを設定してはならない。
+**SEC-AUTH-004:** Production Neon Auth access token lifetimeは **900秒（15分）** をSecurity baselineとする。Environmentがこれより長いaccess token lifetimeを設定してはならない。
 
-Session refreshは `SPEC-060 AR-SES-006` に従いBrowser / Next.js WebのSupabase Auth integrationが担う。Hono APIはBusiness request処理中に長期Session lifecycleを所有しない。
+Session refreshは `SPEC-060 AR-SES-006` に従いBrowser / React SPAのNeon Auth integrationが担う。Hono APIはBusiness request処理中に長期Session lifecycleを所有しない。
 
 **SEC-AUTH-005:** expired tokenをgrace periodでBusiness operationへ通してはならない。refresh成功後に新しいaccess tokenをHono APIが改めて検証する。
 
-**SEC-AUTH-006:** Session / refresh credential / Password CredentialをBusiness Databaseへ保存してはならない。
+**SEC-AUTH-006:** Session / refresh credential / Password Credentialを本システム所有の`app` / `auth_read`へ保存してはならない。同一DBのProvider管理`neon_auth`をアプリケーションのCredential storeとして管理・複製しない。
 
 ## 11. Cookie Policy
 
-Supabase Auth由来のSession materialを保持するCookieは次を満たす。
+Neon Auth由来のSession materialを保持するCookieは次を満たす。
 
 | Attribute | Canonical policy |
 |---|---|
 | `Secure` | **MUST true**。ProductionでHTTP送信禁止 |
-| `HttpOnly` | **MUST true** for access / refresh / session credential material |
+| `HttpOnly` | **MUST true** for Provider Session credential。業務API用JWTはCookieへ複製せずメモリーのみ |
 | `SameSite` | **Lax** |
 | `Path` | `/` |
 | `Domain` | **設定しない**。host-only cookie |
@@ -301,17 +301,19 @@ Supabase Auth由来のSession materialを保持するCookieは次を満たす。
 
 **SEC-AUTH-007:** Session credentialを`localStorage`、`sessionStorage`、IndexedDB、URL query、URL fragment、HTML hidden fieldへ複製してはならない。
 
-**SEC-AUTH-008:** Browser JavaScriptがaccess / refresh tokenを読み出してRailway Hono APIへ直接cross-origin送信する方式をCanonical transportとしない。Browserのbusiness requestはNext.js WebをBrowser-facing boundaryとし、Next.js WebがServer-sideでHono APIへBearer tokenをforwardする。
+**SEC-AUTH-008:** Browserの業務requestはReact SPAからRailway HonoへBearer JWTを直接送る。Neon SDKの `authClient.token()` で得たAPI用JWTだけをJavaScriptのメモリー内に保持し、Cookieの秘密値・refresh credential・Session tokenを読み出して流用しない。JWTは最大900秒とし、再読込・Logout・Session失効時に破棄する。JWTをWeb storage / URL / log / HTML / shared cacheへ複製しない。
 
 **SEC-AUTH-009:** Auth callback / refresh等でCookieを更新するresponseも`Cache-Control: no-store`とし、Session credentialをshared cacheへ保存させない。
 
 ## 12. Session fixation / login / logout
 
-**SEC-AUTH-010:** Login成功、Password reset completion、Session recovery等、Guest / recovery contextからauthenticated Sessionへ遷移する時点で、pre-authentication Session credentialを再利用せず、Supabase Authが新たに成立させたSessionへ置換する。
+**SEC-AUTH-010:** Login成功、Password reset completion、Session recovery等、Guest / recovery contextからauthenticated Sessionへ遷移する時点で、pre-authentication Session credentialを再利用せず、Neon Authが新たに成立させたSessionへ置換する。
 
-**SEC-AUTH-011:** Login成功 / Logout完了時にCSRF tokenもrotateする。
+**SEC-AUTH-011:** Login成功 / Logout完了時にはProviderのSession / CSRF lifecycleへ従い、古いAPI JWTとprotected cacheを破棄する。静的SPAにCSRF署名用Secretを配布しない。
 
-**SEC-AUTH-012:** LogoutではBrowser側Session Cookieを削除し、Supabase Authの正規logout処理を実行する。Logout request失敗を「server session revoke済み」と偽装しない。
+**SEC-AUTH-012:** LogoutではBrowser側Session Cookieを削除し、Neon Authの正規logout処理を実行する。Logout request失敗を「server session revoke済み」と偽装しない。
+
+発行済みJWTはLogout / Session revokeだけで即時失効するとは保証しない。発行から最大15分の残存を許容し、その間も現在のIdentity / Email確認、Role / OwnershipをAPIで検証する。残存JWTを15分経過後に受理したり、Session revoke成功を全JWT即時無効と表示したりしてはならない。
 
 **SEC-AUTH-013:** Logout後の `/mypage/*`, `/admin/*`, `/staff/*` のresponse再利用を防ぐためprotected HTML / API responseは`no-store`とする。BFCache復元が起きたClientはsensitive contentを操作可能にする前にSessionをServer-sideで再検証し、無効なら即時にAuthentication Gateへ遷移する。
 
@@ -327,15 +329,15 @@ Supabase Auth由来のSession materialを保持するCookieは次を満たす。
 
 ## 14. Password / Auth entry security boundary
 
-Credential lifecycleはSupabase AuthがSystem of Recordである。
+Credential lifecycleはNeon AuthがSystem of Recordである。
 
 **SEC-AUTH-016:** 新規Password設定 / reset時にWeb UIは **12文字以上128文字以下** を要求する。Passwordをtrim、case-fold、Unicode normalizationして別値へ変換してはならない。
 
-**SEC-AUTH-017:** Password compositionとして「英大文字・記号を必ず1つ」等の固定複雑性ruleは追加しない。長さを優先し、Supabase Authが提供する漏えいPassword / bot / abuse protection機能が利用可能な場合はProductionで有効化する。
+**SEC-AUTH-017:** Password compositionとして「英大文字・記号を必ず1つ」等の固定複雑性ruleは追加しない。長さを優先し、Neon Authが提供する漏えいPassword / bot / abuse protection機能が利用可能な場合はProductionで有効化する。
 
 **SEC-AUTH-018:** Password、Password reset token、Email verification tokenをapplication log、Business Database、analyticsへ記録しない。
 
-**SEC-AUTH-019:** Auth entry pointのapplication側rate limitはPart XIIIを適用する。Supabase Auth provider endpoint自体のabuse protectionはprovider側controlも有効化し、application側rate limitだけでProvider endpointを保護したとみなさない。
+**SEC-AUTH-019:** Auth entry pointのapplication側rate limitはPart XIIIを適用する。Neon Auth provider endpoint自体のabuse protectionはprovider側controlも有効化し、application側rate limitだけでProvider endpointを保護したとみなさない。
 
 ---
 
@@ -369,7 +371,7 @@ Protected Hono APIは、`SPEC-060` / `SPEC-110` を次の順序で実装する�
 | `/api/v1/self/*` | verified Session + Business Profile。owner-safe lookup |
 | `/api/v1/staff/*` | verified Session + active `STAFF` + operation-specific Capability |
 | `/api/v1/admin/*` | verified Session + active `ADMINISTRATOR` + operation-specific Capability |
-| `/api/v1/webhooks/*` | Supabase AuthではなくProvider signature。Browser credentialで代用不可 |
+| `/api/v1/webhooks/*` | Neon AuthではなくProvider signature。Browser credentialで代用不可 |
 
 **SEC-AZ-004:** `ADMINISTRATOR` は `STAFF` を自動継承しない。
 
@@ -393,7 +395,9 @@ Protected Hono APIは、`SPEC-060` / `SPEC-110` を次の順序で実装する�
 
 **SEC-AZ-012:** 最後のactive Administratorを失わせるmutationは、`SPEC-100` のglobal advisory lock + current active Administrator count再評価を通過しない限り成立させない。
 
-**SEC-AZ-013:** Role revokeは次のprivileged requestから即時に反映し、Session内の古いRole表示やNext.js cacheをAuthorityにしない。
+**SEC-AZ-013:** Role revokeは次のprivileged requestから即時に反映し、Session内の古いRole表示やReact SPA cacheをAuthorityにしない。
+
+これはBusiness DBの現在Roleを再評価して該当権限を拒否する契約であり、JWT自体の即時失効を意味しない。署名・期限が有効な残存JWTでも、revoke済みRoleによるprivileged operationは許可しない。
 
 **SEC-AZ-014:** Role grant targetは `SPEC-130` の `target_profile_ref` を使用し、任意Email検索をSPEC-140から追加しない。
 
@@ -407,7 +411,7 @@ Protected Hono APIは、`SPEC-060` / `SPEC-110` を次の順序で実装する�
 
 ---
 
-# Part IV — Browser / Next.js Web Security
+# Part IV — Browser / React SPA Security
 
 ## 20. HTTPS-only
 
@@ -417,18 +421,18 @@ Protected Hono APIは、`SPEC-060` / `SPEC-110` を次の順序で実装する�
 
 ## 21. Content Security Policy
 
-Production HTML responseはrequestごとにCSPRNG nonceを生成し、CSP headerとNext.jsが出力する許可scriptへ同じnonceを適用する。
+Production HTMLは静的artifactであるため、requestごとのnonceを前提にしない。Viteでbundleした同一originの外部scriptを使用し、不可避な固定inline bootstrapだけにbuild時hashを設定する。artifactとCSP hashの一致をCIで検証する。
 
 Canonical CSPは次をbaselineとする。
 
 ```text
 default-src 'self';
-script-src 'self' 'nonce-{REQUEST_NONCE}' 'strict-dynamic';
+script-src 'self';
 script-src-attr 'none';
 style-src 'self' 'unsafe-inline';
-img-src 'self' data: blob:;
+img-src 'self' data: blob: <EXACT_SPONSOR_IMAGE_ORIGINS>;
 font-src 'self';
-connect-src 'self';
+connect-src 'self' <EXACT_API_AND_AUTH_PROXY_ORIGIN>;
 object-src 'none';
 base-uri 'none';
 frame-ancestors 'none';
@@ -446,7 +450,9 @@ upgrade-insecure-requests;
 
 **SEC-WEB-005:** Stripe Checkoutはhosted pageへのtop-level navigationとして利用し、Stripe frameを埋め込むために`frame-src`を緩和しない。
 
-**SEC-WEB-006:** Supabase AuthとのBrowser直接connectionを必要とする実装へ変更する場合、必要originだけを`connect-src`へ追加するSecurity specification changeが必要であり、`*`へ緩和してはならない。
+**SEC-WEB-006:** `connect-src`のplaceholderは環境のexact API / Auth proxy originへ置換する。Neonの任意origin、`*`、全subdomainを許可しない。Auth SDKはRailway中継を使用する。追加originが必要なら所有者へ仕様変更を確認する。
+
+`img-src` の追加placeholderはSponsor Logoの承認済み用途だけに限り、`SPEC-180` の環境別 `SPONSOR_IMAGE_ALLOWED_ORIGINS` のexact HTTPS originsへ展開する。空集合ならplaceholderを除去し、`https:`／`*`／wildcard subdomainへ緩和しない。APIのURL検証とPages artifactのCSPを同じ設定revisionに結び付ける。これを理由に `script-src`／`connect-src` 等へ画像hostを追加しない。
 
 ## 22. Security Headers
 
@@ -462,7 +468,7 @@ Production Web responseは次を送る。
 | `Permissions-Policy` | route別Policy |
 | `Content-Security-Policy` | §21 |
 
-`/auth/*`, `/mypage/*`, `/admin/*`, `/staff/*` は追加で `Referrer-Policy: no-referrer` を使用する。
+`/account/*`, `/auth/*`, `/purchase/*`, `/mypage/*`, `/admin/*`, `/staff/*` は追加で `Referrer-Policy: no-referrer` を使用する。
 
 Hono API JSON responseは最低限次を送る。
 
@@ -492,9 +498,11 @@ camera=(self), microphone=(), geolocation=(), payment=(), usb=(), serial=()
 
 **SEC-WEB-008:** Admin Page、Mypage、Public Pageへcamera permissionを広げない。
 
+SPAのclient-side navigationだけではdocumentのPermissions-Policyは更新されない。scanner Pageへ入るとき・出るときは対象URLへdocument navigationし、対応する静的response headerを適用する。全SPAへcameraを許可するfallbackをしない。
+
 ## 23. Cache / source map / error page
 
-**SEC-WEB-009:** `/auth/*`, `/mypage/*`, `/admin/*`, `/staff/*`、Order status、QR payload response、Session mutation responseは:
+**SEC-WEB-009:** `/account/*`, `/auth/*`, `/purchase/*`, `/mypage/*`, `/admin/*`, `/staff/*`、Order status、QR payload response、Session mutation responseは:
 
 ```text
 Cache-Control: no-store, private, max-age=0
@@ -531,6 +539,8 @@ Pragma: no-cache
 
 **SEC-WEB-016:** User / Admin入力をlink destinationへ利用する場合、`javascript:`, `data:`, `vbscript:`, `file:` その他non-HTTPS schemeをrejectする。Public ContentはPart Vのplain-text contractを使用し、任意URL auto-linkificationを行わない。
 
+**SEC-WEB-026:** Sponsor Logoの画像・リンクURLはWHATWG URL相当でparseしたabsolute HTTPS URLのみとする。userinfo、非標準port（443以外）、query、fragment、IP literal、localhost／`.local` host、制御文字を拒否し、credential・署名付き期限URLを保存しない。hostは正規化したASCIIの完全一致で比較し、画像originは環境allowlistに必須一致、任意リンクは公開HTTPSの外部URLに限定する。名称はescaped plain textでありraw HTMLとして実行しない。API／workerはURLのHEAD／GET／proxy／thumbnail生成を行わず、SSRF経路を作らない。Browser画像は `referrerpolicy="no-referrer"`、外部リンクは `rel="noopener noreferrer"` を適用する。URL更新と公開時に再検証し、CSPで許可されない画像は読み込み成功と偽装しない。
+
 ---
 
 # Part V — XSS / Public Content Security
@@ -565,45 +575,24 @@ Pragma: no-cache
 
 # Part VI — CSRF / CORS
 
-## 29. Browser-to-Next.js CSRF model
+## 29. Browser-to-Railway CSRF model
 
-Canonical Browser business flowは `Browser -> Next.js Web -> Hono API` である。
+Canonical Browser business flowは `Browser（React SPA） -> Railway Hono API` である。業務APIの認証は明示Bearer JWTのみとし、Cookieで認証する認証中継と分離する。
 
-BrowserはSession CookieをNext.jsへ送るため、authenticated state-changing browser requestにはCSRF defenseを必須とする。
+### 29.1 Cookie認証とBearer認証の分離
 
-### 29.1 CSRF token
-
-Next.js WebはBrowser Sessionごとにrandom **256-bit** CSRF tokenを生成し、次で保持する。
-
-Cookie:
-
-```text
-__Host-r39x-csrf=<43-char-base64url-random>
-Secure
-SameSite=Strict
-Path=/
-HttpOnly=false
-Domain=<unset>
-```
-
-Request header:
-
-```text
-X-R39X-CSRF: <same token>
-```
-
-**SEC-API-001:** Authenticated `POST`, `PUT`, `PATCH`, `DELETE` 相当のBrowser-origin mutationは、CSRF cookieとheaderがconstant-timeで一致し、かつOrigin checkが成功した場合だけNext.js WebからHono APIへforwardする。
+**SEC-API-001:** Cookieを使用する `/auth/*` の状態変更はNeon Provider protocolのCSRF対策とexact Origin検証を必須とする。OAuth callbackはProviderのstate等を含む正規検証による例外であり、汎用Origin bypassにしない。業務mutationはCookieを認証根拠にせず、JWTとOriginを検証する。静的SPAに旧Web BFF用のCSRF Secret / Cookie発行serverを置かない。
 
 **SEC-API-002:** CSRF tokenはAuthentication credentialではない。漏えいしても単独でUser identityを成立させない。
 
-**SEC-API-003:** CSRF tokenはLogin成功 / Logoutでrotateする。Session credentialと同じCookieへ格納しない。
+**SEC-API-003:** 認証中継はProviderのCSRF token / stateを無効化・固定化しない。Cookie / redirectの書換えがProviderの検証を失わせないことをcontract testで確認する。
 
 ### 29.2 Origin / Fetch Metadata
 
 State-changing requestでは次も要求する。
 
 - `Origin` がconfigured canonical Web originとexact match
-- Browserが `Sec-Fetch-Site` を送る場合 `same-origin` を要求
+- Browserが `Sec-Fetch-Site` を送る場合、構成に対応した `same-origin` / `same-site` を要求し、通常のSPA mutationで `cross-site` を許可しない。same-siteだけでは信頼せずOriginもexact照合する
 - `Sec-Fetch-Mode` / `Sec-Fetch-Dest` はoperationに不整合なnavigation / embedをreject可能
 
 **SEC-API-004:** `Origin`欠落を無条件allowしない。Browser UI mutationでOriginを取得できないlegacy clientを標準対応しない。
@@ -612,13 +601,15 @@ State-changing requestでは次も要求する。
 
 ## 30. Hono API CORS
 
-Hono APIの`/public`, `/self`, `/staff`, `/admin` business routeはServer-to-server Next.js callerをCanonicalとするため、Browser cross-origin accessを標準Capabilityとしない。
+Hono APIの`/public`, `/self`, `/staff`, `/admin` business routeはBrowser SPAからのcross-origin requestを受ける。環境ごとに正規Web originだけをexact allowlistし、`Authorization`、Content-Type、canonical idempotency / correlation headerと必要methodだけを許可する。
 
 **SEC-API-006:** `/api/v1/self/*`, `/api/v1/staff/*`, `/api/v1/admin/*` に `Access-Control-Allow-Origin: *` を付与してはならない。
 
 **SEC-API-007:** credentialed CORS (`Access-Control-Allow-Credentials: true`) をprotected business routeで使用しない。
 
-**SEC-API-008:** Browserからのpreflight `OPTIONS` はBusiness actionを実行しない。Protected routeへのcross-origin preflightにはAuthorization successを返す必要はなく、CORS headerなしで拒否してよい。
+**SEC-API-008:** Browserからのpreflight `OPTIONS` はBusiness actionを実行せず、allowlistされたorigin / method / headerにはCORS応答する。preflight成功を業務認証の成功にせず、実requestでJWT / authorizationを検証する。
+
+認証中継 `/auth/*` だけは `credentials: include` とexact Web originのcredentialed CORSを許可する。`*`は禁止する。Web / API / Auth proxyは同一親ドメイン・HTTPSのsame-site構成とし、認証Cookieはproxy hostのhost-onlyとする。第三者Cookieを許可しないSafariでも全方式を検証する。Neon trusted domains登録だけでCookie互換性が成立すると扱わない。
 
 Public APIをBrowser direct readへ開放する必要がある場合も、Originはenvironment-specific exact allowlistのみとし、`*`は使わない。Allowlistはscheme + host + portのexact originとする。
 
@@ -677,7 +668,7 @@ Public APIをBrowser direct readへ開放する必要がある場合も、Origin
 
 ## 36. Forwarded header / client IP
 
-**SEC-API-024:** `X-Forwarded-For`, `Forwarded`, `X-Real-IP`, `X-Forwarded-Host`, `X-Forwarded-Proto` は、Vercel / Railwayの**immediate trusted proxyから付与されたことをruntime configurationで確認できる場合だけ**利用する。
+**SEC-API-024:** `X-Forwarded-For`, `Forwarded`, `X-Real-IP`, `X-Forwarded-Host`, `X-Forwarded-Proto` は、実際のRailway ingress等の**immediate trusted proxyから付与されたことをruntime configurationで確認できる場合だけ**利用する。Pagesで静的JSを配信したことは、そのJSが送るAPI requestのtrusted proxy証明ではない。
 
 **SEC-API-025:** trusted proxy chainを確立できない場合、rate limitのClient IPはdirect peer情報を使用し、arbitrary incoming forwarding headerを採用しない。
 
@@ -689,13 +680,15 @@ Public APIをBrowser direct readへ開放する必要がある場合も、Origin
 
 **SEC-API-028:** Owner resource existenceは`SEC-AZ-008`の404 policyを使用する。
 
+**SEC-API-029:** 本人向けbulk eligibilityは検証済み本人の条件のみを返し、業務DB／transport idempotency recordを作成・更新せず、共有cacheへ保存しない。POSTであることを理由にmutationとして扱わない。Orderの通知サマリーは `SPEC-120 EML-NTF-003` のDTOだけとし、宛先・本文・Provider状態を露出しない。サマリー部分障害の非阻害扱いはOwner認可やOrder本体の取得失敗へ拡張しない。Display nameは `SPEC-030` §9.2の正規化後のplain textとして保存・escapeし、任意Fieldのmass assignmentを拒否する。
+
 ---
 
 # Part VIII — Database Security
 
 ## 38. Database access model
 
-Business Schemaは `app` であり、Browser / Next.js Web / Supabase PostgREST roleから直接操作させない。
+Business Schemaは `app` であり、Browser / React SPA / Neon Data APIから直接操作させない。Auth Directoryの限定参照は `SPEC-100 §5.1` のみ許可する。
 
 本システムは**grant-based server-only access**をCanonicalとし、RLSをprimary authorization mechanismにしない。
 
@@ -715,11 +708,11 @@ Business Schemaは `app` であり、Browser / Next.js Web / Supabase PostgREST 
 - `CREATE` on database / schemaなし
 - `ALTER`, `DROP`, `GRANT`, role managementなし
 - superuser / `BYPASSRLS` / replication privilegeなし
-- Supabase managed `auth` schemaへのdirect writeなし
+- Neon managed `neon_auth`へのdirect writeなし。runtimeのdirect readも禁止し、API / Email Workerだけが `auth_read.identity_directory` の3項目を参照できる
 
 **SEC-DB-003:** migration convenienceを理由に`app_runtime`へschema owner相当権限を与えない。
 
-## 40. Supabase Browser role closure
+## 40. Neon Browser role closure
 
 Production migrationは最低限次の意図を満たすGRANT / REVOKEを持つ。
 
@@ -728,16 +721,13 @@ REVOKE ALL ON SCHEMA app FROM PUBLIC;
 REVOKE ALL ON ALL TABLES IN SCHEMA app FROM PUBLIC;
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA app FROM PUBLIC;
 
-REVOKE ALL ON SCHEMA app FROM anon, authenticated;
-REVOKE ALL ON ALL TABLES IN SCHEMA app FROM anon, authenticated;
-REVOKE ALL ON ALL SEQUENCES IN SCHEMA app FROM anon, authenticated;
 ```
 
-future tableにも漏れないようdefault privilegeを同様に設定する。
+future tableにも漏れないようdefault privilegeを同様に設定する。実在するBrowser / Data API向けroleを列挙して同様に閉じ、`anon` / `authenticated`という旧Provider固有roleの存在を前提にしない。
 
-**SEC-DB-004:** Supabase Data API / PostgRESTのexposed schema設定に`app`を追加しない。
+**SEC-DB-004:** Neon Data APIを業務経路に採用せず、`app` / `auth_read`をBrowserへ公開しない。
 
-**SEC-DB-005:** `app`が誤ってexposed schemaに追加されても、`anon` / `authenticated`にUSAGE / table privilegeがないためfail closedとなる状態を維持する。
+**SEC-DB-005:** Browser / Data API向けroleに `app` / `auth_read` のUSAGE / object privilegeを与えず、設定事故でもFail Closedとなることを実roleで検証する。
 
 RLSを追加のdefense-in-depthとして将来採用してよいが、Hono API authorization / grantsを置換してはならない。RLS導入がDomain query semanticsを変更する場合は `SPEC-100` 変更対象とする。
 
@@ -751,7 +741,7 @@ RLSを追加のdefense-in-depthとして将来採用してよいが、Hono API a
 
 **SEC-DB-008:** Production Database connectionはTLSを必須とし、certificate verificationを無効化しない。
 
-**SEC-DB-009:** `DATABASE_URL` / DB PasswordをBrowser、Next.js client bundle、log、error responseへ出さない。
+**SEC-DB-009:** `DATABASE_URL` / DB PasswordをBrowser、React SPA client bundle、log、error responseへ出さない。
 
 **SEC-DB-010:** Production DB credentialをPreview / local / test environmentへ再利用しない。
 
@@ -759,7 +749,7 @@ RLSを追加のdefense-in-depthとして将来採用してよいが、Hono API a
 
 **SEC-DB-011:** Production database dumpをnonproductionへ無制限copyしない。
 
-nonproductionでProduction由来dataが必要な場合は、専用exportで次を満たす。
+本構成ではProduction Business Data / Auth Data / Session materialのnonproductionへのclone・branch・dumpを禁止する。synthetic dataで検証する。将来この禁止を変更する場合も、少なくとも次の匿名化・機密除去を必要条件とし、所有者の仕様変更承認なしに実行しない。
 
 - Auth Subjectをnonproduction identityへ利用できない値へ置換
 - Emailをsynthetic addressへ置換
@@ -778,8 +768,9 @@ nonproductionでProduction由来dataが必要な場合は、専用exportで次�
 
 | Secret / trust material | Class | Authorized reader |
 |---|---|---|
-| Supabase service credential | S1 Critical | Hono Auth / Email recipient-resolution server component only |
-| Supabase Auth JWKS / public validation key | T1 Trust Material | Hono / Next.js server。Secretではないがorigin固定 |
+| Auth Directory読取を含むDB credential | S1 Critical | API / Email Worker各自の専用DB role。認証tableの直接権限なし |
+| Neon管理API / Google OAuth / Auth SMTP credential | S1 Critical | 環境専用のProvider設定・保護されたdeployment identityのみ。通常API / workerへ配布しない |
+| Neon Auth JWKS / public validation key | T1 Trust Material | Hono JWT verifier。Secretではないがorigin固定 |
 | Database connection credential | S1 Critical | Hono runtime / migration principal別々 |
 | Stripe secret key | S1 Critical | Hono payment component only |
 | Stripe webhook signing secret | S1 Critical | Hono Stripe webhook verifier only |
@@ -788,9 +779,9 @@ nonproductionでProduction由来dataが必要な場合は、専用exportで次�
 | QR lookup HMAC key | S1 Critical | Hono QR component only |
 | QR AEAD encryption key | S1 Critical | Hono QR display / rotation component only |
 | Application signing/encryption key | S1 Critical | その用途のserver component only |
-| CSRF token | S2 Ephemeral | Browser + Next.js。Authentication Secretではない |
+| CSRF token / OAuth state | S2 Ephemeral | Provider protocolの必要な当事者のみ。認証中継で保護しlogへ出さない |
 
-**SEC-KEY-001:** S1 Secretを`NEXT_PUBLIC_*`、Client-side environment、HTML、source map、analytics、error messageへ公開しない。
+**SEC-KEY-001:** S1 Secretを`VITE_*`、Client-side environment、HTML、source map、analytics、error messageへ公開しない。Pagesの静的buildへserver Secretを渡さない。
 
 **SEC-KEY-002:** S1 Secretをsource controlへcommitしない。`.env` sampleには値ではなくvariable nameだけを置く。
 
@@ -802,7 +793,7 @@ nonproductionでProduction由来dataが必要な場合は、専用exportで次�
 
 最低限別にする。
 
-- Supabase project / server credential
+- Neon project / server credential
 - Database runtime credential
 - Stripe secret / webhook secret
 - Resend API / webhook secret
@@ -837,7 +828,7 @@ QR key rotationはPart XIを使用する。Active Tokenが旧versionで存在す
 
 ## 47. Secret storage / backup boundary
 
-**SEC-KEY-008:** Vercel / Railway / Supabase等の最終Secret store wiringは `SPEC-180` が定義するが、Secretはdeployment-time server secret storeから注入し、Database business rowへ保存しない。
+**SEC-KEY-008:** Cloudflare Pages / Railway / Neon等の最終Secret store wiringは `SPEC-180` が定義するが、Secretはdeployment-time server secret storeから注入し、Database business rowへ保存しない。
 
 **SEC-KEY-009:** QR cryptographic keyをQR row、Notification context、Consistency Review detailへ保存しない。
 
@@ -1042,13 +1033,13 @@ Routine rotation sequenceは次とする。
 
 ## 61. Recipient authority
 
-**SEC-EML-001:** Business Email recipient authorityは `recipient_profile_id -> Business Profile.auth_subject -> Supabase Auth server-side lookup` とする。
+**SEC-EML-001:** Business Email recipient authorityは `recipient_profile_id -> Business Profile.auth_subject -> Neon Auth server-side lookup` とする。
 
 **SEC-EML-002:** Client-supplied Email、Stripe Checkout Email、query parameter、Admin free-text Emailをrecipient authorityにしない。
 
 **SEC-EML-003:** 初回Provider call前に`SPEC-120`のrecipient snapshotを固定し、自動retryで暗黙変更しない。
 
-**SEC-EML-004:** `CURRENT_VERIFIED` recipient refreshはAdministrator recovery operationでのみ実行し、current Supabase Auth verified Emailを再解決してsnapshot revisionを更新する。`UNKNOWN_RESULT`中は変更しない。
+**SEC-EML-004:** `CURRENT_VERIFIED` recipient refreshはAdministrator recovery operationでのみ実行し、current Neon Auth verified Emailを再解決してsnapshot revisionを更新する。`UNKNOWN_RESULT`中は変更しない。
 
 ## 62. Resend API / header security
 
@@ -1064,7 +1055,7 @@ Routine rotation sequenceは次とする。
 
 **SEC-EML-009:** CTA originはtrusted `APP_BASE_URL`から生成し、Host header / Client inputから生成しない。
 
-**SEC-EML-010:** Email URLへraw QR token、Supabase access / refresh token、Password reset token、Email verification token、Stripe Secret、Internal bigint IDを埋め込まない。
+**SEC-EML-010:** Email URLへraw QR token、Neon access / refresh token、Password reset token、Email verification token、Stripe Secret、Internal bigint IDを埋め込まない。
 
 **SEC-EML-011:** CTA pathは `SPEC-120` のallowlisted existing Mypage routeだけを使用し、arbitrary redirect URLをTemplate contextへ持たせない。
 
@@ -1112,7 +1103,7 @@ Rate limitはDomain authorizationの代替ではない。Rate limitを通過し�
 
 **SEC-ABU-001:** Production rate limitはmulti-instanceで共有されるenforcement layerを使用する。per-process in-memory counterだけをProductionの唯一controlにしない。
 
-具体的なVercel / Railway / edge / shared store wiringは `SPEC-180` が選定する。
+具体的なCloudflare Pages / Railway / edge / shared store wiringは `SPEC-180` が選定する。
 
 **SEC-ABU-002:** Rate limit configurationがmissing、0、negative、parse不能の場合は「unlimited」へfallbackせずstartup / readinessをfailureにする。
 
@@ -1152,9 +1143,9 @@ Productionでは下表の値を**上限**とする。より厳しくすること
 
 ## 69. Auth provider abuse boundary
 
-Supabase Authへのdirect provider trafficはHono rate limiterで完全には制御できない。
+Neon Authへのdirect provider trafficはHono rate limiterで完全には制御できない。
 
-**SEC-ABU-005:** Signup / Login / Password reset UIにapplication-side per-IP guardを置き、同時にSupabase Authが提供するprovider-side rate / bot protectionをProductionで有効化する。
+**SEC-ABU-005:** Signup / Login / Password reset UIにapplication-side per-IP guardを置き、同時にNeon Authが提供するprovider-side rate / bot protectionをProductionで有効化する。
 
 **SEC-ABU-006:** Provider-side limit値を本書が外部事実として捏造しない。Provider limit変更があってもapplication側matrixは維持する。
 
@@ -1172,7 +1163,7 @@ Supabase Authへのdirect provider trafficはHono rate limiterで完全には制
 
 ## 71. Route guard / protected response
 
-**SEC-ADM-001:** `/admin/*` と `/staff/*` はServer-side Session / Principal確認前にprotected dataをfetch / renderしない。
+**SEC-ADM-001:** `/admin/*` と `/staff/*` は静的shellから開始し、Hono APIがJWT / Principal / Capabilityを検証して認可したprotected dataだけをrenderする。Web SSRで保護すると仮定しない。
 
 **SEC-ADM-002:** Admin / Staff responseは`no-store`とし、shared cacheへCustomer / operational dataを保存しない。
 
@@ -1199,7 +1190,7 @@ High-risk mutationは最低限次を要求する。
 
 1. HTTPS
 2. valid current Session
-3. CSRF / same-origin validation at Browser-facing boundary
+3. §29〜30のCookie / Bearer分離とexact Origin validation at Railway boundary
 4. Hono APIでcurrent Authentication / Role / Capability再評価
 5. Zod allowlist validation
 6. current Domain state再取得
@@ -1306,7 +1297,7 @@ Client response / operational logへ次を含めてはならない。
 - access / refresh token
 - Session Cookie value
 - CSRF token
-- Stripe / Resend / Supabase / DB Secret
+- Stripe / Resend / Neon / DB Secret
 - raw QR payload
 - `protected_token_material`
 - QR HMAC key / digest input
@@ -1380,7 +1371,7 @@ Client response / operational logへ次を含めてはならない。
 | Security Configuration invalid | service not Ready | insecure defaultで起動 |
 | required Secret missing | service not Ready | featureだけverification bypass |
 | key rotation incomplete | affected operation fail closed / review | unknown keyをcurrentで復号試行 |
-| CSP nonce generation failure | sensitive HTMLをserveしない | CSPなしでserve |
+| CSP build hash / header validation failure | artifact公開を停止し、既知の正常deploymentを維持 | CSPなしでserve |
 
 **SEC-ERR-004:** Security dependency failureを理由に既に確定済みBusiness Dataを削除・取消・巻き戻ししない。
 
@@ -1390,7 +1381,7 @@ Production startup / readinessで最低限次を検証する。
 
 - `APP_BASE_URL` is absolute HTTPS canonical origin
 - allowed Host / Originのexact list
-- Supabase issuer / JWKS configuration存在
+- Neon issuer / JWKS configuration存在
 - access token lifetime policyが900秒以下
 - DB TLS required configuration
 - Stripe Secret / webhook secret存在
@@ -1408,7 +1399,7 @@ Production startup / readinessで最低限次を検証する。
 
 ## 86. Outbound network allowlist
 
-**SEC-DEP-001:** Server-side outbound requestはSupabase Auth、Stripe、Resend等、既存Architectureで必要なconfigured Provider endpointに限定する。Client-supplied URLをserver fetchしない。
+**SEC-DEP-001:** Server-side outbound requestはNeon Auth、Stripe、Resend等、既存Architectureで必要なconfigured Provider endpointに限定する。Client-supplied URLをserver fetchしない。
 
 **SEC-DEP-002:** HTTPS certificate verificationを無効にする`rejectUnauthorized=false`相当をProductionで使用しない。
 
@@ -1497,8 +1488,8 @@ Production startup / readinessで最低限次を検証する。
 2. issuer / signature / expiry等のvalidation failureはFail Closedになる。
 3. access token lifetimeがProductionで900秒を超えない。
 4. Session credential CookieはSecure / HttpOnly / SameSite=Lax / host-onlyである。
-5. Session credentialがlocalStorage / URL / Business Databaseに存在しない。
-6. Login / LogoutでCSRF tokenがrotateする。
+5. Session credentialがlocalStorage / URL / 本システム所有`app` / `auth_read`に存在しない。Provider管理`neon_auth`への保存と区別する。
+6. Login / LogoutでProviderのSession / CSRF lifecycleを維持し、SPAの古いJWT / protected cacheを破棄する。
 7. Logout後にprotected responseをshared cache / BFCacheから操作可能なまま再利用しない。
 
 ## 93. Authorization acceptance
@@ -1515,7 +1506,7 @@ Production startup / readinessで最低限次を検証する。
 
 1. Production CSPに`unsafe-eval` / script `unsafe-inline`がない。
 2. `frame-ancestors 'none'` + `X-Frame-Options: DENY`でAdmin / Staff clickjackingを防ぐ。
-3. authenticated Browser mutationはCSRF token + exact Origin checkを要求する。
+3. Cookieを使う認証中継はProvider CSRF / state + exact Origin、業務mutationはCookie認証なしのBearer JWT + exact Originを要求する。
 4. Hono protected APIにwildcard credentialed CORSがない。
 5. normal JSON / QR / Stripe / Resend webhook body size limitが適用される。
 6. all path/query/bodyにRuntime Validationが存在する。
@@ -1526,7 +1517,7 @@ Production startup / readinessで最低限次を検証する。
 ## 95. Database / Secret acceptance
 
 1. `app_runtime`とmigration principalが分離される。
-2. `anon`, `authenticated`, `PUBLIC`が`app` schema tableへ直接アクセスできない。
+2. Browser / Data API向けの実在roleとPUBLICが`app` / `auth_read`へ直接アクセスできない。
 3. runtime principalがDDL / generic DELETE / superuser privilegeを持たない。
 4. DB TLS certificate validationを無効化していない。
 5. Production SecretがClient bundle / source control / nonproductionへ存在しない。
@@ -1557,7 +1548,7 @@ Production startup / readinessで最低限次を検証する。
 
 ## 98. Email acceptance
 
-1. recipient authorityがBusiness Profile → Auth Subject → Supabase Authである。
+1. recipient authorityがBusiness Profile → Auth Subject → Neon Authである。
 2. Client / Stripe Emailをrecipient authorityにしない。
 3. Adminにfull recipient Emailを通常表示しない。
 4. Email linkにSecret / raw QR / auth tokenを含めない。
@@ -1644,8 +1635,8 @@ Production startup / readinessで最低限次を検証する。
 本仕様の完成実装は次をすべて満たさなければならない。
 
 1. System Boundaryを変更しない。
-2. Browser / Next.js WebからBusiness Databaseを直接更新しない。
-3. Supabase AuthがIdentityのSystem of Recordである。
+2. Browser / React SPAからBusiness Databaseを直接更新しない。
+3. Neon AuthがIdentityのSystem of Recordである。
 4. Business DatabaseがOrder / Ticket / Reservation / Goods / Check-in / Notification RequestのSystem of Recordである。
 5. CustomerをOperational Role化しない。
 6. Administratorをgeneric superuser化しない。
@@ -1661,7 +1652,7 @@ Production startup / readinessで最低限次を検証する。
 16. CSP / escapingでstored / reflected XSSを防ぐ。
 17. Public Contentへraw HTML capabilityを追加しない。
 18. DB runtime / migration principalを分離する。
-19. `anon` / `authenticated` / `PUBLIC`からBusiness Schemaを閉じる。
+19. Browser / Data API向けの実在roleとPUBLICからBusiness Schema / Auth Directoryを閉じる。
 20. raw SQLをparameterized / allowlistedにする。
 21. Secretをenvironment分離しroutine / incident rotation可能にする。
 22. QR tokenをHMAC lookup + AES-GCM protected materialで守る。

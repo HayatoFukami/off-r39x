@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-120
 title: Email Notification Specification
-version: 1.1.0
+version: 2.1.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -59,7 +59,7 @@ related_specs:
 - Karaoke Reservation取消通知
 - Full Refund完了通知
 - Notification Requestのclaim / send / retry / cancel
-- Business ProfileからSupabase Auth Identityを経由したrecipient Email解決
+- Business ProfileからNeon Auth Identityを経由したrecipient Email解決
 - recipient Email snapshot
 - React EmailによるHTML / plain-text rendering
 - Resend Email API
@@ -72,7 +72,7 @@ related_specs:
 
 以下は本書のCanonical Ownerではない。
 
-- Account verification / Password reset等のCredential lifecycle: Supabase Auth / `SPEC-060`
+- Account verification / Password reset等のCredential lifecycle: Neon Auth / `SPEC-060`
 - Order / Stripe / Refundのfinancial lifecycle: `SPEC-070`
 - Ticket / QR / Check-in lifecycle: `SPEC-080`
 - Karaoke Reservation state / cancellation semantics: `SPEC-090`
@@ -113,7 +113,7 @@ related_specs:
 | Term | 本書での意味 |
 |---|---|
 | Business Notification | Order / Reservation / Refund等の確定Business Eventから派生するTransactional Email |
-| Auth Notification | Supabase Authが所有するAccount verification / Password reset等のCredential lifecycle Email |
+| Auth Notification | Neon Authが所有するAccount verification / Password reset等のCredential lifecycle Email |
 | Notification Request | `SPEC-030` の再試行可能なDomain要求。`app.notification_requests` がSystem of Record |
 | Notification Type | 同一論理通知の意味・Template contract・Triggerを識別する固定string |
 | Business Cause | 同一Business Eventから同一論理Notificationを最大1件にする原因 |
@@ -122,7 +122,7 @@ related_specs:
 | Delivery Attempt | Recipient resolution / render / provider requestを追跡する1回の配送処理履歴 |
 | Provider Acceptance | Resend Email APIがrequestを受理しprovider email IDを返した、または同等事実を署名検証済みWebhook等で再照合できた状態 |
 | Provider Delivery Event | `email.delivered`, `email.bounced` 等、Provider Acceptance後の配送網結果 |
-| Recipient Snapshot | 初回provider送信前にSupabase Authからserver-side解決したverified Email addressのsnapshot |
+| Recipient Snapshot | 初回provider送信前にNeon Authからserver-side解決したverified Email addressのsnapshot |
 | Provider Idempotency Key | Resendへ同一Provider requestを重複送信しないためのkey |
 | Transport Idempotency Key | Administrator HTTP mutation retryを相関する `Idempotency-Key` |
 | Unknown Provider Result | Provider requestを開始した可能性があるが、accept / rejectを安全に確定できない状態 |
@@ -133,19 +133,21 @@ related_specs:
 
 # Part I — Authentication Notificationとの境界
 
-## 5. Supabase Auth Notification
+## 5. Neon Auth Notification
 
-次はSupabase Authが所有するAuthentication / Credential lifecycleであり、本書のBusiness Notificationへ統合しない。
+次はNeon Authが所有するAuthentication / Credential lifecycleであり、本書のBusiness Notificationへ統合しない。
 
 - Account verification
 - Password reset
-- Supabase Authが正規に提供するCredential / Session lifecycleに付随する通知
+- Neon Authが正規に提供するCredential / Session lifecycleに付随する通知
 
 **EML-AUTH-001:** Account verification / Password reset tokenを `app.notification_requests`、`render_context`、React Email Business Templateへ複製してはならない。
 
 **EML-AUTH-002:** Business DatabaseへPassword、password hash、refresh credential、password reset token、email verification tokenを保存してはならない。
 
-**EML-AUTH-003:** `FR-EML-001` はSupabase Auth notificationを利用可能にする要件であり、Resend Business Notification workerがCredential lifecycleのSystem of Recordになることを意味しない。
+**EML-AUTH-003:** `FR-EML-001` はNeon Auth notificationを利用可能にする要件であり、Resend Business Notification workerがCredential lifecycleのSystem of Recordになることを意味しない。
+
+採用するAccount確認、Email OTP、Magic Link、Password resetのメールはNeon標準テンプレートでNeonが生成・送信管理し、環境専用Resend SMTPで配送する。SMTP credential / senderはNeonの保護設定に置き、Business Notification用API key・Job・template・retry lifecycleとは分離する。Auth Email Webhook / 独自Authメールworkerは追加しない。
 
 ---
 
@@ -155,7 +157,7 @@ Business NotificationはHono APIがBusiness Databaseの確定状態を根拠に�
 
 Business NotificationのrecipientはClient入力Email、Stripe Checkout customer email、URL query、Browser stateから決定しない。
 
-**EML-AUTH-004:** Business Notification recipient authorityは、`recipient_profile_id` → `Business Profile.auth_subject` → Supabase Auth server-side lookupである。
+**EML-AUTH-004:** Business Notification recipient authorityは、`recipient_profile_id` → `Business Profile.auth_subject` → Neon Auth server-side lookupである。
 
 **EML-AUTH-005:** Stripe側のCustomer emailまたはCheckout emailをBusiness Notification recipient authorityへ使用してはならない。
 
@@ -200,6 +202,19 @@ FAILED_RETRYABLE -> CANCELED
 
 理由は、`SPEC-030` に `SENT` からの遷移が存在せず、Resend内部配送結果をBusiness Domain Authorityへ昇格させないためである。
 
+### 7.2 Owner Order notification summary
+
+**EML-NTF-003:** `API-ORD-003.notification_summary` は当該Orderの購入／予約確認通知だけを所有者へ粗く射影する。対応はEntry→`ENTRY_PURCHASE_CONFIRMED`、Goods→`GOODS_PURCHASE_CONFIRMED`、複合→`ENTRY_GOODS_PURCHASE_CONFIRMED`、Karaoke→`KARAOKE_RESERVATION_CONFIRMED`。取消／返金通知、宛先、本文、Provider ID／内部エラーは含めない。これは表示用DTOでありNotification／Orderの新Domain Stateではない。
+
+| summary.status | 射影条件 |
+|---|---|
+| `ATTENTION_REQUIRED` | 対象確認通知に `FAILED_RETRYABLE` がある。またはCONFIRMEDの確認通知が欠落している（Karaokeの正規取消によるsuppressionは除く） |
+| `PENDING` | 上記に該当せず、対象にPENDINGがある |
+| `SENT` | 上記に該当せず、対象にSENTがある。Provider受付済みであって受信箱への配送保証ではない |
+| `NONE` | 対象となる有効な確認通知がない（購入未確定、または正規suppressionで全件CANCELED等） |
+
+上から優先して評価し、CANCELEDは集約対象から除く。確認通知欠落は§8.4の同一Business Causeによる補完／既存Reviewへ接続し、Order確定や権利を再実行しない。通知サマリーだけが取得不能の場合はfieldをnullとしてOrder参照の成功を維持するが、NONE／SENTへ推測しない。Owner認可・Order本体取得の失敗はこの扱いで隠蔽しない。retry／cancel権限を所有者へ追加しない。
+
 ---
 
 ## 8. Notification Request generation boundary
@@ -216,11 +231,11 @@ Order / Reservation等の正規Business Transactionでは、上流仕様のmanda
 6. 同じtransactionで対応 `app.email_delivery_jobs` をinsertする。
 7. transaction commit後にのみworkerから可視化される。
 
-Resend call、Supabase Auth recipient lookup、React Email renderはこのBusiness transaction内で実行しない。
+Resend call、Neon Auth recipient lookup、React Email renderはこのBusiness transaction内で実行しない。
 
 **EML-GEN-001:** Notification Request rowを同じcommit boundaryへ含めることは許可するが、Resend配送成功をBusiness commit条件へ含めてはならない。
 
-**EML-GEN-002:** Notification Request生成のためにStripe / Resend / Supabase Auth network callをBusiness Database transaction内で保持してはならない。
+**EML-GEN-002:** Notification Request生成のためにStripe / Resend / Neon Auth network callをBusiness Database transaction内で保持してはならない。
 
 ### 8.2 Business Cause Key
 
@@ -240,6 +255,7 @@ Canonical name input:
 ENTRY_PURCHASE_CONFIRMED:<order_ref>:CONFIRMED
 KARAOKE_RESERVATION_CONFIRMED:<reservation_ref>:CONFIRMED
 GOODS_PURCHASE_CONFIRMED:<order_ref>:CONFIRMED
+ENTRY_GOODS_PURCHASE_CONFIRMED:<order_ref>:CONFIRMED
 KARAOKE_RESERVATION_CANCELED:<reservation_ref>:CANCELED
 ORDER_REFUND_SUCCEEDED:<order_ref>:FULL_REFUND_SUCCEEDED
 ```
@@ -291,13 +307,14 @@ Notification Request insertを含むDB transaction自体がcommitできない場
 
 ## 9. Notification Type一覧
 
-本仕様でCanonicalに定義するBusiness Notification Typeは次の5種類とする。
+本仕様でCanonicalに定義するBusiness Notification Typeは次の6種類とする。
 
 | Notification Type | Trigger | Source | Recipient | Template |
 |---|---|---|---|---|
 | `ENTRY_PURCHASE_CONFIRMED` | Entry Purchase Business Confirmation | Order | Order Customer | `entry-purchase-confirmation` v1 |
 | `KARAOKE_RESERVATION_CONFIRMED` | Karaoke Reservation Business Confirmation | Order + Reservation | Reservation Owner | `karaoke-reservation-confirmation` v1 |
 | `GOODS_PURCHASE_CONFIRMED` | Goods Purchase Business Confirmation | Order | Order Customer | `goods-purchase-confirmation` v1 |
+| `ENTRY_GOODS_PURCHASE_CONFIRMED` | Combined Purchase Business Confirmation | Order | Order Customer | `entry-goods-purchase-confirmation` v1 |
 | `KARAOKE_RESERVATION_CANCELED` | 正規Reservation `CONFIRMED -> CANCELED` commit | Reservation + related Order | Reservation Owner | `karaoke-reservation-cancellation` v1 |
 | `ORDER_REFUND_SUCCEEDED` | 正規full Refund Record `SUCCEEDED` | Order | Order Customer | `order-refund-succeeded` v1 |
 
@@ -305,7 +322,7 @@ Notification Request insertを含むDB transaction自体がcommitできない場
 
 - Administratorによるretry / resend: 既存Notification Requestの再処理
 - Resend delivery delayed / bounced: Provider Delivery Event
-- Supabase Auth verification / password reset: Auth Notification
+- Neon Auth verification / password reset: Auth Notification
 
 Goods Handoff完了後Emailは本バージョンでは追加しない。会場で既に対面受け渡しが完了した事実をEmail送信必須要件へ昇格させる上流Requirementがなく、`FR-EML-005` を理由に不要な通知種別を増やさないためである。
 
@@ -408,6 +425,18 @@ Required render context:
 
 ---
 
+### 12.1 `ENTRY_GOODS_PURCHASE_CONFIRMED`
+
+- **Trigger:** `ENTRY_GOODS_PURCHASE` OrderのBusiness Confirmation（`PAY-CFM-012〜014`）で、全Entry Ticketと全Goodsの必須効果が成立。
+- **Business Cause:** `ENTRY_GOODS_PURCHASE_CONFIRMED:<order_ref>:CONFIRMED`。`source_order_id=Order`, `source_reservation_id=NULL`。
+- **Recipient:** Order Customer Business Profile。1つのOrder確認に1つのNotification Request／1通だけを生成し、単独Entry／Goods通知は重ねて生成しない。
+- **Template / subject:** `entry-goods-purchase-confirmation` v1、`【{event_name}】チケット・グッズ購入完了のお知らせ`。
+- **Context:** 共通変数に `order_ref`, `confirmed_at`, Order全体の `total: Money`, 全 `entry_items: [{ offering_name, quantity }]`, 全 `goods_items: [{ goods_name, quantity }]`, `handoff_instructions: string | null` を含む。両Item配列は各1件以上で、Orderの全明細・数量と一致させる。
+- **CTA:** `/mypage/orders/{order_ref}` (`PG-MYP-004`)。
+- **Safety:** 全体確定後に生成し、欠落明細／不整合な合計ならrenderを失敗させ部分内容を送らない。raw QRを含めず、既存のrecipient authority／template pin／Provider idempotencyを適用する。
+- **Retry / suppression:** 同じBusiness Causeと `business_cause_key UNIQUE` で再導出し、Notificationだけを再処理する。Order／Ticket／Goodsを再実行しない。確認はhistorical eventなので通常自動cancelせず、返金は既存の別通知とする。
+- **Trace:** `FR-EML-002,004,006〜011`, `FR-CRT-008〜009`, `BR-ORD-013,015`, `DI-030-013`。
+
 ## 13. `KARAOKE_RESERVATION_CANCELED`
 
 - **Trigger:** `SPEC-090` の正規Reservation cancellationで `CONFIRMED -> CANCELED` がcommit
@@ -480,18 +509,18 @@ workerは次の順序でrecipientを解決する。
 
 1. `recipient_profile_id` から `app.business_profiles` を取得する。
 2. `business_profiles.auth_subject` を取得する。
-3. Hono server / workerだけが使用できるSupabase Auth Admin APIでAuth Subjectをlookupする。
+3. `SPEC-100 §5.1` の `auth_read.identity_directory` を専用server DB roleでAuth Subjectにより完全一致lookupする。
 4. Auth userのcurrent primary Emailを取得する。
 5. Email確認済み状態をserver-sideで確認する。
 6. verified Emailが取得できた場合だけRecipient Snapshotとして保存する。
 
 **EML-RCP-001:** Client supplied Email、Profile display field、Stripe Customer Emailをrecipient authorityとして使用しない。
 
-**EML-RCP-002:** Supabase Auth lookupはserver-sideで行い、Service credentialをBrowser / Next.js Clientへ渡さない。
+**EML-RCP-002:** Directory lookupはserver-sideで行い、API / Email Worker以外へ読取権限を与えない。元の認証table、Credential、Sessionへのアクセスや認証dataの直接更新を許可しない。DB credentialをBrowserへ渡さない。未確認のNeon service-role Admin APIに依存しない。
 
 ### 15.1 Verified Email
 
-Business Notificationのrecipientに使用できるのは、Supabase Auth上でcurrent Emailが存在し、Email確認済みであることをserver-sideで確認できる場合だけとする。
+Business Notificationのrecipientに使用できるのは、Neon Auth上でcurrent Emailが存在し、Email確認済みであることをserver-sideで確認できる場合だけとする。
 
 Email未確認、Email不存在の場合、元Business Transactionは変更せずNotificationを `FAILED_RETRYABLE` とし、Delivery Jobを `BLOCKED` にする。
 
@@ -499,7 +528,7 @@ Email未確認、Email不存在の場合、元Business Transactionは変更せ�
 
 Recipient Snapshotは**初回Provider callより前、初回worker処理時**に確定する。
 
-- Notification Request生成時にはSupabase Auth network callを行わない。
+- Notification Request生成時にはNeon Auth network callを行わない。
 - 初回worker処理前にUserがEmailを変更し、その新Emailが確認済みなら新しいcurrent Emailをsnapshotする。
 - Snapshot確定後の自動retryは同じsnapshotを使用する。
 
@@ -518,7 +547,7 @@ Administrator retryは原則 `recipient_mode = "SNAPSHOT"` とする。
 - 最終failureが `RECIPIENT_UNAVAILABLE` または `PROVIDER_PERMANENT_RECIPIENT`
 - Provider Acceptance済みattemptが存在しない
 - Unknown Provider Resultが存在しない
-- current Supabase Auth Emailがverified
+- current Neon Auth Emailがverified
 
 この場合、JobのRecipient Snapshotをcurrent verified Emailへ更新し、snapshot revisionをincrementしたうえで新しいDelivery Attemptを作る。
 
@@ -544,6 +573,7 @@ TemplateはReact Email componentとして次のID / versionを持つ。
 entry-purchase-confirmation@1
 karaoke-reservation-confirmation@1
 goods-purchase-confirmation@1
+entry-goods-purchase-confirmation@1
 karaoke-reservation-cancellation@1
 order-refund-succeeded@1
 ```
@@ -745,6 +775,33 @@ QRのraw tokenは本メールには掲載しません。
 
 ---
 
+### 20.4 Template本文 — Combined Purchase Confirmation
+
+```text
+{event_name} のご購入ありがとうございます。
+購入処理が完了しました。
+
+注文番号: {order_ref}
+購入確定日時: {confirmed_at_jst}
+
+■ 入場チケット
+{entry_items_lines}
+
+■ グッズ
+{goods_items_lines}
+
+ご注文全体の合計: {formatted_total}
+
+■ グッズの受け取り
+{handoff_instructions_or_fallback}
+
+購入内容・チケット・受け渡しの現在状態はマイページで確認できます。
+[購入内容を確認する]
+{app_base_url}/mypage/orders/{order_ref}
+```
+
+会場受け取りの既定案内は§20と共通とし、両種別の明細を区別して表示する。明細の金額を表示する場合もOrder Snapshotだけを使用し、全体合計を片側の購入額として表示しない。
+
 ## 21. Template本文 — Karaoke Reservation Cancellation
 
 ### 21.1 Subject
@@ -825,6 +882,7 @@ Email CTAは `SPEC-050` の既存Routeだけを使用する。
 | `ENTRY_PURCHASE_CONFIRMED` | `PG-MYP-004` | `/mypage/orders/{order_ref}` |
 | `KARAOKE_RESERVATION_CONFIRMED` | `PG-MYP-009` | `/mypage/karaoke/{reservation_ref}` |
 | `GOODS_PURCHASE_CONFIRMED` | `PG-MYP-004` | `/mypage/orders/{order_ref}` |
+| `ENTRY_GOODS_PURCHASE_CONFIRMED` | `PG-MYP-004` | `/mypage/orders/{order_ref}` |
 | `KARAOKE_RESERVATION_CANCELED` | `PG-MYP-009` | `/mypage/karaoke/{reservation_ref}` |
 | `ORDER_REFUND_SUCCEEDED` | `PG-MYP-004` | `/mypage/orders/{order_ref}` |
 
@@ -832,7 +890,7 @@ Email CTAは `SPEC-050` の既存Routeだけを使用する。
 
 **EML-LNK-002:** Public Referenceを知ることはAuthorizationではない。Mypage routeは `SPEC-060` / `SPEC-110` のowner-safe lookupを必須とする。
 
-**EML-LNK-003:** QR raw token、Supabase token、Stripe secret、Checkout Session secretをEmail URLへ埋め込まない。
+**EML-LNK-003:** QR raw token、Neon token、Stripe secret、Checkout Session secretをEmail URLへ埋め込まない。
 
 **EML-LNK-004:** `app_base_url` はserver-side deployment configurationから取得し、Client入力hostをそのままEmail linkへ反映しない。
 
@@ -984,7 +1042,7 @@ Providerのidempotency retention契約が変更された場合は、23時間安�
 
 - **Method:** `POST`
 - **Path:** `/api/v1/webhooks/resend`
-- **Authentication:** Supabase Authなし。Resend webhook signatureのみ
+- **Authentication:** Neon Authなし。Resend webhook signatureのみ
 - **RPC export:** Browser向けHono RPCから除外
 - **Body:** raw bodyを署名検証完了前にJSON reserializeしない
 - **Headers:** `svix-id`, `svix-timestamp`, `svix-signature`
@@ -1134,7 +1192,7 @@ Resendが同一key resultを返したらprovider message IDをpersistし、Notif
 
 1. Job claim
 2. source suppression predicate評価
-3. Recipient Snapshot確認 / 必要ならSupabase Auth lookup
+3. Recipient Snapshot確認 / 必要ならNeon Auth lookup
 4. render context Zod validation
 5. React Email HTML / text render
 6. Delivery Attempt作成
@@ -1564,7 +1622,7 @@ SPEC-120 support table migrationは`SPEC-100`のarchitectureに従う。
 - explicit row lock
 - `40001`, `40P01` だけをstandard transaction retryable SQLSTATEとして扱う
 - known unique/constraint loserだけを既存結果へ収束
-- Resend / Supabase Auth network call中にDB transactionをopenしない
+- Resend / Neon Auth network call中にDB transactionをopenしない
 
 **EML-DB-001:** `app.notification_requests.state`へProcessing Stateを追加してはならない。
 
@@ -1620,7 +1678,7 @@ Server-only:
 
 - Resend API key
 - Resend webhook signing secret
-- Supabase Auth Admin / service credential
+- 限定Auth Directory参照を含むworker専用DB credential
 - Provider idempotency internals that need not beClient visible
 
 Clientへ返さない。
@@ -1658,7 +1716,7 @@ Templateへ含めてよい情報:
 含めてはならない情報:
 
 - Password / reset token / verification token
-- Supabase access / refresh token
+- Neon access / refresh token
 - Stripe secret / payment method secret
 - raw QR token
 - card data
@@ -1670,7 +1728,7 @@ Templateへ含めてよい情報:
 
 ## 47. Transactional Email / unsubscribe
 
-本仕様の5 Notification Typeは購入・予約・取消・返金に直接関係する**Transactional Email**であり、Marketing subscriptionとは分離する。
+本仕様の6 Notification Typeは購入・予約・取消・返金に直接関係する**Transactional Email**であり、Marketing subscriptionとは分離する。
 
 - Marketing consentを送信Preconditionにしない。
 - 通常のunsubscribe linkを本文へ追加しない。
@@ -1700,6 +1758,7 @@ src/email/
     entry-purchase-confirmation-v1.tsx
     karaoke-reservation-confirmation-v1.tsx
     goods-purchase-confirmation-v1.tsx
+    entry-goods-purchase-confirmation-v1.tsx
     karaoke-reservation-cancellation-v1.tsx
     order-refund-succeeded-v1.tsx
   schemas/
@@ -1773,9 +1832,9 @@ Business Confirmation serviceはEmail senderを直接callせず、Notification R
 | Requirement | 主な仕様 |
 |---|---|
 | `FR-EML-001` | Part I Auth Notification分離 |
-| `FR-EML-002` | `ENTRY_PURCHASE_CONFIRMED` |
+| `FR-EML-002` | `ENTRY_PURCHASE_CONFIRMED` / `ENTRY_GOODS_PURCHASE_CONFIRMED` |
 | `FR-EML-003` | `KARAOKE_RESERVATION_CONFIRMED` |
-| `FR-EML-004` | `GOODS_PURCHASE_CONFIRMED` |
+| `FR-EML-004` | `GOODS_PURCHASE_CONFIRMED` / `ENTRY_GOODS_PURCHASE_CONFIRMED` |
 | `FR-EML-005` | Cancellation / Refund通知を必要最小限追加 |
 | `FR-EML-006` | Notification Request generation / worker分離 |
 | `FR-EML-007` | Failure matrix / `DI-030-008` |
@@ -1878,7 +1937,7 @@ Email未達時もこれらPageのBusiness Database current stateが利用者向�
 15. webhook raw body signature verificationを行う。
 16. webhook duplicateをverified `svix-id` uniqueでdedupeする。
 17. `SENT`後のbounce等でNotification Domain Stateを逆行させない。
-18. RecipientはBusiness Profile → Auth Subject → Supabase Authからserver-side解決する。
+18. RecipientはBusiness Profile → Auth Subject → Neon Authからserver-side解決する。
 19. Client supplied Email / Stripe emailをrecipient authorityにしない。
 20. 初回send前にrecipient snapshotを固定し、自動retryで宛先を暗黙変更しない。
 21. Unknown Result中にrecipient snapshotを変更しない。
