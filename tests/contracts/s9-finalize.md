@@ -76,9 +76,9 @@ check 一覧（`<subject>` / 条件）:
 
 走査対象:
 
-- ソース領域: `root` 直下のファイル（dotfile 含む。`.env*` も内容を走査する）、`apps/**`、`packages/**`、`scripts/**`、`tests/**`、`traceability/**`。`apps/web/public/**` を含む。
+- ソース領域: `root` 直下のファイル（dotfile 含む。`.env*` も内容を走査する）、`.github/**`、`apps/**`、`packages/**`、`scripts/**`、`tests/**`、`traceability/**`。`apps/web/public/**` と `.github/workflows/**` を含む。
 - 除外ディレクトリ（名前一致、どの階層でも）: `node_modules`、`.git`、`.next`（build 出力は別扱い）、`test-results`、`playwright-report`、`blob-report`、`generated`、`coverage`、`dist`、`out`（ただし `--build-dir` で指定したものは build 出力として走査する）、および root 直下の `docs`、`reviews`、`ref`。`pnpm-lock.yaml` と NUL を含むバイナリ、5 MiB 超のファイルは走査しない。
-- build 出力（`<build-dir>/static/**` と `<build-dir>/server/app/**` のみ。`cache` などは走査しない）。ここには PII 系 rule（`real-email` / `phone-number` / `card-number`）を適用しない（vendor chunk の誤検出回避）。
+- build 出力（`<build-dir>/static/**` と `<build-dir>/server/**`。`server/chunks/**`、`server/middleware*`、`server/app/**` を含み、`cache` など server 外は走査しない）。ここには PII 系 rule（`real-email` / `phone-number` / `card-number`）を適用しない（vendor chunk の誤検出回避）。`mock-seed-field` は `server/app/**` のみ、それ以外の値検出 rule は `server/**` 全体に適用する。
 
 rule（rule-id: 検出）:
 
@@ -93,7 +93,7 @@ rule（rule-id: 検出）:
 | `env-secret` | 全領域 | 行頭の `[export ]SUPABASE_SERVICE_ROLE_KEY` / `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `RESEND_API_KEY` / `DATABASE_URL` / `QR_TOKEN_KEY*` ＝ 値。値が空、`<…>`、`${…}`、`$VAR`、`changeme`、`xxx…` は許可（`.env.example` 想定）。値は `=` の直後（任意の引用符のあと）に `[A-Za-z0-9_+/=.-]` が 8 文字以上続くものだけを検出する |
 | `raw-qr-token` | 全領域（tests 含む） | `\br39x1\.(?:ent\|krk)\.[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])`。仕様書の例示 `r39x1.ent.<43-char-base64url-random>` は一致しない |
 | `mock-seed-leak` | `tests/**` を除く全領域と build 出力 | `mock-seed-\d+`（`tests/**` は合成入力として許可） |
-| `mock-seed-field` | build 出力の `server/app/**` のみ | 文字列 `mockMatrixSeed`（static chunk ではプロパティ名として許可） |
+| `mock-seed-field` | build 出力の `server/app/**` のみ | 文字列 `mockMatrixSeed`（server chunks ではプロパティ名として許可） |
 | `real-email` | ソース領域 | メールアドレス形式（ローカル部と `@` とドメイン）のうち、domain が `example.com` / `example.org` / `example.net`（サブドメイン可）、`*.invalid`、`*.test`、`localhost` でないもの |
 | `phone-number` | ソース領域 | `(?<![\w-])0[789]0-?\d{4}-?\d{4}(?![\w-])` |
 | `card-number` | ソース領域 | 4 桁 ×4 を空白かハイフン 1 つで区切った 16 桁で Luhn が正しいもの |
