@@ -327,13 +327,13 @@ test.describe("TC-PG-GDS-002-503 adding Goods stores a reference and a quantity 
 });
 
 test.describe("TC-PG-GDS-002-504 an unknown or non-public Goods is Not Found without revealing why (SPEC-050 14.2, 19.1, INV-010-09)", () => {
-  test("a reference that is not a canonical UUID answers HTTP 404 with the Not Found page", async ({
+  test("a reference that is not a canonical UUID shows the Not Found page (the static shell answers HTTP 200)", async ({
     page,
   }) => {
     for (const bad of ["not-a-uuid", GOODS.tshirt.toUpperCase(), "1", "abc%20def"]) {
       await fixClock(page);
       const response = await gotoHydrated(page, `/goods/${bad}`);
-      expect(response?.status(), bad).toBe(404);
+      expect(response?.status(), bad).toBe(200);
       await expect(h1(page), bad).toHaveText(copy.notFound.title);
     }
   });

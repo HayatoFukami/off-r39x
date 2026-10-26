@@ -177,6 +177,21 @@ describe("TC-DEV-WEB-012-001 mock-allowlist", () => {
     ["apps/web/app/not-found.tsx", "../src/mock/backend/db"],
     ["apps/web/next.config.ts", "./src/mock/backend/db"],
     ["apps/web/next.config.ts", "@/mock/backend/db"],
+    // React Router entry points: only the root layout (the badge) and the dev routes may import mock code.
+    ["apps/web/src/routes/root-layout.tsx", "@/mock/backend/db"],
+    ["apps/web/src/routes/root-layout.tsx", "@/mock/dev-ui/scenario-panel"],
+    ["apps/web/src/routes/root-error.tsx", "@/mock/dev-ui/mock-mode-badge"],
+    ["apps/web/src/routes/route-table.tsx", "@/mock/dev-ui/scenario-panel"],
+    ["apps/web/src/routes/public/cart.tsx", "@/mock/dev-ui/mock-mode-badge"],
+    ["apps/web/src/routes/self/mypage-overview.tsx", "@/mock/backend/db"],
+    ["apps/web/src/main.tsx", "@/mock/dev-ui/mock-mode-badge"],
+    ["apps/web/src/main.tsx", "./mock/backend/db"],
+    ["apps/web/vite.config.ts", "./src/mock/backend/db"],
+    ["apps/web/vite.config.ts", "@/mock/backend/db"],
+    // The Next.js allowances are withdrawn: app/dev/** and app/layout.tsx are no longer special.
+    ["apps/web/app/dev/layout.tsx", "@/mock/dev-ui/mock-mode-badge"],
+    ["apps/web/app/dev/scenarios/page.tsx", "@/mock/dev-ui/scenario-panel"],
+    ["apps/web/app/layout.tsx", "@/mock/dev-ui/mock-mode-badge"],
   ])("rejects %s importing %s", (file, specifier) => {
     const result = check(withFiles({ [file]: imp(specifier) }));
     expectViolation(result, "mock-allowlist", file, LINE, specifier);
@@ -185,10 +200,11 @@ describe("TC-DEV-WEB-012-001 mock-allowlist", () => {
   it.each([
     ["apps/web/src/api-client/index.ts", "@/mock/backend/mock-api"],
     ["apps/web/src/auth/index.ts", "../mock/backend/mock-auth"],
-    ["apps/web/app/dev/layout.tsx", "@/mock/dev-ui/mock-mode-badge"],
-    ["apps/web/app/dev/scenarios/page.tsx", "@/mock/dev-ui/scenario-panel"],
-    ["apps/web/app/dev/mock-checkout/[orderRef]/page.tsx", "@/mock/dev-ui/scenario-panel"],
-    ["apps/web/app/layout.tsx", "@/mock/dev-ui/mock-mode-badge"],
+    ["apps/web/src/routes/dev/dev-layout.tsx", "@/mock/dev-ui/mock-mode-badge"],
+    ["apps/web/src/routes/dev/scenarios.tsx", "@/mock/dev-ui/scenario-panel"],
+    ["apps/web/src/routes/dev/mock-checkout.tsx", "@/mock/dev-ui/mock-checkout-screen"],
+    ["apps/web/src/routes/dev/nested/extra.tsx", "@/mock/dev-ui/scenario-panel"],
+    ["apps/web/src/routes/root-layout.tsx", "@/mock/dev-ui/mock-mode-badge"],
     ["apps/web/src/mock/backend/extra.ts", "./db"],
     ["apps/web/src/mock/dev-ui/extra.tsx", "../backend/db"],
     ["apps/web/src/mock/dev-ui/extra2.tsx", "@/mock/backend/db"],
@@ -228,6 +244,7 @@ describe("TC-DEV-REP-004-001 production-no-tests", () => {
   it.each([
     ["apps/web/src/lib/bad.ts", "../../../../tests/harness/clock"],
     ["apps/web/app/bad.ts", "../../../tests/fixtures/x"],
+    ["apps/web/src/routes/bad.ts", "../../../../tests/fixtures/x"],
     ["packages/domain/src/bad.ts", "../../../tests/fixtures/x"],
   ])("rejects %s importing %s", (file, specifier) => {
     const result = check(

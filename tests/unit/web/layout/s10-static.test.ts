@@ -57,11 +57,15 @@ describe("TC-PG-PUB-001-243 S10 structure: Header menu, Floating Ticket Button, 
     expect(link).toMatch(/isPlainPrimaryClick/);
   });
 
-  it("wires the Floating Ticket Button into the root layout and enables viewport-fit=cover", () => {
-    const layout = read("app/layout.tsx");
+  it("wires the Floating Ticket Button into the root layout and enables viewport-fit=cover in index.html", () => {
+    const layout = read("src/routes/root-layout.tsx");
     expect(layout).toMatch(/FloatingTicket/);
-    expect(layout).toMatch(/export\s+const\s+viewport\b/);
-    expect(layout).toMatch(/viewportFit\s*:\s*["']cover["']/);
+    expect(layout).not.toMatch(/export\s+const\s+viewport\b|viewportFit/);
+    const html = read("index.html");
+    expect(html).toMatch(/<meta[^>]+name=["']viewport["'][^>]*>/);
+    expect(html).toMatch(/viewport-fit=cover/);
+    expect(html).toMatch(/width=device-width/);
+    expect(html).toMatch(/initial-scale=1/);
   });
 
   it("moves the mock badge to the bottom left", () => {
@@ -72,7 +76,7 @@ describe("TC-PG-PUB-001-243 S10 structure: Header menu, Floating Ticket Button, 
   });
 
   it("defines the reveal states in CSS with a reduced-motion override and marks headings in the presentation layer", () => {
-    const css = read("app/globals.css");
+    const css = read("src/styles/globals.css");
     expect(css).toMatch(/data-reveal/);
     expect(css).toMatch(/prefers-reduced-motion/);
     const presentation = walk(abs("src/presentation")).filter((f) => /\.tsx?$/.test(f));

@@ -21,11 +21,10 @@ function walk(dir: string): string[] {
   });
 }
 
+/** Route modules live in src/routes/<path> (React Router; SPEC-190 DEV-WEB-001). */
 function routeFile(path: string): string | null {
-  for (const candidate of [`app/${path}`, `app/(public)/${path}`]) {
-    if (existsSync(abs(candidate))) return candidate;
-  }
-  return null;
+  const candidate = `src/routes/${path}`;
+  return existsSync(abs(candidate)) ? candidate : null;
 }
 
 function stripComments(source: string): string {
@@ -50,9 +49,9 @@ const MODULES = [
 ] as const;
 
 const PAGES = [
-  { path: "entry/page.tsx", title: "copy\\.entry\\.pageTitle", dynamic: false },
-  { path: "cart/page.tsx", title: "copy\\.cart\\.pageTitle", dynamic: false },
-  { path: "goods/[goodsRef]/page.tsx", title: "copy\\.goods\\.detail\\.pageTitle", dynamic: true },
+  { path: "public/entry.tsx", title: "copy\\.entry\\.pageTitle", dynamic: false },
+  { path: "public/cart.tsx", title: "copy\\.cart\\.pageTitle", dynamic: false },
+  { path: "public/goods-detail.tsx", title: "copy\\.goods\\.detail\\.pageTitle", dynamic: true },
 ] as const;
 
 const CONTAINERS = [
@@ -82,25 +81,27 @@ describe("TC-DEV-WEB-001-401 the S5 modules and routes exist at the contracted p
   }
 });
 
-describe("TC-DEV-WEB-001-402 the S5 page.tsx files are thin server shells (DEV-WEB-001, Next 16 async params)", () => {
+describe("TC-DEV-WEB-001-402 the S5 route modules are thin shells (DEV-WEB-001, React Router)", () => {
   for (const page of PAGES) {
     const file = routeFile(page.path);
     const source = file === null ? "" : stripComments(read(file));
-    it(`${page.path} is a Server Component that renders a feature container with metadata`, () => {
+    it(`${page.path} is a thin route module that renders a feature container with a title handle`, () => {
       expect(file, page.path).not.toBeNull();
       expect(source).not.toMatch(/^\s*["']use client["']/);
       expect(source).not.toMatch(/<main[\s>]/);
       expect(source).toMatch(/features\//);
-      expect(source).toMatch(/export\s+const\s+metadata/);
+      expect(source).toMatch(/export\s+const\s+handle/);
       expect(source).toMatch(new RegExp(page.title));
       expect(source).not.toMatch(/from\s+["'][^"']*\/mock\//);
       expect(source).not.toMatch(/\b(fetch|localStorage|sessionStorage)\b/);
     });
     if (page.dynamic) {
-      it(`${page.path} awaits params and calls notFound() for an invalid ref`, () => {
-        expect(source).toMatch(/await\s+(props\.)?params|params\s*:\s*Promise</);
-        expect(source).toMatch(/notFound\s*\(/);
+      it(`${page.path} reads useParams, renders NotFoundView for an invalid ref and remounts the container by key`, () => {
+        expect(source).toMatch(/\buseParams\b/);
+        expect(source).toMatch(/\bNotFoundView\b/);
+        expect(source).not.toMatch(/notFound\s*\(|await\s+(props\.)?params|params\s*:\s*Promise</);
         expect(source).toMatch(/parseGoodsRef/);
+        expect(source).toMatch(/\bkey=/);
       });
     }
   }

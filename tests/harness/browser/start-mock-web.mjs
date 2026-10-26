@@ -1,13 +1,23 @@
-// Test harness only (SPEC-170 §8, TST-GEN-006): builds and starts apps/web in UI mock mode.
-// Cross-platform: pnpm is spawned through the shell so that pnpm.cmd resolves on Windows.
+// Test harness only (SPEC-170 §8, TST-GEN-006): builds apps/web in UI mock mode and serves apps/web/dist.
+// The Web app is a static SPA (Vite + React Router, SPEC-190 DEV-WEB-001): `pnpm --filter @off-r39x/web build`
+// writes apps/web/dist and dist/_headers; scripts/serve-web-dist.mts serves them on 127.0.0.1:3100 and applies
+// the headers. Cross-platform: pnpm is spawned through the shell so that pnpm.cmd resolves on Windows; the server
+// is started with process.execPath and an argument array (no shell).
 import { spawn, spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 const PORT = "3100";
-const env = { ...process.env, NEXT_PUBLIC_UI_MOCK: "1", PORT };
-delete env.VERCEL_ENV;
-delete env.NODE_ENV;
+const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
+const serveScript = fileURLToPath(new URL("../../../scripts/serve-web-dist.mts", import.meta.url));
+
+// The mock flag is the only build input the suite sets. Every variable that could change the build (a production
+// environment name, the Sponsor image origins, the former Next.js / Vercel names) is removed from the child env.
+const env = { ...process.env, VITE_UI_MOCK: "1" };
+for (const name of ["APP_ENV", "NODE_ENV", "SPONSOR_IMAGE_ALLOWED_ORIGINS"]) delete env[name];
+for (const name of ["VERCEL_ENV", "NEXT_PUBLIC_UI_MOCK"]) delete env[name];
 
 const build = spawnSync("pnpm --filter @off-r39x/web build", {
+  cwd: repoRoot,
   env,
   shell: true,
   stdio: "inherit",
@@ -17,9 +27,9 @@ if (build.status !== 0) {
   process.exit(build.status ?? 1);
 }
 
-const server = spawn(`pnpm --filter @off-r39x/web exec next start -p ${PORT} -H 127.0.0.1`, {
+const server = spawn(process.execPath, [serveScript, "--port", PORT, "--host", "127.0.0.1"], {
+  cwd: repoRoot,
   env,
-  shell: true,
   stdio: "inherit",
 });
 

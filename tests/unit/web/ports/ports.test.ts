@@ -403,13 +403,17 @@ describe("TC-DEV-REL-001-103 mock backend sources use only injected time, random
 });
 
 describe("TC-PG-KRK-003-106 no Hold TTL anywhere in mock or UI code (SPEC-050 13.3, design section 4)", () => {
-  const roots = ["src/mock", "src/features", "src/api-client", "src/auth", "app"].map((r) =>
+  const roots = ["src/mock", "src/features", "src/api-client", "src/auth", "src/routes"].map((r) =>
     join(webDir, r),
   );
   const files = roots.flatMap((root) => sourceFiles(root));
 
   it("scans the mock sources (not vacuous)", () => {
     expect(files.some((f) => rel(f).startsWith("src/mock/backend/"))).toBe(true);
+  });
+
+  it("scans the route modules too (src/routes replaced the Next.js app directory)", () => {
+    expect(files.some((f) => rel(f).startsWith("src/routes/"))).toBe(true);
   });
 
   it("has no TTL identifiers, hold expiry timestamps or hold-minute constants", () => {
