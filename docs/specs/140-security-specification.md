@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-140
 title: Security Specification
-version: 2.0.0
+version: 2.1.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -430,7 +430,7 @@ default-src 'self';
 script-src 'self';
 script-src-attr 'none';
 style-src 'self' 'unsafe-inline';
-img-src 'self' data: blob:;
+img-src 'self' data: blob: <EXACT_SPONSOR_IMAGE_ORIGINS>;
 font-src 'self';
 connect-src 'self' <EXACT_API_AND_AUTH_PROXY_ORIGIN>;
 object-src 'none';
@@ -451,6 +451,8 @@ upgrade-insecure-requests;
 **SEC-WEB-005:** Stripe Checkoutはhosted pageへのtop-level navigationとして利用し、Stripe frameを埋め込むために`frame-src`を緩和しない。
 
 **SEC-WEB-006:** `connect-src`のplaceholderは環境のexact API / Auth proxy originへ置換する。Neonの任意origin、`*`、全subdomainを許可しない。Auth SDKはRailway中継を使用する。追加originが必要なら所有者へ仕様変更を確認する。
+
+`img-src` の追加placeholderはSponsor Logoの承認済み用途だけに限り、`SPEC-180` の環境別 `SPONSOR_IMAGE_ALLOWED_ORIGINS` のexact HTTPS originsへ展開する。空集合ならplaceholderを除去し、`https:`／`*`／wildcard subdomainへ緩和しない。APIのURL検証とPages artifactのCSPを同じ設定revisionに結び付ける。これを理由に `script-src`／`connect-src` 等へ画像hostを追加しない。
 
 ## 22. Security Headers
 
@@ -536,6 +538,8 @@ Pragma: no-cache
 ## 25. Dangerous URL scheme
 
 **SEC-WEB-016:** User / Admin入力をlink destinationへ利用する場合、`javascript:`, `data:`, `vbscript:`, `file:` その他non-HTTPS schemeをrejectする。Public ContentはPart Vのplain-text contractを使用し、任意URL auto-linkificationを行わない。
+
+**SEC-WEB-026:** Sponsor Logoの画像・リンクURLはWHATWG URL相当でparseしたabsolute HTTPS URLのみとする。userinfo、非標準port（443以外）、query、fragment、IP literal、localhost／`.local` host、制御文字を拒否し、credential・署名付き期限URLを保存しない。hostは正規化したASCIIの完全一致で比較し、画像originは環境allowlistに必須一致、任意リンクは公開HTTPSの外部URLに限定する。名称はescaped plain textでありraw HTMLとして実行しない。API／workerはURLのHEAD／GET／proxy／thumbnail生成を行わず、SSRF経路を作らない。Browser画像は `referrerpolicy="no-referrer"`、外部リンクは `rel="noopener noreferrer"` を適用する。URL更新と公開時に再検証し、CSPで許可されない画像は読み込み成功と偽装しない。
 
 ---
 
@@ -675,6 +679,8 @@ Public APIをBrowser direct readへ開放する必要がある場合も、Origin
 **SEC-API-027:** Login、Password reset、Email verification開始等、Account存在を不要に開示するoperationは、成功 / 不存在でUser-visible文言とresponse timing差を過度に変えない。Providerがgeneric responseを返せる場合はそれを維持する。
 
 **SEC-API-028:** Owner resource existenceは`SEC-AZ-008`の404 policyを使用する。
+
+**SEC-API-029:** 本人向けbulk eligibilityは検証済み本人の条件のみを返し、業務DB／transport idempotency recordを作成・更新せず、共有cacheへ保存しない。POSTであることを理由にmutationとして扱わない。Orderの通知サマリーは `SPEC-120 EML-NTF-003` のDTOだけとし、宛先・本文・Provider状態を露出しない。サマリー部分障害の非阻害扱いはOwner認可やOrder本体の取得失敗へ拡張しない。Display nameは `SPEC-030` §9.2の正規化後のplain textとして保存・escapeし、任意Fieldのmass assignmentを拒否する。
 
 ---
 

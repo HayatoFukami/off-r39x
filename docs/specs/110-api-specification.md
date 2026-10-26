@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-110
 title: API Specification
-version: 2.0.0
+version: 2.1.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -528,7 +528,7 @@ Fail Closedとする。
 - **Path:** `/api/v1/self/profile`
 - **Capability:** `profile.self.read`
 - **Lookup:** verified Auth Subject → `app.business_profiles.auth_subject`
-- **Response:** `profile_ref`と上流で正規に存在するprofile fieldsのみ。
+- **Response:** `{ profile_ref: uuid, display_name: string | null, updated_at: isoUtc }`。Display name未設定をメール等で補完しない。
 - **Trace:** `PG-MYP-002`, `UF-AUTH-006`, `AR-OWN-*`, `DB-ID-002`.
 
 ### API-AUTH-003 — Provision current Business Profile
@@ -547,9 +547,9 @@ Fail Closedとする。
 - **Method:** `PATCH`
 - **Path:** `/api/v1/self/profile`
 - **Capability:** `profile.self.update`
-- **Body:** allowlisted profile fields only。Clientからowner / auth_subject / roleを受けない。
+- **Body:** strict object `{ "display_name"?: string | null }`。少なくとも1 fieldを要求し、許可Fieldは `display_name` のみ。省略は変更なし、null／trim後空文字はNULLへのclear。`SPEC-030` §9.2に従いtrim後1〜80 Unicode code points、内部 `Cc` 制御文字は拒否する。Clientからowner / auth_subject / roleを受けない。
 - **DB:** owner rowをAuth Subject relationで更新。mass assignment禁止。
-- **Response:** updated profile。
+- **Response 200:** `API-AUTH-002`と同形のupdated profile。未知Field／長さ超過／制御文字は `400 VALIDATION_FAILED`。未設定は登録・購入の阻害条件にしない。
 
 ---
 
@@ -570,8 +570,11 @@ Fail Closedとする。
 | `API-PUB-009` | `GET /public/karaoke/slots/{slot_ref}` | Slot detail / availability | `PG-KRK-003` |
 | `API-PUB-010` | `GET /public/goods` | Goods list | `FR-PUB-009` |
 | `API-PUB-011` | `GET /public/goods/{goods_ref}` | Goods detail | `PG-GDS-002` |
+| `API-PUB-012` | `GET /public/sponsor-logos` | PUBLISHED Logo list | `FR-PUB-015`, `BR-EVT-005`, `app.sponsor_logos` |
 
 Public queryは`DRAFT` / `ARCHIVED`を返さない。availability query failureは空き0へ変換せず`503 TEMPORARY_UNAVAILABLE`。
+
+`API-PUB-012` のfull pathは `GET /api/v1/public/sponsor-logos`。Queryは空のstrict object。Response dataは `{ items: [{ logo_ref: uuid, display_name: string, image_url: httpsUrl, link_url: httpsUrl | null, sort_order: integer }] }`。`sort_order ASC, public_ref ASC` で当該Eventの公開対象全件を返す。0件は `items: []`、DB／検証障害は503であり空成功に偽装しない。未公開Logo、内部ID、管理情報は返さず、この取得失敗で他の公開APIの成功を取り消さない。URLのCanonical検証は `SPEC-140`、画像の表示失敗時の代替は `SPEC-050` に従う。
 
 ## 27. Karaoke public availability schema
 
@@ -603,6 +606,33 @@ Public responseでは他Customer、Hold owner、Order、Reservation情報を返�
 - Capability `purchase.start`
 - `Idempotency-Key` required
 - Client price / currency / owner / payment result禁止
+
+### API-PUR-CART-001 — Unified Cart purchase start
+
+- **Method / Path:** `POST /api/v1/self/purchases/cart`
+- **Auth / Capability:** verified email＋既存Business Profile、`purchase.start`。§28共通契約とIdempotency-Key必須。
+- **Body:** strict `{ items: Array<{ kind: 'ENTRY', offering_ref: uuid, quantity: integer } | { kind: 'GOODS', goods_ref: uuid, quantity: integer }> }`。1〜50 Item、quantityは1〜2147483647。各variantもstrict。空配列、同一kind＋参照の重複、Karaoke、Clientの価格／Purpose／Ownerは `400 VALIDATION_FAILED`。
+- **Authority:** APIが現在の販売条件・価格・在庫／capacity・有効確保＋確定済み購入数から再検証する。事前eligibility結果は受け取らない。
+- **Purpose:** Entryだけなら `ENTRY_TICKET_PURCHASE`、Goodsだけなら `GOODS_PURCHASE`、双方なら `ENTRY_GOODS_PURCHASE`。全Itemを単一Order／単一Checkoutへ束ねる。
+- **DB:** `SPEC-100` §§47〜49のProfile→全Offering昇順→全Inventory昇順でlockし、全HELD Allocation・Order・明細・Goods履行拡張・counterを1 Transactionで作成する。1件でも不成立ならOrderを作らず部分確保も残さない。
+- **Business conflict:** rollback後に `409 STATE_CONFLICT`、`error.details = { item_failures: [{ kind, target_ref, reasons }] }`。`reasons` は `API-PUR-ELG-001` と同じ有限集合。不成立と確認できた全Itemを識別し、非公開／不存在を区別しない。判定不能なDB障害は503であり、在庫0や競合に変換しない。
+- **Checkout / Response:** DB commit後だけ§29のCheckout orchestrationを行う。新規作成201、同一試行のreplay200、dataは `{ order_ref, purpose, state, checkout }` で既存purchase成功契約に従う。Checkoutだけが失敗した場合も追跡可能な同じOrderを保持し、§29の失敗契約で返す。Cartを除去してよいのはOrder作成が安全に確認できた場合だけ。
+- **Idempotency:** §18のprincipal／Operation／Idempotency-Keyとnormalized request hashを使う。同一keyの異なる内容は409。response loss後は同じOrder／Allocation／Checkoutへ収束させ、新Orderを作らない。
+- **Confirmation / release:** 複合Orderは `SPEC-070 PAY-CFM-012〜014` と `SPEC-100 DB-TXN-005` に従い全Itemを一括確定／一括解放。部分権利を通常成功としない。
+- **Compatibility:** `API-PUR-ENTRY-001`／`API-PUR-GDS-001` の既存Body・Response・エラー意味を維持する。両者は同じ購入primitiveへ単一Itemを渡す互換経路で、HTTP内部呼出しや別の業務Ruleを作らない。Karaoke APIは独立したまま。
+- **Trace:** `FR-CRT-007〜011`, `BR-ORD-013〜019`, `DI-030-013`, `PG-CRT-001`。
+
+### API-PUR-ELG-001 — Owner-scoped bulk purchase eligibility
+
+- **Method / Path:** `POST /api/v1/self/purchases/eligibility`
+- **Auth / Capability:** verified email＋既存Business Profile、`purchase.start`。Profile未解決は `409 STATE_CONFLICT` とし、照会中にprovisionしない。
+- **Body:** strict `{ items: Array<{ kind: 'ENTRY' | 'GOODS' | 'KARAOKE', target_ref: uuid, requested_quantity: integer }> }`。1〜50件、重複kind＋参照は禁止。数量は1〜2147483647、Karaokeは1のみ。未知Fieldは400。
+- **DB / effects:** read-only snapshotで現在値と本人の有効確保＋確定済み購入を評価する。Order／Allocation／Hold／counter／Profile／idempotency recordを含む業務DB write、row lock、Provider callは行わない。参照OperationなのでIdempotency-Keyは不要で、transport replay recordを作らない。
+- **Response 200:** `{ items: [{ kind, target_ref, purchasable: boolean, reasons: string[], max_purchasable_quantity: nonNegativeInteger }] }`。入力順を保持する。maxは現在のcapacity／在庫／Account残数の最小、Karaokeは0または1。`purchasable` は要求数量がその範囲内かつ全販売条件成立時だけtrue、true時はreasons空配列。
+- **Reasons（この順で重複なく列挙）:** `NOT_PUBLIC_OR_NOT_FOUND`, `SALES_NOT_STARTED`, `SALES_CLOSED`, `SALES_STOPPED`, `SOLD_OUT`, `INSUFFICIENT_QUANTITY`, `PURCHASE_LIMIT_EXCEEDED`, `SLOT_UNAVAILABLE`, `PAYMENT_WINDOW_TOO_SHORT`。非公開／不存在は最初のcodeだけでmax=0とし、非公開情報を返さない。販売停止等で今購入できない場合もmax=0。在庫不足とAccount上限超過は該当理由を区別する。
+- **Safety / failure:** 本人をClientから指定させず、他者の購入件数／Hold／Order情報を返さない。全Responseは `Cache-Control: private, no-store`。認証失敗は401／403、DB・認証依存の判定不能は既存503であり、一部を購入可能や空結果に偽装しない。
+- **Meaning:** 表示用の瞬時判定で、確保・価格保証・後続購入の認可ではない。購入開始時には必ず再検証する。Guestは公開案内のみを参照し、認証後に本Operationで本人条件を取得する。
+- **Trace:** `FR-CRT-005,007`, `FR-TKT-026`, `FR-KRK-007`, `PG-TKT-001`, `PG-KRK-003`, `PG-GDS-002`, `PG-CRT-001`。
 
 ### API-PUR-ENTRY-001 — Entry purchase start
 
@@ -726,11 +756,12 @@ Response must include:
 ```json
 {
   "order_ref": "uuid",
-  "purpose": "ENTRY_TICKET_PURCHASE|KARAOKE_PURCHASE|GOODS_PURCHASE",
+  "purpose": "ENTRY_TICKET_PURCHASE|KARAOKE_PURCHASE|GOODS_PURCHASE|ENTRY_GOODS_PURCHASE",
   "state": "PREPARED|AWAITING_PAYMENT|CONFIRMED|PAYMENT_FAILED|CANCELED|EXPIRED|REVIEW_REQUIRED",
   "total": {"amount":"...","currency":"JPY"},
   "items": [],
   "outcome": "PENDING|CONFIRMED|TERMINAL_FAILURE|REVIEW_REQUIRED",
+  "notification_summary": {"status": "NONE|PENDING|SENT|ATTENTION_REQUIRED"},
   "receipt": {"url": "..."},
   "entitlements": {
     "entry_ticket_refs": [],
@@ -743,6 +774,8 @@ Response must include:
 `receipt.url`は取得可能な安全なStripe receipt情報だけ。`AWAITING_PAYMENT` pollingはOrder / Checkout / Ticket / Reservationを作成しない。
 
 `REVIEW_REQUIRED`はHTTP 200のresource stateとしてreadできるが、`outcome=REVIEW_REQUIRED`としSuccess purchaseへ見せない。
+
+`notification_summary` は `SPEC-120` §7.2の所有者向け射影であり、内部Notification Stateの追加ではない。通常はstatusだけを返す。通知サマリーだけの取得障害時はこのfieldをnullとし、Order本体／権利を安全に取得できる限り200を維持する（statusをNONE／SENTと推測しない）。通知本文・宛先・Provider情報は返さない。Order全体のOwner lookup／DB取得が失敗した場合は通常の404／503であり、この部分障害規約で認証・認可を回避しない。
 
 Trace: `PAY-BRW-*`, `UF-XFN-001,003`, `PG-XFN-001`, `PG-MYP-003〜004`.
 
@@ -1064,6 +1097,8 @@ Known response loss retryはTicket `USED` + exactly one Check-inを再取得し�
 | `API-ADM-CNT-004` | `GET /admin/faqs/{faq_ref}` | `public_content.manage` |
 | `API-ADM-CNT-009` | `GET /admin/announcements` | `public_content.manage` |
 | `API-ADM-CNT-010` | `GET /admin/announcements/{announcement_ref}` | `public_content.manage` |
+| `API-ADM-CNT-017` | `GET /admin/sponsor-logos` | `public_content.manage` |
+| `API-ADM-CNT-018` | `GET /admin/sponsor-logos/{logo_ref}` | `public_content.manage` |
 | `API-ADM-ROL-001` | `GET /admin/role-assignments` | `role_assignment.manage` |
 | `API-ADM-REC-001` | `GET /admin/consistency-reviews` | `recovery.review` |
 | `API-ADM-REC-002` | `GET /admin/consistency-reviews/{case_ref}` | `recovery.review` |
@@ -1077,6 +1112,8 @@ Admin read operationはPublic Referenceだけをaddressable IDとして使用し
 **API-ADM-READ-002:** Authoritative readはserver-side queryとして実行し、Public APIのpublished viewやClient cacheで代用してはならない。特に`DRAFT` / `ARCHIVED` content、Admin KPI / inventory counter、Slot / Scope current stateはAdmin read operationだけが返す。
 
 **API-ADM-READ-003:** 各Admin listのqueryは §48.3 の対応schemaを使用する。`API-ADM-ORD-001`→`orderListQuery`, `API-ADM-TKT-001`→`entryTicketListQuery`, `API-ADM-KRK-001`→`karaokeReservationListQuery`, `API-ADM-KRK-008`→`karaokeSlotListQuery`, `API-ADM-GDS-002`→`goodsListQuery`, `API-ADM-HOF-001`→`goodsHandoffListQuery`, `API-ADM-ROL-001`→`roleAssignmentListQuery`, `API-ADM-REC-001`→`consistencyReviewListQuery`, `API-ADM-CNT-003`→`faqListQuery`, `API-ADM-CNT-009`→`announcementListQuery`, `API-ADM-ENT-SALES-001`→`entryOfferingListQuery`, `API-ADM-KRK-SALES-001`→`karaokeSalesConfigListQuery`。
+
+Logo一覧のquery mappingは `API-ADM-CNT-017` → §48.3.13 `sponsorLogoListQuery`。Logo mutationの完全なOperation／path／schema inventoryは§47.1（`API-ADM-CNT-019〜021`）を正とし、他のContent mutationと同じOperation ID網羅・認可・Audit規則を適用する。
 
 ## 42. Karaoke Slot manage
 
@@ -1421,6 +1458,25 @@ Capability `goods_inventory.manage`。Goods Inventory mutationはcurrent counter
 - **Response 200:** `goods_ref`, `saleable_capacity`, `held_quantity`, `committed_quantity`, `updated_at`。
 - **Trace:** `FR-ADM-016`, `BR-SAL-008`, `DB-GDS-001,003,004`, `SPEC-150 §56`, `SPEC-160 §28.1`, `OBS-GDS-002,004,005`.
 
+## 47.1 Sponsor Logo administration
+
+以下の5 Operationは `SPEC-130 PG-ADM-027` に接続し、verified Identity＋現在の `ADMINISTRATOR` Role＋`public_content.manage` を必須とする。Logo参照はuuidの `logo_ref`。全Body／Queryはstrict、通常hard delete／uploadは提供しない。
+
+| Operation ID | Method / full path | Request / result |
+|---|---|---|
+| `API-ADM-CNT-017` | `GET /api/v1/admin/sponsor-logos` | `state?`, `limit?`, `cursor?`のみ。§48.3の専用list schema。全Publication Stateを管理参照可能 |
+| `API-ADM-CNT-018` | `GET /api/v1/admin/sponsor-logos/{logo_ref}` | 単一Logoの管理detail。不存在は404 |
+| `API-ADM-CNT-019` | `POST /api/v1/admin/sponsor-logos` | `display_name`, `image_url`, `link_url?`, `sort_order?`。DRAFT作成、新規201／同一試行replay200 |
+| `API-ADM-CNT-020` | `PATCH /api/v1/admin/sponsor-logos/{logo_ref}` | 上記編集Fieldの1つ以上＋必須 `expected_updated_at: isoUtc`。更新後detailを200 |
+| `API-ADM-CNT-021` | `POST /api/v1/admin/sponsor-logos/{logo_ref}/publication` | `{ action: 'PUBLISH' | 'UNPUBLISH' | 'ARCHIVE' | 'RESTORE_DRAFT', expected_updated_at: isoUtc }`。更新後detailを200 |
+
+- **Fields:** Logoの `display_name` はtrim後1〜200 Unicode code pointsの必須plain text（`Cc`禁止）。Profileの任意80文字とは別契約。`image_url` は1〜2048 code pointsの許可origin上HTTPS URL、`link_url` は同じ長さ上限のHTTPS URLまたはnull（省略時はcreateでnull／PATCHで変更なし）。URL安全性は `SPEC-140`。`sort_order` は0〜2147483647の整数、createの省略時0。state／event_id／内部IDを編集Bodyで受け取らない。
+- **Detail fields:** `logo_ref`, `display_name`, `image_url`, `link_url`, `sort_order`, `state`, `published_at`, `created_at`, `updated_at`。listは同じitemを標準list envelopeで返す。Public APIは管理時刻・stateを返さない。
+- **Preconditions:** PATCHはDRAFT／PUBLISHEDのみ。ARCHIVEDは先にRESTORE_DRAFT。PUBLISHはDRAFT→PUBLISHED、UNPUBLISHはPUBLISHED→DRAFT、ARCHIVEはDRAFT／PUBLISHED→ARCHIVED、RESTORE_DRAFTはARCHIVED→DRAFTのみ。ARCHIVED→PUBLISHEDの直接遷移は不可。公開時は全必須Fieldと現在の画像許可originを再検証し `published_at` をserver時刻へ更新する。
+- **Concurrency / failure:** MutationはIdempotency-Key必須。replayは元の結果へ収束し、同一key異内容は409。rowをFOR UPDATEし、`expected_updated_at` 不一致／禁止遷移は `409 STATE_CONFLICT`。入力違反は400、許可origin外は `422 DOMAIN_RULE_VIOLATION`。未知refは404。各変更の `updated_at` は必ず前値より進め、同じtimestampで別変更を識別不能にしない。
+- **DB / Audit:** mutation＋既存Public Contentの `PRIVILEGED_OPERATION` Auditは同一Transactionでcommitし、Audit失敗時はrollback。保存するのはActor／Operation ID／Logo Public Reference／変更Field名／Publication State before-after／結果だけ。名称・画像URL・リンクURL全文をAudit／logへコピーしない（`SPEC-160 OBS-AUD-006`）。画像の取得・存在確認をserverから行わない。
+- **Trace:** `FR-PUB-011,015`, `FR-ADM-018〜020`, `BR-EVT-005`, `SPEC-100 DB-SAL-002`, `PG-ADM-027`。
+
 ## 48. Role Assignment manage
 
 Capability `role_assignment.manage`。
@@ -1547,7 +1603,7 @@ const pageQuery = {
 ```ts
 z.object({
   order_ref: z.string().uuid().optional(),
-  purpose: z.enum(["ENTRY_TICKET_PURCHASE", "KARAOKE_PURCHASE", "GOODS_PURCHASE"]).optional(),
+  purpose: z.enum(["ENTRY_TICKET_PURCHASE", "KARAOKE_PURCHASE", "GOODS_PURCHASE", "ENTRY_GOODS_PURCHASE"]).optional(),
   state: z.enum(["PREPARED", "AWAITING_PAYMENT", "CONFIRMED", "PAYMENT_FAILED", "CANCELED", "EXPIRED", "REVIEW_REQUIRED"]).optional(),
   refund_state: z.enum(["REQUESTED", "PENDING", "SUCCEEDED", "FAILED", "REVIEW_REQUIRED"]).optional(),
   customer_profile_ref: z.string().uuid().optional(),
@@ -1736,6 +1792,17 @@ z.object({
 Sort: `created_at DESC, public_ref DESC`（`app.karaoke_sales_configurations.created_at`）。
 
 Notification Admin listは`SPEC-120 §36`のquery allowlistを使用する。
+
+### 48.3.13 Sponsor Logo list (`API-ADM-CNT-017`, `sponsorLogoListQuery`)
+
+```ts
+z.object({
+  state: z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]).optional(),
+  ...pageQuery,
+}).strict();
+```
+
+Sort: `sort_order ASC, public_ref ASC`。cursorはこのtupleとstate filterを結び付け、filter変更時は破棄する。
 
 ## 48.4 Goods Handoff manage
 
@@ -2202,20 +2269,16 @@ retry count / backoff / queue / operator RunbookはSPEC-150。本書§48.5はSPE
 
 本書作成時点で、必須上流仕様間にSPEC-110が解消不能な矛盾は確認されなかった。
 
-### 未反映のUCR（`SPEC-050` v1.1.0 / `SPEC-030` v1.1.0 に伴う要求）
+### UCR-110-001 — INCORPORATED
 
-以下は本書へ未反映の上流仕様変更要求であり、`DEV-GEN-001` に従い、本書のCanonical Owner本文へ反映されるまで実装契約として扱わない。
+本改訂で要求をCanonical本文へ反映した。旧提案ではなく次の契約を使用する。
 
-### UCR-110-001
+| 要求 | Canonicalな解決先 |
+|---|---|
+| 複数Item／All-or-Nothing／複合Purpose | `API-PUR-CART-001`、既存単品互換Operation、SPEC-100 `DB-ORD-004`／`DB-TXN-005` |
+| Orderの4値Purpose | `API-ORD-003`、§48.3.1の一覧query |
+| Sponsor Logo | `API-PUB-012`、`API-ADM-CNT-017〜021`、SPEC-100 §13.4 |
+| 本人別Purchase Limit表示 | `API-PUR-ELG-001`（private／no-store、参照のみ） |
+| Notification表示 | `API-ORD-003.notification_summary`、SPEC-120 §7.2 |
 
-- 対象: SPEC-110（関連: SPEC-100）
-- 現在の仕様: 次の項目が定義されていない。
-  1. Cartからの購入開始（複数Item、All-or-Nothing、不成立Itemの識別、Purposeの `ENTRY_GOODS_PURCHASE` を含む決定）。`API-PUR-ENTRY-001` と `API-PUR-GDS-001` はそれぞれ1 ItemのRequestだけを受ける。
-  2. `API-ORD-003` の `purpose` に `ENTRY_GOODS_PURCHASE`（`SPEC-030` §11.2）がない。
-  3. Sponsor Logoの公開取得（`SPEC-030` §8.4、`FR-PUB-015`）。
-  4. 認証済み閲覧者ごとのPurchase Limit到達（`SPEC-050` §12.1 / §13.3 / §14A.1 が購入不可として表示するため）。
-  5. `API-ORD-003` のNotification通知表示（`SPEC-050` §16.2 / §16.7）。
-- 要求する変更: 上記を、Operation IDまたは既存Operationの応答fieldとして定義する。1〜3は `SPEC-030` §26.1 が下流整合事項として既に挙げている。
-- 理由: `SPEC-050` v1.1.0 と `SPEC-030` v1.1.0 の要件をAPIで満たすため。
-- 変更しない場合の影響: UI mockのportのうち該当methodを実api-clientへ置き換えられない。UI mockは該当methodを「Operation IDなし」と明示して実装する。
-- 影響を受ける可能性がある仕様書: SPEC-100, SPEC-120, SPEC-130, SPEC-170
+関連 `UCR-100-001〜003` もSPEC-100本文へ反映済み。Display nameは `API-AUTH-002/004` に具体化する。`UCR-130-005` は従来どおり `DEFERRED_NONBLOCKING` であり、未採用Indexを実装契約にしない。

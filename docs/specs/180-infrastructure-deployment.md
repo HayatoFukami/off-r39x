@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-180
 title: Infrastructure and Deployment Specification
-version: 2.0.0
+version: 2.1.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -349,6 +349,12 @@ Pagesへserver Secretを配置しない。Web artifactに含められるのは�
 `SPEC-050` / `SPEC-130` の詳細URLを含む直接アクセス・再読込はSPA shellへfallbackし、React Routerで解決する。存在しないassetをHTML成功応答にせず、未知画面は既存Not Found surfaceとする。静的shellに個人Data / QR / Sessionを含めない。
 
 Pagesの静的headers設定で `SPEC-140` のCSP / HSTS / cache / scanner権限等を適用する。SSR requestごとのnonceを前提にせず、bundled external JSとbuild時hashで静的CSPを成立させる。Auth / 業務API responseのheadersはRailwayが設定する。
+
+### 13.2 Sponsor image origin configuration
+
+`SPONSOR_IMAGE_ALLOWED_ORIGINS` は環境別の公開設定（Secretではない）で、正規化したexact HTTPS originsのJSON配列とする。実hostは運営が所有・使用許可を確認した外部事実であり仕様で捏造しない。未設定は空配列、wildcard／IP literal／localhost／非443 port／query／path付きoriginは不正。APIのLogo URL検証とPagesの `img-src` を同じ設定revisionから生成し、build／deploymentで一致を検証する。他のCSP directiveへ画像originを追加しない。
+
+許可集合の追加はAPIとCSPの両方への反映後だけ公開操作に使用できる。削除は該当する公開Logoの非公開化／差替え後に行う。静的設定の変更にはdeploymentが必要だが、許可済みorigin内のLogo追加・差替え・公開順・公開状態はコード変更なしで管理できる。画像upload用storage／credential／server fetchは追加しない。設定不備や画像取得FailureはLogoの公開／表示だけを安全に失敗させ、他の公開情報を空や障害に変換しない。
 
 各Pages projectはGit自動deployでgateを迂回しないDirect Upload方式とし、GitHub Actionsで検証済みoutputをuploadする。previewをproductionへpromoteできると仮定しない。
 

@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-130
 title: Admin and Staff Specification
-version: 2.0.0
+version: 2.1.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -325,6 +325,7 @@ Staff Shellは操作速度を優先し、Primary Navigationを次の4項目と�
 | `PG-ADM-024` | `/admin/notifications` | Administrator | `recovery.review` | Notification list |
 | `PG-ADM-025` | `/admin/notifications/{notification_ref}` | Administrator | `recovery.review` | Notification detail / attempts / recovery |
 | `PG-ADM-026` | `/admin/access-denied` | Authenticated User | none | Admin access denied |
+| `PG-ADM-027` | `/admin/content/sponsor-logos` | Administrator | `public_content.manage` | Sponsor Logo list / create / edit / publication |
 
 `PG-ADM-006` / `PG-ADM-012` は `SPEC-110` の `API-ADM-ENT-SALES-001〜003` / `API-ADM-KRK-SALES-001〜003` を使用する（Capability `entry_sales.manage` / `karaoke_sales.manage`）。`PG-ADM-015` / `PG-ADM-016` のAdministrator Goods Handoff business semanticsは本書§30でCanonical化し、read / commandは `SPEC-110` `API-ADM-HOF-001〜003` を使用する。BrowserからDBへ直接アクセスしたり、仮endpointを発明して穴埋めしてはならない。
 
@@ -457,6 +458,7 @@ Dashboardはcard単位でpartial failureを区別してよい。ただし取得�
 
 - `order_ref`
 - Order Purpose
+- Purposeは4値（Entry／Karaoke／Goods／Entry＋Goods）を表示する。複合Orderは単一注文・単一支払いとして扱い、一覧から同じOrder detailへ遷移する。詳細では全Entry明細・Ticket群と全Goods明細・Handoff群を区分して欠落なく表示し、片側だけの成立を通常成功と表示しない。
 - Order State
 - created time
 - confirmed time where applicable
@@ -1214,7 +1216,7 @@ Trace: `FR-ADM-014〜015,019〜020`, `BR-SAL-*`, `KRK-AVL-*`, `DB-SAL-*`, `INV-0
 
 ## 33. Content Management Overview
 
-`PG-ADM-017` はEvent / FAQ / Announcementへの入口とする。
+`PG-ADM-017` はEvent / FAQ / Announcement / Sponsor Logoへの入口とする。Admin ShellのPublic Content Navigationから `PG-ADM-027` へ到達できる。
 
 Publication Stateは上流どおり次だけを使用する。
 
@@ -1339,6 +1341,21 @@ Dialog:
 Trace: `FR-ADM-018〜020,022`, `BR-EVT-001〜004`, `API-ADM-CNT operations`, `DB-SAL-001`, `INV-010-07,08`.
 
 ---
+
+### 36.3 `PG-ADM-027` Sponsor Logo Management
+
+**ADM-CNT-004:** 一覧・detailは `API-ADM-CNT-017/018`、DRAFT作成は019、編集は020、公開状態の明示変更は021を使用する（full HTTP契約は `SPEC-110` §47.1）。一覧はstate filterとserver-side cursor pagination、`sort_order ASC, public_ref ASC` に従う。未知refは不存在として扱い、再取得Failureを空一覧に偽装しない。
+
+- 必須表示名称（画像alt text兼用）、外部HTTPS `image_url`、任意HTTPS `link_url`、非負整数 `sort_order` を編集する。Field長・URL安全性はSPEC-110／140を参照し、Profileの任意Display nameと混同しない。
+- 画像uploadは提供しない。画像originは環境allowlistから選べる範囲だけを受理し、許可外／不正URLを明示する。APIが画像を取得して存在確認する操作は設けない。previewもCSP・no-referrer・escapingを守る。
+- DRAFTからPUBLISH、PUBLISHEDからUNPUBLISH／ARCHIVE、DRAFTからARCHIVE、ARCHIVEDからRESTORE_DRAFTのみ。ARCHIVEDの編集・直接公開・hard deleteは提供しない。
+- 変更前に対象名称・現在state・変更内容・公開／非公開の結果を確認し、明示的な実行と取消を提供する。Idempotency-Keyとcurrent `expected_updated_at` を送り、競合は再取得と確認に戻す。blind retryしない。
+- `public_content.manage` を現在のAPI認可で確認し、StaffだけのActorへ操作を出さない。API／Audit失敗時は保存成功と表示しない。
+- AuditはLogo Public Reference、Operation ID、変更Field名、state before／after、結果に限定し、名称・画像／リンクURL全文を記録しない。
+
+公開表示は `API-PUB-012` と `SPEC-050` §8.5へ接続する。PUBLISHEDだけを公開し、0件では領域を隠し、画像失敗時は表示名称を残す。Logo取得失敗で他の公開情報を妨げない。
+
+Trace: `FR-PUB-011,015`, `FR-ADM-018〜020`, `BR-EVT-005`, `DB-SAL-002`, `API-ADM-CNT-017〜021`。
 
 # Part XI — Role Assignment Management
 
@@ -1935,7 +1952,7 @@ Default `limit` はAPI default 30を使用する。
 | Filter | Type | UI default |
 |---|---|---|
 | exact Order Ref | UUID | unset |
-| Purpose | canonical enum | all |
+| Purpose | `ENTRY_TICKET_PURCHASE` / `KARAOKE_PURCHASE` / `GOODS_PURCHASE` / `ENTRY_GOODS_PURCHASE` | all |
 | Order State | canonical enum | all |
 | Refund State | canonical Refund enum | all |
 | Customer Profile Ref | exact UUID | unset |
@@ -2347,6 +2364,7 @@ Trace: `FR-STF-016`, `FR-XFN-004,017,033`, `AR-ROLE-015`, `TQR-SEC-*`, `EML-SEC-
 | `PG-ADM-018` | `API-ADM-CNT-001` | `API-ADM-CNT-002` | `public_content.manage` |
 | `PG-ADM-019` | `API-ADM-CNT-003〜004` | `API-ADM-CNT-005〜008`, `API-ADM-CNT-015` | `public_content.manage` |
 | `PG-ADM-020` | `API-ADM-CNT-009〜010` | `API-ADM-CNT-011〜014`, `API-ADM-CNT-016` | `public_content.manage` |
+| `PG-ADM-027` | `API-ADM-CNT-017〜018` | `API-ADM-CNT-019〜021` | `public_content.manage` |
 | `PG-ADM-021` | `API-ADM-ROL-001` | `API-ADM-ROL-002〜003` | `role_assignment.manage` |
 | `PG-ADM-022` | `API-ADM-REC-001` | none | `recovery.review` |
 | `PG-ADM-023` | `API-ADM-REC-002` | explicit recovery §41.5 `API-ADM-REC-003〜007` | `recovery.review` + `recovery.exception.execute` |
@@ -2393,7 +2411,7 @@ Trace: `FR-STF-016`, `FR-XFN-004,017,033`, `AR-ROLE-015`, `TQR-SEC-*`, `EML-SEC-
 | `FR-ADM-015` | `PG-ADM-012`, `SPEC-060` `karaoke_sales.manage`, `API-ADM-KRK-SALES-001〜003` |
 | `FR-ADM-016` | `PG-ADM-013〜014`, `API-ADM-GDS-001〜005` |
 | `FR-ADM-017` | `goods_handoff.manage` → `PG-ADM-015〜016` → §30 `ADM-GDS-005〜016` / `Administrative Handoff Completion` → `API-ADM-HOF-001〜003`, `API-STF-GDS-002` / `API-STF-GDS-001` → `BR-GDS-010〜013` |
-| `FR-ADM-018` | `PG-ADM-017〜020`, `API-ADM-CNT-001〜016` |
+| `FR-ADM-018` | `PG-ADM-017〜020`, `PG-ADM-027`, `API-ADM-CNT-001〜021` |
 | `FR-ADM-019` | §§7〜8, server-side authorization |
 | `FR-ADM-020` | action eligibility / current state / no generic state editor |
 | `FR-ADM-021` | Dashboard, Consistency Review (`API-ADM-REC-001〜007`), Notification recovery (`API-ADM-EML-001〜005`, `API-ADM-REC-006`) |
@@ -2485,7 +2503,7 @@ Trace: `FR-STF-016`, `FR-XFN-004,017,033`, `AR-ROLE-015`, `TQR-SEC-*`, `EML-SEC-
 - common error envelope
 - `API-STF-CHK-001〜002`
 - `API-STF-GDS-001〜002`
-- `API-ADM-ORD-*`, `API-ADM-TKT-*`, `API-ADM-KRK-001〜011`, `API-ADM-ENT-SALES-001〜003`, `API-ADM-KRK-SALES-001〜003`, `API-ADM-GDS-001〜005`, `API-ADM-HOF-001〜003`, `API-ADM-CNT-001〜016`, `API-ADM-ROL-001〜003`, `API-ADM-PAY-001`, `API-ADM-TQR-001`, `API-ADM-REC-001〜007`
+- `API-ADM-ORD-*`, `API-ADM-TKT-*`, `API-ADM-KRK-001〜011`, `API-ADM-ENT-SALES-001〜003`, `API-ADM-KRK-SALES-001〜003`, `API-ADM-GDS-001〜005`, `API-ADM-HOF-001〜003`, `API-ADM-CNT-001〜021`, `API-ADM-ROL-001〜003`, `API-ADM-PAY-001`, `API-ADM-TQR-001`, `API-ADM-REC-001〜007`
 - `API-ADM-EML-001〜005`
 - Admin list query / sort: `SPEC-110 §41 / §48.3`
 
@@ -2500,6 +2518,8 @@ Trace: `FR-STF-016`, `FR-XFN-004,017,033`, `AR-ROLE-015`, `TQR-SEC-*`, `EML-SEC-
 # Part XXII — Acceptance Conditions
 
 ## 71. SPEC-130 acceptance checklist
+
+追加必須確認: `PG-ADM-027` から外部HTTPS画像方式のLogoを作成・編集・公開解除・archive／restoreでき、現在Capability／URL条件／Publication StateをAPIが再検証する。非公開Logoが公開APIへ漏れず、4値Purposeの複合Order詳細に全Entry／Goods明細が揃うことを `SPEC-170`／`SPEC-200` の個別Caseで証明する。
 
 本仕様に従う実装は少なくとも次を満たさなければならない。
 

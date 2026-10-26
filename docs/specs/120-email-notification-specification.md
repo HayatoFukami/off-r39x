@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-120
 title: Email Notification Specification
-version: 2.0.0
+version: 2.1.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -202,6 +202,19 @@ FAILED_RETRYABLE -> CANCELED
 
 理由は、`SPEC-030` に `SENT` からの遷移が存在せず、Resend内部配送結果をBusiness Domain Authorityへ昇格させないためである。
 
+### 7.2 Owner Order notification summary
+
+**EML-NTF-003:** `API-ORD-003.notification_summary` は当該Orderの購入／予約確認通知だけを所有者へ粗く射影する。対応はEntry→`ENTRY_PURCHASE_CONFIRMED`、Goods→`GOODS_PURCHASE_CONFIRMED`、複合→`ENTRY_GOODS_PURCHASE_CONFIRMED`、Karaoke→`KARAOKE_RESERVATION_CONFIRMED`。取消／返金通知、宛先、本文、Provider ID／内部エラーは含めない。これは表示用DTOでありNotification／Orderの新Domain Stateではない。
+
+| summary.status | 射影条件 |
+|---|---|
+| `ATTENTION_REQUIRED` | 対象確認通知に `FAILED_RETRYABLE` がある。またはCONFIRMEDの確認通知が欠落している（Karaokeの正規取消によるsuppressionは除く） |
+| `PENDING` | 上記に該当せず、対象にPENDINGがある |
+| `SENT` | 上記に該当せず、対象にSENTがある。Provider受付済みであって受信箱への配送保証ではない |
+| `NONE` | 対象となる有効な確認通知がない（購入未確定、または正規suppressionで全件CANCELED等） |
+
+上から優先して評価し、CANCELEDは集約対象から除く。確認通知欠落は§8.4の同一Business Causeによる補完／既存Reviewへ接続し、Order確定や権利を再実行しない。通知サマリーだけが取得不能の場合はfieldをnullとしてOrder参照の成功を維持するが、NONE／SENTへ推測しない。Owner認可・Order本体取得の失敗はこの扱いで隠蔽しない。retry／cancel権限を所有者へ追加しない。
+
 ---
 
 ## 8. Notification Request generation boundary
@@ -242,6 +255,7 @@ Canonical name input:
 ENTRY_PURCHASE_CONFIRMED:<order_ref>:CONFIRMED
 KARAOKE_RESERVATION_CONFIRMED:<reservation_ref>:CONFIRMED
 GOODS_PURCHASE_CONFIRMED:<order_ref>:CONFIRMED
+ENTRY_GOODS_PURCHASE_CONFIRMED:<order_ref>:CONFIRMED
 KARAOKE_RESERVATION_CANCELED:<reservation_ref>:CANCELED
 ORDER_REFUND_SUCCEEDED:<order_ref>:FULL_REFUND_SUCCEEDED
 ```
@@ -293,13 +307,14 @@ Notification Request insertを含むDB transaction自体がcommitできない場
 
 ## 9. Notification Type一覧
 
-本仕様でCanonicalに定義するBusiness Notification Typeは次の5種類とする。
+本仕様でCanonicalに定義するBusiness Notification Typeは次の6種類とする。
 
 | Notification Type | Trigger | Source | Recipient | Template |
 |---|---|---|---|---|
 | `ENTRY_PURCHASE_CONFIRMED` | Entry Purchase Business Confirmation | Order | Order Customer | `entry-purchase-confirmation` v1 |
 | `KARAOKE_RESERVATION_CONFIRMED` | Karaoke Reservation Business Confirmation | Order + Reservation | Reservation Owner | `karaoke-reservation-confirmation` v1 |
 | `GOODS_PURCHASE_CONFIRMED` | Goods Purchase Business Confirmation | Order | Order Customer | `goods-purchase-confirmation` v1 |
+| `ENTRY_GOODS_PURCHASE_CONFIRMED` | Combined Purchase Business Confirmation | Order | Order Customer | `entry-goods-purchase-confirmation` v1 |
 | `KARAOKE_RESERVATION_CANCELED` | 正規Reservation `CONFIRMED -> CANCELED` commit | Reservation + related Order | Reservation Owner | `karaoke-reservation-cancellation` v1 |
 | `ORDER_REFUND_SUCCEEDED` | 正規full Refund Record `SUCCEEDED` | Order | Order Customer | `order-refund-succeeded` v1 |
 
@@ -409,6 +424,18 @@ Required render context:
 ```
 
 ---
+
+### 12.1 `ENTRY_GOODS_PURCHASE_CONFIRMED`
+
+- **Trigger:** `ENTRY_GOODS_PURCHASE` OrderのBusiness Confirmation（`PAY-CFM-012〜014`）で、全Entry Ticketと全Goodsの必須効果が成立。
+- **Business Cause:** `ENTRY_GOODS_PURCHASE_CONFIRMED:<order_ref>:CONFIRMED`。`source_order_id=Order`, `source_reservation_id=NULL`。
+- **Recipient:** Order Customer Business Profile。1つのOrder確認に1つのNotification Request／1通だけを生成し、単独Entry／Goods通知は重ねて生成しない。
+- **Template / subject:** `entry-goods-purchase-confirmation` v1、`【{event_name}】チケット・グッズ購入完了のお知らせ`。
+- **Context:** 共通変数に `order_ref`, `confirmed_at`, Order全体の `total: Money`, 全 `entry_items: [{ offering_name, quantity }]`, 全 `goods_items: [{ goods_name, quantity }]`, `handoff_instructions: string | null` を含む。両Item配列は各1件以上で、Orderの全明細・数量と一致させる。
+- **CTA:** `/mypage/orders/{order_ref}` (`PG-MYP-004`)。
+- **Safety:** 全体確定後に生成し、欠落明細／不整合な合計ならrenderを失敗させ部分内容を送らない。raw QRを含めず、既存のrecipient authority／template pin／Provider idempotencyを適用する。
+- **Retry / suppression:** 同じBusiness Causeと `business_cause_key UNIQUE` で再導出し、Notificationだけを再処理する。Order／Ticket／Goodsを再実行しない。確認はhistorical eventなので通常自動cancelせず、返金は既存の別通知とする。
+- **Trace:** `FR-EML-002,004,006〜011`, `FR-CRT-008〜009`, `BR-ORD-013,015`, `DI-030-013`。
 
 ## 13. `KARAOKE_RESERVATION_CANCELED`
 
@@ -546,6 +573,7 @@ TemplateはReact Email componentとして次のID / versionを持つ。
 entry-purchase-confirmation@1
 karaoke-reservation-confirmation@1
 goods-purchase-confirmation@1
+entry-goods-purchase-confirmation@1
 karaoke-reservation-cancellation@1
 order-refund-succeeded@1
 ```
@@ -747,6 +775,33 @@ QRのraw tokenは本メールには掲載しません。
 
 ---
 
+### 20.4 Template本文 — Combined Purchase Confirmation
+
+```text
+{event_name} のご購入ありがとうございます。
+購入処理が完了しました。
+
+注文番号: {order_ref}
+購入確定日時: {confirmed_at_jst}
+
+■ 入場チケット
+{entry_items_lines}
+
+■ グッズ
+{goods_items_lines}
+
+ご注文全体の合計: {formatted_total}
+
+■ グッズの受け取り
+{handoff_instructions_or_fallback}
+
+購入内容・チケット・受け渡しの現在状態はマイページで確認できます。
+[購入内容を確認する]
+{app_base_url}/mypage/orders/{order_ref}
+```
+
+会場受け取りの既定案内は§20と共通とし、両種別の明細を区別して表示する。明細の金額を表示する場合もOrder Snapshotだけを使用し、全体合計を片側の購入額として表示しない。
+
 ## 21. Template本文 — Karaoke Reservation Cancellation
 
 ### 21.1 Subject
@@ -827,6 +882,7 @@ Email CTAは `SPEC-050` の既存Routeだけを使用する。
 | `ENTRY_PURCHASE_CONFIRMED` | `PG-MYP-004` | `/mypage/orders/{order_ref}` |
 | `KARAOKE_RESERVATION_CONFIRMED` | `PG-MYP-009` | `/mypage/karaoke/{reservation_ref}` |
 | `GOODS_PURCHASE_CONFIRMED` | `PG-MYP-004` | `/mypage/orders/{order_ref}` |
+| `ENTRY_GOODS_PURCHASE_CONFIRMED` | `PG-MYP-004` | `/mypage/orders/{order_ref}` |
 | `KARAOKE_RESERVATION_CANCELED` | `PG-MYP-009` | `/mypage/karaoke/{reservation_ref}` |
 | `ORDER_REFUND_SUCCEEDED` | `PG-MYP-004` | `/mypage/orders/{order_ref}` |
 
@@ -1672,7 +1728,7 @@ Templateへ含めてよい情報:
 
 ## 47. Transactional Email / unsubscribe
 
-本仕様の5 Notification Typeは購入・予約・取消・返金に直接関係する**Transactional Email**であり、Marketing subscriptionとは分離する。
+本仕様の6 Notification Typeは購入・予約・取消・返金に直接関係する**Transactional Email**であり、Marketing subscriptionとは分離する。
 
 - Marketing consentを送信Preconditionにしない。
 - 通常のunsubscribe linkを本文へ追加しない。
@@ -1702,6 +1758,7 @@ src/email/
     entry-purchase-confirmation-v1.tsx
     karaoke-reservation-confirmation-v1.tsx
     goods-purchase-confirmation-v1.tsx
+    entry-goods-purchase-confirmation-v1.tsx
     karaoke-reservation-cancellation-v1.tsx
     order-refund-succeeded-v1.tsx
   schemas/
@@ -1775,9 +1832,9 @@ Business Confirmation serviceはEmail senderを直接callせず、Notification R
 | Requirement | 主な仕様 |
 |---|---|
 | `FR-EML-001` | Part I Auth Notification分離 |
-| `FR-EML-002` | `ENTRY_PURCHASE_CONFIRMED` |
+| `FR-EML-002` | `ENTRY_PURCHASE_CONFIRMED` / `ENTRY_GOODS_PURCHASE_CONFIRMED` |
 | `FR-EML-003` | `KARAOKE_RESERVATION_CONFIRMED` |
-| `FR-EML-004` | `GOODS_PURCHASE_CONFIRMED` |
+| `FR-EML-004` | `GOODS_PURCHASE_CONFIRMED` / `ENTRY_GOODS_PURCHASE_CONFIRMED` |
 | `FR-EML-005` | Cancellation / Refund通知を必要最小限追加 |
 | `FR-EML-006` | Notification Request generation / worker分離 |
 | `FR-EML-007` | Failure matrix / `DI-030-008` |
