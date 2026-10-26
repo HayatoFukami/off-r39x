@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-170
 title: Test Specification
-version: 2.0.0
+version: 2.1.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -709,6 +709,8 @@ Operation IDが明示されているcurrent operationsは100% API contract Test�
 API-AUTH-001..004
 API-PUB-001..011
 API-PUR-ENTRY-001
+API-PUR-CART-001
+API-PUR-ELG-001
 API-PUR-KRK-001
 API-PUR-GDS-001
 API-CHK-001
@@ -726,7 +728,8 @@ API-ADM-ENT-SALES-001..003
 API-ADM-KRK-SALES-001..003
 API-ADM-GDS-001..005
 API-ADM-HOF-001..003
-API-ADM-CNT-001..016
+API-ADM-CNT-001..021
+API-PUB-012
 API-ADM-ROL-001..003
 API-ADM-PAY-001
 API-ADM-TQR-001
@@ -753,6 +756,48 @@ API-ADM-EML-001..005
 | Content / Goods / Role / Slot / Scope manage | `API-ADM-CNT-002/005..008/011..016`, `API-ADM-GDS-001/004/005`, `API-ADM-ROL-001..003`, `API-ADM-KRK-003..006` | capability allow / deny、Zod allowlist / strict、current state conflict、Idempotency-Key / response loss、Publication State machine、Inventory counter invariant、Role active unique / last-administrator protection、Slot GiST overlap / no resale、Audit / observability |
 
 各familyは上記に加えて共通API contract Test（auth、error envelope、`request_id`、Internal ID非公開、Owner-safe / capability disclosure）を通す。
+
+## 27.2 Cart / Logo / Profile / Notification contract cases
+
+以下はCanonical Owner本文へ反映された契約の必須Caseであり、記載だけでTest実装・実行・受入Evidenceが存在するとは扱わない。TC IDは本書のTest Ruleに結び付け、各Caseをmanifest／runtime result／Acceptanceへ接続する。
+
+**TST-API-004:** 統一Cart APIと既存単品互換APIは同一業務Ruleを検証し、複合Orderの確保・確定・解放をreal PostgreSQLで検証する。
+
+| Test Case ID | Canonical contract / assertions | Required groups | Acceptance |
+|---|---|---|---|
+| `TC-API-004-001` | `API-PUR-CART-001`, `FR-CRT-007〜008`, `BR-ORD-013〜014`, `DI-030-013`。Entry-only／Goods-only／混合の複数明細、Karaoke混入拒否、重複／件数／数量検証。1明細でも不成立ならOrder／全Allocation／counter更新が残らない。並行Cart同士・既存単品APIとの競合でも上限／在庫超過なし。response loss＋同一keyは同Orderへ収束、異内容keyは409 | G1/G3/G4/G10、互換導線G8 | ACC-BIZ-027 |
+| `TC-API-004-002` | `PAY-CFM-012〜014`, `BR-ORD-015`, `DI-030-013`。検証済みPaymentから全Entry発行＋全Goods履行可能化＋全Allocation commit＋Order確定を一括成立。途中Faultで部分権利なし、同時／再送Webhookで重複発行なし。複合全明細の金額照合 | G3/G4/G6/G10 | ACC-BIZ-027 |
+| `TC-API-004-003` | `BR-ORD-016`, `FR-CRT-010`, `DI-030-013`。取消／失効／支払不成立で全HELD Allocationとcounterを一括解放し、途中Faultで片側だけの解放なし。再実行で二重減算せず、確定済み資源を解放しない | G3/G6/G10 | ACC-BIZ-027 |
+| `TC-API-004-004` | `DB-ORD-004`, `DB-TQR-001`, `DB-TXN-005`。4値Purposeと排他的source FK、Goods明細へのEntry誤発行拒否、Allocation数量と明細一致、Order構成検証。複合full refundで使用済みEntryまたは完了Goodsがあれば通常開始不可 | G3/G4/G6 | ACC-BIZ-027 |
+
+**TST-API-005:** `API-PUR-ELG-001` は本人向け参照だけであり、表示後の競合を購入時に再検証する。
+
+| Test Case ID | Canonical contract / assertions | Required groups | Acceptance |
+|---|---|---|---|
+| `TC-API-005-001` | `FR-CRT-005,007`, `SEC-API-029`。Guest／未確認email拒否、既存Profileのみ使用、他者指定拒否、最大50件／重複／Karaoke数量検証。現在の容量・Account残数・全reason境界、非公開と不存在の秘匿、判定不能は503。業務DB・idempotency recordのwriteなし、Provider call／row lockなし。private/no-store、照会後の並行購入で最終判定が変わることと画面の再取得を検証 | G1/G3/G4/G5/G8 | ACC-BIZ-030 |
+
+**TST-API-006:** Sponsor Logoは専用DB／公開・管理API／画面を通してPublication Stateと外部画像URLの安全性を維持する。
+
+| Test Case ID | Canonical contract / assertions | Required groups | Acceptance |
+|---|---|---|---|
+| `TC-API-006-001` | `API-PUB-012`, `FR-PUB-015`, `BR-EVT-005`。PUBLISHEDだけ、sort同値の安定順、0件は空、取得Failureは503で他の公開情報に非波及。Footerの0件非表示／画像失敗時の名称代替／非公開漏洩なし | G3/G4/G5/G8 | ACC-BIZ-028 |
+| `TC-API-006-002` | `API-ADM-CNT-017`, `API-ADM-CNT-018`, `FR-ADM-018`。現在ADMINISTRATOR＋public_content.manage、Staffのみ拒否、state filter／cursor／unknown query／不明ref／全管理Fieldのread | G3/G4/G5 | ACC-BIZ-028 |
+| `TC-API-006-003` | `API-ADM-CNT-019`, `DB-SAL-002`。Logo表示名称のtrim、空欄拒否、1／200／201 Unicode code points、内部Cc拒否を検証（Profileの任意80文字とは別）。HTTPS画像URLでDRAFT作成、未知Field拒否、Idempotency replayで1row、Audit失敗でrollback | G1/G3/G4/G5 | ACC-BIZ-028 |
+| `TC-API-006-004` | `API-ADM-CNT-020`。Field allowlist、長さ／順序境界、ARCHIVED編集拒否、expected_updated_at競合、同一key再送、未公開／公開row更新の反映と安全なAudit | G1/G3/G4/G5/G8 | ACC-BIZ-028 |
+| `TC-API-006-005` | `API-ADM-CNT-021`, `ADM-CNT-004`。全許可／禁止Publication遷移、公開時の再検証、ARCHIVED→PUBLISHED直接拒否、hard deleteなし、Audit同一Transactionと競合後の再確認 | G3/G4/G5/G8 | ACC-BIZ-028 |
+| `TC-API-006-006` | `SEC-WEB-026`, `SPEC-180`の画像origin設定。HTTPS／exact origin、userinfo／query／fragment／IP／unsafe scheme拒否、APIとCSP設定一致、no server fetch／upload、no-referrer、unsafe HTML拒否、URL全文をAuditへ記録しない | G1/G4/G5/G8、CSP設定検証 | ACC-BIZ-028 |
+
+**TST-API-007:** 任意Display nameの保存・表示はBusiness Profile本人だけに限定し、Logo表示名称と混同しない。
+
+`TC-API-007-001`: `API-AUTH-002/004`, `SPEC-030` §9.2。省略／null／trim後空文字／1・80・81 code points、絵文字・結合文字を含むUnicode長、内部Cc、未知Field／Owner／Role入力、本人限定更新を検証する。既存rowはNULLで移行でき、未設定表示は「未設定」、登録・購入を妨げずNeon Auth氏名を複写しない。G1/G3/G4/G5/G8 → `ACC-BIZ-029`。
+
+**TST-EML-002:** 複合確認は専用の1通知要求・1通へ収束する。
+
+`TC-EML-002-001`: `ENTRY_GOODS_PURCHASE_CONFIRMED`, `EML-NTF-003`, `FR-EML-002,004`, `BR-ORD-015`。全Entry／Goods明細・合計・受取案内、片側欠落のrender拒否、未確定時生成なし、再送／補完の同一Business Cause、単独通知の重複生成なし、raw QR／不要PIIなし、Email失敗でも権利維持をProvider double＋real PostgreSQLで検証する。G1/G3/G6、Provider契約は非本番G9 → `ACC-BIZ-031`。
+
+**TST-API-008:** Order通知サマリーは所有者向けDTOであり、通知Domain Stateを変更しない。
+
+`TC-API-008-001`: `API-ORD-003`, `EML-NTF-003`, `SEC-API-029`。Purpose別対象通知、FAILED／PENDING／SENT／全CANCELED／要求欠落／複数時の優先順、SENT≠配送保証、サマリー部分取得失敗時のnull＋Order200、Order本体／認可失敗時の通常404／503、宛先・本文・Provider詳細非開示を検証する。G1/G3/G4/G5/G8 → `ACC-BIZ-032`。
 
 ## 28. Transport Idempotency
 
@@ -1763,7 +1808,7 @@ Generated type declarations、migration SQL、pure config manifestはline covera
 次はpercentageではなく**100% manifest coverage**を要求する。
 
 - `INV-010-01〜10`: 各1件以上Critical Test、§64のminimum case全部。
-- `DI-030-001〜012`: 各1件以上。
+- Current Canonical `DI-030-*` 全件（`DI-030-013`を含む）: 各1件以上。番号範囲を上限にしない。
 - critical `BR-*`: state/invariant groupごとにpositive + negative。
 - Current API Operation ID: 100% contract case。
 - API mutation: 100% auth + validation + current-state test。
@@ -1776,6 +1821,8 @@ Generated type declarations、migration SQL、pure config manifestはline covera
 - `OBS-ALT-001〜037`: 100% synthetic evaluator Test。
 
 **TST-COV-002:** Upstream ruleが「documentation-only / external fact」等で直接executeできない場合もmanifestから除外せず、`verification_method=document_review|config_validation|provider_contract`を明示する。
+
+**TST-COV-003:** Current DI集合はSPEC-030本文のInvariant定義から取得し、test manifest／Acceptanceとのjoinに欠落があれば不合格とする。新DI追加時も既存の固定番号範囲を根拠に除外しない。`DI-030-013` は `TC-API-004-001〜004` のreal PostgreSQL／Fault／並行性Evidenceで直接証明する。実装未完了や未実行をPassに変換しない。
 
 ---
 
@@ -1826,7 +1873,7 @@ Generated type declarations、migration SQL、pure config manifestはline covera
 SPEC-170に準拠したTest implementationは、少なくとも次をすべて満たさなければならない。
 
 1. `INV-010-01〜10`全てがCritical Testへtraceされる。
-2. `DI-030-001〜012`全てがTest manifestへtraceされる。
+2. Current Canonical `DI-030-*` 全件がTest manifestとAcceptanceへtraceされ、§27.2の複合Order／Logo／Profile／eligibility／通知Caseも個別に接続される。
 3. 全current critical API mutationにauthorization / validation / idempotencyまたはdomain consume-once Testがある。
 4. Current API Operation IDを持つ全operationにcontract Testがある。
 5. SPEC-100 critical constraintを実PostgreSQLでTestする。
@@ -1884,13 +1931,15 @@ SPEC-170に準拠したTest implementationは、少なくとも次をすべて�
 
 ## 78. UCR status inheritance
 
+- `UCR-100-001〜003`: `INCORPORATED`（`SPEC-100` §§13.4,14.1,16〜19,24,39,47〜49）
+- `UCR-110-001`: `INCORPORATED`（`SPEC-110` Cart／eligibility／Logo／Orderサマリー契約、§27.2の個別Case）
 - `UCR-130-001〜004/006`: `INCORPORATED`（`SPEC-060` / `SPEC-110` / `SPEC-120` / `SPEC-130`）
 - `UCR-130-005`: `DEFERRED_NONBLOCKING`（`SPEC-100`、speculative indexなし）
 - `UCR-150-001`: `INCORPORATED`（`SPEC-110 §48.5` `API-ADM-REC-003〜007`）
 - `UCR-150-002`: `INCORPORATED`（`SPEC-130 §41.5` 等のwiring、`SPEC-110 §48.5` command）
 - `UCR-170-001`: `INCORPORATED`（`SPEC-110 §41 / §46〜§48` のOperation ID completeness gap解消）
 
-Canonical化済みoperationは §27.1 のoperation-family Test対象とし、`UCR-130-005` のみ未反映として期待値を先取りしない。反映済みoperationへTest Caseを追加し、存在しないoperationを発明しない。
+Canonical化済みoperationは §27.1／§27.2 のoperation-family Test対象とし、上記既知UCRのうち `UCR-130-005` のみ未反映として期待値を先取りしない。反映済みoperationへTest Caseを追加し、存在しないoperationを発明しない。新たなUCRはOwner本文への反映状況を個別確認し、自動的にINCORPORATEDと推定しない。
 
 ## 79. UCR-170-001 — SPEC-110のOperation ID completeness
 
