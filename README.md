@@ -109,7 +109,7 @@ pnpm test:e2e                 # Playwright（モック用の補助 suite）
 ```
 
 - `pnpm secret-scan` は、ビルド出力も走査するなら `pnpm build:mock` の後に実行します。
-- `pnpm secret-scan` の走査範囲は、ソース（`apps` / `packages` / `scripts` / `tests` / `traceability` とリポジトリ直下のファイル）と、ビルド出力の `.next/static/**`・`.next/server/app/**` です。`.next/server/chunks/**`、`.next/server/middleware*`、`.github/workflows/**` は走査しません。現在は UI mock が中心で Secret を扱うコードがないため、この範囲にしています。サーバー側の実装や決済の実装に入る前に、範囲を広げます（[Issue #16](https://github.com/HayatoFukami/off-r39x/issues/16)）。`OK` は、この範囲に問題がないことだけを示します。
+- `pnpm secret-scan` は、リポジトリ直下のファイル、`.github/**`、`apps/**`、`packages/**`、`scripts/**`、`tests/**`、`traceability/**` と、ビルド出力の `.next/static/**`・`.next/server/**` を走査します。ビルド出力では値を検出する rule を server 全体に適用し、`mock-seed-field` は `.next/server/app/**` に限定します。`OK` は、これらの走査範囲に問題がないことだけを示します。
 - `pnpm test:e2e` は、ビルドと起動を自動で行います（`127.0.0.1:3100`。`start:mock` の既定と同じポートなので、同時には使えません）。desktop と mobile の 2 project で動き、再試行はしません。
 - この Windows 開発機では、並列度 2 の E2E が稀にホストの接続障害で失敗します。その場合は `cd tests; pnpm exec playwright test --workers=1` で実行してください。
 - E2E は UI mock の補助 suite です。実 DB・実 API・Provider を使う正規の E2E（`SPEC-170` の G8）の代わりにはなりません。

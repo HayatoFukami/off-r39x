@@ -13353,7 +13353,7 @@
       "preconditions": "Fixture trees for scan scope",
       "expected_http": null,
       "expected_domain_postconditions": [
-        "excluded directories are not scanned; included roots are; findings sorted and deduplicated"
+        ".github and other included roots are scanned; excluded directories are not scanned; findings sorted and deduplicated"
       ]
     },
     {
@@ -13373,10 +13373,10 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": false,
-      "preconditions": "Fixture trees with apps/web/.next output",
+      "preconditions": "Fixture trees with apps/web/.next static and server output",
       "expected_http": null,
       "expected_domain_postconditions": [
-        "static and server/app scanned, cache ignored, mock-seed-field only in prerendered output, --require-build and --build-dir"
+        "static and the full server tree are scanned for secret values; mock-seed-field is scanned only under server/app; cache ignored; --require-build and custom --build-dir are covered"
       ]
     },
     {

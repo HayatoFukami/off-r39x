@@ -189,8 +189,9 @@ describe("TC-DEV-SEC-004-006 scan scope", () => {
     expectNoFinding(scan(withScan(files)));
   });
 
-  it("scans apps, packages, scripts, tests, traceability, public assets and root files", () => {
+  it("scans .github, apps, packages, scripts, tests, traceability, public assets and root files", () => {
     for (const file of [
+      ".github/workflows/leak.yml",
       "apps/web/public/mock/leak.svg",
       "packages/domain/src/leak.ts",
       "scripts/leak.mts",
@@ -219,24 +220,57 @@ describe("TC-DEV-SEC-004-006 scan scope", () => {
   });
 });
 
-describe("TC-DEV-SEC-004-007 build output: apps/web/.next client bundles (SEC-WEB-005 / DEV-SEC-002, ACC-DEV-007)", () => {
+describe("TC-DEV-SEC-004-007 build output: apps/web/.next static and server files (SEC-WEB-005 / DEV-SEC-002, ACC-DEV-007)", () => {
   const STATIC = "apps/web/.next/static/chunks/app.js";
   const HTML = "apps/web/.next/server/app/index.html";
+  const SERVER_CHUNK = "apps/web/.next/server/chunks/123.js";
+  const SSR_CHUNK = "apps/web/.next/server/chunks/ssr/456.js";
+  const MIDDLEWARE = "apps/web/.next/server/middleware.js";
 
-  it("scans .next/static and .next/server/app for credential, token and seed values", () => {
+  it("scans credential, token and seed values throughout .next/server as well as .next/static", () => {
     expectFinding(scan(withScan({ [STATIC]: line(SAMPLE.stripeLive) })), "stripe-key", STATIC);
     expectFinding(scan(withScan({ [STATIC]: line(SAMPLE.rawQr) })), "raw-qr-token", STATIC);
     expectFinding(scan(withScan({ [STATIC]: line(SAMPLE.matrixSeed) })), "mock-seed-leak", STATIC);
     expectFinding(scan(withScan({ [HTML]: `<p>${SAMPLE.jwt}</p>\n` })), "jwt", HTML);
+    expectFinding(
+      scan(withScan({ [SERVER_CHUNK]: line(SAMPLE.stripeLive) })),
+      "stripe-key",
+      SERVER_CHUNK,
+    );
+    expectFinding(scan(withScan({ [SSR_CHUNK]: line(SAMPLE.rawQr) })), "raw-qr-token", SSR_CHUNK);
+    expectFinding(
+      scan(withScan({ [MIDDLEWARE]: line(SAMPLE.matrixSeed) })),
+      "mock-seed-leak",
+      MIDDLEWARE,
+    );
   });
 
-  it("mock-seed-field: the field name in prerendered HTML / RSC is a finding, in a static chunk it is only a property name", () => {
+  it("mock-seed-field: the field name is a finding only in server/app prerendered output", () => {
     expectFinding(
       scan(withScan({ [HTML]: `{"${SAMPLE.matrixSeedField}":"x"}\n` })),
       "mock-seed-field",
       HTML,
     );
     expectNoFinding(scan(withScan({ [STATIC]: `a.${SAMPLE.matrixSeedField};\n` })));
+    expectNoFinding(scan(withScan({ [SERVER_CHUNK]: `a.${SAMPLE.matrixSeedField};\n` })));
+    expectNoFinding(scan(withScan({ [SSR_CHUNK]: `a.${SAMPLE.matrixSeedField};\n` })));
+    expectNoFinding(scan(withScan({ [MIDDLEWARE]: `a.${SAMPLE.matrixSeedField};\n` })));
+    expectNoFinding(
+      scan(
+        withScan({
+          "apps/web/.next/server/application/routes.js": `a.${SAMPLE.matrixSeedField};\n`,
+        }),
+      ),
+    );
+  });
+
+  it("detects a server/app field name even when a secret value appears on the same line", () => {
+    const result = scan(
+      withScan({ [HTML]: `{"${SAMPLE.matrixSeedField}":"${SAMPLE.stripeLive}"}\n` }),
+    );
+    expectFinding(result, "mock-seed-field", HTML);
+    expectFinding(result, "stripe-key", HTML);
+    expect(result.output).not.toContain(SAMPLE.stripeLive);
   });
 
   it("ignores .next/cache, and applies no PII rule to vendor chunks", () => {
@@ -255,12 +289,12 @@ describe("TC-DEV-SEC-004-007 build output: apps/web/.next client bundles (SEC-WE
     expect(present.stdout).not.toMatch(/^SKIP build-output/m);
   });
 
-  it("--build-dir selects another build directory (relative to the root)", () => {
-    const result = scan(withScan({ "out/static/a.js": line(SAMPLE.stripeLive) }), [
+  it("--build-dir selects another build directory and scans its server tree", () => {
+    const result = scan(withScan({ "out/server/chunks/a.js": line(SAMPLE.stripeLive) }), [
       "--build-dir",
       "out",
     ]);
-    expectFinding(result, "stripe-key", "out/static/a.js");
+    expectFinding(result, "stripe-key", "out/server/chunks/a.js");
   });
 });
 
