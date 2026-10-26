@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-100
 title: Database Design
-version: 1.0.2
+version: 2.1.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -31,7 +31,7 @@ related_specs:
 
 本書は、**off r39'x in 大阪らへん2027** Webシステムの完成形におけるBusiness Databaseの物理設計を定義する。
 
-Business Databaseは `SPEC-010` のとおり **Supabase PostgreSQL** とし、Hono APIがDrizzle ORM / `pg` を介して業務更新を行う。本書は `SPEC-030` のDomain Entity / State / Cardinality、`SPEC-060` のAuthentication / Authorization、`SPEC-070` のOrder / Payment / Refund、`SPEC-080` のTicket / QR / Check-in、`SPEC-090` のKaraoke Slot / Hold / Reservationを変更せず、PostgreSQL table、column、type、PK、FK、UNIQUE、CHECK、EXCLUDE、Index、transaction、lock、migrationへ具体化する。
+Business Databaseは `SPEC-010` のとおり **Neon PostgreSQL** とし、Hono APIがDrizzle ORM / `pg` を介して業務更新を行う。本書は `SPEC-030` のDomain Entity / State / Cardinality、`SPEC-060` のAuthentication / Authorization、`SPEC-070` のOrder / Payment / Refund、`SPEC-080` のTicket / QR / Check-in、`SPEC-090` のKaraoke Slot / Hold / Reservationを変更せず、PostgreSQL table、column、type、PK、FK、UNIQUE、CHECK、EXCLUDE、Index、transaction、lock、migrationへ具体化する。
 
 本書はDatabase physical designのCanonical Ownerである。API endpoint、HTTP status、Email lifecycle、Admin / Staff画面、Security Control全般、Recovery Runbook、Audit Event taxonomy、Test case、Deployment環境は各下流Canonical Ownerへ委譲する。
 
@@ -44,7 +44,7 @@ Business Databaseは `SPEC-010` のとおり **Supabase PostgreSQL** とし、Ho
 本書は次へ直接依存する。
 
 - `SPEC-000`: Canonical Owner、`depends_on`、Upstream Change Request、未決定事項の決定規則
-- `SPEC-010`: Supabase PostgreSQL / Hono API / Supabase Auth / StripeのSystem Boundary、System of Record、`INV-010-01〜10`
+- `SPEC-010`: Neon PostgreSQL / Hono API / Neon Auth / StripeのSystem Boundary、System of Record、`INV-010-01〜10`
 - `SPEC-020`: `FR-AUTH-*`, `FR-TKT-*`, `FR-KRK-*`, `FR-GDS-*`, `FR-MYP-*`, `FR-ADM-*`, `FR-STF-*`, `FR-XFN-*`
 - `SPEC-030`: Domain Entity、State Machine、Cardinality、`BR-*`, `DI-030-001〜012`
 - `SPEC-060`: Auth Subject ↔ Business Profile、Role Assignment、Ownership / Role authorization、`AR-*`
@@ -65,7 +65,7 @@ Business Databaseは `SPEC-010` のとおり **Supabase PostgreSQL** とし、Ho
 | Internal ID | DB内部のjoin / FKに使用する非公開識別子。`bigint GENERATED ALWAYS AS IDENTITY` |
 | Public Reference | Browser / API境界でEntityを参照するための推測困難なUUID。Authorization credentialではない |
 | Business Schema | 本システムが所有するPostgreSQL schema `app` |
-| Auth Subject | Supabase Auth Identityを一意に参照するUUID。Business DatabaseはCredentialを保持しない |
+| Auth Subject | Neon Auth Identityを一意に参照するUUID。Business DatabaseはCredentialを保持しない |
 | Business Cause Key | retryで同一Business operationを識別する、業務効果の重複防止用の永続key |
 | Historical Row | financial / entitlement / payment / check-in / role history等、通常運用でhard deleteしないrow |
 | Current-state Row | 現在Stateを保持し、条件付きUPDATEで遷移させるrow |
@@ -78,13 +78,13 @@ Business Databaseは `SPEC-010` のとおり **Supabase PostgreSQL** とし、Ho
 
 ## 4. Database authority
 
-**DB-ARC-001:** Business DatabaseはSupabase PostgreSQLである。
+**DB-ARC-001:** Business DatabaseはNeon PostgreSQLである。
 
-**DB-ARC-002:** Browser / Next.js WebからBusiness Schemaを直接更新してはならない。業務更新主体はHono APIである。
+**DB-ARC-002:** Browser / React SPAからBusiness Schemaを直接更新してはならない。業務更新主体はHono APIである。
 
 **DB-ARC-003:** API validation / authorization / Domain validationとDB Constraintは相互代替ではない。APIはBusiness Ruleを評価し、DBはcritical invariantの最終防御を行う。
 
-**DB-ARC-004:** Supabase AuthはIdentity / CredentialのSystem of Recordであり、`app` schemaはPassword、password hash、refresh credentialその他Supabase Auth内部Credentialを保存しない。
+**DB-ARC-004:** Neon AuthはIdentity / CredentialのSystem of Recordであり、`app` / `auth_read`はPassword、password hash、refresh credential、Sessionその他Neon Auth内部Credentialを保存しない。Provider所有`neon_auth`は同一DB内に存在するが、本システムのBusiness Schemaではない。
 
 **DB-ARC-005:** Stripeは外部Payment Authorityであり、`app` schemaはcard number、CVC、raw payment method secretを保存しない。
 
@@ -104,7 +104,25 @@ app.karaoke_slots
 ...
 ```
 
-`public` schemaへBusiness tableを作成しない。Supabase管理schema `auth`, `storage` 等へ本システムのmigrationでtableを追加しない。
+`public` schemaへBusiness tableを作成しない。Neon管理の`neon_auth`へ本システムのmigrationでtableを追加・変更しない。認証内部tableをDrizzleの生成migrationの管理対象に含めない。
+
+### 5.1 認証Directoryの限定読み取り
+
+**DB-ARC-008:** 業務APIのcurrent Identity / Email確認とEmail Workerの宛先解決のため、deployment-managedな `auth_read.identity_directory` ビューだけを公開する。
+
+| Column | Type | 意味 |
+|---|---|---|
+| `auth_subject` | uuid | Providerの安定したuser ID |
+| `email` | text / nullable | Providerのcurrent primary Email |
+| `email_verified` | boolean | そのcurrent Emailの確認済み状態 |
+
+- 同一環境・同一DBのNeon管理user tableのID / Email / verified列のみを投影し、1 Subject最大1行とする。別のEmail cache / 同期tableを作らない。
+- `security_barrier`付きの読み取り専用ビューとし、NOLOGIN owner `auth_directory_owner`へ元tableの必要3列だけのSELECTを付与する。runtimeへ元tableのSELECT、Session / account / verification / password tableへの権限を与えない。
+- `app_api_runtime` / `app_email_runtime`だけへ `auth_read` のUSAGEと当該ビューのSELECTを許可する。PUBLIC、Browser、Recon Worker、backup reader、通常のincident readerへ付与しない。runtimeのINSERT / UPDATE / DELETE / DDL / GRANTは禁止する。
+- migration / grant適用は専用deployment identityで行い、Provider-owned table / Credentialは変更しない。参照するProvider schema version・列・UUID形式・ビューのgrantをProvider contract / migration testで確認する。互換性を失った場合はFail Closedとし、全Auth schemaを読むfallbackを作らない。
+- Directoryの0行はIdentity不存在、Email欠落・未確認はrecipient不可、DB読取不能は一時lookup failureとして `SPEC-060` / `SPEC-120` の既存分類へ接続する。financial historyをcascade削除しない。
+
+これは必要3項目の限定読み取りであり、Neon AuthのSystem of Record / Session検証の再実装や、架空のservice-role Auth Admin APIを導入する契約ではない。
 
 Naming convention:
 
@@ -416,27 +434,47 @@ Index: `ix_announcements_event_state_published(event_id, state, published_at DES
 
 **DB-SAL-001:** Public queryは `PUBLISHED` のみ返し、DRAFT / ARCHIVEDをClient filterへ委譲しない。
 
+### 13.4 `app.sponsor_logos`
+
+| Column | Type / constraint |
+|---|---|
+| `id` | bigint identity PK |
+| `public_ref` | uuid NOT NULL UNIQUE |
+| `event_id` | bigint NOT NULL FK → events(id) ON DELETE RESTRICT |
+| `display_name` | text NOT NULL CHECK (char_length(display_name) BETWEEN 1 AND 200) |
+| `image_url` | text NOT NULL CHECK (char_length(image_url) BETWEEN 1 AND 2048) |
+| `link_url` | text NULL CHECK (link_url IS NULL OR char_length(link_url) BETWEEN 1 AND 2048) |
+| `sort_order` | integer NOT NULL DEFAULT 0 CHECK (sort_order >= 0) |
+| `state` | text NOT NULL DEFAULT 'DRAFT' CHECK IN ('DRAFT','PUBLISHED','ARCHIVED') |
+| `published_at` | timestamptz NULL |
+| `created_at`, `updated_at` | timestamptz NOT NULL |
+
+Index: `ix_sponsor_logos_event_state_sort(event_id, state, sort_order, public_ref)`。公開順は `sort_order ASC, public_ref ASC`。通常hard deleteは禁止し、§13.2／13.3と同じPublication Stateで運用する。`PUBLISHED` は `published_at IS NOT NULL` をCHECKで要求する。
+
+**DB-SAL-002:** URLは外部HTTPSの参照のみとし、形式・許可originの検証は `SPEC-140` と `SPEC-110` のcreate/update/publicationで行う。画像upload／server fetchは行わない。公開queryは `PUBLISHED` のみを返す。Profileの任意 `display_name` と異なり、Logoの表示名称は必須とする。Trace: `FR-PUB-011,015`, `FR-ADM-018`, `BR-EVT-005`。
+
 ---
 
 ## 14. Identity / Authorization tables
 
 ### 14.1 `app.business_profiles`
 
-Purpose: Supabase Auth IdentityとBusiness Database上の本人 / Ownerの1:1対応。
+Purpose: Neon Auth IdentityとBusiness Database上の本人 / Ownerの1:1対応。
 
 | Column | Type | Null | Rule |
 |---|---|---:|---|
 | `id` | bigint identity | No | PK |
 | `public_ref` | uuid | No | UNIQUE |
 | `auth_subject` | uuid | No | UNIQUE |
+| `display_name` | text | Yes | CHECK (display_name IS NULL OR char_length(display_name) BETWEEN 1 AND 80) |
 | `created_at` | timestamptz | No | server timestamp |
 | `updated_at` | timestamptz | No | server timestamp |
 
-本書の必須上流仕様にBusiness Profileのユーザー編集FieldはCanonicalに列挙されていないため、推測で氏名・電話・住所等を追加しない。後続で正式なprofile fieldがCanonical化された場合は通常のschema evolutionで追加する。
+本人編集Fieldは `display_name` のみとする。`SPEC-030` §9.2のtrim／空文字→NULL／制御文字拒否をAPIで行ってから保存し、DBでも上記CHECKでUnicode code pointsの長さを守る。既存rowはNULLで移行でき、Neon Authから氏名・メールを複写しない。氏名・電話・住所・必須onboardingを追加しない。
 
-`auth.users` へのDB FKは張らない。理由:
+Neon管理user table（`neon_auth`）へのDB FKは張らない。理由:
 
-- Supabase Authは別System of Record / managed schemaである。
+- Neon Authは別System of Record / managed schemaである。
 - Auth Identity削除・privacy operationがfinancial historyをcascade / RESTRICTで巻き込むことを避ける。
 - Hono APIが検証済みAuth Subjectだけをprovisioning入力にする。
 
@@ -484,7 +522,7 @@ Historyは保持し、revoke時もDELETEしない。
 pg_advisory_xact_lock(hashtext('app:active-administrator-set'))
 ```
 
-**DB-AUTH-002:** Supabase Auth metadata / Client role claimをRole Assignment tableへ自動同期してauthorityにしない。
+**DB-AUTH-002:** Neon Auth metadata / Client role claimをRole Assignment tableへ自動同期してauthorityにしない。
 
 Trace: `AR-ROLE-004〜013`, `INV-010-08`.
 
@@ -577,7 +615,7 @@ Columns:
 | `public_ref` | uuid | No | UNIQUE |
 | `purchase_cause_key` | uuid | No | UNIQUE, purchase-start retry correlation |
 | `customer_profile_id` | bigint | No | FK Business Profile |
-| `purpose` | text | No | allowed 3 values |
+| `purpose` | text | No | allowed 4 values |
 | `state` | text | No | canonical Order State |
 | `currency` | text | No | snapshot |
 | `total_amount` | bigint | No | `>= 0` |
@@ -592,6 +630,7 @@ Purpose CHECK:
 ENTRY_TICKET_PURCHASE
 KARAOKE_PURCHASE
 GOODS_PURCHASE
+ENTRY_GOODS_PURCHASE
 ```
 
 State CHECK:
@@ -668,6 +707,11 @@ GOODS_PURCHASE:
   entry_offering_id IS NULL
   karaoke_slot_id IS NULL
   goods_id IS NOT NULL
+
+ENTRY_GOODS_PURCHASE:
+  karaoke_slot_id IS NULL
+  ((entry_offering_id IS NOT NULL AND goods_id IS NULL)
+   OR (entry_offering_id IS NULL AND goods_id IS NOT NULL))
 ```
 
 Unique:
@@ -677,10 +721,14 @@ Unique:
 - `UNIQUE(id, purpose)`
 - `UNIQUE(id, order_id, purpose)`
 - `UNIQUE(id, order_id, purpose, karaoke_slot_id)` for Hold composite FK
+- `UNIQUE(id, entry_offering_id)` for Entry Allocation source FK
+- `UNIQUE(id, goods_id)` for Goods fulfillment source FK
 
 **DB-ORD-002:** Karaoke OrderはHono purchase-start transactionでOrder Item countを1件に固定する。`quantity=1` とsource CHECKはDBで守る。2件目のKaraoke Order Item挿入はservice transactionで拒否し、confirmation時にも1件であることを再検証する。
 
 **DB-ORD-003:** Order totalとOrder Item合計のcross-row equalityはCheckout作成前・confirmation時のtransaction preconditionとして再計算する。DBは各line totalとcurrency/purpose一致をconstraintで保証する。
+
+**DB-ORD-004:** 各Itemの `purpose` は所属OrderのPurposeと同じであり、複合Orderでも別のitem-purpose列を導入しない。Entry／Goodsの種別は上記の排他的なsource FKで識別する。単独Purposeは全Itemが同じ種別、複合PurposeはEntryとGoodsがそれぞれ1件以上、Karaokeは1明細・数量1であることを購入Transactionで検証する。CHECKは単一rowだけを扱うため、Order全体の構成・金額は購入開始／Checkout開始／確定の各preconditionとして再評価し、構成変更を許可しない。
 
 Trace: `BR-ORD-001〜012`, `PAY-ORD-003〜009`, `DI-030-001〜003`, `DI-030-011〜012`.
 
@@ -691,7 +739,7 @@ Columns:
 - `id bigint identity PK`
 - `order_item_id bigint NOT NULL UNIQUE`
 - `order_id bigint NOT NULL`
-- `purpose text NOT NULL DEFAULT 'ENTRY_TICKET_PURCHASE' CHECK = 'ENTRY_TICKET_PURCHASE'`
+- `purpose text NOT NULL CHECK IN ('ENTRY_TICKET_PURCHASE','ENTRY_GOODS_PURCHASE')`
 - `offering_id bigint NOT NULL`
 - `quantity integer NOT NULL CHECK > 0`
 - `state text NOT NULL CHECK IN ('HELD','COMMITTED','RELEASED')`
@@ -934,7 +982,7 @@ Columns:
 - `public_ref uuid NOT NULL UNIQUE`
 - `order_id bigint NOT NULL`
 - `order_item_id bigint NOT NULL`
-- `order_purpose text NOT NULL DEFAULT 'ENTRY_TICKET_PURCHASE' CHECK = 'ENTRY_TICKET_PURCHASE'`
+- `order_purpose text NOT NULL CHECK IN ('ENTRY_TICKET_PURCHASE','ENTRY_GOODS_PURCHASE')`
 - `owner_profile_id bigint NOT NULL`
 - `issuance_ordinal integer NOT NULL CHECK > 0`
 - `state text NOT NULL CHECK IN ('VALID','USED','CANCELED','EXPIRED')`
@@ -948,6 +996,7 @@ Composite FKs:
 ```text
 (order_item_id, order_id, order_purpose) -> order_items(id, order_id, purpose)
 (order_id, owner_profile_id) -> orders(id, customer_profile_id)
+(order_item_id) -> entry_sales_allocations(order_item_id)
 ```
 
 Unique:
@@ -959,6 +1008,10 @@ UNIQUE(order_item_id, issuance_ordinal)
 CHECK: `valid_from < valid_until` when both set.
 
 **DB-TQR-001:** Entry Ticket発行transactionはOrder Item quantity `N` に対しordinal `1..N` を使用し、既存 `(order_item_id, ordinal)` があればretryでは再利用する。Ordinalがquantity以下であることとN件揃うことはconfirmation transactionで検証する。
+
+Entry AllocationへのFKは複合Order内のGoods明細への誤発行も拒否する。発行前にAllocationが同じItem／Offering／数量で `COMMITTED` になることを同一Transactionで検証する。
+
+TicketにOffering IDを冗長保存せず、Ticket → 同じorder_item_idのEntry Allocation → source Order Itemのentry_offering_idという既存FK経路だけでOfferingを解決する。Allocationの `(order_item_id, offering_id)` FKが同じItemのOffering一致を保証するため、Ticketから別Offeringを指定する入力／保存列を追加しない。
 
 ## 25. `app.qr_tokens`
 
@@ -1443,7 +1496,7 @@ Columns:
 - `order_item_id bigint PRIMARY KEY`
 - `public_ref uuid NOT NULL UNIQUE`
 - `order_id bigint NOT NULL`
-- `order_purpose text NOT NULL DEFAULT 'GOODS_PURCHASE' CHECK = 'GOODS_PURCHASE'`
+- `order_purpose text NOT NULL CHECK IN ('GOODS_PURCHASE','ENTRY_GOODS_PURCHASE')`
 - `customer_profile_id bigint NOT NULL`
 - `goods_id bigint NOT NULL`
 - `state text NOT NULL CHECK IN ('PENDING_PAYMENT','FULFILLABLE','CANCELED')`
@@ -1731,6 +1784,8 @@ Order -> Allocation/Hold -> Capacity/Inventory/Slot -> Entitlement
 
 とする。各operationの具体順は次表を優先する。
 
+Entry／Goodsの全購入開始経路（単品互換APIを含む）は、Profile → 全Offering（ID昇順）→ 全Goods Inventory（goods_id昇順）を共通順とする。既存Orderの複合確定／解放はOrder → 全Entry Allocation（ID昇順）→ 全Goods Allocation（ID昇順）→ 全Offering（ID昇順）→ 全Inventory（goods_id昇順）→ 全権利の順でlockする。同じTransaction内でこの資源順を逆転させない。Stripe／Resend呼出しはlock保持中に行わない。
+
 ## 48. Business Transaction matrix
 
 | Transaction | Locks / primitive | Isolation | Constraint fallback / retry behavior |
@@ -1740,10 +1795,13 @@ Order -> Allocation/Hold -> Capacity/Inventory/Slot -> Entitlement
 | Entry allocation + Order create | Profile `FOR UPDATE` → Offering `FOR UPDATE` | READ COMMITTED | capacity CHECK; allocation unique; rollbackでcounter/order残さない |
 | Karaoke Hold + Slot HELD + Order PREPARED | Profile `FOR UPDATE` → Slot `FOR UPDATE` | READ COMMITTED | partial active Hold unique; slot conditional update; Exclusion constraint |
 | Goods allocation + Order create | Profile `FOR UPDATE` → Inventory `FOR UPDATE` | READ COMMITTED | inventory CHECK; allocation unique |
+| Cart allocation + Order create（Entry-only／Goods-only／複合） | Profile → 全Offering昇順 → 全Inventory昇順 | READ COMMITTED | 全Item成立時だけOrder／明細／全HELD Allocation／Goods履行拡張を一括Commit。1件でも不成立ならcounterを含め全Rollback |
 | Checkout Binding + Order AWAITING_PAYMENT | Order `FOR UPDATE` → Attempt `FOR UPDATE`; KaraokeはHold/Slotもlock | READ COMMITTED | active binding partial unique; 30m generated deadline; exact Karaoke time predicate |
 | Entry Business Confirmation | Order → Allocation → Offering locks | READ COMMITTED | ticket `(item, ordinal)` unique; allocation conditional commit; all rollback on failure |
 | Karaoke Business Confirmation | Order → Hold → Slot locks | READ COMMITTED | Reservation item/slot unique; Ticket reservation unique |
 | Goods Business Confirmation | Order → Allocation → Inventory → Goods Order Item | READ COMMITTED | inventory CHECK; allocation conditional commit |
+| Combined Business Confirmation | §47の既存Order共通順 | READ COMMITTED | 全Entry Allocation COMMITTED＋全Ticket発行＋全Goods Allocation COMMITTED＋全Goods Item FULFILLABLE＋Order CONFIRMEDを一括Commit。不成立なら部分権利をCommitせず既存Recovery契約へ |
+| Combined payment failure / cancel / expiry | §47の既存Order共通順 | READ COMMITTED | 当該Orderの全HELD Allocation解放・counter更新・Goods未払Item取消を一括Commit。COMMITTED Allocationを解放しない |
 | Payment failure / cancel / expiry resource release | Order → Allocation/Inventory or Hold/Slot | READ COMMITTED | release only from HELD/ACTIVE; counter update only winner |
 | Reservation cancellation | Karaoke Ticket → Reservation | READ COMMITTED | common Ticket VALID precondition; Slot remains SOLD |
 | Entry Check-in | Entry Ticket `FOR UPDATE` | READ COMMITTED | Ticket unique Check-in; conditional VALID->USED |
@@ -1760,6 +1818,8 @@ Order -> Allocation/Hold -> Capacity/Inventory/Slot -> Entitlement
 
 **DB-TXN-004:** DB commit成功後のHTTP response lossはtransactionをrollbackしない。retryはBusiness Cause / unique relationから既存結果を返す。
 
+**DB-TXN-005:** Cart作成は `DB-ORD-004` の構成、全Itemの価格Snapshot／数量、Account Limit（有効確保＋確定済み）を同じlock境界で評価する。同一対象の重複ItemはAPIで拒否する。各Allocation.quantityはsource Item.quantityと一致し、Entry／Goodsいずれのcounterも1回だけ更新する。不成立Item情報はrollback後の安全な結果として返す。複合確定で一部資源が失われたときはOrder全体のReviewとし、片側の権利だけを有効化しない。通知要求の補完は `SPEC-120` の同一Business Causeで行い、業務確定を再実行しない。
+
 ---
 
 # Part XIII — Query / Authorization Support
@@ -1771,7 +1831,7 @@ Order -> Allocation/Hold -> Capacity/Inventory/Slot -> Entitlement
 ### 50.1 Current Profile
 
 ```text
-business_profiles.auth_subject = verified_supabase_subject
+business_profiles.auth_subject = verified_neon_subject
 ```
 
 unique constraintにより0..1件。0件はprovisioning、複数はDB上不可能。
@@ -1837,17 +1897,18 @@ Admin / Staffが何を表示できるかはSPEC-130、Recovery手順はSPEC-150�
 理由:
 
 - `SPEC-010` の業務アクセス主体はHono APIである。
-- Browser / Next.js WebはBusiness Databaseへ直接接続しない。
+- Browser / React SPAはBusiness Databaseへ直接接続しない。
 - `SPEC-060` のAuthorization Principal / Role Assignment / Owner ruleをHono APIへ集約する。
 
 代わりに:
 
 ```text
 REVOKE ALL ON SCHEMA app FROM PUBLIC;
-REVOKE ALL ON ALL TABLES IN SCHEMA app FROM anon, authenticated;
+REVOKE ALL ON ALL TABLES IN SCHEMA app FROM PUBLIC;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA app FROM PUBLIC;
 ```
 
-相当の権限制御を行い、Hono API用の専用DB roleだけへ必要privilegeを与える。Supabaseの`anon` / `authenticated` roleをBusiness tableの直接read/write主体にしない。
+相当の権限制御を行い、専用server DB roleだけへ必要privilegeを与える。Data API / Browser向けroleは実在するroleを列挙して同様に閉じ、`anon` / `authenticated`という特定Providerのrole名が存在するとは仮定しない。Neon Data APIを本システムの業務・認証Directory参照に使用しない。
 
 RLSを「念のため」有効化してauthorization logicを二重実装しない。将来Browser direct DB accessを導入する場合はSystem Boundary変更であり、SPEC-010 / SPEC-060の変更が先に必要である。
 
@@ -2122,7 +2183,7 @@ Karaoke exclusionやactive Hold unique等を、既存違反を無視してapplic
 
 実装は少なくとも以下を満たさなければならない。
 
-1. Business tableは`app` schemaに存在し、Browser/Supabase `anon` / `authenticated` roleへ直接write権限を与えない。
+1. Business tableは`app` schemaに存在し、Browser / Data API向けの実在roleとPUBLICへ直接write権限を与えない。旧Provider固有role名の存在を仮定しない。
 2. Internal PKとPublic Referenceを分離する。
 3. Auth SubjectはBusiness Profileへ最大1件だけ対応する。
 4. Role AssignmentはACTIVE/REVOKED履歴を保持し、同一Profile/RoleのACTIVEは最大1件。
@@ -2167,10 +2228,10 @@ Karaoke exclusionやactive Hold unique等を、既存違反を無視してapplic
 
 以下を禁止する。
 
-- Browser / Next.jsからBusiness Databaseへ直接write
+- Browser / React SPAからBusiness Databaseへ直接write
 - Public ReferenceをAuthorization credentialとして使用
 - Client user IDをOwner FKとして採用
-- Supabase Auth metadataをOperational Role authorityとして使用
+- Neon Auth metadataをOperational Role authorityとして使用
 - PostgreSQL native enumへ上流Stateを閉じ込める
 - float / double precisionでPayment amountを保存
 - Stripe Event ID uniquenessなしでWebhook処理
@@ -2234,41 +2295,12 @@ Retry count、backoff、reconciliation、Review Case解消Runbookを定義する
 
 ## 70. 上流仕様変更要求
 
-なし。
+本改訂で次の要求をCanonical本文へ取り込んだ。現在契約は本文を正とし、旧提案を別契約として実装しない。
 
-本書の物理設計は、添付された `SPEC-000`, `SPEC-010`, `SPEC-020`, `SPEC-030`, `SPEC-060`, `SPEC-070`, `SPEC-080`, `SPEC-090` のState、Cardinality、期限、System Boundary、Business Ruleを変更せず具体化できる。
+| UCR | 状態 | Canonicalな解決先 |
+|---|---|---|
+| UCR-100-001 | INCORPORATED | §14.1の任意Display name、SPEC-110 `API-AUTH-002/004` |
+| UCR-100-002 | INCORPORATED | §13.4のSponsor Logo、SPEC-110公開／管理API、SPEC-130 `PG-ADM-027` |
+| UCR-100-003 | INCORPORATED | §§16〜19,24,39,47〜49の複合Purpose／source FK／原子Transaction |
 
-### 未反映のUCR（`SPEC-050` v1.1.0 に伴う要求）
-
-以下は本書へ未反映の上流仕様変更要求であり、`DEV-GEN-001` に従い、本書のCanonical Owner本文へ反映されるまで実装契約として扱わない。
-
-### UCR-100-001
-
-- 対象: SPEC-100（関連: SPEC-110）
-- 現在の仕様: Business Profileに利用者が編集できるFieldが列挙されていない（§14.1）。一方、`SPEC-050` §18.2 `PG-MYP-002` はDisplay nameを更新可能な項目としている。
-- 要求する変更: Business ProfileのDisplay nameの物理表現（Column、制約、更新可否）と、対応するAPI contract（`API-AUTH-004`）を定義する。
-- 理由: `PG-MYP-002` の更新Actionを実装するため。
-- 変更しない場合の影響: Display nameの更新をBusiness Databaseへ永続化できない。UI mockは必須入力のチェックだけを行い、最大文字数を定めない。
-- 影響を受ける可能性がある仕様書: SPEC-110
-
-### 未反映のUCR（`SPEC-030` v1.1.0 に伴う要求）
-
-以下は本書へ未反映の上流仕様変更要求であり、`DEV-GEN-001` に従い、本書のCanonical Owner本文へ反映されるまで実装契約として扱わない。`SPEC-030` §26.1 が下流整合事項として挙げている。
-
-### UCR-100-002
-
-- 対象: SPEC-100（関連: SPEC-110, SPEC-130, SPEC-170）
-- 現在の仕様: `SPEC-030` §8.4 はSponsor Logoを、表示名称、画像への参照、リンク先（任意）、表示順、Publication Stateを持つEntityと定めている。本書にはそのtableが定義されていない。`app.faq_items`（§13.2）と `app.announcements`（§13.3）には物理設計がある。
-- 要求する変更: Sponsor Logoのtable、column、型、制約、`state`（`DRAFT` / `PUBLISHED` / `ARCHIVED`）、表示順、公開取得用のIndex、通常運用でのhard delete禁止を定義する。画像参照の保管方式と、リンク先URLの検証の責務の所在も明確にする。
-- 理由: `FR-PUB-015` と `FR-ADM-018` を満たし、運営がコード変更なしでSponsor Logoを管理するため。`BR-EVT-005` が定める公開制御をBusiness Databaseで表現するため。
-- 変更しない場合の影響: Sponsor Logoを永続化できない。公開API（`UCR-110-001` の項目3）と管理操作（`SPEC-130`）の実装に必要な物理表現がない。
-- 影響を受ける可能性がある仕様書: SPEC-110, SPEC-130, SPEC-170
-
-### UCR-100-003
-
-- 対象: SPEC-100（関連: SPEC-110, SPEC-120, SPEC-170）
-- 現在の仕様: `app.orders`（§16）のPurpose CHECKは `ENTRY_TICKET_PURCHASE` / `KARAOKE_PURCHASE` / `GOODS_PURCHASE` の3値であり、Source CHECKはPurposeごとに単一のsourceを要求する。`app.entry_sales_allocations`（§18）の `purpose` と `app.entry_tickets`（§24）の `order_purpose` は `ENTRY_TICKET_PURCHASE` に固定されている。`SPEC-030` §11.2 は `ENTRY_GOODS_PURCHASE` を含む4値を定め、§11.9 は複合Orderを定める。
-- 要求する変更: `orders.purpose` の許可値と、Purposeとpurchase sourceの組合せ制約を更新する。複合Orderに属するEntry Ticket AllocationとEntry Ticketを保持できるよう、§18 / §24 の固定値を見直す。複合Orderの購入時Transaction（全Allocationの確保、または全体の不成立）を定義する。
-- 理由: `FR-CRT-007〜010` と `BR-ORD-013〜018` を実装できるようにするため。
-- 変更しない場合の影響: Cart経由の複合Orderを永続化できず、現行のCHECK制約により拒否される。
-- 影響を受ける可能性がある仕様書: SPEC-110, SPEC-120, SPEC-170
+既存の `UCR-130-005` は引き続き `DEFERRED_NONBLOCKING` であり、運用Indexの先取り追加は行わない。

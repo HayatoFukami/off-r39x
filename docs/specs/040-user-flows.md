@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-040
 title: User Flows
-version: 1.3.2
+version: 2.0.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -233,7 +233,7 @@ Trace: `BR-ORD-006`, `BR-ORD-008〜009`, `BR-SAL-007`, `BR-TKT-006`, `BR-KRK-006
 
 - **Flow ID:** `UF-PUB-002`
 - **Primary Actor:** Guest
-- **Secondary Actor / External System:** Supabase Auth / Hono API
+- **Secondary Actor / External System:** Neon Auth / Hono API
 - **Entry Point:** 購入開始、マイページ利用、Profile等の認証必須操作
 - **Precondition:** Guestである
 - **Trigger:** Guestが認証必須操作を開始する
@@ -274,29 +274,29 @@ Guestのまま認証必須Business operationは成立しない。
 
 - **Flow ID:** `UF-AUTH-001`
 - **Primary Actor:** Guest
-- **Secondary Actor / External System:** Supabase Auth / Hono API / Business Database
+- **Secondary Actor / External System:** Neon Auth / Hono API / Business Database
 - **Entry Point:** Account登録
 - **Precondition:** Guestである
 - **Trigger:** Guestが新規Account登録を送信する
 
 ### 9.1 Main Success Flow
 
-1. **Guest** はAccount登録に必要な情報を入力し、登録を開始する。
-2. **Web** はSupabase Authの登録Flowを利用する。
-3. **Supabase Auth** がIdentityを作成し、Email確認が必要な認証状態であれば確認Flowを開始する。
-4. **System** は確認未完了Identityを確認済みと偽装しない。
-5. 認証済み業務操作を初めて行うまでに、**API** は検証済みAuth Identityと1対1で対応するBusiness Profileを一意に解決可能な状態にする。
-6. 登録後の利用可否はSupabase Authの認証状態と `SPEC-060` のSession / Access Ruleに従う。
+1. **Guest** は同じRegistration画面からEmail+Password、Google、Email OTP、Magic Linkのいずれかを選ぶ。4方式すべてが初回登録を許可する。方式切替でContinuation Intentを失わない。
+2. Email+Passwordには既存Policy（12〜128文字）を適用し、他方式もNeon Authの正規手順を使う。
+3. **Neon Auth** がIdentityを作成する。確認済みEmailを保証する場合だけ確認済みとし、成功表示だけで業務認可しない。
+4. Email確認が必要なIdentityは `UF-AUTH-002` へ進む。確認未完了のまま購入等を許可しない。
+5. 別方式のIdentityへの連携はNeonが本人性と確認済みEmailを保証する場合に限る。Email一致だけで別Auth IDの履歴を連携・移転しない。
+6. 認証済み業務操作前に、**API** は検証済みAuth Identityと1対1でBusiness Profileを解決する。
 
 ### 9.2 Failure Flow
 
-- Supabase Authが登録を受理しない場合、Account登録は未成立として利用者へ示す。
+- Neon Authが登録を受理しない場合、Account登録は未成立として利用者へ示す。
 - Business Profileとの対応を安全に確立できない状態では、購入等の業務操作へ進めない。
 - CredentialをBusiness Databaseへ保存するFlowを作らない。
 
 ### 9.3 Success Postcondition
 
-Supabase Auth Identityが存在し、Email確認が必要な場合は `UF-AUTH-002` へ進める。Business Profileは当該Identityと1対1で対応する。
+Neon Auth Identityが存在し、Email確認が必要な場合は `UF-AUTH-002` へ進める。Business Profileは当該Identityと1対1で対応する。
 
 ### 9.4 Traceability
 
@@ -309,27 +309,29 @@ Supabase Auth Identityが存在し、Email確認が必要な場合は `UF-AUTH-0
 
 - **Flow ID:** `UF-AUTH-002`
 - **Primary Actor:** Account登録済みUser
-- **Secondary Actor / External System:** Supabase Auth
-- **Entry Point:** Supabase AuthのEmail確認Flow
+- **Secondary Actor / External System:** Neon Auth
+- **Entry Point:** Neon AuthのEmail確認Flow
 - **Precondition:** Email確認が要求される未確認Identityが存在する
 - **Trigger:** Userが正規のEmail確認操作を完了する
 
 ### 10.1 Main Success Flow
 
-1. **User** はSupabase Authが提供するEmail確認を開始する。
-2. **Supabase Auth** が確認情報を検証する。
-3. 確認成功後、IdentityはSupabase Auth上で確認済みとして扱われる。
-4. **Web / API** は以後の認証必須操作でSupabase Authの現在状態を基準に利用可否を判断する。
+1. **User** はNeon Authの正規Email確認操作を完了する。OTP / Magic Linkによる登録でも、メール確認済みかどうかはProviderの現在状態で判定する。Login用Magic Linkは5分で失効する。
+2. **Neon Auth** が確認情報を検証する。
+3. 確認成功後、IdentityはNeon Auth上で確認済みとして扱われる。
+4. **Web / API** は以後の認証必須操作でNeon Authの現在状態を基準に利用可否を判断する。
 5. UserはLoginまたは、認証状態が成立している場合は元の利用目的へ進める。
 
 ### 10.2 Failure Flow
 
 - 無効・失効等により確認が成立しない場合、確認済みとして扱わない。
+- OTP期限またはattempt上限到達時はNeon Authの結果に従い未確認のまま停止し、明示的な再送・再開始のみ許可する。OTP期限とattempt上限は適用設定をProduction gateで検証記録する。
+- Google同意取消、OTP/Link不達・誤入力・期限切れ、別端末Link利用失敗は成功とせず、同画面で方式選択・再試行可能にする。再送で旧Link/OTPを再有効化しない。
 - 確認失敗を理由に既存Business Profileや確定済み購入を削除しない。
 
 ### 10.3 Success Postcondition
 
-Email確認がSupabase Auth上で完了している。
+Email確認がNeon Auth上で完了している。
 
 ### 10.4 Traceability
 
@@ -341,15 +343,15 @@ Email確認がSupabase Auth上で完了している。
 
 - **Flow ID:** `UF-AUTH-003`
 - **Primary Actor:** Guest / 登録済みUser
-- **Secondary Actor / External System:** Supabase Auth
+- **Secondary Actor / External System:** Neon Auth
 - **Entry Point:** Login
-- **Precondition:** 登録済みIdentityが存在する
-- **Trigger:** UserがCredentialを用いてLoginを試行する
+- **Precondition:** Guestであり、既存Identityまたは初回登録が許可された認証方式を利用できる
+- **Trigger:** Userが選択した方式でLoginまたは許可された初回登録を試行する
 
 ### 11.1 Main Success Flow
 
-1. **User** はCredentialを入力してLoginを開始する。
-2. **Supabase Auth** がCredentialを検証する。
+1. **User** はEmail+Password、Google、Email OTP、Magic Linkから方式を選ぶ。GitHub、Discord等は提供しない。
+2. **Neon Auth** が方式を検証する。失敗は認証未成立とし同画面で再選択・再試行できる。
 3. 成功時、UserはAuthenticated UserとしてSessionを取得する。
 4. 認証必須Business operationでは、**API** がRequestごとに認証IdentityをServer-sideで検証する。
 5. 認証前に開始していた合理的な利用目的があれば、現在状態を再取得して継続する。
@@ -360,6 +362,7 @@ Email確認がSupabase Auth上で完了している。
 2. 認証必須Business operationを継続しない。
 3. Userは再入力、Password reset、または公開領域へ戻ることができる。
 4. Login retryはOrderやTicket等のBusiness effectを発生させない。
+5. Email一致だけで別Auth IDの履歴を表示・移転しない。
 
 ### 11.3 Success Postcondition
 
@@ -380,7 +383,7 @@ Email確認がSupabase Auth上で完了している。
 
 - **Flow ID:** `UF-AUTH-004`
 - **Primary Actor:** Authenticated User
-- **Secondary Actor / External System:** Supabase Auth
+- **Secondary Actor / External System:** Neon Auth
 - **Entry Point:** Account操作
 - **Precondition:** 有効なSessionがある
 - **Trigger:** UserがLogoutを実行する
@@ -388,14 +391,15 @@ Email確認がSupabase Auth上で完了している。
 ### 12.1 Main Success Flow
 
 1. **Authenticated User** がLogoutを選ぶ。
-2. **System** は現在の認証SessionをLogoutする。
-3. **Web** は当該BrowserのCartをclearする（`FR-CRT-012`）。
+2. **System** はNeon Auth Provider Sessionを終了し、同一BrowserのHttpOnly Session Cookieを破棄する。
+3. **Web** は画面JWT、メモリー上の認証情報・保護Dataを消去し、Cartをclearする（`FR-CRT-012`）。
 4. 以後、認証必須FlowをGuestのまま成立させない。
 5. 公開情報は引き続きGuestとして閲覧できる。
+6. 発行済みAPI JWTは最大15分残存し得ることを許容する。JWTはBrowser storageへ永続化しない。
 
 ### 12.2 Postcondition
 
-SessionはLogoutされ、Browser側のCartはclearされる。既存Order、Ticket、Reservation、Goods購入等のBusiness Dataは削除・取消されない。
+Provider Sessionは終了し、画面JWTと保護Dataは消去、Browser側Cartはclearされる。発行済みJWTは最長15分残存し得る。既存Order、Ticket、Reservation、Goods購入等のBusiness Dataは削除・取消されない。
 
 ### 12.3 Traceability
 
@@ -406,7 +410,7 @@ SessionはLogoutされ、Browser側のCartはclearされる。既存Order、Tick
 
 - **Flow ID:** `UF-AUTH-005`
 - **Primary Actor:** Guest / Login不能なUser
-- **Secondary Actor / External System:** Supabase Auth
+- **Secondary Actor / External System:** Neon Auth
 - **Entry Point:** Password reset
 - **Precondition:** UserがPassword resetを必要としている
 - **Trigger:** UserがPassword resetを開始する
@@ -414,7 +418,7 @@ SessionはLogoutされ、Browser側のCartはclearされる。既存Order、Tick
 ### 13.1 Main Success Flow
 
 1. **User** がPassword resetを開始する。
-2. **Supabase Auth** が認証基盤のPassword reset Flowを処理する。
+2. **Neon Auth** が認証基盤のPassword reset Flowを処理する。
 3. **User** が正規の手順でPasswordを更新する。
 4. reset完了後、UserはLoginしてAuthenticated Userとなる。
 5. **API** は新しい認証状態をServer-sideで検証し、Business Profileと自己所有Dataを従来どおり解決する。
@@ -475,7 +479,7 @@ SessionはLogoutされ、Browser側のCartはclearされる。既存Order、Tick
 
 - **Flow ID:** `UF-AUTH-007`
 - **Primary Actor:** Guest / Authenticated User
-- **Secondary Actor / External System:** Supabase Auth
+- **Secondary Actor / External System:** Neon Auth
 - **Entry Point:** Login、認証必須操作、Session検証
 - **Precondition:** 認証Serviceが一時的に正常応答できない
 - **Trigger:** Userが認証または認証必須操作を試行する
@@ -1096,7 +1100,7 @@ Goods Handoffは `COMPLETED`。通常FlowではTerminalである。
 ### 22.1 Main Success Flow
 
 1. **User** がマイページを開く。
-2. **API** はSupabase Auth IdentityをServer-sideで検証する。
+2. **API** はNeon Auth IdentityをServer-sideで検証する。
 3. **API** は対応Business Profileを一意に解決する。
 4. **System** は当該ProfileがOwner / CustomerであるDataだけを取得する。
 5. **User** は自身のProfileを確認できる。
@@ -1421,7 +1425,7 @@ Notification `FAILED_RETRYABLE`。元Business Transactionは確定済みのま�
 
 - **Flow ID:** `UF-XFN-004`
 - **Primary Actor:** Guest / Authenticated User / Customer
-- **Secondary Actor / External System:** Supabase Auth / Stripe / Resend等
+- **Secondary Actor / External System:** Neon Auth / Stripe / Resend等
 - **Entry Point:** 各利用者Flow中の外部Service依存箇所
 - **Precondition:** 外部Serviceが一時的に利用不能または不確定
 - **Trigger:** Userが依存操作を行う
@@ -1433,7 +1437,7 @@ Notification `FAILED_RETRYABLE`。元Business Transactionは確定済みのま�
 3. Stripe Checkout開始前の障害は、作成済みOrderを `PREPARED` 等の追跡可能Stateに保持する。
 4. 支払確定反映に関する障害は `AWAITING_PAYMENT` または安全な場合に `REVIEW_REQUIRED` として追跡する。
 5. Resend障害はNotification failureとして `UF-XFN-002` へ分離する。
-6. Supabase Auth障害は `UF-AUTH-007` へ分離する。
+6. Neon Auth障害は `UF-AUTH-007` へ分離する。
 7. 既に `CONFIRMED` 等で確定済みのBusiness Dataを外部Service障害の副作用で削除・取消しない。
 8. Service回復後のretryは対象Domainのretry ruleに従い、同一業務原因から重複権利・重複販売・重複Check-inを作らない。
 

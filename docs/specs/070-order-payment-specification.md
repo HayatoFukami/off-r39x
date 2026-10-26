@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-070
 title: Order and Payment Specification
-version: 1.1.0
+version: 2.0.1
 status: provisional
 depends_on:
   - SPEC-000
@@ -307,7 +307,7 @@ Webhook受信では、Stripe SDK等の正規検証手段を用いてraw request 
 
 **PAY-WHK-005:** JSON parse済みbodyを再serializeした値等、署名対象raw bodyと異なるpayloadで検証を代替してはならない。
 
-**PAY-WHK-006:** Webhook routeは一般利用者のSupabase Auth Sessionを送信元認証根拠としない。Stripe署名が外部送信元検証の根拠である。
+**PAY-WHK-006:** Webhook routeは一般利用者のNeon Auth Sessionを送信元認証根拠としない。Stripe署名が外部送信元検証の根拠である。
 
 ## 17. Webhook receipt / Event idempotency
 
@@ -643,6 +643,8 @@ stateDiagram-v2
 - 外部 / 内部不整合が未解決でない
 
 **PAY-RFD-003:** 使用済みEntry / Karaoke Ticket、完了済みGoods Handoff等、通常取消できないDomain stateを持つOrderは通常full refund operationで自動処理しない。必要ならConsistency Review / Recovery対象とする。
+
+複合Orderでは全Entry Ticketと全Goods Handoffの両方に上記preconditionを適用し、片側だけを検査してfull refundを開始しない。返金額はOrder全体の正規成功Payment全額であり、一方のItem群だけを別Paymentと推測しない。Financial success後も各Domainの取消Ruleを維持し、一部取消未完了は既存のConsistency Reviewで追跡する。
 
 ## 39. Refund request sequence
 

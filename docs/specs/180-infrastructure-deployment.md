@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-180
 title: Infrastructure and Deployment Specification
-version: 1.1.0
+version: 2.1.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -35,8 +35,8 @@ related_specs:
 
 特に次を禁止する。
 
-- Browser / Next.js WebからBusiness Databaseを直接更新する経路を作る。
-- Railway WorkerやVercel Functionを別System of Recordとして扱う。
+- Browser / React SPAからBusiness Databaseを直接更新する経路を作る。
+- Railway WorkerやCloudflare Pages Functionを別System of Recordとして扱う。
 - Provider Result Unknownをdeployment都合で成功または失敗へ確定する。
 - migration failure時に旧constraintをapplication-only checkへ置換して続行する。
 - `UCR-130-001〜004/006`、`UCR-150-001〜002`、`UCR-170-001` のcanonical operation familyを、Hono API以外の経路や未定義runtime subsystemへ配置する。
@@ -52,7 +52,7 @@ related_specs:
 本書は少なくとも次をCanonicalに所有する。
 
 - `production` / `staging` / `development` / `test` のEnvironment Model
-- Vercel / Railway / Supabase / Stripe / ResendのEnvironment別接続
+- Cloudflare Pages / Railway / Neon / Stripe / ResendのEnvironment別接続
 - DNS / Domain / HTTPS境界
 - Railway persistent service / worker / maintenance job topology
 - Hono API / Email Worker / Reconciliation Worker runtime
@@ -89,7 +89,7 @@ related_specs:
 | Spec | Infrastructureへ入力するCanonical Contract | 本書でwireする対象 |
 |---|---|---|
 | `SPEC-000` | Canonical Owner、`depends_on`、UCR、未決定事項の決定規則 | 本書の責務境界、UCR status handling、次仕様生成 |
-| `SPEC-010` | Vercel / Railway / Supabase / Stripe / Resend System Boundary、System of Record、`INV-010-01〜10` | Hosting topology、Business mutation経路、failure isolation |
+| `SPEC-010` | Cloudflare Pages / Railway / Neon / Stripe / Resend System Boundary、System of Record、`INV-010-01〜10` | Hosting topology、Business mutation経路、failure isolation |
 | `SPEC-100` | `app` schema、`pgcrypto`、`btree_gist`、migration / constraint / lock / history rule | PostgreSQL 17、extension readiness、DB principal、migration order |
 | `SPEC-110` | Hono API、`/api/v1`、全canonical `API-*` Operation ID、Stripe webhook、Runtime Validation | Railway API exposure、Admin API route exposure、operation-ID registry / log / metric wiring、webhook DNS、health pathとの分離 |
 | `SPEC-120` | Email Worker、Resend webhook、required config、worker HTTP endpoint禁止 | Email Worker service、Resend credentials、worker execution |
@@ -104,7 +104,7 @@ related_specs:
 
 `UCR-130-001` / `002` / `003` / `004` / `006`、`UCR-150-001` / `UCR-150-002`、`UCR-170-001` が要求したCapability / API / Recovery command / Operation IDはCanonical化済みであり、既存のRailway / Hono / Observability topologyへ配置する。`UCR-130-005`（Operational query index）のみ `DEFERRED_NONBLOCKING` として、speculative indexをInfrastructure dependencyにしない。
 
-- Canonical Admin API operation（Entry / Karaoke sales management、Admin / Staff Goods Handoff、authoritative read / filter、`API-ADM-REC-003〜007`）は、`SPEC-110` のroute contractを変更せず、既存Hono API serviceのrouteとしてのみ露出する。Browser / Next.jsからBusiness Databaseへ直接到達する別経路、専用endpoint、別workerを追加しない。
+- Canonical Admin API operation（Entry / Karaoke sales management、Admin / Staff Goods Handoff、authoritative read / filter、`API-ADM-REC-003〜007`）は、`SPEC-110` のroute contractを変更せず、既存Hono API serviceのrouteとしてのみ露出する。Browser / React SPAからBusiness Databaseへ直接到達する別経路、専用endpoint、別workerを追加しない。
 - 全canonical Operation IDは `SPEC-110` ownerとし、deployment registry / Application Log / Metric / Dashboard / Audit Eventは `SPEC-160` の `operation_id` / `operation_execution_id` / `request_id` correlation contractへwiringする。Operation IDを推測追加しない。
 - `API-ADM-REC-003〜007` は `SPEC-110 §48.5` のoperation-specific routeとして保護された既存Hono API runtimeで実行し（worker-executed commandではない）、新runtime subsystem / worker / Secret / Key / provider domainを追加せず、APIからworkerへの新しい同期経路も追加しない。Provider credential要件はoperation別である。`API-ADM-REC-003〜005` は既存Stripe provider authority / credentialを既存どおり使用し、`API-ADM-REC-006` だけが既存Resend API key lookupを使用し、`API-ADM-REC-007` はprovider credentialを要求しない。既存Secret storeだけを使用し、必要なprovider / secret readinessが不足する場合は該当commandをdeploy gateでblockedとする。
 - 詳細なwiring / smoke適用は §56.1 と §75 に定義する。
@@ -118,7 +118,7 @@ related_specs:
 | Canonical Environment | `production`, `staging`, `development`, `test` の4環境 |
 | Deployment | 1つのsource commit / artifactを特定Environmentへ配置した実行単位 |
 | Release Ref | source commit SHAを基礎とするimmutable release identifier |
-| Artifact Manifest | commit、lockfile hash、migration hash、runtime、OCI digest、Vercel deployment ID等を束ねるmanifest |
+| Artifact Manifest | commit、lockfile hash、migration hash、runtime、OCI digest、Cloudflare Pages deployment ID等を束ねるmanifest |
 | Runtime Identity | 実行中serviceがDB / Providerへ接続するmachine principal |
 | Migration Identity | DDL / extension / grantを実行する専用principal |
 | Incident Read Identity | incident調査専用read-only DB principal |
@@ -140,10 +140,10 @@ related_specs:
 |---|---|
 | `INF-ARC-*` | Infrastructure Architecture |
 | `INF-ENV-*` | Environment |
-| `INF-VCL-*` | Vercel |
+| `INF-VCL-*` | Cloudflare Pages |
 | `INF-RWY-*` | Railway |
-| `INF-DB-*` | Supabase PostgreSQL / migration |
-| `INF-AUTH-*` | Supabase Auth infrastructure |
+| `INF-DB-*` | Neon PostgreSQL / migration |
+| `INF-AUTH-*` | Neon Auth infrastructure |
 | `INF-SEC-*` | Secret / key / infrastructure access |
 | `INF-PRV-*` | Stripe / Resend wiring |
 | `INF-WRK-*` | Worker / scheduler / recovery execution |
@@ -169,12 +169,12 @@ related_specs:
 
 ```text
 Browser
-  -> Next.js Web / Vercel
+  (Cloudflare Pagesの静的React SPAを実行)
   -> Hono API / Railway
-  -> Supabase PostgreSQL
+  -> Neon PostgreSQL
 ```
 
-Supabase Auth、Stripe、Resendの例外経路は上流どおり維持する。
+Neon Auth、Stripe、Resendの例外経路は上流どおり維持する。
 
 **INF-ARC-003:** Infrastructure support component、observability backend、backup archive、CI/CDはBusiness DatabaseのSystem of Recordにならない。
 
@@ -185,12 +185,12 @@ Supabase Auth、Stripe、Resendの例外経路は上流どおり維持する。
 ```mermaid
 flowchart LR
   B[Browser]
-  V[Vercel Next.js Web]
+  V[Cloudflare Pages React SPA]
   A[Railway Hono API]
   EW[Railway Email Worker]
   RW[Railway Reconciliation Worker]
-  DB[(Supabase PostgreSQL)]
-  AU[Supabase Auth]
+  DB[(Neon PostgreSQL)]
+  AU[Neon Auth]
   ST[Stripe]
   RS[Resend]
   BS[Better Stack Telemetry]
@@ -198,20 +198,18 @@ flowchart LR
   R2[Cloudflare R2 Backup Archive]
 
   B -->|HTTPS| V
-  B <--> AU
-  V -->|HTTPS + Bearer| A
+  B -->|業務 HTTPS + Bearer JWT / 認証 Cookie| A
   A --> DB
   EW --> DB
   RW --> DB
-  A --> AU
-  EW --> AU
+  A <-->|認証中継| AU
   A <--> ST
   RW <--> ST
   EW --> RS
+  AU -->|Auth SMTP| RS
   RW --> RS
   ST -->|signed webhook| A
   RS -->|signed webhook| A
-  V --> BS
   A --> BS
   EW --> BS
   RW --> BS
@@ -238,18 +236,20 @@ test
 
 **INF-ENV-001:** Environment名をapplication config、log field、metric label、deployment manifest、database application_nameでexactに一致させる。
 
-**INF-ENV-002:** Vercel / Railway / Supabase / Stripe / Resend / Better Stack / DB credential / QR key / correlation keyをEnvironment間共有しない。
+**INF-ENV-002:** Cloudflare Pages / Railway / Neon / Stripe / Resend / Better Stack / DB credential / QR key / correlation keyをEnvironment間共有しない。
 
 ### 8.1 Environment topology
 
-| Environment | Vercel | Railway | Supabase | Stripe | Resend | Observability | Intended use |
+| Environment | Cloudflare Pages | Railway | Neon | Stripe | Resend | Observability | Intended use |
 |---|---|---|---|---|---|---|---|
 | `production` | dedicated project | dedicated project | dedicated project | dedicated live account boundary | dedicated API key / sending identity | dedicated Production sources | real users / real money |
 | `staging` | dedicated project | dedicated project | dedicated project | dedicated test-mode account boundary | dedicated nonprod key / sender | staging sources | pre-release verification |
-| `development` | dedicated Vercel project + local dev | dedicated Railway project for shared dev integration | dedicated project | dedicated test-mode account boundary | dedicated dev key / sink | dev sources | developer integration |
-| `test` | dedicated project used only when deployed E2E is required | dedicated project / ephemeral CI services | ephemeral PostgreSQL 17 or dedicated Supabase test project where Provider contract requires | dedicated test-mode account boundary | dedicated test key / sink | test sources | automated test |
+| `development` | dedicated Cloudflare Pages project + local dev | dedicated Railway project for shared dev integration | dedicated project | dedicated test-mode account boundary | dedicated dev key / sink | dev sources | developer integration |
+| `test` | dedicated project used only when deployed E2E is required | dedicated project / ephemeral CI services | ephemeral PostgreSQL 17 or dedicated Neon test project where Provider contract requires | dedicated test-mode account boundary | dedicated test key / sink | test sources | automated test |
 
-**INF-ENV-003:** Vercel native Preview deploymentは第5のCanonical Environmentではない。PR Previewは `development` data classificationとして扱い、Production / staging Secretを受け取らない。
+**INF-ENV-003:** Cloudflare Pages native Preview deploymentは第5のCanonical Environmentではない。PR Previewは `development` data classificationとして扱い、Production / staging Secretを受け取らない。
+
+Production project内の公開前artifact検査用previewも非本番Data / Sessionのみとする。Production API / Authへの通信は検査harnessで遮断する。静的artifactの公開設定値とupload用CI credentialは区別し、CI credentialをpreviewへ配布しない。Production project / branchからDB / Authのpreview branchを生成しない。
 
 **INF-ENV-004:** Production Business Data、Production Secret、Production QR protected material、Production Session materialを`development` / `test`へ複製しない。
 
@@ -261,7 +261,9 @@ test
 
 ```text
 APP_ENV
-EXPECTED_SUPABASE_PROJECT_REF
+EXPECTED_NEON_PROJECT_ID
+EXPECTED_NEON_BRANCH_ID
+EXPECTED_NEON_DATABASE_NAME
 EXPECTED_STRIPE_MODE
 EXPECTED_RESEND_ENV_ID
 EXPECTED_OBSERVABILITY_ENV
@@ -270,7 +272,7 @@ EXPECTED_DATABASE_ENV_MARKER
 
 `EXPECTED_DATABASE_ENV_MARKER` はBusiness tableを増やさず、deployment-managed database settingまたはconnection target metadataで確認する。
 
-**INF-ENV-006:** `APP_ENV=production` でtest-mode Stripe、nonproduction Supabase project、nonproduction QR keyring、nonproduction observability tokenのいずれかが検出された場合、processはReadyにならない。
+**INF-ENV-006:** `APP_ENV=production` でtest-mode Stripe、nonproduction Neon project、nonproduction QR keyring、nonproduction observability tokenのいずれかが検出された場合、processはReadyにならない。
 
 ---
 
@@ -285,32 +287,36 @@ PUBLIC_WEB_ORIGIN
 PUBLIC_API_ORIGIN
 STAGING_WEB_ORIGIN
 STAGING_API_ORIGIN
+PUBLIC_AUTH_ORIGIN
+STAGING_AUTH_ORIGIN
 ```
 
-**INF-VCL-001:** Production Web custom domainはVercel Production projectだけへ向ける。
+**INF-VCL-001:** Production Web custom domainはCloudflare Pages Production projectだけへ向ける。
 
 **INF-RWY-001:** Production API custom domainはRailway Production `api` serviceだけへ向ける。
+
+WebとAPI / Auth proxyは同じ親ドメイン配下のHTTPS originとする。Auth proxy originはAPI originと同一とし `/auth/*` を使用する。実domainを捏造せず、環境のexact origin設定とする。Pages / Railwayの標準domainが別siteである構成をProductionの認証経路にしない。
 
 **INF-ENV-007:** wildcard DNS recordでdevelopment / staging deploymentをProduction hostname配下へ自動公開しない。
 
 ## 11. HTTPS / certificate
 
 - Production Web / APIはHTTPS only。
-- TLS terminationはVercel / Railway managed certificateを使用してよい。
+- TLS terminationはCloudflare Pages / Railway managed certificateを使用してよい。
 - applicationは `SPEC-140` のHSTS / canonical host / mixed-content policyを維持する。
 - HTTPはBusiness contentを返さずHTTPS redirectまたはedge rejectとする。
 
-**INF-VCL-002:** Vercel preview / stagingはDeployment Protectionを有効化し、公開が必要なProvider callbackだけをRailway staging APIへ限定する。
+**INF-VCL-002:** Cloudflare Pages preview / stagingはCloudflare Accessで保護する。previewの既定公開を許可せず、hash URL / branch alias / custom domainを含む全到達経路で保護を検証する。Provider callbackは必要な正規経路だけを許可し、stagingでは本番Providerを使用しない。
 
-**INF-VCL-003:** Production公開Web custom domainは一般利用者へVercel Authenticationを要求しない。Vercel-generated preview deployment URLはProduction projectでも保護する。
+**INF-VCL-003:** Production公開Web custom domainは一般利用者へCloudflare Access認証を要求しない。Production projectのpreview URLは保護し、公開Webと同一のAccess対象に誤設定しない。
 
 ---
 
-# Part IV — Vercel Web Runtime
+# Part IV — Cloudflare Pages Web Runtime
 
-## 12. Vercel project boundary
+## 12. Cloudflare Pages project boundary
 
-4 Canonical Environmentは別Vercel projectとする。1 project内のEnvironment Variable scopeだけでProductionとtestを共存させない。
+4 Canonical Environmentは別Cloudflare Pages projectとする。1 project内のEnvironment Variable scopeだけでProductionとtestを共存させない。
 
 Canonical project logical names:
 
@@ -327,24 +333,30 @@ r39x-web-test
 
 - Node.js major: **24.x**
 - package manager: repository `packageManager` fieldで固定したpnpm
-- Next.js App Router
-- Vercel Node runtime
+- Vite / React / React Routerによる静的SPA（build output `apps/web/dist`）
+- Node.jsはCIのbuild時だけ使用し、Pages上にNode server runtimeを置かない
 - Production public source map: **禁止**
 - private source map: Better Stack Error TrackingへCIからupload
 
-**INF-VCL-004:** `package.json engines.node` は `24.x` とし、Vercel project runtimeと一致させる。
+**INF-VCL-004:** `package.json engines.node` は `24.x` とし、CI / RailwayのNode majorと一致させる。Pages Functions / Workers / SSR / Web BFFを導入しない。Rule prefix `INF-VCL-*` は旧Web hosting規則からの追跡用IDとして維持する。
 
-**INF-VCL-005:** Web buildへDB credential、Stripe Secret、Resend Secret、QR key、Supabase service credentialを渡さない。
+**INF-VCL-005:** Web buildへDB credential、Stripe Secret、Resend Secret、QR key、Neon service credentialを渡さない。
 
-### 13.1 Vercel server-side Secret
+### 13.1 静的Web設定・headers・routing
 
-Vercel Webが読めるS1/S2 materialは必要最小限とする。
+Pagesへserver Secretを配置しない。Web artifactに含められるのは環境別の公開API origin、Auth proxy base URL、release identifierなどの公開設定だけとする。Neon管理API / DB / SMTP / OAuth Secret、CSRF署名用Secret、Better Stack ingest credentialを `VITE_*` またはHTML / JSへ含めない。
 
-- CSRF server secret / signing configuration
-- Better Stack Web ingestion credential
-- Supabase public/publishable configurationはSecret扱いしないがEnvironment別に分離
+`SPEC-050` / `SPEC-130` の詳細URLを含む直接アクセス・再読込はSPA shellへfallbackし、React Routerで解決する。存在しないassetをHTML成功応答にせず、未知画面は既存Not Found surfaceとする。静的shellに個人Data / QR / Sessionを含めない。
 
-Hono API用DB / Provider / QR SecretはVercelへ配置しない。
+Pagesの静的headers設定で `SPEC-140` のCSP / HSTS / cache / scanner権限等を適用する。SSR requestごとのnonceを前提にせず、bundled external JSとbuild時hashで静的CSPを成立させる。Auth / 業務API responseのheadersはRailwayが設定する。
+
+### 13.2 Sponsor image origin configuration
+
+`SPONSOR_IMAGE_ALLOWED_ORIGINS` は環境別の公開設定（Secretではない）で、正規化したexact HTTPS originsのJSON配列とする。実hostは運営が所有・使用許可を確認した外部事実であり仕様で捏造しない。未設定は空配列、wildcard／IP literal／localhost／非443 port／query／path付きoriginは不正。APIのLogo URL検証とPagesの `img-src` を同じ設定revisionから生成し、build／deploymentで一致を検証する。他のCSP directiveへ画像originを追加しない。
+
+許可集合の追加はAPIとCSPの両方への反映後だけ公開操作に使用できる。削除は該当する公開Logoの非公開化／差替え後に行う。静的設定の変更にはdeploymentが必要だが、許可済みorigin内のLogo追加・差替え・公開順・公開状態はコード変更なしで管理できる。画像upload用storage／credential／server fetchは追加しない。設定不備や画像取得FailureはLogoの公開／表示だけを安全に失敗させ、他の公開情報を空や障害に変換しない。
+
+各Pages projectはGit自動deployでgateを迂回しないDirect Upload方式とし、GitHub Actionsで検証済みoutputをuploadする。previewをproductionへpromoteできると仮定しない。
 
 ---
 
@@ -383,6 +395,7 @@ stagingには `alert-canary` とrestore / backup testを必要時に安全なnon
 - `APP_ENV` はCanonical Environmentを別途保持
 - stdout/stderrはstructured log only
 - graceful shutdown: `SIGTERM` handler必須
+- API / worker regionはSingapore `asia-southeast1-eqsg3a`。region変更は別仕様改定・移行検証を必要とする
 
 **INF-RWY-003:** API / workerは同一OCI image digestを使用し、entrypointだけを分ける。
 
@@ -426,22 +439,37 @@ Railwayから`SIGTERM`を受けたprocessは次を実行する。
 
 ---
 
-# Part VI — Database / Supabase
+# Part VI — Database / Neon
 
-## 18. Supabase project separation
+## 18. Neon project separation
 
-4 Canonical Environmentは別Supabase projectとし、DatabaseとAuthをEnvironment単位で分離する。
+4 Canonical Environmentは別Neon projectとし、DatabaseとAuthをEnvironment単位で分離する。
 
-**INF-DB-001:** Production Supabase projectのDatabase / Auth credentialを他Environmentへ複製しない。
+**INF-DB-001:** Production Neon projectのDatabase / Auth credentialを他Environmentへ複製しない。
 
 **INF-AUTH-001:** Auth redirect / callback allowlistはEnvironment自身のWeb originだけを登録する。Production Authがstaging / localhost callbackを受理する設定にしない。
+
+Neon regionはAWS Singapore `aws-ap-southeast-1`とし、PostgreSQLとNeon管理Better Authを同じDB / branchに置く。業務`app` / 限定`auth_read`とProvider管理`neon_auth`の所有権を分離する。Azure、旧Stack Auth、自前Better Authへ読み替えない。Managed Authと共存しないNeon IP Allow / Private Networkingを必須化せず、TLS・専用role・最小権限で保護する。
+
+Production Business Data / Identity / Credential / Sessionをstaging / development / test / PR branchへclone・restoreしない。非本番はsynthetic dataと独立Auth Identityで構築する。
+
+### 18.1 Neon Authの必須設定と互換性gate
+
+- メール＋パスワード、Google、Email OTP、Magic Linkを有効化し、全方式で新規登録を許可する。メール確認は必須、Magic Linkは5分とする。
+- Googleの自前OAuth credentialとNeonが指定する正規callbackを環境別に設定する。最終SPA callbackと混同せず、productionで共有開発credential / localhost / wildcard originを許可しない。
+- Neon標準メールを環境専用Resend SMTPで送る。SMTP credential / sender identityを業務通知用API keyと分離し、Neonの保護設定だけに配置する。Auth Email Webhookは追加しない。
+- JWTはNeonの正規issuer / audience / JWKSを固定設定してEdDSA / Ed25519で検証する。中継URLをissuerとしない。最大900秒、custom role claimを業務認可に使用しない。
+- Railway中継のCookie / redirect / Origin / CORS / CSRF、Safariの第三者Cookie制限、全方式のregistration / login / reset / Logout、確認済みメール連携時の同一Subject維持を実Providerで検証する。
+- `auth_read.identity_directory` の3項目・UUID形式・grantを検証する。runtimeに元tableやSession / passwordへの権限がないことをnegative testする。
+
+Hono向けproxy完成実装、任意のManaged Auth設定、service-role Admin lookupが提供されると仮定しない。上記gate未達はProduction deployをblockedとし、独自Auth storeやClient申告へのfallbackをしない。
 
 ## 19. PostgreSQL major version
 
 Canonical deployed PostgreSQL majorは **17** とする。
 
 - production / staging / development / test DB integration engineはmajor 17で一致させる。
-- patch/build versionはSupabase managed updateに従う。
+- patch/build versionはNeon managed updateに従う。
 - major upgradeはstagingでfull migration / DB / concurrency / restore Testを通した後に別releaseとして実施する。
 
 **INF-DB-002:** CI DB testがPostgreSQL major 17以外で通ってもProduction DB compatibility evidenceとして扱わない。
@@ -454,6 +482,7 @@ Readinessは次をexactに確認する。
 
 ```text
 schema app exists
+schema auth_read exists / identity_directory view contract valid
 extension pgcrypto exists
 extension btree_gist exists
 required migration version/hash matches release manifest
@@ -463,11 +492,11 @@ required migration version/hash matches release manifest
 
 ## 21. Connection mode / TLS
 
-Railway persistent runtimeはSupabase **direct Postgres connection**を使用する。
+Railway persistent runtimeはNeon **direct Postgres connection**を使用する。
 
 - port 5432
 - `sslmode=verify-full` equivalent
-- Supabase project CA certificateをserver-side protected configとしてmount / inject
+- Neon endpoint証明書のhostnameと信頼済みCA chainを検証する（採用driverのTLS trust storeを検証）。旧Providerのproject専用CA配布を仮定しない
 - certificate verification無効化禁止
 - session timezone UTC
 - `application_name=r39x/<environment>/<service>`
@@ -483,6 +512,7 @@ Migration / `pg_dump` / restoreもdirect connectionを使用する。
 
 ```text
 app_runtime                NOLOGIN group role
+auth_directory_owner       NOLOGIN, owns restricted identity_directory view only
 app_api_runtime            LOGIN, API scoped
 app_email_runtime          LOGIN, Email scoped
 app_reconciliation_runtime LOGIN, reconciliation scoped
@@ -506,12 +536,14 @@ app_emergency_recovery      NOLOGIN role, break-glass only
 - `app.audit_events` はINSERTのみ
 - generic DELETEなし
 - DDL / GRANTなし
+- `auth_read.identity_directory` SELECTだけを認証Directory読取として許可。元の `neon_auth` は読めない
 
 ### 22.3 `app_email_runtime`
 
 - Notification / Email support tablesと必要source readのみ
 - `app.audit_events` INSERT only when upstream requires
 - Order / Ticket / Reservationのarbitrary mutation権限なし
+- `auth_read.identity_directory` SELECTだけを宛先解決に許可。元の `neon_auth` は読めない
 
 ### 22.4 `app_reconciliation_runtime`
 
@@ -589,7 +621,8 @@ SELECT pg_advisory_lock(hashtext('r39x:schema-migration'));
 
 Canonical placement:
 
-- Vercel server Secret: Vercel Sensitive Environment Variables
+- Cloudflare Pages Web: server Secretなし。公開設定だけを静的artifactへ含める
+- Neon Auth SMTP / Google credential: 環境専用のNeon保護設定
 - Railway runtime Secret: Railway Sealed Variables
 - CI/CD deployment credential: GitHub Actions protected Environment Secrets
 - Human break-glass / offline recovery material: project-owner-controlled encrypted recovery vault。CI / runtimeへ常時同期しない
@@ -602,7 +635,7 @@ Canonical placement:
 
 | Secret / protected config | Web | API | Email Worker | Recon Worker | Migrator | Purge | Backup | Human break-glass |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Supabase service credential | No | Yes | Yes | conditional Yes | No | No | No | No |
+| Auth Directory読取 | No | API DB roleでviewのみ | Email DB roleでviewのみ | No | view / grant deployment only | No | No | No |
 | API runtime DB credential | No | Yes | No | No | No | No | No | No |
 | Email DB credential | No | No | Yes | No | No | No | No | No |
 | Recon DB credential | No | No | No | Yes | No | No | No | No |
@@ -613,8 +646,8 @@ Canonical placement:
 | Resend webhook signing secret | No | Yes | No | No | No | No | No | No |
 | QR HMAC keyring | No | Yes | No | Yes | No | No | No | emergency inspect prohibited |
 | QR AEAD keyring | No | Yes | No | Yes | No | No | No | emergency inspect prohibited |
-| `OBS_CORRELATION_HMAC_KEY` | server-side Web if emits fingerprint | Yes | Yes | Yes | No | No | No | No |
-| Better Stack ingest token | Yes server-side | Yes | Yes | Yes | No | Yes | Yes | No |
+| `OBS_CORRELATION_HMAC_KEY` | No | Yes | Yes | Yes | No | No | No | No |
+| Better Stack ingest token | No | Yes | Yes | Yes | No | Yes | Yes | No |
 | Healthchecks ping URL | No | No | No | No | No | No | alert-canary only | No |
 | R2 write credential | No | No | No | No | No | No | Yes | No |
 | backup decryption private identity | No | No | No | No | No | No | No | Yes |
@@ -876,13 +909,13 @@ API additionally:
 
 - QR current key available
 - allowed previous key set valid
-- Supabase Auth issuer / audience / JWKS origin config valid syntactically
+- Neon Auth issuer / audience / JWKS origin config valid syntactically
 - Stripe / Resend webhook verification config present
 
 Email Worker additionally:
 
 - Resend API key present
-- Supabase recipient-resolution credential present
+- Email DB roleで限定Directory viewのcontract / read privilegeが成立し、元認証tableへの権限がない
 
 Reconciliation Worker additionally:
 
@@ -946,14 +979,16 @@ Releaseごとに `release-manifest.json` を生成する。
   "api_image_digest": "sha256:...",
   "source_map_bundle_sha256": "<hex>",
   "spec_versions": {
-    "SPEC-180": "1.0.0"
+    "SPEC-180": "2.0.0"
   }
 }
 ```
 
 OCI imageはGitHub Container Registry等のimmutable digest-addressable registryへpushし、Railway staging / productionは**同一image digest**を使用する。
 
-VercelはEnvironment別buildを許可するが、`git_sha`, `pnpm_lock_sha256`, `migration_set_sha256` はRailway artifactと一致しなければならない。
+Cloudflare PagesはEnvironment別buildを許可するが、`git_sha`, `pnpm_lock_sha256`, `migration_set_sha256` はRailway artifactと一致しなければならない。
+
+Webのoutput hash / 公開設定hash / Pages project ID / preview deployment ID / production deployment IDを記録する。preview検査後にrebuildせず、同じ保存済みファイルをproductionへ再uploadし、output hash一致を検証する。同一ファイルでもdeployment IDは異なる。
 
 **INF-DEP-002:** Production deploy時に`latest` tagだけを参照しない。digest / immutable deployment IDをrelease evidenceへ保存する。
 
@@ -970,7 +1005,7 @@ VercelはEnvironment別buildを許可するが、`git_sha`, `pnpm_lock_sha256`, 
 7. constraint validation
 8. schema readiness check
 9. Railway API / workers deploy
-10. Vercel staging staged deployment
+10. Cloudflare Pages staging projectへ静的artifactをdeploy（Access保護）
 11. staging smoke / `G10` / Provider Contract Smoke
 
 ### 45.2 Production
@@ -987,14 +1022,16 @@ Production releaseは次順序を固定する。
 8. Railway Email Worker deploy
 9. Railway Reconciliation Worker deploy
 10. all Railway readiness success
-11. Vercel Production deploymentを`--skip-domain`相当でstaged作成
-12. staged Vercel smoke成功
-13. Production domainへpromote
+11. 本番用Web artifactをProduction projectのAccess保護preview branchへDirect Upload
+12. 検査harnessで本番API / Auth通信を遮断し、静的配信・routing・headers・Secret非混入・output hashを検証。合成応答はProvider / API動作の証明にしない
+13. project-owner承認後、検査済みの同一outputをProduction branchへDirect Uploadし、production deployment ID / hashを記録（別deploymentでありpreviewの昇格ではない）
 14. post-deploy smoke
 15. deployment observation window **10分**
 16. active CRITICAL/HIGH alert、readiness failure、schema mismatch、Critical smoke failureがなければrelease accepted
 
 **INF-DEP-003:** Webを先に切り替えて新API contractだけを要求するdeploymentをしない。APIはold/new Webが共存できる後方互換性を先に持つ。
+
+preview検査は本番data / Sessionを使用しない。Production API / Authの接続、実本番hostのCookie / CORS / callback確認は公開直後の安全なsmokeで行い、失敗時は旧production deploymentへrollbackする。previewだけで本番連携を実証したと扱わない。
 
 ## 46. Expand / contract compatibility
 
@@ -1030,7 +1067,7 @@ State rename / deletionは上流Canonical Owner変更なしに実施しない。
 Rollback trigger:
 
 - Railway new deployment readiness failure
-- Vercel staged smoke failure
+- Cloudflare Pages preview artifact検査または本番post-deploy smoke failure
 - Production post-deploy Critical smoke failure
 - migration compatibility failure
 - release起因のSecurity Fail Closed異常
@@ -1038,9 +1075,9 @@ Rollback trigger:
 
 ## 49. Application rollback
 
-### 49.1 Vercel
+### 49.1 Cloudflare Pages
 
-Vercel immutable previous deploymentへInstant Rollback / promoteを使用する。rollback先deployment IDをrelease manifestへ記録する。
+Cloudflare Pagesの以前の成功したproduction deploymentへrollbackする。preview deploymentをrollback先やpromote対象にしない。rollback先deployment IDとpublic output hashをrelease manifestへ記録する。
 
 ### 49.2 Railway
 
@@ -1107,7 +1144,7 @@ Staging / development / testはProduction sourceと別source / token / dashboard
 ## 54. Ingestion
 
 - API / worker: OpenTelemetry SDK + structured loggerからOTLP/HTTPへ非同期batch export
-- Web server: Vercel runtime structured log + OpenTelemetry / Better Stack integration
+- Web配信: Pages build / deploy evidenceと保護されたCI source map upload。静的SPAにはWeb server logger / OTLP Secretを置かない
 - Browser RUMは本書の必須observability contractではない。導入する場合もsession replay / auto-captureでPIIやraw QRを収集しない設定が先行する
 - exporter bufferはbounded memoryのみ
 - export failureでDB transaction / Provider callを延長しない
@@ -1124,7 +1161,9 @@ release metadata:
 environment
 release_ref
 git_sha
-vercel_deployment_id
+pages_preview_deployment_id
+pages_production_deployment_id
+web_output_sha256
 railway_deployment_id
 api_image_digest
 ```
@@ -1150,7 +1189,7 @@ Alert / dashboard changeはPR review + config validation + staging applyを経�
 
 Canonical化済みAdmin API operation（Entry / Karaoke sales management、Admin / Staff Goods Handoff、authoritative read / filter、`API-ADM-REC-003〜007`）は、次のInfrastructure適用に従う。API contract（route / schema / precondition / capability）は `SPEC-110` がCanonical Ownerであり、本書は配置とwiringだけを定義する。
 
-- **Route exposure:** 既存Hono API serviceの `/api/v1/admin/*` routeとしてのみ露出する。Browser / Next.js WebからBusiness Databaseへ直接到達する経路、Admin専用の別service / endpoint、別workerを追加しない。
+- **Route exposure:** 既存Hono API serviceの `/api/v1/admin/*` routeとしてのみ露出する。Browser / React SPAからBusiness Databaseへ直接到達する経路、Admin専用の別service / endpoint、別workerを追加しない。
 - **Operation-ID registry / log / metric:** deployment registryは `SPEC-110` のOperation ID manifestをsourceとする。Application Log / Metric / Dashboard / Audit Eventは `SPEC-160` の `operation_id` / `operation_execution_id` / `request_id` correlation contractへwiringし、SPEC-180独自のOperation IDを追加しない。
 - **Recovery runtime:** `API-ADM-REC-003〜007` は保護された既存Hono API runtimeのoperation-specific routeとして実行する（Reconciliation Workerや新規workerが実行するcommandではない）。Provider credential要件はoperation別である。
   - `API-ADM-REC-003〜005`: 既存Stripe provider authority / credentialを既存どおりread-only照合に使用する。
@@ -1318,9 +1357,11 @@ Productionは二層とする。
 
 ### 64.1 Provider-native backup
 
-- Supabase Production projectでPITRを有効化する。
+- Neon Production projectでPITRを有効化する。
 - configured recovery windowは**7日**とする。
-- これは本システムのConfiguration Targetであり、Supabase SLA保証値とは扱わない。
+- これは本システムのConfiguration Targetであり、Neon SLA保証値とは扱わない。
+
+契約planがこのwindowとAuthを含む復元要件を満たすことを事前検証し、満たせなければ公開を停止する。Provider-native recoveryは同居する `neon_auth` のIdentity / Credential / Sessionを含み得るためProduction-classとして管理する。認証データの保護はこの7日間のProvider側復旧範囲に限定し、独立した認証長期backupは作成しない。期間外の認証情報喪失をR2だけで回復できると保証しない。
 
 Internal operational objective:
 
@@ -1339,7 +1380,7 @@ Railway `backup-export` Cron:
 
 ```text
 schedule: daily 18:30 UTC (= 03:30 JST)
-source: Supabase direct connection
+source: Neon direct connection
 principal: app_backup_reader
 format: pg_dump custom format
 scope: app schema
@@ -1361,6 +1402,8 @@ R2 lifecycle ruleとweekly drift checkの双方でexpiryを検証する。
 **INF-BKP-001:** backup archiveをBusiness Databaseのlive read sourceにしない。
 
 **INF-BKP-002:** backupへapplication Secret、Stripe / Resend key、QR cryptographic key、Session credentialを含めない。
+
+この禁止はR2へexportするlogical backupの契約である。`pg_dump`の対象は `app`のみとし、`neon_auth` / `auth_read` / role password / 認証Credential / Sessionを含めない。Provider-native recoveryは第64.1節の機密境界で別管理する。`auth_read`はrestore後にdeployment管理のview / grantとして再作成する。
 
 ## 65. Backup verification
 
@@ -1398,10 +1441,11 @@ staging synthetic dataset backupをPostgreSQL 17 isolated test DBへrestoreし�
 Production dataをdevelopment/testへ複製しないため、Production backup rehearsalは一時 **Production-class Recovery Quarantine** で行う。
 
 - project-owner approval必須
-- dedicated temporary Supabase projectまたはisolated PostgreSQL instance
-- Vercel / normal Railway serviceを接続しない
+- dedicated temporary Neon projectまたはisolated PostgreSQL instance
+- Cloudflare Pages / normal Railway serviceを接続しない
 - Stripe / Resend credentialなし
-- Supabase Auth public endpointをapplicationから使用しない
+- Neon Auth public endpointをapplicationから使用しない
+- Provider-native restoreで認証dataを含む場合は通常Auth endpoint / OAuth / SMTP送信からも隔離する。複製Sessionが利用可能にならないことを確認する
 - QR HMAC / AEAD keyを配布しないためraw QR表示 / scan不可
 - infrastructure operatorだけがread-only verification
 - rehearsal完了後24時間以内にquarantine dataを破棄
@@ -1435,6 +1479,8 @@ Procedure:
 10. post-restore reconciliation完了までhigh-risk mutationを必要に応じfail closed
 11. old productionをread-only/frozen保持してincident close後に処理
 
+cutover前に、Provider提供手順で復元された旧Sessionを利用不能化し、既発行JWTの900秒上限が経過し新環境で受理されないことを検証する。認証CredentialをapplicationのSQLで直接変更しない。失効・再認証・再発行手順が検証できなければAuth / Business APIを公開しない。復元後のAuth Subjectと既存Profileの対応を照合し、Email一致による履歴再割当てを行わない。R2の`app`だけからの復元ではAuthが復元されない制約をincident判断に明示する。
+
 **INF-BKP-004:** restoreでStripe charge / Refund / Resend acceptanceを巻き戻したことにしない。
 
 ---
@@ -1447,7 +1493,7 @@ Production deployはdedicated GitHub Actions deployment identityを使用する�
 
 Credential scope:
 
-- Vercel Production project deployのみ
+- Cloudflare Pages Production project deployのみ
 - Railway Production project deployのみ
 - GitHub Container Registry push/pull required repositoryのみ
 - no DB runtime password unless migration job
@@ -1460,9 +1506,9 @@ Standing human accessを最小化する。
 
 - normal Administrator UI role != infrastructure operator
 - normal Staff role != infrastructure operator
-- Supabase Dashboard Owner権限はproject-owner / approved infrastructure operatorのみ
+- Neon Dashboard Owner権限はproject-owner / approved infrastructure operatorのみ
 - Production DB write SQL consoleを通常運用に使用しない
-- Production Secret read-back可能なstoreを常用しない。Railwayはsealed、Vercelはsensitiveを使用する
+- Production Secret read-back可能なstoreを常用しない。Railwayはsealed、Neon Auth provider設定は保護し、Pages Webにはserver Secretを置かない
 
 ## 70. Break-glass
 
@@ -1549,7 +1595,7 @@ G9はstaging / test Provider accountで実行する。
 
 - Stripe Checkout / lookup / webhook contract
 - Resend send / idempotency / webhook contract
-- Supabase Auth verification / server lookup contract
+- Neon Auth verification / server lookup contract
 
 Production Business Data、Production Email list、Production QR、Production Provider objectを使用しない。
 
@@ -1582,7 +1628,7 @@ approval actor ref
 
 | Failure | Infrastructure action | Forbidden action |
 |---|---|---|
-| Vercel deploy failure | domain promoteしない / previous保持 | partial client releaseをsuccess扱い |
+| Cloudflare Pages deploy failure | preview検査未達では本番uploadしない。本番失敗ではprevious productionへrollback | preview昇格の仮定 / partial client releaseをsuccess扱い |
 | Railway API readiness failure | new deployment activateしない / rollback | DB constraint skip |
 | Email Worker down | restart / old compatible worker保持 / queue DBから再発見 | Order rollback |
 | Reconciliation Worker down | restart / missed due scan / alert | Provider unknownをsuccess扱い |
@@ -1641,9 +1687,9 @@ approval actor ref
 
 SPEC-180は次をすべて満たしたとき受入可能とする。
 
-1. Web=Next.js/Vercel、API=Hono/Railway、DB=Supabase PostgreSQL、Auth=Supabase Auth、Payment=Stripe、Email=Resendを維持している。
-2. Browser / Next.js WebからBusiness Databaseへの直接Business mutation経路がない。
-3. `production`, `staging`, `development`, `test` がVercel / Railway / Supabase / Provider credential / observabilityで分離される。
+1. Web=React SPA/Cloudflare Pages、API=Hono/Railway、DB=Neon PostgreSQL、Auth=Neon Auth、Payment=Stripe、Email=Resendを維持している。
+2. Browser / React SPAからBusiness Databaseへの直接Business mutation経路がない。
+3. `production`, `staging`, `development`, `test` がCloudflare Pages / Railway / Neon / Provider credential / observabilityで分離される。
 4. Production Secret / QR protected material / Session material / Business Dataがdevelopment/testへ流れない。
 5. Node 24.x、PostgreSQL 17、`pgcrypto`, `btree_gist`がdeployment manifest / readiness / testで一致する。
 6. runtime / migration / incident read / Audit read / Audit purge / backup / emergency recovery identityが分離される。
@@ -1677,7 +1723,7 @@ SPEC-180は次をすべて満たしたとき受入可能とする。
 34. restore rehearsalがProduction Dataをdevelopment/testへコピーしない。
 35. restore後にStripe / Resend Authorityとのreconciliationが可能である。
 36. rollbackでProvider side effectを消したことにしない。
-37. Vercel / Railway application rollbackがschema backward compatibilityを検証する。
+37. Cloudflare Pages / Railway application rollbackがschema backward compatibilityを検証する。
 38. Production releaseはsame commit / artifact manifest / migration hashへ追跡できる。
 39. `SPEC-170` G1..G8 merge gate、G10 pre-release、G9 nonproduction Provider smokeがProduction promotionへ接続される。
 40. Critical Test runner retry=0、Critical quarantine禁止を維持する。
@@ -1708,14 +1754,19 @@ SPEC-180は次をすべて満たしたとき受入可能とする。
 
 ## 82. 非Canonical参考
 
-以下は2026-09-10時点でInfrastructure実現可能性を確認した公式資料であり、外部SLAを本システムが保証する根拠には使用しない。Provider capability変更時は本仕様のInfrastructure実装を再検証する。
+以下は2026-10-25の構成改定で参照した公式資料であり、外部SLAや未検証のHono proxy / account linkingを保証する根拠には使用しない。Provider capability変更時は本仕様のInfrastructure実装を再検証する。
 
 - Railway Cron Jobs: https://docs.railway.com/cron-jobs
 - Railway Healthchecks: https://docs.railway.com/deployments/healthchecks
 - Railway Private Networking / Sealed Variables: https://docs.railway.com/networking/private-networking / https://docs.railway.com/variables
-- Supabase Database Connections / SSL: https://supabase.com/docs/guides/database/connecting-to-postgres / https://supabase.com/docs/guides/platform/ssl-enforcement
-- Supabase Backups / Restore: https://supabase.com/docs/guides/platform/backups
-- Vercel staged promotion: https://vercel.com/changelog/stage-and-manually-promote-deployments-to-production
+- Neon connection / restore: https://neon.com/docs/connect/connect-from-any-app / https://neon.com/docs/introduction/branch-restore
+- Neon Managed Auth / JWT / region: https://neon.com/docs/auth/about / https://neon.com/docs/auth/guides/plugins/jwt / https://neon.com/docs/introduction/regions
+- Neon Auth production / SMTP / email customization: https://neon.com/docs/auth/production-checklist / https://neon.com/docs/auth/guides/customize-emails
+- Neon Auth Google / Email OTP / Magic Link: https://neon.com/docs/auth/guides/setup-oauth / https://neon.com/docs/auth/guides/plugins/email-otp / https://neon.com/docs/auth/guides/plugins/magic-link
+- Resend SMTP: https://resend.com/docs/send-with-smtp
+- Cloudflare Pages Direct Upload / preview / rollback: https://developers.cloudflare.com/pages/get-started/direct-upload/ / https://developers.cloudflare.com/pages/configuration/preview-deployments/ / https://developers.cloudflare.com/pages/configuration/rollbacks/
+- Cloudflare Pages headers / SPA routing: https://developers.cloudflare.com/pages/configuration/headers/ / https://developers.cloudflare.com/pages/configuration/serving-pages/
+- Railway regions: https://docs.railway.com/deployments/regions
 - Better Stack OpenTelemetry / retention API / source maps: https://betterstack.com/docs/logs/open-telemetry/ / https://betterstack.com/docs/logs/api/create-a-source/ / https://betterstack.com/docs/errors/collecting-errors/upload-source-maps/
 - Healthchecks.io: https://healthchecks.io/docs/
 - Cloudflare R2 S3 / lifecycle: https://developers.cloudflare.com/r2/get-started/s3/ / https://developers.cloudflare.com/r2/buckets/object-lifecycles/
@@ -1738,4 +1789,3 @@ SPEC-180は次をすべて満たしたとき受入可能とする。
 - alert delivery failureを同じ壊れたalert pathだけで監視
 - destructive down migrationをrollback authority化
 - external Provider SLA / retention保証の捏造
-

@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-150
 title: Reliability, Error and Recovery
-version: 1.1.0
+version: 2.0.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -44,9 +44,9 @@ related_specs:
 
 本書は以下へ適用する。
 
-- Next.js WebからHono APIへの業務Request
-- Supabase Auth verification / recipient lookup
-- Supabase PostgreSQL connection / statement / transaction / lock
+- React SPAからHono APIへの業務Request
+- Neon Auth verification / recipient lookup
+- Neon PostgreSQL connection / statement / transaction / lock
 - Stripe Checkout / lookup / Webhook / Payment Confirmation / Refund
 - Entry Ticket / Karaoke Ticket / QR token / Check-in
 - Karaoke Slot / Hold / Reservation
@@ -130,7 +130,7 @@ related_specs:
 | `REL-TMO-*` | Timeout / deadline |
 | `REL-RTY-*` | Retry / backoff / jitter / retry budget |
 | `REL-DB-*` | Database retry / transaction recovery |
-| `REL-AUTH-*` | Supabase Auth / Business Profile / Role reliability |
+| `REL-AUTH-*` | Neon Auth / Business Profile / Role reliability |
 | `REL-PAY-*` | Stripe Checkout / Payment / confirmation |
 | `REL-RFD-*` | Refund recovery |
 | `REL-TQR-*` | Ticket / QR / Check-in |
@@ -166,9 +166,9 @@ related_specs:
 Canonical failure domainは次とする。
 
 1. Browser / network transport
-2. Next.js Web rendering / BFF
+2. Cloudflare Pages静的配信 / Browser内React SPA rendering（Web BFFは存在しない）
 3. Hono API process
-4. Supabase Auth
+4. Neon Auth
 5. Business Database / pool
 6. Stripe API
 7. Stripe Webhook delivery
@@ -220,7 +220,7 @@ SECURITY_FAILURE
 
 | Operation | Deadline / timeout | Exhausted時 |
 |---|---:|---|
-| Supabase Auth remote verification / user lookup | 3秒 / call | `TEMPORARY_FAILURE`; protected mutationはFail Closed |
+| Neon Auth remote verification / user lookup | 3秒 / call | `TEMPORARY_FAILURE`; protected mutationはFail Closed |
 | trusted JWKS refresh fetch | 3秒 | refresh 1回で打切り、Fail Closed |
 | DB pool connection acquisition | 2秒 | `DATABASE_TEMPORARY_FAILURE` |
 | normal DB statement | 5秒 | transaction rollback、retryableか分類 |
@@ -237,7 +237,7 @@ SECURITY_FAILURE
 
 **REL-TMO-001:** Stripe Checkout Session lifetime / Payment Deadline 30分、Karaoke Hold 45分、Safety Buffer 5分、Resend 23時間safe cutoff、Webhook replay tolerance 300秒は上流値をそのまま使用する。
 
-**REL-TMO-002:** DB transactionをStripe / Resend / Supabase Auth remote call中にopenしたままにしない。
+**REL-TMO-002:** DB transactionをStripe / Resend / Neon Auth remote call中にopenしたままにしない。
 
 **REL-TMO-003:** timeout発生後にcommit成否またはProvider resultが不明なら`UNKNOWN_RESULT`へ分類し、「timeout = failure」と断定しない。
 
@@ -267,7 +267,7 @@ delay = random_uniform(0, cap_n)   # full jitter
 | DB `40001` | 50ms | 2 | 400ms | full | 4 transaction attempts total | 2s | 503 |
 | DB `40P01` | 100ms | 2 | 800ms | full | 4 total | 3s | 503 |
 | temporary DB connection acquisition | 100ms | 2 | 500ms | full | 3 connection attempts | 3s | 503 |
-| Supabase Auth temporary failure | 100ms | 2 | 500ms | full | 2 remote attempts | 7s | 503 / worker reschedule |
+| Neon Auth temporary failure | 100ms | 2 | 500ms | full | 2 remote attempts | 7s | 503 / worker reschedule |
 | Stripe Checkout creation, explicit temporary / same-key recovery | 500ms | 2 | 5s | full | initial + 4 same-key attempts | 30s | `UNKNOWN` / Review path |
 | Stripe read-only lookup | 250ms | 2 | 2s | full | 4 attempts | 15s | scheduled reconciliation |
 | Refund provider write, same-key | 1s | 2 | 5s | full | initial + 2 same-key attempts | 20s | stop provider writes; read-only reconcile |
@@ -352,13 +352,13 @@ delay = random_uniform(0, cap_n)   # full jitter
 
 # Part V — Authentication Reliability
 
-## 17. Supabase Auth Verification
+## 17. Neon Auth Verification
 
 **REL-AUTH-001:** Auth verificationが3秒deadlineを超過、JWKS取得不能、issuer / keyを安全に確認不能な場合、protected operationは`SECURITY_FAILURE`またはtemporary auth failureとしてFail Closedにする。
 
 **REL-AUTH-002:** JWKS refreshはtrusted configured endpointへ最大1回だけ行う。refresh失敗後にdecode-only JWT、expired token grace、cached successful roleで続行しない。
 
-**REL-AUTH-003:** Session refresh failureはBrowser / Next.js側で再認証を要求し、Hono APIのprotected mutationを未検証Sessionで継続しない。
+**REL-AUTH-003:** Session refresh failureはBrowser / React SPA側で再認証を要求し、Hono APIのprotected mutationを未検証Sessionで継続しない。
 
 ## 18. Business Profile Provisioning
 
@@ -382,7 +382,7 @@ Runbook:
 
 - Trigger: active `ADMINISTRATOR` Role Assignment count = 0、または初回導入時
 - Required authority: project-ownerにより承認されたinfrastructure / database privileged operator
-- Preconditions: Supabase Auth上の対象Auth Subjectが存在しEmail verified、Business Profileが一意に解決、既存active Administratorが0件
+- Preconditions: Neon Auth上の対象Auth Subjectが存在しEmail verified、Business Profileが一意に解決、既存active Administratorが0件
 - Locks: `pg_advisory_xact_lock(hashtext('app:active-administrator-set'))`
 - Allowed action: 対象Profileへ1件の`ADMINISTRATOR` active Role Assignmentを正規schema制約下で作成
 - Forbidden: Client role claim更新だけで権限付与、既存Role history削除、複数bootstrap、constraint無効化
@@ -945,14 +945,14 @@ Result reconciliation専用operationは `API-ADM-REC-005`（`SPEC-110 §48.5`）
 
 | Dependency outage | 利用可能 | 停止 / fail closed |
 |---|---|---|
-| Supabase Auth | 公開情報read。既にBrowserへ表示済み非secret static UI | protected owner read / purchase / Admin / Staff mutation |
+| Neon Auth | 公開情報read。既にBrowserへ表示済み非secret static UI | protected owner read / purchase / Admin / Staff mutation |
 | Business Database |静的公開asset / error page | Order / purchase / status authority / Check-in / Refund / Handoff / Admin mutation |
 | Stripe | existing confirmed Business Database read、Ticket display/check-inはDB/QR条件が成立する限り可 | new Checkout、payment-dependent cancel確定、new Refund |
 | Resend | Purchase / Reservation / Ticket / Refund本体は継続 | Email sendのみqueue / failed stateへ |
 | QR key | QRを必要としないowner order/history read | QR display、QR scan、QR rotation / migration |
 | reconciliation worker | foreground safe operationは継続 | stuck自動修復。既存stateは保持しmanual reviewへ |
 
-**REL-GEN-009:** DB unavailable時、Browser / Next.js cacheを購入、Check-in、Refund、Role、InventoryのAuthorityにしない。
+**REL-GEN-009:** DB unavailable時、Browser / React SPA cacheを購入、Check-in、Refund、Role、InventoryのAuthorityにしない。
 
 **REL-GEN-010:** Resend障害を理由に確定済みBusiness Transactionをrollbackしない。
 
@@ -1169,7 +1169,7 @@ SPEC-160は少なくとも次のReliability semanticを観測可能にする。
 本仕様は次を意図的に行っていない。
 
 - System Boundaryの変更
-- Browser / Next.js WebからBusiness Databaseへの直接更新
+- Browser / React SPAからBusiness Databaseへの直接更新
 - Domain State追加
 - Payment / Refund / QR / Notification state machineの再定義
 - Provider Result Unknownの成功扱い

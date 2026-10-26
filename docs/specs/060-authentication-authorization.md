@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-060
 title: Authentication and Authorization
-version: 1.4.0
+version: 2.1.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -30,7 +30,7 @@ related_specs:
 
 ## 1. 目的
 
-本書は、**off r39'x in 大阪らへん2027** Webシステムの完成形におけるAuthentication、Session、Supabase Auth IdentityとBusiness Profileの対応、Authorization、Role Assignment、Permission Matrix、自己所有Dataの認可境界、およびAdministrator / Staffの権限制御を定義する。
+本書は、**off r39'x in 大阪らへん2027** Webシステムの完成形におけるAuthentication、Session、Neon Auth IdentityとBusiness Profileの対応、Authorization、Role Assignment、Permission Matrix、自己所有Dataの認可境界、およびAdministrator / Staffの権限制御を定義する。
 
 本書は `SPEC-010 System Overview`、`SPEC-020 Functional Requirements`、`SPEC-030 Domain Model & Business Rules`、`SPEC-040 User Flows`、`SPEC-050 Page / Screen Specification` を変更または弱化せず、そこで定義済みのActor、System Boundary、System of Record、Ownership、Business Rule、User Flow、Page / Routeを、Server-sideで強制可能なAuthentication / Authorization Ruleへ具体化するCanonical Ownerである。
 
@@ -39,8 +39,8 @@ related_specs:
 - Authentication state model
 - Email確認済み / 未確認を含むAccess state
 - Session成立、維持、refresh、失効、Logout、再検証の論理仕様
-- Browser / Next.js Web / Hono API間のAuthentication responsibility
-- Supabase Auth IdentityとBusiness Profileの1:1 resolution / provisioning rule
+- Browser / React SPA / Hono API間のAuthentication responsibility
+- Neon Auth IdentityとBusiness Profileの1:1 resolution / provisioning rule
 - Guest / Authenticated User / Customer / Staff / Administratorの認可上の意味
 - Staff / AdministratorのRole Assignment論理モデル
 - Permission Matrix
@@ -63,7 +63,7 @@ related_specs:
 - Login / Logout
 - Password reset
 - Browser Session
-- Next.js WebからHono APIへ渡される認証Context
+- React SPAからHono APIへ渡される認証Context
 - Hono APIによるAuthenticated RequestのServer-side identity verification
 - Business Profileの解決
 - 一般利用者向け本人所有Dataの参照・更新
@@ -79,7 +79,7 @@ related_specs:
 本書は以下を前提とする。
 
 - `SPEC-000`: Canonical Owner、依存関係、Upstream Change Request、正式仕様と実装フェーズの分離
-- `SPEC-010`: Actor、System Boundary、Supabase Auth / Next.js Web / Hono API / Business Databaseの責務、System Invariant
+- `SPEC-010`: Actor、System Boundary、Neon Auth / React SPA / Hono API / Business Databaseの責務、System Invariant
 - `SPEC-020`: `FR-AUTH-*`, `FR-MYP-*`, `FR-ADM-*`, `FR-STF-*`, `FR-XFN-*` のCanonical Owner
 - `SPEC-030`: Business Profile、Ownership、Customer導出、`BR-USR-*`、関連Business Rule、`DI-030-*` のCanonical Owner
 - `SPEC-040`: Authentication / Ownership / Check-in / FailureのUser Flow outcomeのCanonical Owner
@@ -91,12 +91,12 @@ related_specs:
 
 | Term | 本書での意味 |
 |---|---|
-| Auth Identity | Supabase AuthがSystem of Recordとして保持する認証主体 |
+| Auth Identity | Neon AuthがSystem of Recordとして保持する認証主体 |
 | Auth Subject | Server-sideで検証済みAuth Identityを一意に参照する安定した識別子。具体形式は下流仕様へ委譲する |
 | Business Profile | Auth Identityと1:1で対応するBusiness Database上の本人・所有者Entity |
-| Authentication | Request主体が正規のSupabase Auth IdentityであることをServer-sideで確認すること |
+| Authentication | Request主体が正規のNeon Auth IdentityであることをServer-sideで確認すること |
 | Authorization | 検証済みIdentityが対象Operation / Dataへアクセス可能かをServer-sideで判定すること |
-| Session | Browser利用を継続するためにSupabase Authの認証状態を保持・更新するContext |
+| Session | Browser利用を継続するためにNeon Authの認証状態を保持・更新するContext |
 | Authentication Gate | Guestまたは有効な認証状態を持たないActorを認証Flowへ遷移させる境界 |
 | Continuation Intent | 認証前に開始した論理的利用目的へ安全に戻るための非権威情報 |
 | Authorization Principal | 検証済みAuth Identity、一意に解決したBusiness Profile、および当該Requestで有効なOperational Role Assignmentから構成する認可主体 |
@@ -156,11 +156,11 @@ Guestは以下を成立させてはならない。
 
 ### 6.2 Authenticated User
 
-Authenticated Userは、本書が定義する有効な認証状態を持ち、Hono APIが当該RequestごとにSupabase Auth IdentityをServer-sideで検証可能なActorである。
+Authenticated Userは、本書が定義する有効な認証状態を持ち、Hono APIが当該RequestごとにNeon Auth IdentityをServer-sideで検証可能なActorである。
 
 本人向け業務機能を利用するためには、追加で対応Business Profileを一意に解決できなければならない。
 
-**AR-AUTH-002:** BrowserまたはNext.js Webが「ログイン済み」と表示していることだけではAuthenticated Userとして業務操作を認可しない。
+**AR-AUTH-002:** BrowserまたはReact SPAが「ログイン済み」と表示していることだけではAuthenticated Userとして業務操作を認可しない。
 
 ### 6.3 Customer
 
@@ -207,12 +207,12 @@ AdministratorはPermission Matrixで明示的に許可された管理Capability�
 | State | 意味 | 認証必須Business operation |
 |---|---|---|
 | `GUEST` | 有効なSessionがない | Deny |
-| `EMAIL_UNVERIFIED` | Auth Identityは存在しSessionが成立し得るが、Supabase Auth上でEmail確認未完了 | Deny |
+| `EMAIL_UNVERIFIED` | Auth Identityは存在しSessionが成立し得るが、Neon Auth上でEmail確認未完了 | Deny |
 | `VERIFIED_SESSION_ACTIVE` | Email確認済みIdentityに対する有効Sessionがあり、Server-side検証可能 | 条件付きAllow |
 | `SESSION_EXPIRED` | Accessに必要なSession有効期限が切れ、refreshでも有効Sessionを再成立させられない | Deny |
 | `SESSION_INVALID` | Sessionが無効、改ざん、revoke相当、または正規Identityへ解決不能 | Deny |
 | `LOGGED_OUT` | 現在のBrowser SessionがLogout済み | Guestとして扱う |
-| `PASSWORD_RESET_CONTEXT` | Supabase Authの正規Password reset context内 | Password reset completionのみ |
+| `PASSWORD_RESET_CONTEXT` | Neon Authの正規Password reset context内 | Password reset completionのみ |
 | `AUTH_SERVICE_UNAVAILABLE` | Identity / Sessionの正当性を安全に検証できない | Deny |
 
 `Business Profile` の未解決はAuthentication Stateではなく、後段のPrincipal construction failureとして扱う。
@@ -223,7 +223,7 @@ AdministratorはPermission Matrixで明示的に許可された管理Capability�
 
 **AR-AUTH-004:** `EMAIL_UNVERIFIED` 状態では `PG-AUTH-002` のEmail Verification Flow、Logout、および公開Page閲覧を許可する。認証済み業務Operationを開始した場合はEmail確認完了を要求する。
 
-**AR-AUTH-005:** Email確認成功はSupabase Auth上の現在状態をServer-sideで確認できた場合だけ成立する。Browser上の確認完了表示だけでは成立しない。
+**AR-AUTH-005:** Email確認成功はNeon Auth上の現在状態をServer-sideで確認できた場合だけ成立する。Browser上の確認完了表示だけでは成立しない。
 
 ### 7.3 Authentication State transition
 
@@ -255,7 +255,7 @@ stateDiagram-v2
     AUTH_SERVICE_UNAVAILABLE --> VERIFIED_SESSION_ACTIVE: Service回復後に有効Sessionを再検証
 ```
 
-この図は論理状態遷移であり、Supabase内部Token lifecycleを再定義しない。
+この図は論理状態遷移であり、Neon内部Token lifecycleを再定義しない。
 
 # Part III — Session / Server-side Verification
 
@@ -263,55 +263,61 @@ stateDiagram-v2
 
 ### 8.1 Browser
 
-Browserは、Supabase Authに由来するSession materialを、Next.js WebのServer-side authentication integrationから利用可能なCookie-based Session contextとして保持する。
+BrowserはNeon AuthのSessionをHttpOnly Cookieで保持し、同一親ドメイン上のRailway認証中継を通じてNeon SDKを利用する。React SPAはserver runtimeではなく、Cookieの秘密値を読まない。業務API用JWTは `authClient.token()` で取得し、JavaScriptのメモリー内だけに保持する。`getSession()` が返すSession tokenをJWTだと仮定しない。
 
 本書はCookie属性の具体値を定義しない。`Secure`、`HttpOnly`、`SameSite`、CSRF対策等の詳細は `SPEC-140` がCanonical Ownerである。
 
-**AR-SES-001:** Business DatabaseへPassword Credential、refresh credential、またはSupabase Auth内部Credential stateを保存してはならない。
+**AR-SES-001:** 本システム所有の`app` / `auth_read`へPassword Credential、refresh credential、SessionまたはNeon Auth内部Credential stateを保存してはならない。Provider所有`neon_auth`が同じ物理DBに存在することは例外であり、applicationによる管理・複製を許可しない。
 
 **AR-SES-002:** Client-side表示用authentication stateは利便性のため保持してよいが、それをAPI authorizationの権威値にしてはならない。
 
-### 8.2 Next.js Webの責務
+### 8.2 React SPAの責務
 
-Next.js Webは以下を行う。
+React SPAは以下を行う。
 
-1. BrowserからSession contextを受け取る。
-2. Supabase Authの正規Server-side mechanismによりSessionを復元・必要に応じてrefreshする。
-3. 保護PageのServer-side renderingまたはBusiness API呼出し前に、認証状態を確認する。
-4. Hono APIへ認証が必要なRequestを送る場合、当該Sessionに対応するSupabase Authの認証情報をServer-to-server経路で伝達する。
+1. Railway認証中継にCookieを送信し、Neon SDKでSession状態を取得する。
+2. 有効Sessionから最大15分のAPI用JWTを取得し、必要に応じて再取得する。
+3. 保護Pageでは認証・API認可の結果待ちを表示し、認可されたDataだけをClient-side renderingする。静的shellに個人Dataを含めない。
+4. Hono APIへ `Authorization: Bearer <jwt>` をBrowserから送る。業務APIへCookieで代替認証しない。
 5. Clientが任意に付けたuser ID、role、profile IDを本人性または権限としてHono APIへ確定伝達しない。
 
-Next.js WebのPage guardはUX / early rejectionのための境界であり、最終Authorization boundaryではない。
+React SPAのPage guardはUX / early rejectionのための境界であり、最終Authorization boundaryではない。
 
-**AR-SES-003:** Next.js Webが認証済みと判定していても、Hono APIは認証必須Requestごとに独立してIdentity verificationを行う。
+**AR-SES-003:** React SPAが認証済みと判定していても、Hono APIは認証必須Requestごとに独立してIdentity verificationを行う。
 
 ### 8.3 Hono APIの責務
 
 Hono APIは認証必須Requestごとに以下を行う。
 
-1. Supabase Auth由来の認証情報が存在することを確認する。
-2. Supabase Authが提供するServer-side検証方式を用いて、署名、発行元、有効期限その他必要な認証条件を検証する。
+1. Neon Auth由来の認証情報が存在することを確認する。
+2. Neon Authが提供するServer-side検証方式を用いて、署名、発行元、有効期限その他必要な認証条件を検証する。
 3. 検証結果からAuth Subjectを取得する。
-4. Email確認が必要なOperationでは確認済み状態を検証する。
+4. Email確認が必要なOperationでは `SPEC-100 §5.1` の限定ビューで現在のIdentity存在・確認済み状態を検証する。JWT内の古いEmail / verified claimだけに依存しない。
 5. Business Profileが必要なOperationではAuth SubjectからProfileを一意に解決する。
 6. Owner / Role / Permission / Business Ruleを後続順序で評価する。
 
-**AR-SES-004:** Token payloadを単にdecodeしただけ、Clientから受け取ったuser IDだけ、またはNext.js Webが付加した未検証headerだけを本人性根拠にしてはならない。
+**AR-SES-004:** Token payloadを単にdecodeしただけ、Clientから受け取ったuser IDだけ、またはReact SPAが付加した未検証headerだけを本人性根拠にしてはならない。
 
 **AR-SES-005:** Hono APIがIdentityの正当性を安全に確立できない場合はFail Closedとする。
 
-Supabase Authの信頼済み署名鍵等を用いてProvider推奨方式でローカル検証可能な場合、その検証が安全に完了する限り「Auth Service検証不能」には当たらない。必要な信頼情報を取得できず、正当性を確立できない場合は `AUTH_SERVICE_UNAVAILABLE` または `SESSION_INVALID` としてOperationを拒否する。
+Neon Authの信頼済み署名鍵等を用いてProvider推奨方式でローカル検証可能な場合、その検証が安全に完了する限り「Auth Service検証不能」には当たらない。必要な信頼情報を取得できず、正当性を確立できない場合は `AUTH_SERVICE_UNAVAILABLE` または `SESSION_INVALID` としてOperationを拒否する。
+
+### 8.4 Railway認証中継
+
+中継はNeon Authの正規APIだけを環境固定upstreamへ転送する。認証基盤・JWT発行者にはならず、任意URLへのproxyやBusiness mutationを提供しない。Cookie、Origin / CSRF、redirect、cache、公開pathの契約は `SPEC-110 §23.1` / `SPEC-140` / `SPEC-180` に従う。Neon管理のOAuth callbackとSPA復帰先を区別する。
+
+Hono中継のCookie / OAuth互換性が検証済みと仮定してはならない。Safariを含む全4方式のProvider contract / Browser検証に失敗した場合はProduction公開を停止する。
 
 ## 9. Session refresh
 
-**AR-SES-006:** Session refreshの責務はBrowser / Next.js Web側のSupabase Auth integrationが担い、Hono APIはBusiness Requestの途中でClientの代わりに長期Session lifecycleを所有しない。
+**AR-SES-006:** Session維持はBrowser / Neon SDKとRailway認証中継を介したNeon Authが担う。Honoの業務routeはBusiness Requestの途中でClientの代わりにSessionをrefreshせず、独自refresh credential storeを持たない。
 
-- 有効なrefresh contextがある場合、Next.js Webは保護Page / API利用を継続するためSessionを更新してよい。
+- 有効なrefresh contextがある場合、React SPAは保護Page / API利用を継続するためSessionを更新してよい。
 - refresh成功後の新しい認証情報もHono APIでRequestごとに検証する。
 - refresh失敗後、古い期限切れSessionを継続利用しない。
 - refresh失敗をGuestの本人性証明として利用しない。
 
-Sessionの具体的な有効時間はSupabase Auth設定および `SPEC-140` / `SPEC-180` のSecurity / environment policyに従い、本書では独自固定時間を定義しない。
+Sessionの具体的な有効時間はNeon Auth設定および `SPEC-140` / `SPEC-180` のSecurity / environment policyに従い、本書では独自固定時間を定義しない。
 
 ## 10. Session expiry / invalidation / Logout
 
@@ -329,11 +335,13 @@ Sessionの具体的な有効時間はSupabase Auth設定および `SPEC-140` / `
 
 **AR-SES-008:** Sessionが無効、改ざん、revoke相当、またはIdentityへ解決不能な場合、当該RequestをAuthenticated Userとして継続しない。
 
+Browser Sessionの失効と既発行JWTの検証は別境界である。Session失効 / Logoutだけでは既発行JWTの即時失効を保証しない。JWTは発行から最大900秒まで残存し得る。この期間も現在のIdentity / verified state、Role / OwnershipをHonoで検証する。期限切れJWTは必ず拒否し、独自の失効猶予を加えない。
+
 無効理由の詳細をClientへ不必要に開示しない。
 
 ### 10.3 Logout
 
-**AR-SES-009:** Logoutでは現在BrowserのSession materialを利用不能化し、Supabase Authの正規sign-out / revocation mechanismを適用可能な範囲で実行する。
+**AR-SES-009:** Logoutでは現在BrowserのSession materialを利用不能化し、Neon Authの正規sign-out / revocation mechanismを適用可能な範囲で実行する。
 
 Logout後:
 
@@ -341,10 +349,10 @@ Logout後:
 - `PG-PUB-001` へ遷移する。
 - Browser側のCartをclearする（`FR-CRT-012`）。
 - Browser back / cached UIから保護Dataを再利用してはならない。
-- 新しい保護Requestは必ず再認証を要求する。
+- Browserメモリー内のJWT / protected query cacheを破棄し、そのBrowserの新しい保護Requestは再認証を要求する。流出済みJWTの最大15分の残存は第10.2節のとおりであり、全Deviceの即時失効を表示・保証しない。
 - Order、Ticket、Reservation、Goods購入、Business ProfileのOwnershipを変更・削除・取消しない。
 
-Auth Service障害によりProvider側の失効確認を完了できない場合でも、現在Browserに保持されたSession materialは破棄し、そのBrowserからの保護Requestを継続させない。別Device / 別Sessionの失効範囲はSupabase AuthのSession semanticsに従う。
+Auth Service障害によりProvider側の失効確認を完了できない場合でも、現在Browserに保持されたSession materialは破棄し、そのBrowserからの保護Requestを継続させない。別Device / 別Sessionの失効範囲はNeon AuthのSession semanticsに従う。
 
 # Part IV — Account / Credential Flow
 
@@ -352,11 +360,32 @@ Auth Service障害によりProvider側の失効確認を完了できない場合
 
 ### 11.1 Registration
 
-**AR-AUTH-006:** `PG-AUTH-001` のAccount登録はSupabase Authを利用し、Business DatabaseはPassword Credentialを受け取った業務Credential storeとして機能してはならない。
+**AR-AUTH-006:** `PG-AUTH-001` のAccount登録はNeon Authを利用し、Business DatabaseはPassword Credentialを受け取った業務Credential storeとして機能してはならない。
+
+### 11.1.1 採用方式と初回登録
+
+採用方式は次の4つに限定する。すべて初回登録を許可し、各方式は既存 `PG-AUTH-001/002/003` の中で提供する。新しいBusiness Operation / Page IDを追加しない。
+
+| 方式 | 本人性根拠 | 必須条件 |
+|---|---|---|
+| メール＋パスワード | Neon AuthのCredential検証 | メール確認を有効化。password / reset保護は既存契約を維持 |
+| Google | Neon Authが検証したGoogle OAuth結果 | 環境専用の自前OAuth credential。本番で共有開発credentialを使用しない |
+| Email OTP | Neon Authが検証した一時コード | 期限・試行上限・再送制限をProvider適用設定として検証・記録する |
+| Magic Link | Neon Authが消費した一時link | 有効期限5分、新規登録許可、期限切れ・再使用を拒否 |
+
+Google / OTP / Magic Linkで作成したIdentityも、現在Emailが確認済みであることをServer-sideで確認できるまでBusiness operationを許可しない。成功画面、OAuth query、Client申告のEmailを根拠にしない。コード・link・OAuth credentialを業務tableやlogへ保存しない。
+
+### 11.1.2 方式連携と同一性
+
+同じ確認済みEmailの方式は、Neon Authが各方式の本人性と確認済みEmailを保証する場合のみ同一Auth Subjectへ連携する。未確認Email、Client申告、表記変換だけで自動連携しない。別Auth Subjectが既に存在する場合、Email一致を理由にProfile / Ownership / financial historyを統合・移管しない。
+
+Managed Authでこの連携契約を満たすことは公開資料だけから保証しない。未確認メール衝突、Google既存 / email既存の双方の登録順、同一Subject維持をProvider contract testで確認し、満たせない場合は本番公開を停止して仕様変更を所有者へ確認する。
+
+認証EmailはNeon Authが生成・管理し、Neon標準テンプレート＋環境専用Resend SMTPで配送する。業務Email Job、独自Auth Email Webhook、未確認のservice-role Admin APIを追加しない。
 
 Registration成功時:
 
-1. Supabase Auth Identityが作成される。
+1. Neon Auth Identityが作成される。
 2. Email確認が必要なら `EMAIL_UNVERIFIED` として扱う。
 3. Business Profile provisioningを第15章に従って開始可能にする。
 4. Email確認未完了のまま購入 / Mypageへ進めない。
@@ -369,7 +398,7 @@ Registration failure時:
 
 ## 12. Email確認
 
-**AR-AUTH-007:** `PG-AUTH-002` はSupabase Authの正規Email verification resultだけを確認根拠にする。
+**AR-AUTH-007:** `PG-AUTH-002` はNeon Authの正規Email verification resultだけを確認根拠にする。
 
 | Result | Access result |
 |---|---|
@@ -382,7 +411,7 @@ Email確認失敗・失効は、既存Business Profile、既存Order、Ticket、
 
 ## 13. Login
 
-**AR-AUTH-008:** `PG-AUTH-003` Login成功はSupabase AuthがCredentialを検証し、有効Sessionが成立した場合だけとする。
+**AR-AUTH-008:** `PG-AUTH-003` Login成功はNeon AuthがCredentialを検証し、有効Sessionが成立した場合だけとする。
 
 Login成功後:
 
@@ -402,7 +431,7 @@ Credential failure時:
 
 ### 14.1 Reset request
 
-**AR-AUTH-009:** `PG-AUTH-004` のPassword reset要求はSupabase Authへ委譲する。
+**AR-AUTH-009:** `PG-AUTH-004` のPassword reset要求はNeon Authへ委譲する。
 
 Account列挙を助長しないため、Auth Serviceが要求を処理可能な場合、入力Emailが登録済みかどうかを利用者向け結果から不必要に確定できる文言を使用しない。
 
@@ -410,7 +439,7 @@ Auth Service自体が利用不能な場合は、Password resetを完了できな
 
 ### 14.2 Reset completion
 
-**AR-AUTH-010:** `PG-AUTH-005` はSupabase Authの正規で有効なreset contextがある場合だけPassword更新を許可する。
+**AR-AUTH-010:** `PG-AUTH-005` はNeon Authの正規で有効なreset contextがある場合だけPassword更新を許可する。
 
 - invalid / expired reset contextではPassword更新を成立させない。
 - reset完了後は通常Login Flowへ戻る。
@@ -424,7 +453,7 @@ Auth Service自体が利用不能な場合は、Password resetを完了できな
 `SPEC-030` のCardinalityを維持する。
 
 ```text
-Supabase Auth Identity 1 ─── 1 Business Profile
+Neon Auth Identity 1 ─── 1 Business Profile
 ```
 
 **AR-ID-001:** Auth IdentityからBusiness Profileを解決する際は、Server-sideで検証したAuth Subjectだけを起点にする。
@@ -437,7 +466,7 @@ Supabase Auth Identity 1 ─── 1 Business Profile
 
 ### 16.1 Provisioning時点
 
-Business Profileは、Supabase Auth Identity作成後に安定したAuth SubjectをServer-sideで取得できた時点でprovisioningを試行してよい。
+Business Profileは、Neon Auth Identity作成後に安定したAuth SubjectをServer-sideで取得できた時点でprovisioningを試行してよい。
 
 遅くとも、Email確認済みIdentityが初めてProfileを必要とする認証済みBusiness operationを実行する前に、一意なBusiness Profileが解決可能でなければならない。
 
@@ -488,7 +517,7 @@ Order Customer、Entry Ticket Owner、Karaoke Reservation / Ticket Customer、Go
 
 Protected operationでAuthorization Principalを構成する場合、以下を順に確立する。
 
-1. Supabase Auth IdentityをServer-sideで検証する。
+1. Neon Auth IdentityをServer-sideで検証する。
 2. 必要なEmail確認状態を満たす。
 3. Business Profileを必要とするOperationではProfileを一意に解決する。
 4. Operational operationでは有効Role AssignmentをBusiness Databaseから解決する。
@@ -503,7 +532,7 @@ Protected operationでAuthorization Principalを構成する場合、以下を�
 1. **Public / Protected判定**  
    対象Operationがpublicかauthentication requiredかを決定する。
 2. **Identity verification**  
-   ProtectedならSupabase Auth IdentityをServer-sideで検証する。
+   ProtectedならNeon Auth IdentityをServer-sideで検証する。
 3. **Business Profile resolution**  
    Profileを必要とする場合、検証済みIdentityから一意Profileを解決する。
 4. **Ownership authorization**  
@@ -590,7 +619,7 @@ Role Assignmentは少なくとも次の論理状態を区別する。
 
 物理Table / Column / Constraintは `SPEC-100` が定義する。
 
-**AR-ROLE-004:** Operational RoleはBusiness Database側のServer-side authorityから解決し、Supabase Auth user metadata、Client claim、localStorage、query parameter等を権威値にしない。
+**AR-ROLE-004:** Operational RoleはBusiness Database側のServer-side authorityから解決し、Neon Auth user metadata、Client claim、localStorage、query parameter等を権威値にしない。
 
 **AR-ROLE-005:** Privileged operationごとに現在有効なRole AssignmentをServer-sideで評価する。古いUI stateまたはLogin時に取得したrole表示だけを権限根拠にしない。
 
@@ -598,7 +627,7 @@ Role Assignmentは少なくとも次の論理状態を区別する。
 
 Role Assignment対象は:
 
-- Supabase Authで正規に識別可能なAuth Identityであること
+- Neon Authで正規に識別可能なAuth Identityであること
 - Business Profileが1:1で一意に解決可能であること
 
 を要求する。
@@ -625,14 +654,14 @@ Role Assignment対象は:
 
 | Capability | 意味 |
 |---|---|
-| `public.read` | 公開Event / Announcement / sales情報を閲覧 |
+| `public.read` | 公開Event / Announcement / sales情報 / PUBLISHED Sponsor Logoを閲覧 |
 | `profile.self.read` | 自身のBusiness Profile参照 |
 | `profile.self.update` | 自身の更新可能Profile項目を更新 |
 | `orders.self.read` | 自身のOrder参照 |
 | `tickets.self.read` | 自身のEntry Ticket参照 / QR到達 |
 | `karaoke.self.read` | 自身のReservation / Karaoke Ticket参照 / QR到達 |
 | `goods.self.read` | 自身のGoods購入 / Handoff参照 |
-| `purchase.start` | Cartからの購入手続き開始（Entry Ticket / Goods）、Karaokeの購入開始 |
+| `purchase.start` | Cartからの購入手続き開始（Entry Ticket / Goods）、Karaokeの購入開始、および本人の購入条件の参照専用事前判定 |
 | `entry_checkin.execute` | Entry QR検証と通常Check-in実行 |
 | `karaoke_checkin.execute` | Karaoke QR検証と通常Check-in実行 |
 | `goods_handoff.execute` | Goods Handoff対象確認と通常完了 |
@@ -644,7 +673,7 @@ Role Assignment対象は:
 | `karaoke_reservations.manage.read` | Karaoke Reservation運用参照 |
 | `goods_inventory.manage` | Goods公開情報 / 販売状態 / Inventory管理 |
 | `goods_handoff.manage` | AdministratorとしてGoods Handoff状態を確認・許可された更新を実行 |
-| `public_content.manage` | Event / FAQ / Announcement等の運営公開情報管理 |
+| `public_content.manage` | Event / FAQ / Announcement / Sponsor Logoの運営公開情報管理 |
 | `role_assignment.manage` | Staff / Administrator Role Assignment管理 |
 | `recovery.review` | Recovery / consistency review対象の参照 |
 | `recovery.exception.execute` | `SPEC-150` 等で明示された特定Recovery operationの実行。汎用Invariant bypassではない |
@@ -682,6 +711,8 @@ Role Assignment対象は:
 ### 24.1 Matrix解釈
 
 **AR-ROLE-011:** Staff / Administratorも一人のAuthenticated Userとして自分自身のBusiness DataをOwnership Pathで利用できる。Operational Roleが自己所有権を上書きするわけではない。
+
+`API-PUR-ELG-001` はverified emailと既存Business Profileを要求し、本人だけのPurchase Limitを評価する。新CapabilityやRoleは追加しない。`purchase.start` を持っていてもこの参照OperationでOrder／Allocation／Hold／Profileを作成・更新してはならず、事前判定を後続購入の認可・在庫保証として再利用しない。Display nameは任意であり、未設定を認証・購入の追加条件にしない。
 
 **AR-ROLE-012:** `ADMINISTRATOR` は `STAFF` を継承しない。Check-inを行うAdministratorは `STAFF` Roleも必要とする。
 
@@ -918,7 +949,7 @@ Login / Registrationを中止した場合はGuestとして元の公開Pageまた
 
 ## 31. Auth Service outage
 
-**AR-FAIL-001:** Supabase Authに依存するIdentity verificationが安全に完了できない場合、未検証IdentityをAuthenticated Userとして扱わない。
+**AR-FAIL-001:** Neon Authに依存するIdentity verificationが安全に完了できない場合、未検証IdentityをAuthenticated Userとして扱わない。
 
 **AR-FAIL-002:** Auth Service障害中は、新しい購入、Profile更新、Mypage protected read、Staff Check-in、Goods Handoff、Administrator operationを、認証を省略して成立させてはならない。
 
@@ -947,11 +978,11 @@ Login / Registrationを中止した場合はGuestとして元の公開Pageまた
 
 ### 33.1 Credential
 
-**AR-AUTH-011:** Password CredentialはSupabase Authへ委譲し、Business Databaseへ保存しない。
+**AR-AUTH-011:** Password CredentialはNeon Authへ委譲し、Business Databaseへ保存しない。
 
 ### 33.2 Server-only Secret
 
-**AR-AZ-008:** Supabase service credentialその他Server-only SecretをClientへ露出しない。詳細Secret管理は `SPEC-140` / `SPEC-180`。
+**AR-AZ-008:** Neon service credentialその他Server-only SecretをClientへ露出しない。詳細Secret管理は `SPEC-140` / `SPEC-180`。
 
 ### 33.3 Client values
 
@@ -1228,7 +1259,7 @@ Hono APIは本書の判定順序とFail Closed ruleを実装する。
 
 ### 43.6 `SPEC-120`
 
-Supabase Authのverification / reset通知はAuthentication Flowであり、購入通知Domainと混同しない。Email Template詳細は `SPEC-120`。
+Neon Authのverification / reset通知はAuthentication Flowであり、購入通知Domainと混同しない。Email Template詳細は `SPEC-120`。
 
 ### 43.7 `SPEC-130`
 
