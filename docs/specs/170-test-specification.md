@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-170
 title: Test Specification
-version: 1.2.0
+version: 2.0.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -37,7 +37,7 @@ related_specs:
 
 本書は上流Canonical Ownerが定義したDomain State、Business Rule、API endpoint、Database schema、Authentication / Authorization、Payment / Refund、Ticket / QR / Check-in、Karaoke、Goods、Notification、Administrator / Staff、Security、Reliability、Observability / Auditを変更しない。Testを容易にする目的で次を行ってはならない。
 
-- Browser / Next.js WebからBusiness Databaseを直接更新するTest-only architectureを本番経路の代替として扱う。
+- Browser / React SPAからBusiness Databaseを直接更新するTest-only architectureを本番経路の代替として扱う。
 - Unit fakeだけでPostgreSQL constraint、transaction race、lock semantics、Provider resultを保証済みとみなす。
 - E2Eだけでcritical invariantを保証済みとみなす。
 - ProductionのCSPRNG、QR cryptography、Authentication、Webhook signature、CSRF、Authorization、DB constraintをTest都合で弱化する。
@@ -58,11 +58,11 @@ Test対象のSystem Boundaryは上流どおり次とする。
 
 ```text
 Browser
-  -> Next.js Web / Vercel
+  -> React SPA / Cloudflare Pages
   -> Hono API / Railway
-  -> Supabase PostgreSQL
+  -> Neon PostgreSQL
 
-Authentication = Supabase Auth
+Authentication = Neon Auth
 Payment = Stripe Checkout / Webhook
 Email Provider = Resend
 Email Rendering = React Email
@@ -202,10 +202,10 @@ Test suiteは少なくとも次を証明する。
 | Integration | application service + repository + DB semantics | service/repository boundary | Hono service code, Drizzle/pg, real PostgreSQL | Provider adapter | Yes | No | No | DB/provider adapter hooks | rows, states, constraints, transaction result | `DI-030-*`, `DB-*`, `PAY-*`, `TQR-*`, `KRK-*`, `EML-*` |
 | API | HTTP / Hono RPC contract | Hono route/middleware/service | Hono, Zod, auth middleware contract, real DB where mutation | Auth/Provider simulator | Usually Yes | No | No | transport + provider + DB | method/status/envelope/auth/idempotency/postcondition | `API-*`, `AR-*`, `SEC-*`, domain rule |
 | Database | PostgreSQL physical invariant | migration/schema/SQL transaction | real PostgreSQL with required extensions | none | Yes | No | No | SQLSTATE/lock/fault | constraint name, winner/loser, rollback, history | `DB-*`, `DI-030-*`, `INV-*` |
-| E2E | user-visible journey / role UX | Browser + Next.js + Hono + DB | production Web/API build + real DB | Provider/Auth controlled adapter as allowed | Yes | Yes | Normally No | network/API controlled faults | visible state + API/DB authoritative outcome | `UF-*`, `PG-*`, critical `INV-*` |
+| E2E | user-visible journey / role UX | Browser + React SPA + Hono + DB | production Web/API build + real DB | Provider/Auth controlled adapter as allowed | Yes | Yes | Normally No | network/API controlled faults | visible state + API/DB authoritative outcome | `UF-*`, `PG-*`, critical `INV-*` |
 | Security | security control enforcement | Web/API/config/provider boundary | production security code | attacker inputs / signer fixture | As needed | As needed | No by default | invalid token/signature/config | deny/fail-closed/no side effect/redaction | `SEC-*`, `AR-*` |
 | Reliability / Recovery | retry/unknown/reconcile/stuck | service/worker/reconciliation | production worker/service + real DB | deterministic provider simulator | Yes | Optional | No | named Fault Point | same Cause/key, schedule, convergence/review | `REL-*`, `PAY-*`, `EML-*`, `OBS-REC-*` |
-| Provider Contract Smoke | adapter assumptions against provider test environment | provider adapter only | production adapter | none | isolated nonprod support DB if required | No | Stripe/Resend/Supabase Auth test only | limited safe inputs | documented contract surface only | provider boundary rules |
+| Provider Contract Smoke | adapter assumptions against provider test environment | provider adapter only | production adapter | none | isolated nonprod support DB if required | No | Stripe/Resend/Neon Auth test only | limited safe inputs | documented contract surface only | provider boundary rules |
 
 **TST-GEN-003:** 同一Invariantを複数levelでTestしてよいが、最も低い再現可能なlevelに根本保証Testを置く。E2Eはcross-layer wiringを確認する補助保証とする。
 
@@ -391,9 +391,9 @@ QR raw token generation、nonce、cryptographic keysはProduction contractを弱
 
 ## 16. Database isolation
 
-Database TestはSupabase PostgreSQL互換の**実PostgreSQL engine**を使用し、`pgcrypto` と `btree_gist` を有効化する。
+Database TestはNeon PostgreSQL互換の**実PostgreSQL engine**を使用し、`pgcrypto` と `btree_gist` を有効化する。
 
-Exact PostgreSQL major versionは `SPEC-180` がdeployed Supabase projectと一致するよう固定する。Test suiteはmajor mismatchを検出した場合にmigration/DB gating suiteをfailする。
+Exact PostgreSQL major versionは `SPEC-180` がdeployed Neon projectと一致するよう固定する。Test suiteはmajor mismatchを検出した場合にmigration/DB gating suiteをfailする。
 
 Isolation strategy:
 
@@ -455,7 +455,7 @@ invalid signature
 stale timestamp
 ```
 
-### 17.3 Supabase Auth simulator
+### 17.3 Neon Auth simulator
 
 ```text
 valid verified identity
@@ -480,13 +480,32 @@ role/profile lookup independent DB failure
 
 - Production credential禁止。
 - Production data禁止。
-- Stripe test mode / Resend test-safe recipient / dedicated nonproduction Supabase Auth projectのみ。
+- Stripe test mode / Resend test-safe recipient / dedicated nonproduction Neon Auth projectのみ。
 - destructive testはdedicated test entityだけへ作用する。
 - Provider SLA、rate、delivery時間をpass条件にしない。
 - Provider UI browser automationを標準contract smokeにしない。
 - Network outageでcontract smokeが失敗しても、Unit / Integration evidenceを成功へ書き換えない。
 
 **TST-PRV-003:** Deployment gateでProvider Contract Smokeを必須にする環境と頻度は`SPEC-180`が決定するが、Production release前の最終staging検証では実行可能でなければならない。
+
+### 18.1 Pages / Railway / Neon移行の必須契約検証
+
+以下は本構成のCritical acceptance catalogであり、仕様書改定だけで実装・実行済みとみなさない。後続実装で各Caseを§9のmetadata / manifestへ登録し、通常のG2〜G9等の該当gateへ組み込む。mock / fixtureだけをNeon実Providerや実Browser互換性の証明にしない。
+
+| Test Case ID | 必須検証 | Trace / Evidence |
+|---|---|---|
+| `TC-STACK-001` | Password、Google、OTP、Magic Linkの全方式で初回登録・Login・Email確認・Continuation・失敗 / 中断を確認。password resetも維持 | `FR-AUTH-001/004`, `AR-AUTH-006〜010`。非本番実Neon / Resend SMTP。Google認可画面は専用検証または管理された手動evidenceで確認し、標準mock E2Eで代替しない |
+| `TC-STACK-002` | API用JWTとSession tokenを区別。署名、EdDSA、固定issuer / audience / JWKS、期限、未知key、境界900秒を検証 | `SEC-AUTH-001〜005/008`, `AR-SES-003〜005`。G4/G5 + 実Provider smoke |
+| `TC-STACK-003` | LogoutでCookie / メモリーJWT / protected cacheを破棄。流出済みJWTは最大900秒残存し得るが、それ以降は拒否。残存中も現在Role / Ownership / Email確認を評価 | `AR-SES-008〜009`, `SEC-AUTH-012〜015`。決定論的Clockと実Provider Session終了を別々に確認 |
+| `TC-STACK-004` | Directoryは3項目 / 1 Subject最大1行、現在Emailを返す。API / Email roleだけがviewを読め、元user / Session / password / account table、更新、他worker / Browserからの参照は不可 | `DB-ARC-008`, `EML-RCP-001〜004`, `SEC-DB-003〜005`。real PostgreSQL grant negative test + 実Neon schema適合 |
+| `TC-STACK-005` | Railway認証中継のCookie、Origin / CORS / CSRF、OAuth callback、redirect、no-store、upstream allowlist。Safariで第三者Cookieを許可しない状態を含め、全4方式でSession / JWT取得が成立 | `AR-SES-003〜006`, `SEC-API-001〜008`, `INF-AUTH-001`。実Safari（または管理された実機手動evidence）を含む。WebKit engine単体を全Safari互換性の保証としない |
+| `TC-STACK-006` | Google先行 / email先行双方で確認済みEmailの方式連携が同一Subjectを維持。未確認Email衝突で乗っ取り不可、別Subjectの履歴移管なし | `AR-AUTH-006`, `AR-ID-001〜004`。実Provider。Managed設定が任意に変更可能と仮定しない |
+| `TC-STACK-007` | Magic Linkの300秒境界・再使用、OTP誤入力 / 期限 / attempt上限 / 再送、コードやlinkがlog / storageに出ないこと | `AR-AUTH-006〜008`, `SEC-AUTH-018`。期限 / 上限のProvider適用値をevidenceへ保存 |
+| `TC-STACK-008` | 全詳細URLの直接アクセス / reload / Not Found、認可前の個人Data非表示、静的CSP / cache / headers、camera許可のdocument単位切替、公開artifactのSecret非混入 | `DEV-WEB-001〜008`, `SEC-WEB-003〜012`, `INF-VCL-004〜005`。SPA build / browser / artifact scan。旧Next.js mock buildを根拠にしない |
+| `TC-STACK-009` | Access保護previewで本番API / Authを遮断した成果物検査、同一output hashの再upload、別production deployment ID、公開後smoke、旧productionへのrollback | `INF-DEP-001〜003`, `INF-RBK-001`。通信遮断失敗・意図せぬ接続attemptも検査failure。preview検査は本番連携の証明ではない |
+| `TC-STACK-010` | 4環境別project / Singapore / PG17、非本番への本番Auth clone禁止、R2に認証情報なし、Neon内の認証復旧とSession復活防止、復元後同一Subjectで所有権解決 | `INF-DB-001〜003`, `INF-BKP-001〜004`, `SEC-DB-011`。synthetic restoreと承認済みProduction-class quarantineの証拠を区別 |
+
+全方式のproxy互換性 / Email連携 / Directory最小権限 / 復元安全性が未確認または不成立の場合、Production gateをblockedとする。テストskipやProvider動作を推測したmock期待値で解除しない。
 
 ---
 
@@ -761,7 +780,7 @@ API-ADM-EML-001..005
 - expired token -> deny
 - invalid signature / issuer / audience -> deny
 - Auth service unavailable / JWKS unavailable -> Fail Closed
-- logout / revoked session -> deny
+- Logout / revoked Sessionからの新しいSession利用・JWT発行はdeny。発行済みJWTの最大900秒残存と期限後denyを別Caseで確認
 - Business Profile missing / ambiguous -> no privilege inference
 - current Role re-evaluation after grant/revoke
 
@@ -946,7 +965,7 @@ Test:
 - duplicate source event -> 1 Notification Request
 - missing Notification Request detection / repair
 - source Business TransactionはEmail失敗でrollbackしない
-- recipient authority = Profile -> Auth Subject -> Supabase Auth
+- recipient authority = Profile -> Auth Subject -> Neon Auth
 - recipient snapshot / revision
 - render context Zod validation
 - Email body非永続化
@@ -1004,7 +1023,7 @@ Test:
 - continuationはrelative same-originだけ
 - hostile Host / forwarded hostをabsolute URL authorityにしない
 - `javascript:` / `data:`等dangerous scheme拒否
-- authenticated Browser mutationは256-bit CSRF cookie/header一致 + exact Origin
+- Cookieを使う認証中継はProvider CSRF / state + exact Origin。業務mutationはBearer JWTのみ + exact OriginでCookie認証を受け付けない
 - CSRF/Origin failure -> Hono mutation未実行
 - credentialed wildcard CORS禁止
 - preflightでBusiness action非実行
@@ -1084,7 +1103,7 @@ Retry matrixも `REL-RTY-*` のinitial / multiplier / max / jitter / attempts / 
 | DB `40001` | 50ms | 2 | 400ms | full | 4 transaction attempts total | 2s | 503 |
 | DB `40P01` | 100ms | 2 | 800ms | full | 4 total | 3s | 503 |
 | DB connection acquisition | 100ms | 2 | 500ms | full | 3 connection attempts | 3s | 503 |
-| Supabase Auth temporary | 100ms | 2 | 500ms | full | 2 remote attempts | 7s | 503 / worker reschedule |
+| Neon Auth temporary | 100ms | 2 | 500ms | full | 2 remote attempts | 7s | 503 / worker reschedule |
 | Stripe Checkout create/recovery | 500ms | 2 | 5s | full | initial + 4 same-key | 30s | Unknown / Review path |
 | Stripe read-only lookup | 250ms | 2 | 2s | full | 4 | 15s | scheduled reconciliation |
 | Refund provider write | 1s | 2 | 5s | full | initial + 2 same-key | 20s | stop writes; read-only reconcile |
@@ -1548,7 +1567,7 @@ TC-INV-010-10-002 RESEND_UNKNOWN_SAME_ATTEMPT_RECONCILES
 
 ## 65. Browser isolation
 
-E2EはPlaywright-compatible browser automation contractを使用し、production相当Next.js build + Hono API + isolated PostgreSQLを起動する。
+E2EはPlaywright-compatible browser automation contractを使用し、production相当React SPA build + Hono API + isolated PostgreSQLを起動する。
 
 - E2E workerごとに独立synthetic User / Role / Order / Slot namespace。
 - Browser storage state共有禁止。
@@ -1890,7 +1909,7 @@ Canonical化済みoperationは §27.1 のoperation-family Test対象とし、`UC
 
 - TypeScript Unit / Integration / API: Vitest互換runner
 - Browser E2E: Playwright互換runner
-- PostgreSQL: deployed Supabase projectと同majorのephemeral PostgreSQL
+- PostgreSQL: deployed Neon projectと同majorのephemeral PostgreSQL
 - HTTP: Hono production appをin-processまたはreal socketで起動可能なharness
 
 Frameworkを変更する場合もTest Rule、coverage、parallelism、runner retry、artifact redaction、real PostgreSQL requirementを弱化しない。
@@ -1939,4 +1958,3 @@ AIはpassing implementationに合わせてexpected stateを変更してはなら
 - Test fixture / clock / fault injection contractが具体化されている。
 - `UCR-170-001`はINCORPORATEDであり、canonical Operation ID manifestをTestし、method / path fallbackをfeature coverageとして登録していない。
 - 長期運用される完成システムを対象としている。
-

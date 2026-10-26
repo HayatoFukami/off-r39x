@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-160
 title: Observability and Audit Log
-version: 1.3.0
+version: 2.0.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -54,10 +54,10 @@ related_specs:
 
 本書は次へ適用する。
 
-- Next.js Web / Vercel
+- React SPA / Cloudflare Pagesの静的配信・build / deploy evidence（Web server runtimeは存在しない）
 - Hono API / Railway
-- Supabase Authとのserver-side verification / lookup
-- Supabase PostgreSQL / Drizzle ORM / `pg`
+- Neon Authとのserver-side verification / lookup
+- Neon PostgreSQL / Drizzle ORM / `pg`
 - Stripe Checkout / Payment / Refund / Stripe Webhook
 - Entry Ticket / Karaoke Ticket / QR / Check-in
 - Karaoke Slot / Hold / Reservation
@@ -74,7 +74,7 @@ related_specs:
 本書は次をCanonicalには定義しない。
 
 - Monitoring SaaS、log backend、metric backend、collector、agent、dashboard製品の選定
-- Vercel / Railway / Supabase / external observability productのdeployment wiring
+- Cloudflare Pages / Railway / Neon / external observability productのdeployment wiring
 - scheduler製品、alert delivery product、on-call destinationの具体設定
 - Provider自身のSLA、log保存保証、monitoring productの保証値
 - retry / reconciliation cadence / Recovery Runbookそのもの
@@ -217,7 +217,7 @@ Applicationコードは各layerで自由文を出すのではなく、本書のe
 - 欠落 / 無効ならHono APIが生成
 - response `X-Request-Id` とerror envelopeの `request_id` と一致
 - background workerでは原則 `null`
-- Next.js WebがBrowser requestを起点にHono APIを呼ぶ場合、Webは有効な既存UUIDを引き継ぐか新規UUIDを生成して `X-Request-Id` としてforwardし、Hono APIのvalidationを受ける。同じ論理HTTP chainのWeb/API logは同じ `request_id` で相関可能にする。
+- React SPAがBrowser requestを起点にHono APIを呼ぶ場合、Webは有効な既存UUIDを引き継ぐか新規UUIDを生成して `X-Request-Id` としてforwardし、Hono APIのvalidationを受ける。同じ論理HTTP chainのWeb/API logは同じ `request_id` で相関可能にする。
 
 **OBS-COR-001:** `request_id` はcorrelation専用であり、Business Cause、Transport Idempotency Key、Provider Idempotency Key、DB unique authorityへ使用しない。
 
@@ -398,7 +398,7 @@ Application Logは1 event = 1 JSON objectのstructured logとする。
 | `is_retry` | boolean | Yes | 初回false |
 | `business_cause_ref` | string/null | No | §10 |
 | `transport_idempotency_fp` | hex32/null | No | §11 |
-| `provider` | `STRIPE\|RESEND\|SUPABASE_AUTH\|SUPABASE_DB`/null | No | bounded |
+| `provider` | `STRIPE\|RESEND\|NEON_AUTH\|NEON_DB`/null | No | bounded |
 | `provider_event_ref` | string/null | No | §12 |
 | `provider_object_ref` | string/null | No | §12 |
 | `provider_idempotency_fp` | hex32/null | No | §11 |
@@ -1069,7 +1069,7 @@ UNKNOWN
 | `request_id` | uuid | Yes | HTTP operation when present |
 | `business_cause_ref` | text | Yes | safe cause reference |
 | `transport_idempotency_fp` | char(32) | Yes | §11 fingerprint |
-| `provider` | text | Yes | `STRIPE\|RESEND\|SUPABASE_AUTH\|SUPABASE_DB` |
+| `provider` | text | Yes | `STRIPE\|RESEND\|NEON_AUTH\|NEON_DB` |
 | `provider_event_ref` | text | Yes | allowlisted exact provider event ID |
 | `provider_object_ref` | text | Yes | allowlisted operational provider object ID |
 | `provider_idempotency_fp` | char(32) | Yes | §11 fingerprint |
@@ -1596,7 +1596,7 @@ Session token
 Authorization header
 Cookie header/value
 CSRF secret/token
-Supabase service credential
+Neon management / Auth SMTP / OAuth credential
 Database password / connection string
 Stripe secret key
 Stripe webhook signing secret
@@ -1689,7 +1689,7 @@ Canonical environment values are `production`, `staging`, `development`, `test`.
 | Dashboard unavailable | Business operation continues | logs/metrics/audit remain collected; dashboard is not authority |
 | Observability correlation HMAC key unavailable | raw key MUST NOT be logged as fallback | omit optional fingerprint, emit Security/Observability failure; operation authority remains upstream Business/Provider keys |
 
-**OBS-GEN-008:** Observability failure never authorizes Browser/Next.js direct Business Database writes, unsigned webhooks, cached roles, plaintext QR fallback, or duplicate Provider calls.
+**OBS-GEN-008:** Observability failure never authorizes Browser/React SPA direct Business Database writes, unsigned webhooks, cached roles, plaintext QR fallback, or duplicate Provider calls.
 
 ## 53. Log sink buffering boundary
 
@@ -2003,7 +2003,7 @@ Canonical化済みのRecovery command（`API-ADM-REC-003〜007`）は、本書�
 
 - System Boundaryの変更
 - Event Bus /別System of Recordの追加
-- Browser / Next.js WebからBusiness Databaseへの直接業務更新
+- Browser / React SPAからBusiness Databaseへの直接業務更新
 - `request_id` のIdempotency Authority化
 - raw Idempotency Keyの通常log保存
 - raw QR / Token / Credential / Secretの記録
@@ -2017,4 +2017,3 @@ Canonical化済みのRecovery command（`API-ADM-REC-003〜007`）は、本書�
 - Audit EventのApplication Log sampling依存
 - `recovery.exception.execute` のgeneric superuser化
 - `UCR-130-005`（operational index）の反映済み仮定
-

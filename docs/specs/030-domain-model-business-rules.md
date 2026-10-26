@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-030
 title: Domain Model and Business Rules
-version: 1.1.1
+version: 2.0.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -70,7 +70,7 @@ related_specs:
 - `SPEC-010 System Overview`: Actor、System Boundary、System of Record、主要Data Flow、Security Principle、`INV-010-*`
 - `SPEC-020 Functional Requirements`: 完成システムの `FR-*`
 
-本書のDomain Entityは、Supabase PostgreSQLがBusiness Databaseであること、および業務状態のSystem of Recordであることを前提とする。一方、Supabase Auth IdentityのCredential状態はSupabase Auth、外部決済処理の権威ある結果はStripeが保持するという上流の責務分離を維持する。
+本書のDomain Entityは、Neon PostgreSQLがBusiness Databaseであること、および業務状態のSystem of Recordであることを前提とする。一方、Neon Auth IdentityのCredential状態はNeon Auth、外部決済処理の権威ある結果はStripeが保持するという上流の責務分離を維持する。
 
 ## 4. Canonical Domain Terms
 
@@ -78,7 +78,7 @@ related_specs:
 
 | Term | Canonicalな意味 |
 |---|---|
-| Business Profile | Supabase Auth Identityと1対1で対応し、業務データ上の本人・所有者を表すEntity |
+| Business Profile | Neon Auth Identityと1対1で対応し、業務データ上の本人・所有者を表すEntity |
 | Event | 本Webシステムが扱う対象イベントの業務上のルート情報 |
 | Entry Ticket Offering | Entry Ticketとして販売する種別と販売条件を表すConfiguration Entity |
 | Sales Period | 新規購入を許可する日時範囲。開始を含み終了を含まない半開区間 |
@@ -326,17 +326,17 @@ stateDiagram-v2
 
 ### 9.1 Auth IdentityとBusiness Profile
 
-Supabase Auth Identityは認証IdentityのSystem of Recordであり、Business ProfileはBusiness Databaseに存在する業務上の本人Entityである。
+Neon Auth Identityは認証IdentityのSystem of Recordであり、Business ProfileはBusiness Databaseに存在する業務上の本人Entityである。
 
 Cardinalityは以下とする。
 
 ```text
-Supabase Auth Identity 1 ─── 1 Business Profile
+Neon Auth Identity 1 ─── 1 Business Profile
 ```
 
 認証済みIdentityが本システムの業務機能を利用する場合、対応するBusiness Profileが一意に存在しなければならない。同一Auth Identityに複数のBusiness Profileを対応させてはならず、1つのBusiness Profileを複数Auth Identityで共有してはならない。
 
-Password CredentialやSupabase Auth内部のCredential状態をBusiness Profileへ保存しない。
+Password CredentialやNeon Auth内部のCredential状態をBusiness Profileへ保存しない。
 
 ### 9.2 Business ProfileのOwner
 
@@ -370,7 +370,7 @@ Administrator / Staff権限はCustomer関係から導出してはならない。
 
 | Rule ID | Rule | 関連FR | 関連Invariant |
 |---|---|---|---|
-| BR-USR-001 | 認証済み業務操作はServer-sideで検証したSupabase Auth Identityから一意のBusiness Profileを解決しなければならない。 | FR-AUTH-009〜012, FR-XFN-002〜003 | INV-010-08 |
+| BR-USR-001 | 認証済み業務操作はServer-sideで検証したNeon Auth Identityから一意のBusiness Profileを解決しなければならない。 | FR-AUTH-009〜012, FR-XFN-002〜003 | INV-010-08 |
 | BR-USR-002 | Customerは業務関係から導出し、独立した高権限Roleとして保存または認可根拠に使用してはならない。 | FR-AUTH-013 | INV-010-08 |
 | BR-USR-003 | OrderのCustomerはOrder作成時に確定し、その後の通常操作で別Business Profileへ変更してはならない。 | FR-TKT-008, FR-MYP-002, FR-XFN-017 | INV-010-08 |
 | BR-USR-004 | Entry Ticket、Karaoke Reservation、Karaoke Ticket、Goods Order ItemのOwner / Customerは、それらを成立させたOrderのCustomerと一致しなければならない。 | FR-TKT-019〜023, FR-KRK-018, FR-KRK-024〜025, FR-GDS-012〜013, FR-MYP-003〜010 | INV-010-08 |
@@ -1255,7 +1255,7 @@ Supports: `INV-010-01`, `INV-010-07`, `INV-010-10`
 | FR-PUB-007〜010 | Entry Ticket Offering, Karaoke Sales Configuration, Goods, Sale Control State, Sales Availability, BR-SAL-001〜005 |
 | FR-PUB-012 | BR-USR-001, BR-SAL-005。認証UI詳細はSPEC-040/050/060 |
 | FR-PUB-013〜014 | Domain data sourceはEvent / Sales Configuration。Failure UX / NavigationはSPEC-040/050 |
-| FR-AUTH-001〜009 | Auth IdentityはSupabase Authの責務。Business Profileとの1:1関係はBR-USR-001 |
+| FR-AUTH-001〜009 | Auth IdentityはNeon Authの責務。Business Profileとの1:1関係はBR-USR-001 |
 | FR-AUTH-010〜012 | Business Profile ownership, BR-USR-001, BR-USR-006 |
 | FR-AUTH-013 | Customer導出Rule, BR-USR-002 |
 | FR-AUTH-014 | 既存Domain state保持, BR-ORD-010, DI-030-001 |
@@ -1330,7 +1330,7 @@ Supports: `INV-010-01`, `INV-010-07`, `INV-010-10`
 | FR-ADM-021 | `REVIEW_REQUIRED`, Consistency Review Case |
 | FR-ADM-022 | 監査可能なDomain event対象。SchemaはSPEC-160 |
 | FR-STF-001〜016 | Entry/Karaoke Check-in, Ticket state, BR-CHK-001〜008, BR-USR-007 |
-| FR-EML-001 | Auth通知はSupabase Auth。Business通知とは別責務 |
+| FR-EML-001 | Auth通知はNeon Auth。Business通知とは別責務 |
 | FR-EML-002〜011 | Notification Request state, BR-NTF-001〜006 |
 | FR-EML-012 | Template / Retry詳細はSPEC-120/150 |
 
@@ -1439,7 +1439,7 @@ SPEC-070のPAY-ORD-004等のPurpose記述は、本改訂と同時にSPEC-070 1.1
 本仕様書は以下をすべて満たす場合に成立する。
 
 1. Event、Business Profile、Sales Configuration、Order、Order Item、Entry Ticket、Karaoke Slot、Karaoke Hold、Karaoke Reservation、Karaoke Ticket、Goods、Inventory、Goods Handoff、Check-in、Notification RequestがDomain上明示されている。
-2. Supabase Auth IdentityとBusiness Profileが1対1であり、Credentialと業務Profileが分離されている。
+2. Neon Auth IdentityとBusiness Profileが1対1であり、Credentialと業務Profileが分離されている。
 3. Customerが独立高権限Roleではなく業務関係から導出される。
 4. Orderが外部決済遷移前に `PREPARED` として存在する。
 5. Browser redirectだけでOrderを `CONFIRMED` にしない。

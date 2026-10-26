@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-100
 title: Database Design
-version: 1.0.2
+version: 2.0.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -31,7 +31,7 @@ related_specs:
 
 本書は、**off r39'x in 大阪らへん2027** Webシステムの完成形におけるBusiness Databaseの物理設計を定義する。
 
-Business Databaseは `SPEC-010` のとおり **Supabase PostgreSQL** とし、Hono APIがDrizzle ORM / `pg` を介して業務更新を行う。本書は `SPEC-030` のDomain Entity / State / Cardinality、`SPEC-060` のAuthentication / Authorization、`SPEC-070` のOrder / Payment / Refund、`SPEC-080` のTicket / QR / Check-in、`SPEC-090` のKaraoke Slot / Hold / Reservationを変更せず、PostgreSQL table、column、type、PK、FK、UNIQUE、CHECK、EXCLUDE、Index、transaction、lock、migrationへ具体化する。
+Business Databaseは `SPEC-010` のとおり **Neon PostgreSQL** とし、Hono APIがDrizzle ORM / `pg` を介して業務更新を行う。本書は `SPEC-030` のDomain Entity / State / Cardinality、`SPEC-060` のAuthentication / Authorization、`SPEC-070` のOrder / Payment / Refund、`SPEC-080` のTicket / QR / Check-in、`SPEC-090` のKaraoke Slot / Hold / Reservationを変更せず、PostgreSQL table、column、type、PK、FK、UNIQUE、CHECK、EXCLUDE、Index、transaction、lock、migrationへ具体化する。
 
 本書はDatabase physical designのCanonical Ownerである。API endpoint、HTTP status、Email lifecycle、Admin / Staff画面、Security Control全般、Recovery Runbook、Audit Event taxonomy、Test case、Deployment環境は各下流Canonical Ownerへ委譲する。
 
@@ -44,7 +44,7 @@ Business Databaseは `SPEC-010` のとおり **Supabase PostgreSQL** とし、Ho
 本書は次へ直接依存する。
 
 - `SPEC-000`: Canonical Owner、`depends_on`、Upstream Change Request、未決定事項の決定規則
-- `SPEC-010`: Supabase PostgreSQL / Hono API / Supabase Auth / StripeのSystem Boundary、System of Record、`INV-010-01〜10`
+- `SPEC-010`: Neon PostgreSQL / Hono API / Neon Auth / StripeのSystem Boundary、System of Record、`INV-010-01〜10`
 - `SPEC-020`: `FR-AUTH-*`, `FR-TKT-*`, `FR-KRK-*`, `FR-GDS-*`, `FR-MYP-*`, `FR-ADM-*`, `FR-STF-*`, `FR-XFN-*`
 - `SPEC-030`: Domain Entity、State Machine、Cardinality、`BR-*`, `DI-030-001〜012`
 - `SPEC-060`: Auth Subject ↔ Business Profile、Role Assignment、Ownership / Role authorization、`AR-*`
@@ -65,7 +65,7 @@ Business Databaseは `SPEC-010` のとおり **Supabase PostgreSQL** とし、Ho
 | Internal ID | DB内部のjoin / FKに使用する非公開識別子。`bigint GENERATED ALWAYS AS IDENTITY` |
 | Public Reference | Browser / API境界でEntityを参照するための推測困難なUUID。Authorization credentialではない |
 | Business Schema | 本システムが所有するPostgreSQL schema `app` |
-| Auth Subject | Supabase Auth Identityを一意に参照するUUID。Business DatabaseはCredentialを保持しない |
+| Auth Subject | Neon Auth Identityを一意に参照するUUID。Business DatabaseはCredentialを保持しない |
 | Business Cause Key | retryで同一Business operationを識別する、業務効果の重複防止用の永続key |
 | Historical Row | financial / entitlement / payment / check-in / role history等、通常運用でhard deleteしないrow |
 | Current-state Row | 現在Stateを保持し、条件付きUPDATEで遷移させるrow |
@@ -78,13 +78,13 @@ Business Databaseは `SPEC-010` のとおり **Supabase PostgreSQL** とし、Ho
 
 ## 4. Database authority
 
-**DB-ARC-001:** Business DatabaseはSupabase PostgreSQLである。
+**DB-ARC-001:** Business DatabaseはNeon PostgreSQLである。
 
-**DB-ARC-002:** Browser / Next.js WebからBusiness Schemaを直接更新してはならない。業務更新主体はHono APIである。
+**DB-ARC-002:** Browser / React SPAからBusiness Schemaを直接更新してはならない。業務更新主体はHono APIである。
 
 **DB-ARC-003:** API validation / authorization / Domain validationとDB Constraintは相互代替ではない。APIはBusiness Ruleを評価し、DBはcritical invariantの最終防御を行う。
 
-**DB-ARC-004:** Supabase AuthはIdentity / CredentialのSystem of Recordであり、`app` schemaはPassword、password hash、refresh credentialその他Supabase Auth内部Credentialを保存しない。
+**DB-ARC-004:** Neon AuthはIdentity / CredentialのSystem of Recordであり、`app` / `auth_read`はPassword、password hash、refresh credential、Sessionその他Neon Auth内部Credentialを保存しない。Provider所有`neon_auth`は同一DB内に存在するが、本システムのBusiness Schemaではない。
 
 **DB-ARC-005:** Stripeは外部Payment Authorityであり、`app` schemaはcard number、CVC、raw payment method secretを保存しない。
 
@@ -104,7 +104,25 @@ app.karaoke_slots
 ...
 ```
 
-`public` schemaへBusiness tableを作成しない。Supabase管理schema `auth`, `storage` 等へ本システムのmigrationでtableを追加しない。
+`public` schemaへBusiness tableを作成しない。Neon管理の`neon_auth`へ本システムのmigrationでtableを追加・変更しない。認証内部tableをDrizzleの生成migrationの管理対象に含めない。
+
+### 5.1 認証Directoryの限定読み取り
+
+**DB-ARC-008:** 業務APIのcurrent Identity / Email確認とEmail Workerの宛先解決のため、deployment-managedな `auth_read.identity_directory` ビューだけを公開する。
+
+| Column | Type | 意味 |
+|---|---|---|
+| `auth_subject` | uuid | Providerの安定したuser ID |
+| `email` | text / nullable | Providerのcurrent primary Email |
+| `email_verified` | boolean | そのcurrent Emailの確認済み状態 |
+
+- 同一環境・同一DBのNeon管理user tableのID / Email / verified列のみを投影し、1 Subject最大1行とする。別のEmail cache / 同期tableを作らない。
+- `security_barrier`付きの読み取り専用ビューとし、NOLOGIN owner `auth_directory_owner`へ元tableの必要3列だけのSELECTを付与する。runtimeへ元tableのSELECT、Session / account / verification / password tableへの権限を与えない。
+- `app_api_runtime` / `app_email_runtime`だけへ `auth_read` のUSAGEと当該ビューのSELECTを許可する。PUBLIC、Browser、Recon Worker、backup reader、通常のincident readerへ付与しない。runtimeのINSERT / UPDATE / DELETE / DDL / GRANTは禁止する。
+- migration / grant適用は専用deployment identityで行い、Provider-owned table / Credentialは変更しない。参照するProvider schema version・列・UUID形式・ビューのgrantをProvider contract / migration testで確認する。互換性を失った場合はFail Closedとし、全Auth schemaを読むfallbackを作らない。
+- Directoryの0行はIdentity不存在、Email欠落・未確認はrecipient不可、DB読取不能は一時lookup failureとして `SPEC-060` / `SPEC-120` の既存分類へ接続する。financial historyをcascade削除しない。
+
+これは必要3項目の限定読み取りであり、Neon AuthのSystem of Record / Session検証の再実装や、架空のservice-role Auth Admin APIを導入する契約ではない。
 
 Naming convention:
 
@@ -422,7 +440,7 @@ Index: `ix_announcements_event_state_published(event_id, state, published_at DES
 
 ### 14.1 `app.business_profiles`
 
-Purpose: Supabase Auth IdentityとBusiness Database上の本人 / Ownerの1:1対応。
+Purpose: Neon Auth IdentityとBusiness Database上の本人 / Ownerの1:1対応。
 
 | Column | Type | Null | Rule |
 |---|---|---:|---|
@@ -434,9 +452,9 @@ Purpose: Supabase Auth IdentityとBusiness Database上の本人 / Ownerの1:1対
 
 本書の必須上流仕様にBusiness Profileのユーザー編集FieldはCanonicalに列挙されていないため、推測で氏名・電話・住所等を追加しない。後続で正式なprofile fieldがCanonical化された場合は通常のschema evolutionで追加する。
 
-`auth.users` へのDB FKは張らない。理由:
+Neon管理user table（`neon_auth`）へのDB FKは張らない。理由:
 
-- Supabase Authは別System of Record / managed schemaである。
+- Neon Authは別System of Record / managed schemaである。
 - Auth Identity削除・privacy operationがfinancial historyをcascade / RESTRICTで巻き込むことを避ける。
 - Hono APIが検証済みAuth Subjectだけをprovisioning入力にする。
 
@@ -484,7 +502,7 @@ Historyは保持し、revoke時もDELETEしない。
 pg_advisory_xact_lock(hashtext('app:active-administrator-set'))
 ```
 
-**DB-AUTH-002:** Supabase Auth metadata / Client role claimをRole Assignment tableへ自動同期してauthorityにしない。
+**DB-AUTH-002:** Neon Auth metadata / Client role claimをRole Assignment tableへ自動同期してauthorityにしない。
 
 Trace: `AR-ROLE-004〜013`, `INV-010-08`.
 
@@ -1771,7 +1789,7 @@ Order -> Allocation/Hold -> Capacity/Inventory/Slot -> Entitlement
 ### 50.1 Current Profile
 
 ```text
-business_profiles.auth_subject = verified_supabase_subject
+business_profiles.auth_subject = verified_neon_subject
 ```
 
 unique constraintにより0..1件。0件はprovisioning、複数はDB上不可能。
@@ -1837,17 +1855,18 @@ Admin / Staffが何を表示できるかはSPEC-130、Recovery手順はSPEC-150�
 理由:
 
 - `SPEC-010` の業務アクセス主体はHono APIである。
-- Browser / Next.js WebはBusiness Databaseへ直接接続しない。
+- Browser / React SPAはBusiness Databaseへ直接接続しない。
 - `SPEC-060` のAuthorization Principal / Role Assignment / Owner ruleをHono APIへ集約する。
 
 代わりに:
 
 ```text
 REVOKE ALL ON SCHEMA app FROM PUBLIC;
-REVOKE ALL ON ALL TABLES IN SCHEMA app FROM anon, authenticated;
+REVOKE ALL ON ALL TABLES IN SCHEMA app FROM PUBLIC;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA app FROM PUBLIC;
 ```
 
-相当の権限制御を行い、Hono API用の専用DB roleだけへ必要privilegeを与える。Supabaseの`anon` / `authenticated` roleをBusiness tableの直接read/write主体にしない。
+相当の権限制御を行い、専用server DB roleだけへ必要privilegeを与える。Data API / Browser向けroleは実在するroleを列挙して同様に閉じ、`anon` / `authenticated`という特定Providerのrole名が存在するとは仮定しない。Neon Data APIを本システムの業務・認証Directory参照に使用しない。
 
 RLSを「念のため」有効化してauthorization logicを二重実装しない。将来Browser direct DB accessを導入する場合はSystem Boundary変更であり、SPEC-010 / SPEC-060の変更が先に必要である。
 
@@ -2122,7 +2141,7 @@ Karaoke exclusionやactive Hold unique等を、既存違反を無視してapplic
 
 実装は少なくとも以下を満たさなければならない。
 
-1. Business tableは`app` schemaに存在し、Browser/Supabase `anon` / `authenticated` roleへ直接write権限を与えない。
+1. Business tableは`app` schemaに存在し、Browser / Data API向けの実在roleとPUBLICへ直接write権限を与えない。旧Provider固有role名の存在を仮定しない。
 2. Internal PKとPublic Referenceを分離する。
 3. Auth SubjectはBusiness Profileへ最大1件だけ対応する。
 4. Role AssignmentはACTIVE/REVOKED履歴を保持し、同一Profile/RoleのACTIVEは最大1件。
@@ -2167,10 +2186,10 @@ Karaoke exclusionやactive Hold unique等を、既存違反を無視してapplic
 
 以下を禁止する。
 
-- Browser / Next.jsからBusiness Databaseへ直接write
+- Browser / React SPAからBusiness Databaseへ直接write
 - Public ReferenceをAuthorization credentialとして使用
 - Client user IDをOwner FKとして採用
-- Supabase Auth metadataをOperational Role authorityとして使用
+- Neon Auth metadataをOperational Role authorityとして使用
 - PostgreSQL native enumへ上流Stateを閉じ込める
 - float / double precisionでPayment amountを保存
 - Stripe Event ID uniquenessなしでWebhook処理

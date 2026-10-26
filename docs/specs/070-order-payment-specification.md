@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-070
 title: Order and Payment Specification
-version: 1.1.0
+version: 2.0.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -307,7 +307,7 @@ Webhook受信では、Stripe SDK等の正規検証手段を用いてraw request 
 
 **PAY-WHK-005:** JSON parse済みbodyを再serializeした値等、署名対象raw bodyと異なるpayloadで検証を代替してはならない。
 
-**PAY-WHK-006:** Webhook routeは一般利用者のSupabase Auth Sessionを送信元認証根拠としない。Stripe署名が外部送信元検証の根拠である。
+**PAY-WHK-006:** Webhook routeは一般利用者のNeon Auth Sessionを送信元認証根拠としない。Stripe署名が外部送信元検証の根拠である。
 
 ## 17. Webhook receipt / Event idempotency
 

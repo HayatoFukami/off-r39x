@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-200
 title: System Acceptance Criteria
-version: 1.1.0
+version: 2.0.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -239,7 +239,7 @@ release_manifest_sha256
 git_sha
 migration_set_sha256
 api_image_digest
-Vercel deployment identity
+Cloudflare Pages deployment identity
 Railway deployment identity set
 spec_versions
 ```
@@ -250,7 +250,7 @@ spec_versions
 
 **ACC-GEN-010:** 別commit、別migration set、別OCI digest、別spec version setのTest resultを同一releaseのEvidenceとして混在させない。
 
-**ACC-GEN-011:** VercelとRailwayでEnvironment別buildが存在しても、`SPEC-180` が要求する共通identity fieldが一致しない場合は同一releaseとみなさない。
+**ACC-GEN-011:** Cloudflare PagesとRailwayでEnvironment別buildが存在しても、`SPEC-180` が要求する共通identity fieldが一致しない場合は同一releaseとみなさない。
 
 ### 7.2 Spec Version Set
 
@@ -285,7 +285,7 @@ Spec Version Setには次を含める。
 | Mergeable | merge candidateがsource / test gateを満たす | `SPEC-170/190/180` merge gate、static validation、traceability | G1〜G8 failure、Critical failure、static / traceability failure |
 | Staging Deployable | merge commitをstagingへ配置できる | immutable release identity、migration applicability、staging config | artifact / migration / config identity failure |
 | Production Promotable | same releaseをProductionへpromoteしてよい | staging G1〜G10 required evidence、G9、security / infra / backup / approval | required suite failure、G9 unavailable/fail、backup/config mismatch |
-| Production Deployed | Productionへの配置・healthが成功 | migration、readiness、staged smoke、domain promotion、post-deploy smoke | readiness / migration / smoke / critical alert failure |
+| Production Deployed | Productionへの配置・healthが成功 | migration、readiness、保護preview成果物検査、本番再upload、post-deploy smoke | readiness / migration / smoke / critical alert failure |
 | System Accepted | Production deployment後も全System Acceptanceが成立 | 全Blocking ACC rule、post-deploy evidence、identity一致 | Critical invariant/security/reliability/infra/test/evidence failure |
 
 **ACC-RELSE-001:** Merge可能であることをSystem Acceptedとみなさない。
@@ -538,7 +538,7 @@ Acceptance Manifest、Release Manifest、最終gate summary、approval reference
 
 ## 16. Authentication / Authorization
 
-**ACC-AUTH-001:** Supabase Auth identity / sessionはHono APIでServer-side verificationされ、Browser / Next.jsの「ログイン済み」表示だけをBusiness authorization根拠にしないことをG4/G5 evidenceで証明する。
+**ACC-AUTH-001:** 業務APIへ送るNeon Auth JWTと現在のIdentity / Email確認状態はHono APIでServer-side verificationされ、Browser / React SPAの「ログイン済み」表示だけをBusiness authorization根拠にしないことをG4/G5 evidenceで証明する。Provider SessionとAPI用JWTを区別し、Logout後の残存は `SPEC-060` の最大15分に従う。
 
 **ACC-AUTH-002:** Auth SubjectからBusiness Profileを一意に解決し、owner resourceはPublic Reference単独ではなくverified Profile relationを含むowner-safe lookupを使用することを証明する。
 
@@ -650,7 +650,7 @@ Acceptance Manifest、Release Manifest、最終gate summary、approval reference
 
 **ACC-EML-002:** Notification retry / recoveryは元Order / Refund / Reservation / Ticket / Goods transactionを再実行しない。
 
-**ACC-EML-003:** recipient authorityはBusiness Profile → Auth Subject → Supabase Auth server-side lookupであり、Client email / Stripe emailをauthorityにしない。
+**ACC-EML-003:** recipient authorityはBusiness Profile → Auth Subject → Neon Auth server-side lookupであり、Client email / Stripe emailをauthorityにしない。
 
 **ACC-EML-004:** first provider send前にrecipient snapshot / template contractをCurrent Canonical semanticsどおり固定し、自動retryで暗黙変更しない。
 
@@ -726,13 +726,13 @@ Database AcceptanceはUnit mockだけでは成立しない。
 
 Security AcceptanceはCritical Blocking Criterionである。
 
-**ACC-SEC-001:** Supabase Auth token / Sessionはserver-sideでissuer / signature / expiry等を検証し、安全に検証できない場合Fail Closedする。
+**ACC-SEC-001:** Neon Auth token / Sessionはserver-sideでissuer / signature / expiry等を検証し、安全に検証できない場合Fail Closedする。
 
 **ACC-SEC-002:** Session / Credential / Password / reset token / verification tokenをBusiness Database、Application Log、Client-readable persistent storageへ不必要に保存しない。
 
 **ACC-SEC-003:** owner-safe authorization、Administrator / Staff current Capability enforcement、Administrator非generic-superuser、Administrator非Staff暗黙継承をG5でnegative testする。
 
-**ACC-SEC-004:** Browser / Next.jsのCSRF、CORS、XSS / escaping、CSP / Security Headerが`SEC-*`のCurrent Canonical controlと一致するconfig / E2E / security evidenceを持つ。
+**ACC-SEC-004:** Browser / React SPAのCSRF、CORS、XSS / escaping、CSP / Security Headerが`SEC-*`のCurrent Canonical controlと一致するconfig / E2E / security evidenceを持つ。
 
 **ACC-SEC-005:** credentialed CORSにwildcard originを使用せず、state-changing Browser requestのCSRF / exact origin等のCurrent controlを維持する。
 
@@ -800,7 +800,7 @@ SPEC-200はretry count、backoff、jitter、timeout、reconciliation cadence、c
 
 **ACC-OBS-004:** replay可能key / sensitive correlationはraw値で記録せずCurrent HMAC fingerprint contractを使用し、Production / nonproduction key separationを維持する。
 
-**ACC-OBS-005:** deployment resource attributeはRelease Ref / git SHA / Vercel deployment / Railway deployment / image digestへjoin可能である。
+**ACC-OBS-005:** deployment resource attributeはRelease Ref / git SHA / Cloudflare Pages deployment / Railway deployment / image digestへjoin可能である。
 
 **ACC-OBS-006:** Metric labelはbounded cardinalityを維持し、Public Reference、raw provider event、Email等をunbounded labelへ入れない。
 
@@ -870,7 +870,9 @@ G10 hot-concurrency
 
 **ACC-TST-006:** Provider Test DoubleはProvider contract surfaceとfailure injectionに使用し、Provider Contract Smokeの代替にしない。
 
-**ACC-TST-007:** Provider Contract Smokeはprotected nonproduction credentialでStripe / Resend / Supabase AuthのCurrent contract surfaceを確認する。
+**ACC-TST-007:** Provider Contract Smokeはprotected nonproduction credentialでStripe / Resend / Neon AuthのCurrent contract surfaceを確認する。
+
+Pages / Railway / Neonへの移行は `SPEC-170 §18.1` の `TC-STACK-001〜010` を満たすことを必要条件とする。認証4方式の実Provider・Safari互換性、同一Subject連携、Directory最小権限、JWTの最大15分残存、静的SPAのURL / headersと成果物検査をmockで代替しない。未確認の契約はProductionをblockedとし、仕様書だけの改定を実装完了・テストPassと報告しない。
 
 **ACC-TST-008:** Deterministic Clock / deterministic Random / fixed seed / barrier等を利用し、time / randomness / concurrency-sensitive Testを再現可能にする。
 
@@ -890,9 +892,11 @@ G10 hot-concurrency
 
 ## 28. Environment / runtime identity
 
-**ACC-INF-002:** `production`, `staging`, `development`, `test` のCanonical EnvironmentがVercel / Railway / Supabase / Stripe / Resend / observability / secretで分離される。
+**ACC-INF-002:** `production`, `staging`, `development`, `test` のCanonical EnvironmentがCloudflare Pages / Railway / Neon / Stripe / Resend / observability / secretで分離される。
 
 **ACC-INF-003:** deployed Node / PostgreSQL major、extensions、runtime process identityは`SPEC-180`のCurrent Canonical valueと一致する。SPEC-200はmajor version値を所有しない。
+
+Pagesは静的SPAのみとしNode server runtimeを持たない。Node majorはCI / Railwayに適用する。API / worker / DB / AuthのSingapore配置と4環境別project、非本番への本番認証データ複製禁止を検証する。
 
 **ACC-INF-004:** API runtime、Email Worker、Reconciliation Worker、migration、Audit read / purge、backup、emergency recoveryのDB role / machine identity separationがCurrent `INF-*`に一致する。
 
@@ -932,13 +936,15 @@ G10 hot-concurrency
 
 **ACC-INF-016:** restoreでStripe charge / Refund / Resend acceptance等のProvider side effectを巻き戻したとみなさず、post-restore reconciliationへ接続する。
 
+認証データはNeon側の7日間の復旧範囲のみを保護対象とし、R2の業務`app` backupには含めない。R2だけで全アカウントを復元できると扱わず、復元後のSession再使用防止・既発行JWTの期限・Auth Subjectと業務所有権の対応確認をProduction再公開前に満たす。
+
 ---
 
 ## 32. Production deployment
 
 **ACC-INF-017:** Production deployはapproved protected Environmentからimmutable release identityを使用する。
 
-**ACC-INF-018:** Production deployment sequenceはCurrent `SPEC-180`のmigration → Railway API / workers → readiness → Vercel staged deployment → smoke → domain promotion → post-deploy observation順序を維持する。
+**ACC-INF-018:** Production deployment sequenceはCurrent `SPEC-180`のmigration → Railway API / workers → readiness → Access保護Pages previewで本番API / Auth通信を遮断した成果物検査 → 承認 → 同一outputのproduction Direct Upload → post-deploy smoke / observation順序を維持する。previewの昇格を前提にせず、両deployment IDとoutput hashを記録する。
 
 **ACC-INF-019:** staging evidenceとProduction deploymentがsame release identityを参照する。
 
@@ -964,7 +970,7 @@ G10 hot-concurrency
 
 **ACC-DEV-005:** Browser / WebからBusiness Database / Drizzle / `pg`へのBusiness direct accessが存在しないことをsource graph / import / code scanで証明する。
 
-**ACC-DEV-006:** DB transaction中にStripe / Resend / Supabase Auth等のexternal network callを実行しないことをcode review / static rule / integration evidenceで確認する。
+**ACC-DEV-006:** DB transaction中にStripe / Resend / Neon Auth等のexternal network callを実行しないことをcode review / static rule / integration evidenceで確認する。
 
 ---
 
@@ -1272,9 +1278,9 @@ NON_BLOCKING_CLARIFICATION
 Acceptance artifact / CI artifact / release noteは次を含めてはならない。
 
 - raw QR token / payload / decrypted QR material
-- Supabase access / refresh token
+- Neon access / refresh token
 - Password / reset / verification token
-- Stripe / Resend / Supabase / DB Secret
+- Stripe / Resend / Neon / DB Secret
 - QR HMAC / AEAD key
 - raw webhook body
 - full provider response / error object

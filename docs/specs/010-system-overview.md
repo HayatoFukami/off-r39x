@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-010
 title: System Overview
-version: 1.0.0
+version: 2.0.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -93,7 +93,7 @@ source_materials:
 | Term | 意味 |
 |---|---|
 | Guest | 認証されていない一般閲覧者 |
-| Authenticated User | Supabase Authにより認証済みの利用者 |
+| Authenticated User | Neon Authにより認証済みの利用者 |
 | Customer | 注文、チケット、予約、グッズ購入等の顧客関係を持つAuthenticated User。権限Role名ではなく業務上のActor分類 |
 | Staff | 当日受付等の運用権限を持つ認証済み運用者 |
 | Administrator | 管理機能および運用設定を扱う認証済み管理者 |
@@ -103,8 +103,8 @@ source_materials:
 | Karaoke Ticket | Karaoke Reservationの当日受付に使用する電子チケット |
 | Goods Order Item | 会場受け取りを基本とするグッズ購入明細 |
 | Check-in | QR等を用いて権利の有効性を確認し、利用済み状態へ移す受付処理 |
-| Business Database | Supabase PostgreSQL上の業務データストア |
-| Web | Vercel上で稼働するNext.jsアプリケーション |
+| Business Database | Neon PostgreSQL上の業務データストア |
+| Web | Cloudflare Pagesから静的配信され、Browser内で実行するReact SPAアプリケーション |
 | API | Railway上で稼働するHonoアプリケーション |
 
 詳細な状態名、Role名、DB物理名、API名は各Canonical Owner仕様書で定義する。
@@ -161,7 +161,7 @@ Administratorに対して、注文、チケット、カラオケ枠、予約、�
 - ログイン状態管理
 - プロフィール管理
 
-認証基盤はSupabase Authとする。業務Roleや購入権利のSystem of RecordをSupabase Authへ兼務させない。
+認証基盤はNeon Authとする。業務Roleや購入権利のSystem of RecordをNeon Authへ兼務させない。
 
 ### 6.3 入場チケット
 
@@ -241,7 +241,7 @@ Guestは、認証が必要な購入、マイページ、管理、受付操作を
 
 ### 7.2 Authenticated User
 
-Supabase Authにより認証済みの一般利用者。
+Neon Authにより認証済みの一般利用者。
 
 主な行為:
 
@@ -284,37 +284,53 @@ Reception Staff、Karaoke Staff等の運用Roleが必要な場合は、`SPEC-060
 |---|---|
 | Language | TypeScript |
 | Monorepo | pnpm workspaces |
-| Web | Next.js / React / App Router / Tailwind CSS / shadcn/ui |
+| Web | Vite / React / React Router（静的SPA）/ Tailwind CSS / shadcn/ui |
 | API | Hono / TypeScript / Hono RPC / Zod |
-| Database | Supabase PostgreSQL |
+| Database | Neon PostgreSQL |
 | ORM / Driver | Drizzle ORM / node-postgres (`pg`) |
-| Authentication | Supabase Auth |
+| Authentication | Neon Auth |
 | Payment | Stripe Checkout / Stripe Webhook |
 | Email | Resend / React Email |
 | Unit / Integration Test | Vitest |
 | E2E Test | Playwright |
 | Lint / Format | Biome |
-| Web Hosting | Vercel |
+| Web Hosting | Cloudflare Pages |
 | API Hosting | Railway |
 
 上記技術を下流仕様が無断で置換してはならない。
+
+### 8.1.1 2026-10-25 構成改定の確定事項
+
+本改定は仕様書のみを対象とし、既存Next.js UI mockの移行実装・サービス作成・デプロイの完了を意味しない。実装と実行コマンドは別の実装変更で追随させる。
+
+- WebはCloudflare Pagesから配信するVite / React Routerの静的SPAとし、SSR、Server Component、Server Action、Web側BFFを使用しない。既存の画面URLを維持し、詳細URLの直接アクセスはSPA fallbackで解決する。
+- 業務API、認証中継、Email Worker、Reconciliation Worker等のserver処理はRailwayに配置する。API / Worker / Neon PostgreSQL / Neon Authはシンガポールへ配置する。
+- Neon AuthはNeon管理のBetter Authを指す。旧Stack AuthまたはBetter Authのself-hostingを意味しない。業務`app`とProvider管理`neon_auth`は同一DB内で所有権・権限を分離する。4環境は別projectとし、本番の業務・認証データを非本番へ複製しない。
+- 認証方式はメール＋パスワード、Google、Email OTP、Magic Linkの4方式とし、すべて新規登録を許可する。Discordその他のOAuth providerは採用しない。
+- BrowserのNeon SessionはHttpOnly Cookieで管理し、同一親ドメインのRailway認証中継を通す。業務APIにはSession tokenではなくNeonのJWT発行APIから得た最大15分のJWTをBearerとして送り、JWTはメモリー内だけに保持する。
+- Logoutによる発行済みJWTの即時失効は保証せず、最大15分の残存を許容する。現在のRole / OwnershipのAPI再評価は省略しない。
+- 同じ確認済みメールの認証方式は、Providerが本人性を保証した同一Auth Subjectへ連携する。メール一致だけで別Auth SubjectのProfileや購入履歴を統合しない。
+- Authのcurrent Email / verified stateは必要最小限の読み取り専用ビューだけをAPI / Email Workerへ公開する。認証Credential / SessionのSQL参照・認証データの直接更新は禁止する。未確認のmachine-to-machine Auth Admin APIを前提にしない。
+- AuthメールはNeon標準テンプレートと環境専用Resend SMTPを使用する。Stripe、業務通知、監視、R2および既存整合性・復旧要件は維持する。
+
+Railway認証中継のCookie / OAuth互換性と同一メール連携は、Neonの任意設定が可能・検証済みであるとは断定しない。全4方式、Safariを含むBrowser、環境分離、連携時の同一Subject維持を `SPEC-170` / `SPEC-180` のProduction必須gateで確認し、満たせなければ公開を停止する。詳細契約のCanonical Ownerは `SPEC-060` / `SPEC-100` / `SPEC-110` / `SPEC-140` / `SPEC-180` とする。
 
 ### 8.2 論理構成
 
 ```mermaid
 flowchart TD
     U[Browser / Client]
-    W[Next.js Web\nVercel]
+    W[React SPA\nCloudflare Pages]
     A[Hono API\nRailway]
-    AU[Supabase Auth]
-    DB[(Supabase PostgreSQL)]
+    AU[Neon Auth]
+    DB[(Neon PostgreSQL)]
     S[Stripe]
     E[Resend]
 
     U --> W
-    U <--> AU
+    U <-->|Auth / Cookie| A
     W --> A
-    A --> AU
+    A <--> AU
     A --> DB
     A <--> S
     A --> E
@@ -324,16 +340,14 @@ flowchart TD
 この図は論理責務を表す。業務操作の基本経路は以下である。
 
 ```text
-Browser / Client
-↓
-Next.js Web
+Browser / Client（React SPAを実行）
 ↓
 Hono API
 ↓
-Supabase PostgreSQL
+Neon PostgreSQL
 ```
 
-認証のみ、Browser / WebからSupabase Authを利用してよい。認証利用を理由にBrowserまたはNext.js WebからBusiness Databaseへ直接アクセスしてはならない。
+認証はRailwayの認証中継を通してNeon Authへ委譲する。Browser内のSPAは独立したserver hopではない。認証利用を理由にBrowserまたはReact SPAからBusiness Databaseへ直接アクセスしてはならない。
 
 Stripe Checkoutへの遷移、StripeからBrowserへの戻り、StripeからWebhookへの通信は決済固有の例外経路であるが、業務上の決済確定処理は必ずHono APIへ集約する。
 
@@ -346,8 +360,8 @@ Stripe Checkoutへの遷移、StripeからBrowserへの戻り、StripeからWebh
 **主責務**
 
 - UI表示とユーザー操作
-- Next.js Webが提供する画面の実行
-- Supabase Authを用いた認証操作
+- React SPAが提供する画面の実行
+- Neon Authを用いた認証操作
 - 認証済みAPI呼び出しに必要なAccess Tokenの保持・送信
 - 電子チケット・QRの表示
 - Staff端末でのQR読み取り入力
@@ -370,16 +384,17 @@ Stripe Checkoutへの遷移、StripeからBrowserへの戻り、StripeからWebh
 
 Browserから送信された値は信頼しない。
 
-### 9.2 Next.js Web
+### 9.2 React SPA
 
 **主責務**
 
 - ページ・Routing
 - React UI
-- SSR等のWeb表示最適化
-- SEO
+- 静的アセット配信とClient-side rendering / routing
+- 静的な共通metadata（公開本文のSSR・動的SEO / SNSカード生成は行わない）
 - 認証UI
 - Hono API Client
+- `SPEC-060` の認証中継を用いたSession連携とメモリー内JWTの取得・破棄
 - 一般、マイページ、管理、Staff UIの表示層
 
 **持ってよいロジック**
@@ -397,7 +412,7 @@ Browserから送信された値は信頼しない。
 - 注文、在庫、予約、Ticket、Check-inのCanonical Business Logic
 - Browserだけで完結する認可判定
 
-Next.js WebはBusiness Databaseへ直接接続してはならない。
+React SPAはBusiness Databaseへ直接接続してはならない。
 
 ### 9.3 Hono API
 
@@ -405,7 +420,7 @@ Next.js WebはBusiness Databaseへ直接接続してはならない。
 
 - 業務APIの唯一のBackend境界
 - Zodによる入力Validation
-- Supabase認証情報の検証
+- Neon認証情報の検証
 - 認可
 - 注文、決済、チケット、予約、グッズ、受付等のBusiness Logic
 - Drizzle / `pg`を用いたBusiness Databaseアクセス
@@ -413,6 +428,7 @@ Next.js WebはBusiness Databaseへ直接接続してはならない。
 - Stripe Checkout Session生成
 - Stripe Webhook受信・署名検証・冪等処理
 - 通知送信要求の生成
+- Neon Auth向けの限定認証中継（認証のSystem of Recordにはならない）
 - 管理者・Staff操作のサーバー側検証
 
 **持ってよいロジック**
@@ -428,16 +444,17 @@ Next.js WebはBusiness Databaseへ直接接続してはならない。
 - UI固有レイアウト
 - Browser表示だけに必要な状態
 - Stripe内部カード処理の再実装
-- Supabase Authの認証基盤そのものの再実装
+- Neon Authの認証基盤そのものの再実装
 
 業務ルールの実装は原則としてAPIへ集約する。
 
-### 9.4 Supabase Auth
+### 9.4 Neon Auth
 
 **主責務**
 
 - ユーザーIdentity
 - メール・パスワード認証
+- Google OAuth、Email OTP、Magic Linkによる認証・新規登録
 - メール確認
 - パスワード再設定
 - Access Token等の認証Session発行
@@ -452,9 +469,9 @@ Next.js WebはBusiness Databaseへ直接接続してはならない。
 - Check-in状態
 - 業務上の権利そのもの
 
-Supabase AuthはIdentityのSystem of Recordである。業務データのSystem of Recordではない。
+Neon AuthはIdentityのSystem of Recordである。業務データのSystem of Recordではない。認証メールはNeonが生成・送信管理し、Resend SMTPが配送する。業務Email Jobと認証メールのCredential / lifecycleを混同しない。
 
-### 9.5 Supabase PostgreSQL
+### 9.5 Neon PostgreSQL
 
 **主責務**
 
@@ -499,7 +516,7 @@ Stripeは外部決済処理の権威ある情報源である。一方、本シ�
 
 ### 9.8 管理・Staff UI
 
-管理UIとStaff UIは論理的に一般利用者UIから分離するが、Web実装としては同一Next.jsアプリケーション内に配置してよい。
+管理UIとStaff UIは論理的に一般利用者UIから分離するが、Web実装としては同一React SPAアプリケーション内に配置してよい。
 
 - 表示だけで権限を成立させてはならない
 - API側でActorの権限を検証する
@@ -515,34 +532,34 @@ Stripeは外部決済処理の権威ある情報源である。一方、本シ�
 業務データを読み書きする基本経路は以下とする。
 
 ```text
-Browser
-↓
-Next.js Web
+Browser（React SPAを実行）
 ↓
 Hono API
 ↓
-Supabase PostgreSQL
+Neon PostgreSQL
 ```
 
-Next.js WebからBusiness Databaseへ直接アクセスする実装は禁止する。
+React SPAからBusiness Databaseへ直接アクセスする実装は禁止する。
 
 ### 10.2 認証経路
 
 認証は以下の経路を許可する。
 
 ```text
-Browser / Next.js Web
+Browser / React SPA
 ↕
-Supabase Auth
+Railway Hono 認証中継（HttpOnly Session Cookie）
+↕
+Neon Auth
 
 Authenticated Request
-↓ Access Token
+↓ Bearer JWT（authClient.token()、メモリーのみ）
 Hono API
 ↓ token verification / user identification
 Business Logic
 ```
 
-Hono APIは、認証が必要なRequestについてSupabase発行Tokenを検証し、サーバー側で利用者を特定しなければならない。
+Hono APIは、認証が必要なRequestについてNeon発行Tokenを検証し、サーバー側で利用者を特定しなければならない。
 
 ### 10.3 API型境界
 
@@ -554,9 +571,9 @@ WebとAPI間の型安全性にはHono RPCを使用し、入力ValidationにはZo
 
 Business Databaseへ業務目的で接続する主体はHono APIを原則とする。
 
-Vercel上のNext.js Web、Browser、Stripe、ResendがBusiness Databaseへ直接接続してはならない。
+Cloudflare Pages上のReact SPA、Browser、Stripe、ResendがBusiness Databaseへ直接接続してはならない。
 
-SupabaseがDatabase Hostingを提供することと、Supabase AuthをBrowserから利用できることは別責務として扱う。
+NeonがDatabase Hostingを提供することと、Neon AuthをBrowserから利用できることは別責務として扱う。
 
 ---
 
@@ -564,12 +581,12 @@ SupabaseがDatabase Hostingを提供することと、Supabase AuthをBrowserか
 
 | 情報 | System of Record / Authority | 補足 |
 |---|---|---|
-| 認証Identity・Credential状態 | Supabase Auth | 業務プロフィール・権限とは分離する |
-| Order / Ticket / Reservation / Goods / Check-in等の業務状態 | Supabase PostgreSQL | APIのみが業務ルールを通じて更新する |
+| 認証Identity・Credential状態 | Neon Auth | 業務プロフィール・権限とは分離する |
+| Order / Ticket / Reservation / Goods / Check-in等の業務状態 | Neon PostgreSQL | APIのみが業務ルールを通じて更新する |
 | カード情報・決済ネットワーク上の処理 | Stripe | 自システムにカード情報を保持しない |
-| 本システム内の支払確定状態 | Supabase PostgreSQL | Stripe検証済みWebhookを根拠としてAPIが確定する |
+| 本システム内の支払確定状態 | Neon PostgreSQL | Stripe検証済みWebhookを根拠としてAPIが確定する |
 | Email配送の外部処理 | Resend | 業務確定状態とは分離する |
-| Web Deploy Artifact / Runtime | Vercel | 業務データのSystem of Recordではない |
+| Web Deploy Artifact / Runtime | Cloudflare Pages | 業務データのSystem of Recordではない |
 | API Deploy Artifact / Runtime | Railway | 業務データのSystem of Recordではない |
 
 Business Databaseと外部サービスの情報が食い違う場合の再同期・復旧手順は `SPEC-150` がCanonical Ownerとなる。
@@ -578,15 +595,15 @@ Business Databaseと外部サービスの情報が食い違う場合の再同期
 
 ## 12. 主要外部サービス境界
 
-### 12.1 Supabase Auth境界
+### 12.1 Neon Auth境界
 
-本システムはSupabase Authへ認証を委譲する。
+本システムはNeon Authへ認証を委譲する。
 
 本システム側は、取得したIdentityを業務Actorへ関連付け、APIで権限を評価する責務を持つ。
 
-### 12.2 Supabase PostgreSQL境界
+### 12.2 Neon PostgreSQL境界
 
-SupabaseはPostgreSQLのHostingを提供する。本システムはSchema、Constraint、Transaction、Query、Migration、業務整合性を管理する責務を持つ。
+NeonはPostgreSQLのHostingを提供する。本システムはSchema、Constraint、Transaction、Query、Migration、業務整合性を管理する責務を持つ。
 
 ### 12.3 Stripe境界
 
@@ -609,15 +626,15 @@ Resendは配送インフラを提供する。
 
 本システムは、送信すべき通知の内容、宛先、送信要求の永続化、再試行可能性、業務処理からの分離を責任範囲とする。詳細は `SPEC-120` と `SPEC-150` へ委譲する。
 
-### 12.5 Vercel境界
+### 12.5 Cloudflare Pages境界
 
-VercelはNext.js WebのHosting / Deploy Runtimeを提供する。
+Cloudflare PagesはSPAの静的HTML / JS / CSS配信とDeployを提供する。Pages Functions / Workersで認証・業務server処理を実行しない。
 
 Webの環境変数、Build、Deploy、Domain、Runtime構成等は `SPEC-180` が定義する。
 
 ### 12.6 Railway境界
 
-RailwayはHono APIのHosting / Deploy Runtimeを提供する。
+RailwayはHono API、認証中継、Email Worker、Reconciliation Workerおよびmaintenance jobのHosting / Deploy Runtimeを提供する。
 
 APIの環境変数、Network、Process、Deploy、Runtime構成等は `SPEC-180` が定義する。
 
@@ -632,9 +649,9 @@ APIの環境変数、Network、Process、Deploy、Runtime構成等は `SPEC-180`
 ```text
 User
 ↓
-Next.js Web / Auth UI
+React SPA / Auth UI
 ↓
-Supabase Auth
+Neon Auth
 ↓
 Authenticated Session / Access Token
 ↓
@@ -652,7 +669,7 @@ Authenticated Business Operation
 ```text
 Customer
 ↓
-Next.js Web
+React SPA
 ↓
 Hono API
 ↓
@@ -687,7 +704,7 @@ BrowserがCheckout Success Pageへ戻ったことのみでOrderを支払確定�
 ```text
 Customer
 ↓
-Next.js Web
+React SPA
 ↓
 Hono API
 ↓
@@ -736,14 +753,14 @@ DB Transactionによる一度だけの状態反映
 Webhook処理済み記録
 ```
 
-Webhook Endpointは一般利用者用のSupabase Auth Sessionを認証根拠としない。Stripe署名を外部送信元検証の根拠とする。
+Webhook Endpointは一般利用者用のNeon Auth Sessionを認証根拠としない。Stripe署名を外部送信元検証の根拠とする。
 
 ### 13.5 電子チケット表示
 
 ```text
 Authenticated User
 ↓
-Next.js Mypage
+React SPA Mypage
 ↓
 Hono API
 ↓
@@ -753,7 +770,7 @@ Business Database
 ↓
 Ticket / Reservation Summary
 ↓
-Next.js Web
+React SPA
 ↓
 電子Ticket / QR表示
 ```
@@ -900,7 +917,7 @@ URLやUIの分離に加え、API認可によって権限境界を強制する。
 
 - Stripe Secret Key
 - Stripe Webhook Secret
-- Supabase Service Role Key
+- Neon管理API credential
 - Database Credential
 - Resend API Key
 - その他Server-only Credential
@@ -997,9 +1014,9 @@ System Overviewとして以下を定義する。
 
 本システムは送信要求と業務上必要な送信状態を管理するが、受信者Mail Serverまでの内部配送実装を担わない。
 
-### 17.3 Supabase Auth内部のCredential処理
+### 17.3 Neon Auth内部のCredential処理
 
-Password hash等の認証基盤内部実装はSupabase Authの責務である。
+Password hash等の認証基盤内部実装はNeon Authの責務である。
 
 ### 17.4 会場の物理運営
 
@@ -1030,18 +1047,18 @@ Password hash等の認証基盤内部実装はSupabase Authの責務である。
 Internet User / Staff / Administrator
         |
         v
-Vercel: Next.js Web
+Cloudflare Pages: React SPA
         |
         | HTTPS
         v
 Railway: Hono API
    |        |        |
    v        v        v
-Supabase   Stripe   Resend
+Neon   Stripe   Resend
 PostgreSQL/Auth
 ```
 
-Supabase AuthはBrowser / Webから認証用途で利用できる。
+Neon AuthはBrowser / Webから認証用途で利用できる。
 
 本書はSecret名、Environment名、Deploy手順、Network Policy、Domain、CI/CD等の詳細を定義しない。これらは `SPEC-180` がCanonical Ownerとなる。
 
@@ -1053,7 +1070,7 @@ Supabase AuthはBrowser / Webから認証用途で利用できる。
 
 ```text
 apps/
-├─ web/       # Next.js Web
+├─ web/       # React SPA
 └─ api/       # Hono API
 
 packages/
@@ -1074,7 +1091,7 @@ packages/
 | SPEC-030 Domain Model & Business Rules | Domain Entity、状態、状態遷移、販売・所有・予約等の業務ルール | 主要Domainの存在とSystem Invariantのみ |
 | SPEC-040 User Flows | 一般ユーザーの詳細フロー、分岐、失敗時UX | 主要データフローの方向のみ |
 | SPEC-050 Page / Screen Specification | URL、画面、Field、表示、操作、Navigation | UI領域の存在と責務のみ |
-| SPEC-060 Authentication / Authorization | 認証方式詳細、Role、Permission Matrix、Session、認可規則 | Supabase Auth採用、API認可原則、Actor大分類 |
+| SPEC-060 Authentication / Authorization | 認証方式詳細、Role、Permission Matrix、Session、認可規則 | Neon Auth採用、API認可原則、Actor大分類 |
 | SPEC-070 Order / Payment | Order lifecycle、Stripe Checkout、Webhook Event処理、返金、冪等性、決済復旧 | Stripe前Order永続化、Webhook確定原則、二重確定禁止 |
 | SPEC-080 Ticket / QR / Check-in | Ticket lifecycle、QR Token形式、検証、Check-in競合制御 | Entry/Karaoke QR分離、推測困難性、二重利用禁止 |
 | SPEC-090 Karaoke Reservation | Slot model、hold、競合制御、販売制約、当日受付規則 | Karaoke領域、利用/整備時間区別、二重販売禁止 |
@@ -1086,7 +1103,7 @@ packages/
 | SPEC-150 Reliability / Error Recovery | Retry、再同期、復旧手順、不整合修復、外部障害対応 | データ消失防止・再実行安全性の全体原則 |
 | SPEC-160 Observability / Audit Log | Log、Metric、Trace、Audit event、Retention | 高権限・重要処理を観測可能にする原則 |
 | SPEC-170 Test Specification | Unit / Integration / E2E / Acceptance前検証の詳細 | Vitest / Playwright採用、Invariantを検証対象とすること |
-| SPEC-180 Infrastructure / Deployment | Vercel、Railway、Supabase、環境、Secret、Deploy、Network | Hostingサービスと配置境界 |
+| SPEC-180 Infrastructure / Deployment | Cloudflare Pages、Railway、Neon、環境、Secret、Deploy、Network | Hostingサービスと配置境界 |
 | SPEC-190 AI Development Guidelines | Repository規約、実装手順、AI向け作業ルール、品質Gate | AI実装容易性と明確な責務分離の原則 |
 | SPEC-200 System Acceptance Criteria | 完成システム全体の受入条件 | System Overviewの成立条件とInvariantを上位基準として提供 |
 
@@ -1098,12 +1115,12 @@ packages/
 
 本書から直接導出される禁止事項を以下に列挙する。
 
-- Next.js WebからBusiness Databaseへ直接アクセスする
+- React SPAからBusiness Databaseへ直接アクセスする
 - BrowserからBusiness Databaseへ直接アクセスする
 - Stripe Success redirectだけでOrderをpaid相当へ確定する
 - 未検証のStripe Webhookを処理する
 - Clientから受け取ったpriceをそのまま決済金額として信頼する
-- Supabase Authの認証済みであることだけをAdministrator / Staff権限の根拠にする
+- Neon Authの認証済みであることだけをAdministrator / Staff権限の根拠にする
 - 単純なDB連番をそのままQRの秘密値として使用する
 - Entry QRとKaraoke QRを同じ権利として兼用する
 - メール送信をOrder / Ticket / Reservation確定Transactionの成功条件にする
@@ -1120,10 +1137,10 @@ packages/
 
 1. 完成システムの主要機能領域が、公開サイト、アカウント、入場チケット、カラオケ、グッズ、マイページ、管理、Staff受付、通知まで一貫して定義されている
 2. Guest、Authenticated User、Customer、Staff、AdministratorのActor大分類が定義されている
-3. Next.js Web、Hono API、Supabase Auth、Supabase PostgreSQL、Stripe、Resend、Vercel、Railwayの責務境界が明確である
-4. Business Databaseアクセスの基本経路が `Browser → Next.js Web → Hono API → PostgreSQL` として定義されている
-5. Next.js WebからBusiness Databaseへの直接アクセスが禁止されている
-6. Supabase Authの認証責務とBusiness Databaseの業務データ責務が分離されている
+3. React SPA、Hono API、Neon Auth、Neon PostgreSQL、Stripe、Resend、Cloudflare Pages、Railwayの責務境界が明確である
+4. Business Databaseアクセスの基本経路が `Browser → React SPA → Hono API → PostgreSQL` として定義されている
+5. React SPAからBusiness Databaseへの直接アクセスが禁止されている
+6. Neon Authの認証責務とBusiness Databaseの業務データ責務が分離されている
 7. Stripe Webhookを決済確定の根拠とし、Browser redirectを確定根拠としない
 8. Order、Ticket、Karaoke Slot、QR Check-in、Emailに関する主要Invariantが明文化されている
 9. Entry QRとKaraoke QRの用途が分離されている

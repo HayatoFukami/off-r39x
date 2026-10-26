@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-130
 title: Admin and Staff Specification
-version: 1.2.0
+version: 2.0.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -204,11 +204,11 @@ AdministratorとStaffのRoute namespaceを次とする。
 
 **STF-ROU-001:** Staff Pageは `/staff/*` に配置し、Admin Pageへ受付UIを混在させない。
 
-**ADM-ROU-002:** URLへInternal bigint ID、Stripe secret identifier、QR raw token、Resend secret、Supabase credentialを含めてはならない。Entity detail routeはPublic Referenceだけを使用する。
+**ADM-ROU-002:** URLへInternal bigint ID、Stripe secret identifier、QR raw token、Resend secret、Neon credentialを含めてはならない。Entity detail routeはPublic Referenceだけを使用する。
 
 ## 7. Authentication / Authorization guard
 
-保護PageはServer-sideで現在のSession / Principalを確認し、Navigation補助として `GET /api/v1/self/principal` のallowlisted capability情報を利用してよい。
+保護Pageは静的SPA shellから開始し、Hono APIがJWTと現在のPrincipalを検証して認可したDataだけを表示する。Web側SSR / Page serverを置かず、Navigation補助として `GET /api/v1/self/principal` のallowlisted capability情報を利用してよい。
 
 ただしPage guardは最終Authorization boundaryではない。
 
@@ -219,6 +219,8 @@ AdministratorとStaffのRoute namespaceを次とする。
 **ADM-ROU-004:** `ADMINISTRATOR` は `STAFF` を自動継承しない。Administratorだけを持つActorへEntry / Karaoke Check-inまたはStaff Goods Handoff navigationを表示しない。
 
 **STF-ROU-003:** 同一Actorが `STAFF` と `ADMINISTRATOR` の両Roleを持つ場合は両Shellへ移動できるが、各ActionはそのnamespaceのCapabilityで独立評価する。
+
+scanner Pageへ入るとき・出るときのdocument navigationとcamera権限は `SPEC-140 SEC-WEB-008` に従う。SPA内のURL変更だけでPermissions-Policyが切り替わるとは扱わない。
 
 ## 8. RoleなしActorがURLを直接入力した場合
 
@@ -1642,7 +1644,7 @@ Precondition UI:
 - Provider Acceptance済みattemptなし
 - Unknown Provider Resultなし
 
-さらにserverがcurrent Supabase Auth Email verifiedを確認できる必要がある。
+さらにserverがcurrent Neon Auth Email verifiedを確認できる必要がある。
 
 Confirmationでは:
 
@@ -2211,8 +2213,8 @@ Stripe / Resend等の外部Provider callで結果不明が明示された場合:
 Admin / Staff UIで次を表示・URL化・Client log送信してはならない。
 
 - Internal bigint ID
-- Supabase service role credential
-- Supabase Auth password / password hash / refresh credential
+- Neon管理API / Auth SMTP / Google OAuth credential
+- Neon Auth password / password hash / refresh credential
 - password reset token / email verification token
 - Stripe secret key
 - raw card data / CVC / Payment Method secret
@@ -2362,7 +2364,7 @@ Trace: `FR-STF-016`, `FR-XFN-004,017,033`, `AR-ROLE-015`, `TQR-SEC-*`, `EML-SEC-
 
 **ADM-UI-005:** Page mappingに存在しないHono endpointをBrowserから推測して呼び出さない。
 
-**ADM-UI-006:** Canonical APIが存在しないRead / mutationをSupabase direct queryや仮endpointで実装しない。
+**ADM-UI-006:** Canonical APIが存在しないRead / mutationをNeon direct queryや仮endpointで実装しない。
 
 ---
 
@@ -2506,7 +2508,7 @@ Trace: `FR-STF-016`, `FR-XFN-004,017,033`, `AR-ROLE-015`, `TQR-SEC-*`, `EML-SEC-
 3. `ADMINISTRATOR` は `STAFF` を自動継承しない。
 4. Role / CapabilityをClient申告値から決めない。
 5. Internal bigint IDをURL / UIへ露出しない。
-6. Browser / Next.js WebからBusiness Databaseを直接更新しない。
+6. Browser / React SPAからBusiness Databaseを直接更新しない。
 7. Order / Ticket / Reservation / Goods / NotificationのDomain Stateをgeneric editorで変更しない。
 8. Refundはfull refund onlyであり、partial amount inputが存在しない。
 9. Refund result unknownをsuccess表示しない。

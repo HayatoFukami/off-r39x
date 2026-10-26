@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-120
 title: Email Notification Specification
-version: 1.1.0
+version: 2.0.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -59,7 +59,7 @@ related_specs:
 - Karaoke Reservation取消通知
 - Full Refund完了通知
 - Notification Requestのclaim / send / retry / cancel
-- Business ProfileからSupabase Auth Identityを経由したrecipient Email解決
+- Business ProfileからNeon Auth Identityを経由したrecipient Email解決
 - recipient Email snapshot
 - React EmailによるHTML / plain-text rendering
 - Resend Email API
@@ -72,7 +72,7 @@ related_specs:
 
 以下は本書のCanonical Ownerではない。
 
-- Account verification / Password reset等のCredential lifecycle: Supabase Auth / `SPEC-060`
+- Account verification / Password reset等のCredential lifecycle: Neon Auth / `SPEC-060`
 - Order / Stripe / Refundのfinancial lifecycle: `SPEC-070`
 - Ticket / QR / Check-in lifecycle: `SPEC-080`
 - Karaoke Reservation state / cancellation semantics: `SPEC-090`
@@ -113,7 +113,7 @@ related_specs:
 | Term | 本書での意味 |
 |---|---|
 | Business Notification | Order / Reservation / Refund等の確定Business Eventから派生するTransactional Email |
-| Auth Notification | Supabase Authが所有するAccount verification / Password reset等のCredential lifecycle Email |
+| Auth Notification | Neon Authが所有するAccount verification / Password reset等のCredential lifecycle Email |
 | Notification Request | `SPEC-030` の再試行可能なDomain要求。`app.notification_requests` がSystem of Record |
 | Notification Type | 同一論理通知の意味・Template contract・Triggerを識別する固定string |
 | Business Cause | 同一Business Eventから同一論理Notificationを最大1件にする原因 |
@@ -122,7 +122,7 @@ related_specs:
 | Delivery Attempt | Recipient resolution / render / provider requestを追跡する1回の配送処理履歴 |
 | Provider Acceptance | Resend Email APIがrequestを受理しprovider email IDを返した、または同等事実を署名検証済みWebhook等で再照合できた状態 |
 | Provider Delivery Event | `email.delivered`, `email.bounced` 等、Provider Acceptance後の配送網結果 |
-| Recipient Snapshot | 初回provider送信前にSupabase Authからserver-side解決したverified Email addressのsnapshot |
+| Recipient Snapshot | 初回provider送信前にNeon Authからserver-side解決したverified Email addressのsnapshot |
 | Provider Idempotency Key | Resendへ同一Provider requestを重複送信しないためのkey |
 | Transport Idempotency Key | Administrator HTTP mutation retryを相関する `Idempotency-Key` |
 | Unknown Provider Result | Provider requestを開始した可能性があるが、accept / rejectを安全に確定できない状態 |
@@ -133,19 +133,21 @@ related_specs:
 
 # Part I — Authentication Notificationとの境界
 
-## 5. Supabase Auth Notification
+## 5. Neon Auth Notification
 
-次はSupabase Authが所有するAuthentication / Credential lifecycleであり、本書のBusiness Notificationへ統合しない。
+次はNeon Authが所有するAuthentication / Credential lifecycleであり、本書のBusiness Notificationへ統合しない。
 
 - Account verification
 - Password reset
-- Supabase Authが正規に提供するCredential / Session lifecycleに付随する通知
+- Neon Authが正規に提供するCredential / Session lifecycleに付随する通知
 
 **EML-AUTH-001:** Account verification / Password reset tokenを `app.notification_requests`、`render_context`、React Email Business Templateへ複製してはならない。
 
 **EML-AUTH-002:** Business DatabaseへPassword、password hash、refresh credential、password reset token、email verification tokenを保存してはならない。
 
-**EML-AUTH-003:** `FR-EML-001` はSupabase Auth notificationを利用可能にする要件であり、Resend Business Notification workerがCredential lifecycleのSystem of Recordになることを意味しない。
+**EML-AUTH-003:** `FR-EML-001` はNeon Auth notificationを利用可能にする要件であり、Resend Business Notification workerがCredential lifecycleのSystem of Recordになることを意味しない。
+
+採用するAccount確認、Email OTP、Magic Link、Password resetのメールはNeon標準テンプレートでNeonが生成・送信管理し、環境専用Resend SMTPで配送する。SMTP credential / senderはNeonの保護設定に置き、Business Notification用API key・Job・template・retry lifecycleとは分離する。Auth Email Webhook / 独自Authメールworkerは追加しない。
 
 ---
 
@@ -155,7 +157,7 @@ Business NotificationはHono APIがBusiness Databaseの確定状態を根拠に�
 
 Business NotificationのrecipientはClient入力Email、Stripe Checkout customer email、URL query、Browser stateから決定しない。
 
-**EML-AUTH-004:** Business Notification recipient authorityは、`recipient_profile_id` → `Business Profile.auth_subject` → Supabase Auth server-side lookupである。
+**EML-AUTH-004:** Business Notification recipient authorityは、`recipient_profile_id` → `Business Profile.auth_subject` → Neon Auth server-side lookupである。
 
 **EML-AUTH-005:** Stripe側のCustomer emailまたはCheckout emailをBusiness Notification recipient authorityへ使用してはならない。
 
@@ -216,11 +218,11 @@ Order / Reservation等の正規Business Transactionでは、上流仕様のmanda
 6. 同じtransactionで対応 `app.email_delivery_jobs` をinsertする。
 7. transaction commit後にのみworkerから可視化される。
 
-Resend call、Supabase Auth recipient lookup、React Email renderはこのBusiness transaction内で実行しない。
+Resend call、Neon Auth recipient lookup、React Email renderはこのBusiness transaction内で実行しない。
 
 **EML-GEN-001:** Notification Request rowを同じcommit boundaryへ含めることは許可するが、Resend配送成功をBusiness commit条件へ含めてはならない。
 
-**EML-GEN-002:** Notification Request生成のためにStripe / Resend / Supabase Auth network callをBusiness Database transaction内で保持してはならない。
+**EML-GEN-002:** Notification Request生成のためにStripe / Resend / Neon Auth network callをBusiness Database transaction内で保持してはならない。
 
 ### 8.2 Business Cause Key
 
@@ -305,7 +307,7 @@ Notification Request insertを含むDB transaction自体がcommitできない場
 
 - Administratorによるretry / resend: 既存Notification Requestの再処理
 - Resend delivery delayed / bounced: Provider Delivery Event
-- Supabase Auth verification / password reset: Auth Notification
+- Neon Auth verification / password reset: Auth Notification
 
 Goods Handoff完了後Emailは本バージョンでは追加しない。会場で既に対面受け渡しが完了した事実をEmail送信必須要件へ昇格させる上流Requirementがなく、`FR-EML-005` を理由に不要な通知種別を増やさないためである。
 
@@ -480,18 +482,18 @@ workerは次の順序でrecipientを解決する。
 
 1. `recipient_profile_id` から `app.business_profiles` を取得する。
 2. `business_profiles.auth_subject` を取得する。
-3. Hono server / workerだけが使用できるSupabase Auth Admin APIでAuth Subjectをlookupする。
+3. `SPEC-100 §5.1` の `auth_read.identity_directory` を専用server DB roleでAuth Subjectにより完全一致lookupする。
 4. Auth userのcurrent primary Emailを取得する。
 5. Email確認済み状態をserver-sideで確認する。
 6. verified Emailが取得できた場合だけRecipient Snapshotとして保存する。
 
 **EML-RCP-001:** Client supplied Email、Profile display field、Stripe Customer Emailをrecipient authorityとして使用しない。
 
-**EML-RCP-002:** Supabase Auth lookupはserver-sideで行い、Service credentialをBrowser / Next.js Clientへ渡さない。
+**EML-RCP-002:** Directory lookupはserver-sideで行い、API / Email Worker以外へ読取権限を与えない。元の認証table、Credential、Sessionへのアクセスや認証dataの直接更新を許可しない。DB credentialをBrowserへ渡さない。未確認のNeon service-role Admin APIに依存しない。
 
 ### 15.1 Verified Email
 
-Business Notificationのrecipientに使用できるのは、Supabase Auth上でcurrent Emailが存在し、Email確認済みであることをserver-sideで確認できる場合だけとする。
+Business Notificationのrecipientに使用できるのは、Neon Auth上でcurrent Emailが存在し、Email確認済みであることをserver-sideで確認できる場合だけとする。
 
 Email未確認、Email不存在の場合、元Business Transactionは変更せずNotificationを `FAILED_RETRYABLE` とし、Delivery Jobを `BLOCKED` にする。
 
@@ -499,7 +501,7 @@ Email未確認、Email不存在の場合、元Business Transactionは変更せ�
 
 Recipient Snapshotは**初回Provider callより前、初回worker処理時**に確定する。
 
-- Notification Request生成時にはSupabase Auth network callを行わない。
+- Notification Request生成時にはNeon Auth network callを行わない。
 - 初回worker処理前にUserがEmailを変更し、その新Emailが確認済みなら新しいcurrent Emailをsnapshotする。
 - Snapshot確定後の自動retryは同じsnapshotを使用する。
 
@@ -518,7 +520,7 @@ Administrator retryは原則 `recipient_mode = "SNAPSHOT"` とする。
 - 最終failureが `RECIPIENT_UNAVAILABLE` または `PROVIDER_PERMANENT_RECIPIENT`
 - Provider Acceptance済みattemptが存在しない
 - Unknown Provider Resultが存在しない
-- current Supabase Auth Emailがverified
+- current Neon Auth Emailがverified
 
 この場合、JobのRecipient Snapshotをcurrent verified Emailへ更新し、snapshot revisionをincrementしたうえで新しいDelivery Attemptを作る。
 
@@ -832,7 +834,7 @@ Email CTAは `SPEC-050` の既存Routeだけを使用する。
 
 **EML-LNK-002:** Public Referenceを知ることはAuthorizationではない。Mypage routeは `SPEC-060` / `SPEC-110` のowner-safe lookupを必須とする。
 
-**EML-LNK-003:** QR raw token、Supabase token、Stripe secret、Checkout Session secretをEmail URLへ埋め込まない。
+**EML-LNK-003:** QR raw token、Neon token、Stripe secret、Checkout Session secretをEmail URLへ埋め込まない。
 
 **EML-LNK-004:** `app_base_url` はserver-side deployment configurationから取得し、Client入力hostをそのままEmail linkへ反映しない。
 
@@ -984,7 +986,7 @@ Providerのidempotency retention契約が変更された場合は、23時間安�
 
 - **Method:** `POST`
 - **Path:** `/api/v1/webhooks/resend`
-- **Authentication:** Supabase Authなし。Resend webhook signatureのみ
+- **Authentication:** Neon Authなし。Resend webhook signatureのみ
 - **RPC export:** Browser向けHono RPCから除外
 - **Body:** raw bodyを署名検証完了前にJSON reserializeしない
 - **Headers:** `svix-id`, `svix-timestamp`, `svix-signature`
@@ -1134,7 +1136,7 @@ Resendが同一key resultを返したらprovider message IDをpersistし、Notif
 
 1. Job claim
 2. source suppression predicate評価
-3. Recipient Snapshot確認 / 必要ならSupabase Auth lookup
+3. Recipient Snapshot確認 / 必要ならNeon Auth lookup
 4. render context Zod validation
 5. React Email HTML / text render
 6. Delivery Attempt作成
@@ -1564,7 +1566,7 @@ SPEC-120 support table migrationは`SPEC-100`のarchitectureに従う。
 - explicit row lock
 - `40001`, `40P01` だけをstandard transaction retryable SQLSTATEとして扱う
 - known unique/constraint loserだけを既存結果へ収束
-- Resend / Supabase Auth network call中にDB transactionをopenしない
+- Resend / Neon Auth network call中にDB transactionをopenしない
 
 **EML-DB-001:** `app.notification_requests.state`へProcessing Stateを追加してはならない。
 
@@ -1620,7 +1622,7 @@ Server-only:
 
 - Resend API key
 - Resend webhook signing secret
-- Supabase Auth Admin / service credential
+- 限定Auth Directory参照を含むworker専用DB credential
 - Provider idempotency internals that need not beClient visible
 
 Clientへ返さない。
@@ -1658,7 +1660,7 @@ Templateへ含めてよい情報:
 含めてはならない情報:
 
 - Password / reset token / verification token
-- Supabase access / refresh token
+- Neon access / refresh token
 - Stripe secret / payment method secret
 - raw QR token
 - card data
@@ -1878,7 +1880,7 @@ Email未達時もこれらPageのBusiness Database current stateが利用者向�
 15. webhook raw body signature verificationを行う。
 16. webhook duplicateをverified `svix-id` uniqueでdedupeする。
 17. `SENT`後のbounce等でNotification Domain Stateを逆行させない。
-18. RecipientはBusiness Profile → Auth Subject → Supabase Authからserver-side解決する。
+18. RecipientはBusiness Profile → Auth Subject → Neon Authからserver-side解決する。
 19. Client supplied Email / Stripe emailをrecipient authorityにしない。
 20. 初回send前にrecipient snapshotを固定し、自動retryで宛先を暗黙変更しない。
 21. Unknown Result中にrecipient snapshotを変更しない。

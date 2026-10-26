@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-050
 title: Page and Screen Specification
-version: 1.4.2
+version: 2.0.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -127,6 +127,10 @@ Administrator / Staff向け個別運用画面は `SPEC-130` がCanonical Owner�
 ### 5.3 RouteとAPIの分離
 
 本書のRouteはBrowser NavigationのCanonical定義であり、API Endpoint構造を意味しない。Route名をそのままAPI pathへ複製する必要はない。
+
+### 5.4 静的SPAの直接アクセス
+
+本UIはCloudflare Pagesから配信するVite+React+React Routerの静的SPAでありSSRを行わない。列挙済みRouteへの直接アクセス・refreshでは同じSPA shellへfallbackし、React Routerが既存URLを解決する。fallbackはCloudflare Pages配信設定で成立させる。静的shellに個人Data・保護Dataを含めない。保護Pageは初期表示をLoading/認証確認中とし、Railway Hono APIがBearer JWTを検証して認可済みDataを返した後だけ保護Dataを描画する。API検証前に保護Dataを表示しない。API待機中はLoadingを示し、取得失敗をEmptyとして扱わない。
 
 ## 6. Page ID体系
 
@@ -764,25 +768,39 @@ Karaokeはカートに入れられず、Slotごとに別の購入・別の支払
 
 ## 15. Authentication Page
 
+### 15.0 認証方式共通仕様
+
+`PG-AUTH-001` と `PG-AUTH-003` はEmail+Password、Google、Email OTP、Magic Linkの4方式を共通提供する。全方式で初回登録を許可し、方式切替でContinuation Intentを失わない。GitHub/Discord等は表示しない。方式成功表示だけで業務認可済みとはしない。認証EmailはNeon標準TemplateをResend SMTPで配送し、独自本文Webhookを用いない。メール受信者・到達状況は画面上の本人性・認可根拠ではない。
+
+- Email+Password: EmailとPasswordを入力。既存Password制約12〜128文字を維持し、登録では確認入力も求める。
+- Google: Google認証開始Button。取消・閉じるはGuestのまま同画面へ戻し、別方式を選べる。
+- Email OTP: Email入力、送信後のOTP入力、明示的再送を提供する。期限切れ・誤入力・attempt上限では未認証のまま説明し、Neonが許す場合だけ再送/再開始する。Neon適用期限とattempt上限はProduction gateで検証記録する。
+- Magic Link: Email入力と送信状態を示す。Linkは5分有効。期限切れ・無効・不達は未認証とし再送または別方式を選べる。別端末でLinkを開いても元画面は自動認証済みとせず、Neonが同一Browser Sessionを成立させた確認前はGuestのままとする。
+- 送信先の表示や送信済み表示を本人確認の証拠にしない。送信結果の文言からアカウントの存在を明かさない。
+
+方式間連携はNeonが本人性と確認済みEmailを保証する場合に限る。Email文字列一致だけで別Auth IDへ連携したり、既存Order等の履歴を移転・統合したりしない。採用する認証中継、Google方式連携、Cookie / Session連携を検証済みとはみなさず、Safariを含む全方式の実動作確認をProduction公開の必須条件とする。
+
 ### 15.1 `PG-AUTH-001` Account Registration
 
 - **Route:** `/account/register`
 - **Actor:** Guest
 - **Auth:** 不要
 - **対応UF:** `UF-AUTH-001`, `UF-PUB-002`
-- **Purpose:** Supabase Authを利用するAccount登録を開始する。
+- **Purpose:** Neon Authを利用するAccount登録を開始する。
 
-**Fields**
+**Fields / Methods**
 
 - Email address
 - Password
 - Password確認入力
+- 認証方式選択（Email+Password、Google、Email OTP、Magic Link）
 
 Passwordの具体Policy、Credential処理、Session構築は `SPEC-060` が定義する。本PageはPasswordをBusiness Databaseへ保存しない。
 
 **Actions**
 
 - Account登録
+- 選択方式による登録開始（全方式で初回登録可能）
 - Loginへ → `PG-AUTH-003`
 - Continuation Intentがある場合は「認証後に元の操作へ戻る」旨を表示
 
@@ -830,11 +848,12 @@ Passwordの具体Policy、Credential処理、Session構築は `SPEC-060` が定�
 - **対応UF:** `UF-AUTH-003`, `UF-PUB-002`, `UF-AUTH-007`
 - **Purpose:** Loginし、必要に応じて認証前の利用目的へ復帰する。
 
-**Fields:** Email address、Password。
+**Fields / Methods:** Email+PasswordのEmail/Password入力に加え、Google、Email OTP、Magic Linkを選べる。
 
 **Actions**
 
 - Login
+- 選択方式でLogin。Google取消、OTP誤入力・期限切れ、Link期限切れ・別端末利用失敗は認証未成立として画面に留まり、再選択・再試行を許す。
 - Password reset → `PG-AUTH-004`
 - Account登録 → `PG-AUTH-001`
 - 認証を中止して元の公開Pageへ戻る
@@ -865,7 +884,7 @@ Continuation Intentがある場合、Page上部に「この操作にはLoginが�
 - **Actor:** Guest / Login不能User
 - **Auth:** 不要
 - **対応UF:** `UF-AUTH-005`, `UF-AUTH-007`
-- **Purpose:** Supabase AuthのPassword resetを開始する。
+- **Purpose:** Neon AuthのPassword resetを開始する。
 
 **Fields:** Email address。
 
@@ -898,6 +917,7 @@ Continuation Intentがある場合、Page上部に「この操作にはLoginが�
 Logoutは専用Pageを持たない。Authenticated UserのAccount menuから実行する。
 
 - Action実行後、認証SessionがLogoutされた結果を受けたら `PG-PUB-001` へ遷移する。
+- Neon Provider Sessionを終了し、HttpOnly Session Cookieを破棄する。SPAは画面JWTと保護Dataを消去する。API JWTは `authClient.token()` で発行し最長15分、メモリーだけに保持する。Logout後に発行済みJWTが最大15分残存し得ることを許容する。
 - Logout後、Browser側のCartはclearされる。`PG-CRT-001` を開いた場合はEmpty状態を表示する（`FR-CRT-012`）。
 - 既存Order、Ticket、Reservation、Goods購入を削除・取消したように表示しない。
 - Logout後にBrowser back等で保護Pageへ戻ろうとした場合は、保護Dataを再表示せずLoginへ遷移する。
@@ -1069,7 +1089,7 @@ Desktopでは常設Navigation、Mobileでは折りたたみ可能なNavigation�
 
 **Fields**
 
-- Account email: Supabase Auth Identityに由来する本人確認用表示。Business ProfileのPassword Credentialとして保持しない。
+- Account email: Neon Auth Identityに由来する本人確認用表示。Business ProfileのPassword Credentialとして保持しない。
 - Display name: Business Profile上の本人向け表示名。更新可能項目とする。
 - Profile update status: 未保存 / 保存中 / 保存成功 / validation failure。
 

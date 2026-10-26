@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-110
 title: API Specification
-version: 1.1.1
+version: 2.0.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -32,7 +32,7 @@ related_specs:
 
 本書は、**off r39'x in 大阪らへん2027** Webシステムの完成形におけるHono API contractとserver operation boundaryを定義する。
 
-本書は、`SPEC-010` で固定された **Next.js / Vercel → Hono / Railway → Supabase PostgreSQL** のBusiness operation経路、Hono RPC、Zod、Supabase Auth、Stripe Checkout / Webhook、Drizzle ORM / `pg` を維持し、`SPEC-020`〜`SPEC-100` が定義したRequirement、Domain State、User Flow、Page、Authentication / Authorization、Payment、Ticket / QR / Check-in、Karaoke、Database physical invariantをHTTP / RPC contractへ具体化するCanonical Ownerである。
+本書は、`SPEC-010` で固定された **React SPA / Cloudflare Pages → Hono / Railway → Neon PostgreSQL** のBusiness operation経路、Hono RPC、Zod、Neon Auth、Stripe Checkout / Webhook、Drizzle ORM / `pg` を維持し、`SPEC-020`〜`SPEC-100` が定義したRequirement、Domain State、User Flow、Page、Authentication / Authorization、Payment、Ticket / QR / Check-in、Karaoke、Database physical invariantをHTTP / RPC contractへ具体化するCanonical Ownerである。
 
 本書は次をCanonicalに定義する。
 
@@ -59,7 +59,7 @@ related_specs:
 
 ## 2. 適用範囲
 
-対象はRailway上のHono APIである。Browser / Next.js WebはBusiness Databaseを直接更新せず、業務更新は本APIへ集約する。
+対象はRailway上のHono APIである。Browser / React SPAはBusiness Databaseを直接更新せず、業務更新は本APIへ集約する。
 
 本書は次を含む。
 
@@ -143,7 +143,7 @@ Canonical base pathは次とする。
 - `self`: Email verified authenticated principalを基本とし、owner relationを強制。
 - `staff`: active `STAFF` Role + operation-specific Capability。
 - `admin`: active `ADMINISTRATOR` Role + operation-specific Capability。
-- `webhooks`: provider authentication専用。Supabase Authを要求しない。
+- `webhooks`: provider authentication専用。Neon Authを要求しない。
 
 `/webhooks/stripe` は通常RPC client exportから除外する。
 
@@ -472,15 +472,25 @@ Owner限定resourceで、Public Referenceが存在しない場合と別Ownerに�
 
 # Part IV — Authentication / Principal
 
-## 23. Supabase Auth input
+## 23. Neon Auth input
 
-Protected APIはSupabase Auth access tokenを次で受領する。
+Protected APIはNeon AuthのJWT発行API（`authClient.token()`）で取得した最大900秒のJWTを次で受領する。Provider Session tokenをJWTとして扱わない。
 
 ```text
 Authorization: Bearer <access-token>
 ```
 
-Next.js Webがserver-to-serverでforwardする場合も同じsemanticを使用する。Client supplied `user_id`, `profile_id`, `role`, `permission`, `customer`はPrincipal構築に使用しない。
+Browser内のReact SPAがRailwayへ直接送信する。Client supplied `user_id`, `profile_id`, `role`, `permission`, `customer`はPrincipal構築に使用しない。JWTの署名・issuer・audience・期限と現在のIdentity / verified stateは `SPEC-060` / `SPEC-140`、現在状態の限定参照は `SPEC-100 §5.1` に従う。
+
+### 23.1 Neon Auth transport proxy（業務APIではない）
+
+Railway Honoはlogical `PUBLIC_AUTH_ORIGIN` の `/auth/*` でNeon Authの認証transportを中継する。これはNeon所有の認証APIへの限定proxyであり、`/api/v1`のBusiness Operation ID、Business response envelope、冪等性registryには追加しない。
+
+- upstreamは環境固定の `NEON_AUTH_BASE_URL` のみ。公開するmethod / pathは採用SDKと4認証方式に必要なProvider APIへallowlistし、管理API・任意URL転送・任意redirectを公開しない。
+- Provider protocolのbody / status / Cookie / redirect / error semanticsを保持する。Session Cookieは認証中継hostのhost-only HttpOnly Cookieとし、`SPEC-140`のOrigin / CSRF / CORS / no-storeを適用する。
+- SDKのAuth base URLは中継の `/auth`、JWTのissuer / audience / JWKSはNeonの正規設定値とする。proxy URLをJWT issuerに置き換えない。
+- Google provider登録のcallbackはNeonが指定する正規Auth callback、最終SPA復帰先は既存の安全なContinuationとする。両者を混同しない。
+- Cookie / redirect書換えを含む正しい中継動作はProvider contract testで検証する。Hono向け公式完成実装があるとは仮定せず、未達時は公開を停止する。
 
 ## 24. Verification ordering
 
@@ -746,7 +756,7 @@ Trace: `PAY-BRW-*`, `UF-XFN-001,003`, `PG-XFN-001`, `PG-MYP-003〜004`.
 
 - **Method:** `POST`
 - **Path:** `/api/v1/webhooks/stripe`
-- **Auth:** Supabase Auth不要
+- **Auth:** Neon Auth不要
 - **Provider auth:** Stripe signature mandatory
 - **Body:** raw bytes。JSON middlewareで先にconsume / reserializeしてはならない。
 - **Size:** max 1 MiB
@@ -2102,10 +2112,10 @@ resolveConsistencyReviewCase()
 
 1. `/api/v1`とnamespaceが一貫している。
 2. Hono RPC / Zodを使用し、webhook raw routeをRPCから分離する。
-3. Browser / Next.js WebがBusiness DBを直接writeしない。
+3. Browser / React SPAがBusiness DBを直接writeしない。
 4. Internal bigint IDをwireへ出さない。
 5. Moneyはdecimal string + ISO currency。
-6. Protected operationごとにSupabase AuthをServer-side verifyする。
+6. Protected operationごとにNeon AuthをServer-side verifyする。
 7. owner mismatchとnot foundをself APIで404へ統一する。
 8. Staff / AdminはRole + CapabilityをRequestごとに再評価する。
 9. Purchase startはClient price / owner / payment resultを信用しない。

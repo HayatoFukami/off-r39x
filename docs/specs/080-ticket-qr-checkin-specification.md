@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-080
 title: Ticket, QR and Check-in Specification
-version: 1.0.0
+version: 2.0.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -387,7 +387,7 @@ QR Tokenは**支払確定前に生成・提供してはならない**。
 
 `PG-MYP-006〜007` および `PG-MYP-009〜010` のOwner限定表示では、Server-sideで少なくとも次の順序を満たす。
 
-1. Supabase Auth由来Identity verification
+1. Neon Auth由来Identity verification
 2. Email確認等を含む有効Authentication state確認
 3. Business Profile一意resolution
 4. 対象Ticket / ReservationのOwner relation確認
@@ -1034,7 +1034,7 @@ Service回復後はcurrent Authentication / Authorization / Domain stateを再�
 
 | 情報 | Authority |
 |---|---|
-| Auth Identity / Session validity | Supabase Auth (`SPEC-060`) |
+| Auth Identity / Session validity | Neon Auth (`SPEC-060`) |
 | Ticket Owner / State | Business Database |
 | Karaoke Reservation current state | Business Database |
 | QR Token correlation / lifecycle | Business Database |
@@ -1053,8 +1053,7 @@ Service回復後はcurrent Authentication / Authorization / Domain stateを再�
 上流System Boundaryを維持する。
 
 ```text
-Customer Browser / Staff Browser
-          -> Next.js Web
+Customer Browser / Staff Browser（React SPAを実行）
           -> Hono API
           -> Business Database
 ```
@@ -1062,7 +1061,7 @@ Customer Browser / Staff Browser
 - WebはQR表示 / Scanner UIを担う。
 - Hono APIはAuthentication / Authorization、Token validation、Ticket state evaluation、Check-in Business Logicを担う。
 - Business DatabaseはTicket / Token relation / Check-in current business truthを保持する。
-- Next.js WebまたはBrowserからBusiness Databaseを直接更新しない。
+- React SPAまたはBrowserからBusiness Databaseを直接更新しない。
 
 # Part XIII — Downstream Canonical Owner Boundary
 
