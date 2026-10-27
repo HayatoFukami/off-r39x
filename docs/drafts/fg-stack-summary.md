@@ -4,6 +4,17 @@
 > 作成日: 2026-10-24 / 改訂: 2026-10-24（13 構成での再採点を反映）
 > 元資料: `d1-migration-review.md`。出典番号 `[S#]` は同資料の Sources に対応する。記号は ✅ 一次情報で確認 / 📐 リポジトリで確認 / ⚠️ 推定・未確認。
 > 前提: AWS のサービスを自分で契約・運用しない。為替は $1 = ¥150。料金は 2026-10-23 時点。
+>
+> **【過去の比較資料】** 本書は、**旧仕様（Next.js on Vercel / Railway の Hono / Supabase PostgreSQL + Supabase Auth）を「現行」とした、2026-10-24 時点の比較**である。表の「現行からの変更」「Railway から移行」「Supabase PG から移行」「Next.js 16 on Vercel」は旧構成との比較であり、**現在の仕様ではない**。
+>
+> 2026-10-25 の構成改定（PR #20、`SPEC-010` §8.1.1）で、Canonical 仕様は次のとおりになった。本書の F・G とは異なる構成である。
+>
+> - Web: **Cloudflare Pages** の静的 SPA（Vite / React Router）。Next.js on Vercel ではない。
+> - API・認証中継・Email Worker・Reconciliation Worker: **Railway**。Workers / Durable Object / Hyperdrive は採用していない。
+> - DB・認証: **Neon PostgreSQL**（シンガポール）+ **Neon Auth**。Better Auth の自前運用（本書の G）は採用していない。
+> - 認証情報の参照: 限定ビュー `auth_read.identity_directory` だけ（`SPEC-100` §5.1）。
+>
+> 現行仕様と食い違う場合は `docs/specs/` が優先する。構成 F の評価（4.1・4.3 など）は、旧仕様を基準にした値であり、現行仕様の採用構成の評価ではない。
 
 ## 1. 構成の違い
 
@@ -84,8 +95,8 @@ F・G は、DB を Neon PostgreSQL に置き、Workers + Hyperdrive から接続
 | パスワード長 12〜128（SEC-AUTH-016）| 最大 128 のみ記載。最小長を設定できるか**不明** ⚠️ | `minPasswordLength` を 12 に設定 ✅ |
 | 漏洩パスワード検知（SEC-AUTH-017）| プラグイン非対応 ✅ | `haveIBeenPwned` プラグイン（SHA-1 の先頭 5 文字のみ送信）✅ |
 | ボット対策（SEC-AUTH-019）| プラグイン非対応 ✅。前段で Turnstile を挟む案は未検討 ⚠️ | captcha プラグイン（Turnstile 対応）✅ |
-| 資格情報を業務 DB に置かない（AR-AUTH-011、SEC-AUTH-006）| 同じ DB の別スキーマ。**仕様の解釈が必要**（またはスキーマ・ロール分離）⚠️ | 別 DB か別スキーマ・別ロールに分けて満たせる ⚠️ |
-| `sub` からのメール・検証状態の引き当て（SPEC-120 §15）| 管理 API に一覧・取得の記載なし。`neon_auth` スキーマの直接参照案 ⚠️ | admin プラグインは admin ヘッダが必要。読み取り専用ロールで直接参照する案 ⚠️ |
+| 資格情報を業務 DB に置かない（AR-AUTH-011、SEC-AUTH-006）| 同じ DB の別スキーマ。当時は**仕様の解釈が必要**（またはスキーマ・ロール分離）としたが、**現行仕様は整理済み**: `neon_auth` は Provider 所有で、`app` / `auth_read` に資格情報を置かず、runtime ロールに元テーブルの権限を与えない（`SPEC-060` `AR-SES-001`、`SPEC-100` `DB-ARC-004`・§5.1）| 別 DB か別スキーマ・別ロールに分けて満たせる ⚠️ |
+| `sub` からのメール・検証状態の引き当て（SPEC-120 §15）| 管理 API に一覧・取得の記載なし。当時は `neon_auth` スキーマの直接参照案 ⚠️。**現行仕様は直接参照を採らず**、限定ビュー `auth_read.identity_directory`（`auth_subject` / `email` / `email_verified` の 3 列）だけを API と Email Worker が読む（`SPEC-100` §5.1、`SPEC-120`）| admin プラグインは admin ヘッダが必要。読み取り専用ロールで直接参照する案 ⚠️（現行仕様では採用しない）|
 | 認証障害時は fail closed | 提供元の障害に依存。SLA は Launch になし ✅ | 自前の可用性 |
 
 ### 4.2 共通のセキュリティ事項
@@ -104,9 +115,9 @@ F・G は、DB を Neon PostgreSQL に置き、Workers + Hyperdrive から接続
 - 漏洩検知・captcha・rate limit が使えず、SEC-AUTH-017・019 を満たす手段が別途必要。
 - パスワード最小長 12 文字を設定で満たせるか不明。
 - JWT 寿命が固定で変更できない。
-- 認証情報が業務 DB と同じ Neon DB に入る。
+- 認証情報が業務 DB と同じ Neon DB に入る（現行仕様では、`neon_auth` を Provider 所有として分離し、runtime ロールからは `auth_read.identity_directory` の 3 列だけを読む形で整理済み）。
 - IP Allow・Private Networking を有効にしたプロジェクトでは Neon Auth を使えない ✅。
-- 提供元の仕様変更（`neon_auth` スキーマの安定性の記載なし）に追従する必要がある ⚠️。
+- 提供元の仕様変更（`neon_auth` スキーマの安定性の記載なし）に追従する必要がある ⚠️。現行仕様では、限定ビューの元になる列・UUID 形式・grant を Provider 契約テストで確認し、崩れたら fail closed とする（`SPEC-100` §5.1）。
 - 利点: 脆弱性への対応や更新を提供元に任せられる。
 
 ### 4.4 G 固有のリスクと対策
@@ -162,7 +173,7 @@ GitHub のセキュリティアドバイザリを 4 ページ分（計 32 件）
 
 ## 7. 未確認事項
 
-- Neon Auth: セッション寿命、パスワード最小長、組み込みの rate limit の有無、管理 API でのユーザー一覧・取得、`neon_auth` スキーマの安定性、MAU の超過単価。
+- Neon Auth: セッション寿命、パスワード最小長、組み込みの rate limit の有無、管理 API でのユーザー一覧・取得（現行仕様は管理 API を前提にせず `auth_read.identity_directory` を使う）、`neon_auth` スキーマの安定性、MAU の超過単価。
 - Better Auth: Workers での `advanced.backgroundTasks` の設定、パスワードハッシュの形式と他サービスへの移行互換性、未取得のアドバイザリ 1 ページ分、メンテナ体制と SLA。
 - Hyperdrive: advisory lock の可否。
 - Neon: Launch のバックアップ保持と仕様との関係、使用量（CU 時間）の実測。
