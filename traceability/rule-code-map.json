@@ -2876,8 +2876,13 @@
     },
     {
       "rule_id": "SEC-AUTH-001",
-      "code_paths": ["packages/auth/src/index.ts"],
-      "test_case_ids": ["TC-SEC-AUTH-001-050", "TC-SEC-AUTH-005-051"],
+      "code_paths": [
+        "packages/auth/src/index.ts",
+        "packages/api-contract/src/index.ts",
+        "apps/api/src/api/app.ts",
+        "apps/api/src/bootstrap/index.ts"
+      ],
+      "test_case_ids": ["TC-SEC-AUTH-001-050", "TC-SEC-AUTH-005-051", "TC-RPC-AUDIT-001"],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
     },
     {

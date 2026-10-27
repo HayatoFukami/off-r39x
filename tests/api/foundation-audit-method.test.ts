@@ -54,7 +54,10 @@ it("TC-RPC-AUDIT-001 public Hono RPC type is the mounted canonical principal rou
   });
   const client = hc<import("../../packages/api-contract/src/index.ts").AppType>(
     "https://api.example.test",
-    { fetch: async (input, init) => app.request(String(input), init) },
+    {
+      fetch: async (input: string | URL | Request, init?: RequestInit) =>
+        app.request(String(input), init),
+    },
   );
   const response = await client.api.v1.self.principal.$get(
     {},
