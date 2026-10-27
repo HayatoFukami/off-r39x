@@ -1,13 +1,15 @@
 import type { PaymentLookup, PaymentWebhookVerifier } from "@off-r39x/application";
 import type { LogEvent } from "@off-r39x/observability";
-import { TIMEOUTS } from "@off-r39x/reliability";
+import { TIMEOUTS, withDeadline } from "@off-r39x/reliability";
 import Stripe from "stripe";
 
 function client(secret: string, transport?: typeof fetch): Stripe {
   return new Stripe(secret, {
     timeout: TIMEOUTS.stripeMs,
     maxNetworkRetries: 0,
-    ...(transport ? { httpClient: Stripe.createFetchHttpClient(transport) } : {}),
+    // Node socket inactivity timeouts reset on trickling bytes. Use the SDK
+    // Fetch transport plus an adapter-owned monotonic total deadline.
+    httpClient: Stripe.createFetchHttpClient(transport ?? fetch),
   });
 }
 type Logger = { log(event: LogEvent): void };
@@ -32,12 +34,24 @@ export function createStripeLookup(
   logger?: Logger,
   transport?: typeof fetch,
 ): PaymentLookup {
-  const sdk = client(secret, transport);
+  const request = <T>(operation: (sdk: Stripe) => Promise<T>) =>
+    withDeadline(
+      (signal) =>
+        operation(
+          client(secret, (url, init) =>
+            (transport ?? fetch)(url, {
+              ...init,
+              signal: init?.signal ? AbortSignal.any([signal, init.signal]) : signal,
+            }),
+          ),
+        ),
+      TIMEOUTS.stripeMs,
+    );
   return {
     async checkout(id) {
       if (!/^cs_[A-Za-z0-9_]+$/.test(id)) return { kind: "BLOCKED" };
       try {
-        const value = await sdk.checkout.sessions.retrieve(id);
+        const value = await request((sdk) => sdk.checkout.sessions.retrieve(id));
         if (
           value.id !== id ||
           ![null, "open", "complete", "expired"].includes(value.status) ||
@@ -57,7 +71,7 @@ export function createStripeLookup(
     async refund(id) {
       if (!/^re_[A-Za-z0-9_]+$/.test(id)) return { kind: "BLOCKED" };
       try {
-        const value = await sdk.refunds.retrieve(id);
+        const value = await request((sdk) => sdk.refunds.retrieve(id));
         if (
           value.id !== id ||
           ![null, "pending", "requires_action", "succeeded", "failed", "canceled"].includes(

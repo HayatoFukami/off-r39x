@@ -211,7 +211,8 @@
         "packages/application/src/index.ts",
         "packages/db/src/transaction.ts",
         "apps/email-worker/src/bootstrap/host.ts",
-        "apps/reconciliation-worker/src/bootstrap/host.ts"
+        "apps/reconciliation-worker/src/bootstrap/host.ts",
+        "packages/providers/stripe/src/index.ts"
       ],
       "test_case_ids": [
         "TC-COMMON-004",
@@ -221,14 +222,21 @@
         "TC-FOUNDATION-RUNTIME-015",
         "TC-FOUNDATION-RUNTIME-018",
         "TC-DB-FOUNDATION-010",
-        "TC-FOUNDATION-RUNTIME-022"
+        "TC-FOUNDATION-RUNTIME-022",
+        "TC-STRIPE-AUDIT-001",
+        "TC-STRIPE-AUDIT-002"
       ],
       "notes": "Abort-aware bounded caller deadline"
     },
     {
       "rule_id": "DEV-REL-002",
-      "code_paths": ["packages/reliability/src/index.ts"],
-      "test_case_ids": ["TC-COMMON-004", "TC-COMMON-009"],
+      "code_paths": ["packages/reliability/src/index.ts", "packages/providers/stripe/src/index.ts"],
+      "test_case_ids": [
+        "TC-COMMON-004",
+        "TC-COMMON-009",
+        "TC-STRIPE-AUDIT-001",
+        "TC-STRIPE-AUDIT-002"
+      ],
       "notes": "Shared dependency timeout primitives"
     },
     {

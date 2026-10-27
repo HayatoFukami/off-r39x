@@ -15692,6 +15692,52 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": true
+    },
+    {
+      "test_case_id": "TC-STRIPE-AUDIT-001",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["REL-TMO-003", "DEV-REL-002"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Transport ignores cancellation; fake clock at canonical10s",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": ["response_body_stall", "abort_ignored"],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Fail closed within the canonical boundary; no unintended business mutation"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-STRIPE-AUDIT-002",
+      "level": "Integration",
+      "suite": "integration",
+      "upstream_rule_ids": ["REL-TMO-003", "DEV-REL-002"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Production SDK factory with actual Fetch HTTP stream trickling bytes; complete body at12s",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": ["response_body_stall", "abort_ignored"],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Fail closed within the canonical boundary; no unintended business mutation"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
     }
   ]
 }
