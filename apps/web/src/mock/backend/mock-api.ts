@@ -66,6 +66,8 @@ const LIMIT_COUNTED_STATES: readonly OrderState[] = [
 ];
 
 const BROKEN_SPONSOR_IMAGE = "/mock/sponsors/__broken__.svg";
+// `.invalid` is a reserved TLD; this origin is never in the CSP img-src, so the browser blocks it.
+const DISALLOWED_SPONSOR_IMAGE_ORIGIN = "https://sponsor-images.invalid";
 
 type Sellable = {
   control: "ENABLED" | "SUSPENDED";
@@ -535,11 +537,19 @@ export function createMockApi(deps: MockApiDeps): ApiPort {
       if (mode === "none") return { kind: "ok", data: [] };
       const data = ctx.state.sponsors
         .filter((s) => s.publication === "PUBLISHED")
-        .sort((a, b) => a.displayOrder - b.displayOrder)
+        // sort_order ASC, then public_ref ASC (BR-EVT-005, API-PUB-012)
+        .sort(
+          (a, b) => a.displayOrder - b.displayOrder || (a.ref < b.ref ? -1 : a.ref > b.ref ? 1 : 0),
+        )
         .map((s) => ({
           sponsorRef: asRef<"sponsor">(s.ref),
           name: s.name,
-          imageUrl: mode === "image_broken" ? BROKEN_SPONSOR_IMAGE : s.imageUrl,
+          imageUrl:
+            mode === "image_broken"
+              ? BROKEN_SPONSOR_IMAGE
+              : mode === "image_disallowed_origin"
+                ? `${DISALLOWED_SPONSOR_IMAGE_ORIGIN}/${s.ref}.svg`
+                : s.imageUrl,
           linkUrl: s.linkUrl,
         }));
       return { kind: "ok", data };

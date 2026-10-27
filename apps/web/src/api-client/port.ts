@@ -42,7 +42,7 @@ export interface PublicApi {
   listAnnouncements(q?: { limit?: number }): Promise<Read<readonly AnnouncementSummary[]>>;
   /** API-PUB-004 */
   getAnnouncement(ref: Ref<"announcement">): Promise<Read<Announcement>>;
-  /** Operation ID なし (UCR-110-001) */
+  /** API-PUB-012 (PUBLISHED only, sort_order ASC then public_ref ASC) */
   listSponsorLogos(): Promise<Read<readonly SponsorLogo[]>>;
   /** API-PUB-005 plus the viewer-specific Purchase Limit result: Operation ID なし (UCR-110-001) */
   listEntryOfferings(): Promise<Read<readonly EntryOffering[]>>;

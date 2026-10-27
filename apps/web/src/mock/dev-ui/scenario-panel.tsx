@@ -30,7 +30,7 @@ const CONTROLS: readonly Control[] = [
   select("publicFetch", "ok", "fail", "empty"),
   select("latency", "none", "long"),
   { path: "latencyLongMs", kind: "number" },
-  select("sponsorLogos", "published", "none", "fail", "image_broken"),
+  select("sponsorLogos", "published", "none", "fail", "image_broken", "image_disallowed_origin"),
   select("cart.state", "ok", "fail", "partial"),
   select("cart.purchaseStart", "ok", "reject_one", "limit", "unavailable"),
   select("checkout", "ok", "start_failed", "opportunity_expired"),

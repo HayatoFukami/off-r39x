@@ -70,7 +70,8 @@ describe("TC-PG-PUB-001-213 sponsor links and images accept only safe URLs (SPEC
     const model = buildSponsorAreaModel(ok([logo(1, "S", { linkUrl })]));
     return model.kind === "visible" ? (model.items[0]?.externalHref ?? null) : "HIDDEN";
   };
-  const imageSrc = (imageUrl: string | null): string | null => {
+  // API-PUB-012 image_url is required: the model input is a plain string (a null case is not representable).
+  const imageSrc = (imageUrl: string): string | null => {
     const model = buildSponsorAreaModel(ok([logo(1, "S", { imageUrl })]));
     return model.kind === "visible" ? (model.items[0]?.imageSrc ?? null) : "HIDDEN";
   };
@@ -93,8 +94,9 @@ describe("TC-PG-PUB-001-213 sponsor links and images accept only safe URLs (SPEC
   it("uses a same-origin path or an https URL as the image, otherwise falls back to the name", () => {
     expect(imageSrc("/mock/sponsors/alpha.svg")).toBe("/mock/sponsors/alpha.svg");
     expect(imageSrc("https://img.example.com/a.png")).toBe("https://img.example.com/a.png");
-    expect(imageSrc(null)).toBeNull();
     expect(imageSrc("http://img.example.com/a.png")).toBeNull();
+    expect(imageSrc("https://user:pass@img.example.com/a.png")).toBeNull();
+    expect(imageSrc("not a url")).toBeNull();
     expect(imageSrc("javascript:alert(1)")).toBeNull();
     expect(imageSrc("data:image/svg+xml,<svg/>")).toBeNull();
     expect(imageSrc("//img.example.com/a.png")).toBeNull();

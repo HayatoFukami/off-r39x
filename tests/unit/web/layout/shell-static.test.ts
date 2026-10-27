@@ -280,3 +280,37 @@ describe("TC-PG-PUB-001-231 sponsor placeholder assets are text-only SVG (SPEC-0
     expect(existsSync(abs("public/mock/sponsors/__broken__.svg"))).toBe(false);
   });
 });
+
+describe("TC-PG-PUB-001-232 sponsor images are no-referrer, links are noopener noreferrer, image_url is required (SPEC-050 8.5, SEC-WEB-026, API-PUB-012)", () => {
+  const logos = (): string => read("src/presentation/layout/sponsor-logos.tsx");
+
+  it("gives every <img> of the Sponsor Logo area referrerPolicy=no-referrer", () => {
+    const tags = logos().match(/<img\b[\s\S]*?\/>/g) ?? [];
+    expect(tags.length).toBeGreaterThan(0);
+    for (const tag of tags) {
+      expect(tag).toMatch(/referrerPolicy=(?:"no-referrer"|\{\s*"no-referrer"\s*\})/);
+    }
+    // No other image element hides behind a different spelling.
+    expect((logos().match(/<img\b/g) ?? []).length).toBe(tags.length);
+  });
+
+  it("keeps rel=noopener noreferrer and target=_blank on the external link and proxies nothing", () => {
+    const source = logos();
+    expect(source).toMatch(/target="_blank"/);
+    expect(source).toMatch(/rel="noopener noreferrer"/);
+    expect(source).not.toMatch(/\/api\/|fetch\(|proxy/i);
+  });
+
+  it("types SponsorLogo.imageUrl as a required string (API-PUB-012 image_url is not nullable)", () => {
+    const block = /export type SponsorLogo = \{[^}]*\};/s.exec(read("src/api-client/types.ts"));
+    expect(block, "SponsorLogo type").not.toBeNull();
+    expect(block?.[0]).toMatch(/imageUrl:\s*string;/);
+    expect(block?.[0]).not.toMatch(/imageUrl:[^;]*null/);
+  });
+
+  it("takes a non-null string in toImageSrc", () => {
+    const source = read("src/presentation/layout/sponsor-area-model.ts");
+    expect(source).toMatch(/function toImageSrc\(\s*imageUrl:\s*string\s*\)/);
+    expect(source).not.toMatch(/function toImageSrc\([^)]*null/);
+  });
+});

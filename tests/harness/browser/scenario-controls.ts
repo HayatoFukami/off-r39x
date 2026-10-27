@@ -14,7 +14,7 @@ export const SCENARIO_CONTROLS: readonly ScenarioControl[] = [
   {
     path: "sponsorLogos",
     kind: "select",
-    values: ["published", "none", "fail", "image_broken"],
+    values: ["published", "none", "fail", "image_broken", "image_disallowed_origin"],
   },
   { path: "cart.state", kind: "select", values: ["ok", "fail", "partial"] },
   {

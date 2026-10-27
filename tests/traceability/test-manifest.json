@@ -1148,7 +1148,7 @@
       "test_case_id": "TC-BR-EVT-005-101",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["BR-EVT-005", "PG-PUB-001", "TST-UNT-004"],
+      "upstream_rule_ids": ["BR-EVT-005", "API-PUB-012", "PG-PUB-001", "TST-UNT-004"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -1160,7 +1160,56 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "only PUBLISHED logos in display order",
-        "none is ok-empty, fail is unavailable, image_broken keeps names with a broken image URL"
+        "none is ok-empty, fail is unavailable, image_broken keeps names with a broken image URL",
+        "every image URL is a non-null string (API-PUB-012 image_url is required)"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-BR-EVT-005-102",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["BR-EVT-005", "API-PUB-012", "TST-UNT-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock DB rewritten through the injected storage so that PUBLISHED logos share a display order and the stored order differs from the ref order; contract tests/contracts/s2-mock-backend.md; UI mock test double (not API/DB/Provider coverage)",
+      "fixture_ids": ["MOCK-SEED-PUBLIC"],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "logos with an equal display order are returned by ref ascending whatever the stored order is (sort_order ASC, public_ref ASC)",
+        "a lower display order still comes first; DRAFT and ARCHIVED logos are never returned even when they tie"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-BR-EVT-005-103",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["BR-EVT-005", "SEC-WEB-026", "TST-UNT-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Scenario sponsorLogos = image_disallowed_origin; contract tests/contracts/s2-mock-backend.md; UI mock test double (not API/DB/Provider coverage)",
+      "fixture_ids": ["MOCK-SEED-PUBLIC"],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "the same 3 logos in the same order with the same link URLs as published",
+        "every image URL is an https URL without credentials on the reserved-TLD origin https://sponsor-images.invalid"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -1429,7 +1478,13 @@
       "test_case_id": "TC-DEV-WEB-010-103",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["DEV-WEB-010", "DEV-GEN-003", "API-ORD-003", "TST-UNT-004"],
+      "upstream_rule_ids": [
+        "DEV-WEB-010",
+        "DEV-GEN-003",
+        "API-ORD-003",
+        "API-PUB-012",
+        "TST-UNT-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -1443,7 +1498,8 @@
         "every method names an Operation ID or UCR-110-001",
         "ports without an Operation ID are marked and no new Operation ID is invented",
         "the Profile ports cite API-AUTH-002 / API-AUTH-004 and no longer cite the superseded UCR-100-001",
-        "getOrder cites API-ORD-003 (notification_summary) without UCR-110-001 or Operation ID なし"
+        "getOrder cites API-ORD-003 (notification_summary) without UCR-110-001 or Operation ID なし",
+        "listSponsorLogos cites API-PUB-012 (PUBLISHED only, public_ref ASC tie-break) without UCR-110-001 or Operation ID なし; only startCartPurchase stays marked UCR-110-001"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -1466,7 +1522,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "every switch has its documented default; schema is strict at every level; notification accepts exactly sent / pending / failed_retryable / canceled / summary_unavailable (the simulated internal state), rejects the summary statuses, and round-trips through storage"
+        "every switch has its documented default; schema is strict at every level; notification accepts exactly sent / pending / failed_retryable / canceled / summary_unavailable (the simulated internal state), rejects the summary statuses, and round-trips through storage; sponsorLogos accepts image_disallowed_origin"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -2764,7 +2820,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "only https links without credentials and same-origin / https images are accepted; others fall back to null"
+        "only https links without credentials and same-origin / https images are accepted; others (http, javascript:, data:, protocol-relative, credentials, unparsable) fall back to null; the image URL input is a non-null string"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -2811,6 +2867,37 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "sponsor placeholder SVGs are text-only and the broken-image target does not exist"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-PUB-001-232",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "PG-PUB-001",
+        "SPEC-050-8.5",
+        "SEC-WEB-026",
+        "API-PUB-012",
+        "TST-UNT-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Static scan of the Sponsor Logo view and the api-client types (the unit environment has no DOM); UI mock test double (not API/DB coverage); S3 contract tests/contracts/s3-layout.md",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "every img of the Sponsor Logo view sets referrerPolicy no-referrer",
+        "the external link keeps target _blank and rel noopener noreferrer and nothing is proxied",
+        "SponsorLogo.imageUrl and toImageSrc take a required string"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -3415,6 +3502,7 @@
       "upstream_rule_ids": [
         "PG-PUB-001",
         "BR-EVT-005",
+        "SEC-WEB-026",
         "SPEC-050-8.5",
         "SPEC-050-31-29",
         "TST-E2E-003",
@@ -3431,7 +3519,8 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "published scenario shows only PUBLISHED sponsors in display order with alt names, loaded images, rel noopener noreferrer and an external indication"
+        "published scenario shows only PUBLISHED sponsors in display order with alt names, loaded images, rel noopener noreferrer and an external indication",
+        "every sponsor img carries referrerpolicy no-referrer"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -3522,6 +3611,39 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "image_broken scenario shows each sponsor display name as text in order and leaves no broken image"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-PUB-001-406",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-PUB-001",
+        "BR-EVT-005",
+        "SEC-WEB-026",
+        "SPEC-050-8.5",
+        "TST-E2E-003",
+        "TST-E2E-004",
+        "DEV-WEB-010"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied, img-src is 'self' data: blob: only because the E2E build sets no SPONSOR_IMAGE_ALLOWED_ORIGINS); desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage; UI mock test double (not API/DB/Provider coverage; no Provider origin check)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "the page response Content-Security-Policy img-src lists exactly 'self' data: blob: and not the sponsor image origin",
+        "image_disallowed_origin scenario shows the 3 sponsors as display name text in order with no img left in the region and the external links keeping name, href and rel noopener noreferrer",
+        "the browser reports one img-src securitypolicyviolation per blocked logo and no other directive; the disallowed origin never answers (0 responses); no pageerror"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],

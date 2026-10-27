@@ -292,10 +292,21 @@ describe("TC-DEV-WEB-010-103 port doc comments name the Operation ID or the UCR 
 
   it("marks the ports without an Operation ID as UCR-110-001 / Operation ID なし", () => {
     const lines = portSource();
-    for (const name of ["startCartPurchase", "listSponsorLogos"]) {
+    // listSponsorLogos now has an Operation ID (API-PUB-012); startCartPurchase stays until phase B4.
+    for (const name of ["startCartPurchase"]) {
       expect(window(lines, name), name).toContain("UCR-110-001");
     }
     expect(portSource().join("\n")).toMatch(/Operation ID\s*(なし|none|missing)/i);
+  });
+
+  it("cites API-PUB-012 for listSponsorLogos without the UCR or Operation ID なし wording (SPEC-110 API-PUB-012, BR-EVT-005)", () => {
+    const annotation = window(portSource(), "listSponsorLogos");
+    expect(annotation).toContain("API-PUB-012");
+    expect(annotation).not.toContain("UCR-110-001");
+    expect(annotation).not.toMatch(/Operation ID\s*(なし|none|missing)/i);
+    // The ordering contract is part of the annotation: sort_order ASC, then public_ref ASC.
+    expect(annotation).toMatch(/PUBLISHED/);
+    expect(annotation).toMatch(/public_ref ASC/);
   });
 
   it("cites API-AUTH-002 / API-AUTH-004 for the Profile ports without the superseded UCR-100-001 (SPEC-030 9.2)", () => {
@@ -331,6 +342,7 @@ describe("TC-DEV-WEB-010-103 port doc comments name the Operation ID or the UCR 
       "API-PUB-009",
       "API-PUB-010",
       "API-PUB-011",
+      "API-PUB-012",
       "API-AUTH-002",
       "API-AUTH-004",
       "API-PUR-KRK-001",

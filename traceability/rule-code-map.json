@@ -1363,7 +1363,14 @@
         "apps/web/src/presentation/layout/sponsor-logos.tsx",
         "apps/web/src/features/shell/site-footer.tsx"
       ],
-      "test_case_ids": ["TC-BR-EVT-005-101", "TC-PG-PUB-001-212", "TC-PG-PUB-001-402"],
+      "test_case_ids": [
+        "TC-BR-EVT-005-101",
+        "TC-BR-EVT-005-102",
+        "TC-BR-EVT-005-103",
+        "TC-PG-PUB-001-212",
+        "TC-PG-PUB-001-402",
+        "TC-PG-PUB-001-406"
+      ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
@@ -2706,9 +2713,19 @@
     },
     {
       "rule_id": "SEC-WEB-026",
-      "code_paths": ["scripts/generate-web-headers.mts"],
-      "test_case_ids": ["TC-STACK-008-203", "TC-STACK-008-204"],
-      "notes": "implementation mapping only: Sponsor image origin validation for img-src; not API URL validation"
+      "code_paths": [
+        "scripts/generate-web-headers.mts",
+        "apps/web/src/presentation/layout/sponsor-logos.tsx",
+        "apps/web/src/presentation/layout/sponsor-area-model.ts"
+      ],
+      "test_case_ids": [
+        "TC-STACK-008-203",
+        "TC-STACK-008-204",
+        "TC-PG-PUB-001-402",
+        "TC-PG-PUB-001-406",
+        "TC-PG-PUB-001-232"
+      ],
+      "notes": "implementation mapping only: Sponsor image origin validation for img-src, no-referrer images and the name fallback for a CSP-blocked image; not API URL validation"
     }
   ]
 }

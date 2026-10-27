@@ -59,6 +59,7 @@ describe("TC-DEV-WEB-013-101 scenario schema and defaults (design section 8, DEV
       ["sponsorLogos", "none"],
       ["sponsorLogos", "fail"],
       ["sponsorLogos", "image_broken"],
+      ["sponsorLogos", "image_disallowed_origin"],
       ["checkout", "start_failed"],
       ["checkout", "opportunity_expired"],
       ["karaokeHold", "conflict"],

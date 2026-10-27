@@ -115,7 +115,7 @@ export type Announcement = AnnouncementSummary & { body: string };
 export type SponsorLogo = {
   sponsorRef: Ref<"sponsor">;
   name: string;
-  imageUrl: string | null;
+  imageUrl: string;
   linkUrl: string | null;
 };
 export type EntryOffering = {

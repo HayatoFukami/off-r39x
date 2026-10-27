@@ -87,7 +87,7 @@ export type EventInfo = {
 export type FaqItem = { id: string; question: string; answer: string };
 export type AnnouncementSummary = { announcementRef: Ref<"announcement">; title: string; publishedAt: UtcInstant; excerpt: string };
 export type Announcement = AnnouncementSummary & { body: string };   // body はサニタイズ・エスケープせず原文のまま
-export type SponsorLogo = { sponsorRef: Ref<"sponsor">; name: string; imageUrl: string | null; linkUrl: string | null };
+export type SponsorLogo = { sponsorRef: Ref<"sponsor">; name: string; imageUrl: string; linkUrl: string | null }; // imageUrl は必須（API-PUB-012 image_url）
 export type EntryOffering = {
   offeringRef: Ref<"offering">; name: string; description: string; unitPrice: Money;
   salesPeriod: SalesPeriod; availability: SaleAvailability; perAccountLimit: number | null;
@@ -155,7 +155,7 @@ export interface PublicApi {
   listFaqs(): Promise<Read<readonly FaqItem[]>>;                                         // API-PUB-002
   listAnnouncements(q?: { limit?: number }): Promise<Read<readonly AnnouncementSummary[]>>; // API-PUB-003
   getAnnouncement(ref: Ref<"announcement">): Promise<Read<Announcement>>;                // API-PUB-004
-  listSponsorLogos(): Promise<Read<readonly SponsorLogo[]>>;                             // Operation ID なし（UCR-110-001）
+  listSponsorLogos(): Promise<Read<readonly SponsorLogo[]>>;                             // API-PUB-012（PUBLISHED のみ、sort_order ASC, public_ref ASC）
   listEntryOfferings(): Promise<Read<readonly EntryOffering[]>>;                         // API-PUB-005 + 閲覧者別 Purchase Limit 可否（Operation ID なし, UCR-110-001）
   getKaraokeSales(): Promise<Read<KaraokeSales>>;                                        // API-PUB-006
   getKaraokeDay(date: BusinessDateJst): Promise<Read<KaraokeDay>>;                       // API-PUB-007 + API-PUB-008
@@ -186,7 +186,7 @@ export interface SelfApi {   // 他者所有でも不存在でも同じ not_foun
 export interface ApiPort { readonly public: PublicApi; readonly purchase: PurchaseApi; readonly self: SelfApi }
 ```
 
-各 method の doc comment に対応する Operation ID を書く。Operation ID が無いもの（`startCartPurchase`、`listSponsorLogos`、`listEntryOfferings` の閲覧者別 Purchase Limit 可否、`resolveCartLines` の複合）には `UCR-110-001` と「Operation ID なし」を明記する。`getOrder` は `API-ORD-003`（`notification_summary` を含む）として正本化されたので、`UCR-110-001` / 「Operation ID なし」を書かない。新しい Operation ID を発明しない。
+各 method の doc comment に対応する Operation ID を書く。Operation ID が無いもの（`startCartPurchase`、`listEntryOfferings` の閲覧者別 Purchase Limit 可否、`resolveCartLines` の複合）には `UCR-110-001` と「Operation ID なし」を明記する。`listSponsorLogos` は `API-PUB-012`（`image_url` 必須、`sort_order ASC, public_ref ASC`）として正本化されたので `UCR-110-001` / 「Operation ID なし」を書かない。`getOrder` は `API-ORD-003`（`notification_summary` を含む）として正本化されたので、`UCR-110-001` / 「Operation ID なし」を書かない。新しい Operation ID を発明しない。
 
 `apps/web/src/api-client/cart-line-key.ts`:
 
@@ -240,7 +240,7 @@ type Scenario = {
   publicFetch: "ok" | "fail" | "empty";
   latency: "none" | "long";
   latencyLongMs: number;                                  // 整数 1..60000
-  sponsorLogos: "published" | "none" | "fail" | "image_broken";
+  sponsorLogos: "published" | "none" | "fail" | "image_broken" | "image_disallowed_origin";
   cart: { state: "ok" | "fail" | "partial"; purchaseStart: "ok" | "reject_one" | "limit" | "unavailable" };
   checkout: "ok" | "start_failed" | "opportunity_expired";
   karaokeHold: "ok" | "conflict" | "limit" | "expire_before_checkout";
@@ -413,7 +413,7 @@ export function buildSeed(now: UtcInstant): DbState;
 - Announcement（ref = `ab000000-0000-4000-8000-0000000000NN`）: 01 `latest`（PUBLISHED、publishedAt = now-1d）、02 `script`（PUBLISHED、now-2d。`body` に文字列 `<script>alert("mock")</script>` を**そのまま**含む）、03 `older`（PUBLISHED、now-10d）、04 `draft`（DRAFT、title は `"[draft] 非公開のお知らせ"`）、05 `archived`（ARCHIVED、title は `"[archived] 掲載終了のお知らせ"`）。`listAnnouncements` は PUBLISHED の 3 件を `publishedAt` 降順（01, 02, 03）で返す。
 - FAQ: PUBLISHED 3 件 + DRAFT 1 件（question は `"[draft] 非公開のFAQ"`）。`listFaqs` は PUBLISHED の 3 件だけ返す。
 - Event: `name` は非空。`eventFields: "complete"` では全 field 非 null、`overview`・`startsAt`・`endsAt`・`venueName`・`venueGuide`・`accessInfo`・`notices` はそれぞれ非空 / 非 null（`notices` は 1 件以上）。`"missing_optional"` では `name` 以外の全 field が `null`。
-- Sponsor Logo（ref = `5b000000-0000-4000-8000-0000000000NN`）: 01 `Sponsor Alpha`（PUBLISHED、displayOrder 10、`linkUrl` = `https://sponsor-alpha.example.com/`）、02 `Sponsor Bravo`（PUBLISHED、20、`linkUrl` = null）、03 `Sponsor Charlie`（PUBLISHED、30、`linkUrl` = `https://sponsor-charlie.example.com/`）、04 DRAFT（name = `"[draft] 協賛ドラフト"`）、05 ARCHIVED（name = `"[archived] 協賛アーカイブ"`）。**seed の配列の並びは Charlie, Alpha, Bravo, draft, archived とし、`displayOrder` でソートして返すことを確かめられるようにする**。`imageUrl` は `/mock/sponsors/<key>.svg` 形式の相対 path。`image_broken` では全 Logo の `imageUrl` を `/mock/sponsors/__broken__.svg` にする。
+- Sponsor Logo（ref = `5b000000-0000-4000-8000-0000000000NN`）: 01 `Sponsor Alpha`（PUBLISHED、displayOrder 10、`linkUrl` = `https://sponsor-alpha.example.com/`）、02 `Sponsor Bravo`（PUBLISHED、20、`linkUrl` = null）、03 `Sponsor Charlie`（PUBLISHED、30、`linkUrl` = `https://sponsor-charlie.example.com/`）、04 DRAFT（name = `"[draft] 協賛ドラフト"`）、05 ARCHIVED（name = `"[archived] 協賛アーカイブ"`）。**seed の配列の並びは Charlie, Alpha, Bravo, draft, archived とし、`displayOrder` でソートして返すことを確かめられるようにする**。`imageUrl` は `/mock/sponsors/<key>.svg` 形式の相対 path。`image_broken` では全 Logo の `imageUrl` を `/mock/sponsors/__broken__.svg` にする。`image_disallowed_origin` では全 Logo の `imageUrl` を `https://sponsor-images.invalid/<ref>.svg`（`<ref>` = その Logo の `sponsorRef`。`.invalid` は予約 TLD で、E2E の CSP `img-src` に含まれない origin）にする。相対 path の seed は UI mock の同一 origin 素材であり、`API-PUB-012` は https の URL だけを返す（差は PR の説明に記録する）。
 
 ### 8.6 Order（ref = `0d000000-0000-4000-8000-0000000000NN`。`createdAt` は now から過去へ）
 
@@ -543,7 +543,7 @@ webhook 待ち（`startCheckout` が `redirect` を返した Order）で、state
 - `fail`: `getEvent`、`listFaqs`、`listAnnouncements`、`getAnnouncement`、`listEntryOfferings`、`getKaraokeSales`、`getKaraokeDay`、`getKaraokeSlot`、`listGoods`、`getGoods`、`resolveCartLines` はすべて `{ kind: "unavailable" }`。
 - `empty`: 一覧系（`listFaqs`、`listAnnouncements`、`listEntryOfferings`、`listGoods`）は `{ kind: "ok", data: [] }`。`getKaraokeSales` は `salesDates: []`。`getKaraokeDay` は（日付が販売対象日なら）`buckets: []`、`previousDate` / `nextDate` は通常どおり。`getEvent`、`getAnnouncement`、`getKaraokeSlot`、`getGoods`、`resolveCartLines` は `ok` と同じ。
 - `fail` と `empty` は互いに区別できる（`unavailable` を Empty に変換しない）。
-- `listSponsorLogos` は `publicFetch` の影響を受けない。`scenario.sponsorLogos`: `published` → PUBLISHED だけを displayOrder 昇順で `ok`、`none` → `ok` + `[]`、`fail` → `unavailable`、`image_broken` → `published` と同じ内容で `imageUrl` を §8.5 の壊れた URL にする。
+- `listSponsorLogos` は `publicFetch` の影響を受けない。`scenario.sponsorLogos`: `published` → PUBLISHED だけを `displayOrder` 昇順、**同値は ref 昇順**（`API-PUB-012` の `sort_order ASC, public_ref ASC`。保存順に依存しない）で `ok`、`none` → `ok` + `[]`、`fail` → `unavailable`、`image_broken` → `published` と同じ内容で `imageUrl` を §8.5 の壊れた URL にする、`image_disallowed_origin` → `published` と同じ内容（同じ 3 件・同順・同 `linkUrl`）で `imageUrl` だけを §8.5 の許可されない origin の URL にする。
 - `scenario.cart.state`: `fail` → `resolveCartLines` が `unavailable`。`partial` → `ok` だが、**先頭の line**だけ `{ lineKey, status: "unavailable" }`（他の line は通常どおり）。`ok` → 通常。
 - `scenario.eventFields`: §8.5。
 - `listAnnouncements({ limit })`: `limit` が指定されたら先頭から `limit` 件まで（降順の後で切る）。
