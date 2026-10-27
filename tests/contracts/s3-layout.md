@@ -513,6 +513,7 @@ CSS・source のどこにも外部 origin（`http://`、`https://`、`//host`）
 - 構造: `RootLayout`（`errorElement: <RootError/>`）> pathless（`errorElement: <RouteError/>`）> { 公開 10 + account 5、`SelfLayout`（`AuthGate` + `Outlet`）> { `/purchase/orders/:orderRef`、`MypageLayout`（`MypageNav` + `Outlet`）> { Mypage 12 } }、`DevLayout` > { `/dev/scenarios`、`/dev/mock-checkout/:orderRef`、`/dev/error-probe` }、`*` → `NotFoundView` }。
 - 動的 route は `useParams()` の値を現行と同じ parse 関数で検査する。不正な値: 公開系（announcement / karaoke day / slot / goods / dev mock-checkout）は `NotFoundView`、Mypage・purchase は `AccessDeniedView`（同じ props）。正常な値は feature container に `key={生の param}` を付けて描画する（param が変わったら再マウント。TC-STACK-008-307）。
 - `react-router` を import してよいのは `src/routing/**`・`src/routes/**`・`src/main.tsx` だけ。`next` の import・依存・`next.config.*`・`app/` は無い（TC-STACK-008-001）。`import.meta.env` を読むのは `src/config/build-env.ts` だけ（TC-STACK-008-003）。
+- CSP（SEC-WEB-003）に `unsafe-eval` が無いため、Zod は `src/config/zod-jitless.ts` の `z.config({ jitless: true })` で eval を試さない。`src/main.tsx` はこれを最初の JS import（`globals.css` を除く）にし、Zod の schema を定義するモジュール（`src/features/**`・`src/mock/**`）より前に評価させる（TC-STACK-008-005。実ブラウザでの違反なしは TC-STACK-008-306）。
 
 ### 13.2 adapter（`src/routing/`。TC-STACK-008-004）
 

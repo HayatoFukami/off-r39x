@@ -2608,9 +2608,19 @@
     },
     {
       "rule_id": "SEC-WEB-003",
-      "code_paths": ["scripts/generate-web-headers.mts"],
-      "test_case_ids": ["TC-STACK-008-202", "TC-STACK-008-205", "TC-STACK-008-304"],
-      "notes": "implementation mapping only: build-time CSP; inline scripts are allowed by hash only; not a Pages deployment check"
+      "code_paths": [
+        "scripts/generate-web-headers.mts",
+        "apps/web/src/config/zod-jitless.ts",
+        "apps/web/src/main.tsx"
+      ],
+      "test_case_ids": [
+        "TC-STACK-008-005",
+        "TC-STACK-008-202",
+        "TC-STACK-008-205",
+        "TC-STACK-008-304",
+        "TC-STACK-008-306"
+      ],
+      "notes": "implementation mapping only: build-time CSP; inline scripts are allowed by hash only; zod runs jitless so that no eval is attempted under the CSP; not a Pages deployment check"
     },
     {
       "rule_id": "SEC-WEB-006",

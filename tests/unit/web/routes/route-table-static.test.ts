@@ -322,3 +322,43 @@ describe("TC-STACK-008-004 the Next-compatible adapter keeps its contract (DEV-W
     expect(link).not.toMatch(/\bprefetch\s*=\s*\{/);
   });
 });
+
+describe("TC-STACK-008-005 Zod runs without eval, so the strict CSP sees no violation (SEC-WEB-003)", () => {
+  const main = read("src/main.tsx");
+  const jitless = read("src/config/zod-jitless.ts");
+
+  /** Module specifiers of the top-level import statements, in source order (the evaluation order of ES modules). */
+  const importOrder = (source: string): string[] =>
+    [...source.matchAll(/^import\s+(?:[^"';]*?\s+from\s+)?["']([^"']+)["'];?/gm)].map(
+      (match) => match[1] ?? "",
+    );
+
+  it("src/config/zod-jitless.ts imports Zod and calls z.config({ jitless: true })", () => {
+    expect(jitless.length).toBeGreaterThan(0);
+    expect(jitless).toMatch(/import\s*\{\s*z\s*\}\s*from\s*["']zod["']/);
+    expect(jitless).toMatch(/\bz\.config\(\s*\{\s*jitless:\s*true\s*\}\s*\)/);
+  });
+
+  it("src/main.tsx imports zod-jitless as its first JavaScript import, ahead of every other module (the stylesheet aside)", () => {
+    const order = importOrder(main).filter((specifier) => !specifier.endsWith(".css"));
+    expect(order.length).toBeGreaterThan(1);
+    expect(order[0]).toMatch(/^(\.\/|@\/)config\/zod-jitless$/);
+    expect(order.slice(1)).not.toContainEqual(expect.stringMatching(/zod-jitless$/));
+    expect(order.slice(1)).not.toContain("zod");
+  });
+
+  it("zod-jitless is a side-effect import, so the bundler cannot drop or reorder it", () => {
+    expect(main).toMatch(/^import\s+["'](?:\.\/|@\/)config\/zod-jitless["'];?\s*$/m);
+  });
+
+  it("Zod is imported only inside src/features and src/mock (so every schema is defined after the entry point's first import)", () => {
+    const importers = codeFiles("src")
+      .filter((f) => importsOf(readFileSync(f, "utf8"), /zod(?:\/[^"']*)?/))
+      .map(rel)
+      .filter((f) => f !== "src/config/zod-jitless.ts");
+    expect(importers.length).toBeGreaterThan(0);
+    for (const file of importers) {
+      expect(file, "a module that defines Zod schemas").toMatch(/^src\/(features|mock)\//);
+    }
+  });
+});

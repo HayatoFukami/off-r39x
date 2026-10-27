@@ -14431,6 +14431,30 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-STACK-008-005",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["SEC-WEB-003", "DEV-WEB-001"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Source tree read (apps/web/src/main.tsx, apps/web/src/config/zod-jitless.ts); contract tests/contracts/s3-layout.md section 13",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "zod-jitless.ts calls z.config({ jitless: true }) so that Zod never probes eval under a CSP without unsafe-eval",
+        "main.tsx has zod-jitless as its first JavaScript import (side-effect import, stylesheet aside), so it is evaluated before any module that defines a Zod schema; Zod is imported only under src/features and src/mock"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-STACK-008-101",
       "level": "Unit",
       "suite": "unit",

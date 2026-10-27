@@ -1,4 +1,6 @@
 import "./styles/globals.css";
+// Must stay ahead of every import that defines a Zod schema (see zod-jitless.ts).
+import "./config/zod-jitless";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router";
