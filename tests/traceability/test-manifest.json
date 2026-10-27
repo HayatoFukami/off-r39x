@@ -2045,6 +2045,7 @@
       "suite": "unit",
       "upstream_rule_ids": [
         "PG-MYP-002",
+        "FR-AUTH-011",
         "API-AUTH-002",
         "API-AUTH-004",
         "SPEC-030-9.2",
@@ -2095,7 +2096,13 @@
       "test_case_id": "TC-PG-MYP-002-102",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-MYP-002", "API-AUTH-004", "SPEC-030-9.2", "TST-UNT-004"],
+      "upstream_rule_ids": [
+        "PG-MYP-002",
+        "FR-AUTH-011",
+        "API-AUTH-004",
+        "SPEC-030-9.2",
+        "TST-UNT-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -4088,7 +4095,8 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "SPEC-050 fixed wording is present: loading / empty / unavailable, 13.2 literals, section names, page titles",
-        "no invented numbers in the Karaoke guide copy; sale status descriptions never claim a cancellation"
+        "no invented numbers in the Karaoke guide copy; sale status descriptions never claim a cancellation",
+        "no copy leaf contains 未設定 except mypage.profile.unset, displayNameHint and status.cleared (exempt by key position, not by value) and exactly those three do"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -11384,7 +11392,13 @@
       "test_case_id": "TC-PG-MYP-002-624",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-MYP-002", "SPEC-050-18.2", "SPEC-030-9.2", "TST-UNT-004"],
+      "upstream_rule_ids": [
+        "PG-MYP-002",
+        "FR-AUTH-011",
+        "SPEC-050-18.2",
+        "SPEC-030-9.2",
+        "TST-UNT-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -12084,6 +12098,7 @@
       "suite": "e2e-ui-mock",
       "upstream_rule_ids": [
         "PG-MYP-002",
+        "FR-AUTH-011",
         "SPEC-050-25",
         "SPEC-050-31-22",
         "SPEC-030-9.2",
@@ -12173,6 +12188,7 @@
       "suite": "e2e-ui-mock",
       "upstream_rule_ids": [
         "PG-MYP-002",
+        "FR-AUTH-011",
         "PG-MYP-001",
         "SPEC-050-18.2",
         "SPEC-050-18.1",
@@ -12204,6 +12220,7 @@
       "suite": "e2e-ui-mock",
       "upstream_rule_ids": [
         "PG-MYP-002",
+        "FR-AUTH-011",
         "SPEC-050-18.2",
         "SPEC-030-9.2",
         "TST-E2E-003",
