@@ -5,6 +5,10 @@ import * as login from "./auth/login";
 import * as passwordReset from "./auth/password-reset";
 import * as passwordResetComplete from "./auth/password-reset-complete";
 import * as register from "./auth/register";
+import DevLayout from "./dev/dev-layout";
+import * as errorProbe from "./dev/error-probe";
+import * as mockCheckout from "./dev/mock-checkout";
+import * as scenarios from "./dev/scenarios";
 import * as announcementDetail from "./public/announcement-detail";
 import * as announcements from "./public/announcements";
 import * as cart from "./public/cart";
@@ -169,6 +173,20 @@ export const routes: RouteObject[] = [
                   },
                 ],
               },
+            ],
+          },
+          // DEV-WEB-012/013: the dev area. DevLayout shows Not Found unless UI mock mode is on, and deleting
+          // src/routes/dev together with this block removes the area.
+          {
+            element: <DevLayout />,
+            children: [
+              { path: "/dev/scenarios", Component: scenarios.default },
+              {
+                path: "/dev/mock-checkout/:orderRef",
+                Component: mockCheckout.default,
+                handle: mockCheckout.handle,
+              },
+              { path: "/dev/error-probe", Component: errorProbe.default },
             ],
           },
           // PG-XFN-002: any other URL. It is outside SelfLayout, so it never asks for a Session.

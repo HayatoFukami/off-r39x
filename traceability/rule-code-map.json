@@ -75,7 +75,8 @@
         "apps/web/src/routes/root-layout.tsx",
         "apps/web/src/config/site.ts",
         "apps/web/src/mock/dev-ui/mock-checkout-screen.tsx",
-        "apps/web/app/dev/mock-checkout/[orderRef]/page.tsx"
+        "apps/web/app/dev/mock-checkout/[orderRef]/page.tsx",
+        "apps/web/src/routes/dev"
       ],
       "test_case_ids": [
         "TC-DEV-WEB-012-001",
@@ -884,6 +885,7 @@
         "apps/web/src/mock/backend/mock-api.ts",
         "apps/web/src/mock/dev-ui/mock-checkout-screen.tsx",
         "apps/web/app/dev/mock-checkout/[orderRef]/page.tsx",
+        "apps/web/src/routes/dev/mock-checkout.tsx",
         "apps/web/src/features/purchase/purchase-status-page.tsx",
         "apps/web/src/features/purchase/cart-purchase-flow.ts",
         "apps/web/src/presentation/copy/ja.ts",
@@ -1039,6 +1041,7 @@
         "apps/web/src/mock/backend/mock-auth.ts",
         "apps/web/src/mock/dev-ui/scenario-panel.tsx",
         "apps/web/app/dev/scenarios/page.tsx",
+        "apps/web/src/routes/dev",
         "apps/web/src/config/browser-storage.ts",
         "apps/web/public/mock/sponsors"
       ],
@@ -2098,6 +2101,7 @@
       "code_paths": [
         "apps/web/app/error.tsx",
         "apps/web/app/dev/error-probe/page.tsx",
+        "apps/web/src/routes/dev/error-probe.tsx",
         "apps/web/src/routes/route-error.tsx",
         "apps/web/src/routes/root-error.tsx"
       ],
