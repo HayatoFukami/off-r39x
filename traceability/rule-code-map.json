@@ -2,6 +2,298 @@
   "schema_version": 1,
   "entries": [
     {
+      "rule_id": "DB-ARC-001",
+      "code_paths": ["packages/db/src/database.ts", "packages/db/src/index.ts"],
+      "test_case_ids": ["TC-DB-FOUNDATION-001"],
+      "notes": "PG17 direct pg+Drizzle foundation, no business workflows"
+    },
+    {
+      "rule_id": "DB-ARC-007",
+      "code_paths": [
+        "packages/db/src/schema.ts",
+        "packages/db/src/schema",
+        "packages/db/migrations/0001_foundation.sql"
+      ],
+      "test_case_ids": ["TC-DB-FOUNDATION-001", "TC-DB-FOUNDATION-009"],
+      "notes": "Explicit named constraints and lossless bigint schema"
+    },
+    {
+      "rule_id": "DB-STA-001",
+      "code_paths": ["packages/db/src/schema/profiles.ts"],
+      "test_case_ids": ["TC-DB-FOUNDATION-009"],
+      "notes": "Only canonical Role and Role Assignment states"
+    },
+    {
+      "rule_id": "DB-MIG-001",
+      "code_paths": ["packages/db/migrations/0001_foundation.sql"],
+      "test_case_ids": ["TC-DB-FOUNDATION-001"],
+      "notes": "Required pgcrypto/btree_gist extensions"
+    },
+    {
+      "rule_id": "INF-DB-008",
+      "code_paths": ["packages/db/src/migrations.ts", "packages/db/src/migrate-cli.ts"],
+      "test_case_ids": ["TC-DB-FOUNDATION-001"],
+      "notes": "Dedicated migration identity and bounded advisory lock; source hash journal"
+    },
+    {
+      "rule_id": "DEV-DB-012",
+      "code_paths": ["packages/db/src/migrations.ts", "packages/db/src/migrate-cli.ts"],
+      "test_case_ids": ["TC-DB-FOUNDATION-001"],
+      "notes": "Explicit deploy command, no startup migration"
+    },
+    {
+      "rule_id": "INF-DB-005",
+      "code_paths": ["packages/db/src/migrations.ts", "packages/db/src/readiness.ts"],
+      "test_case_ids": ["TC-DB-FOUNDATION-002"],
+      "notes": "Restricted runtime group and login roles; runtime permissions checked"
+    },
+    {
+      "rule_id": "DEV-AUTH-001",
+      "code_paths": ["packages/db/src/principals.ts"],
+      "test_case_ids": ["TC-DB-FOUNDATION-002"],
+      "notes": "Verified subject read-only lookup; no client role authority/provisioning"
+    },
+    {
+      "rule_id": "DEV-DB-008",
+      "code_paths": ["packages/db/src/transaction.ts"],
+      "test_case_ids": ["TC-DB-FOUNDATION-003", "TC-DB-FOUNDATION-008"],
+      "notes": "READ COMMITTED bounded transaction"
+    },
+    {
+      "rule_id": "DEV-DB-009",
+      "code_paths": ["packages/db/src/transaction.ts"],
+      "test_case_ids": ["TC-DB-FOUNDATION-003"],
+      "notes": "Dedicated session advisory-lock helper"
+    },
+    {
+      "rule_id": "REL-DB-004",
+      "code_paths": ["packages/db/src/transaction.ts"],
+      "test_case_ids": ["TC-DB-FOUNDATION-003"],
+      "notes": "Callback DB-only precondition; cannot prevent arbitrary caller network calls"
+    },
+    {
+      "rule_id": "DB-ARC-008",
+      "code_paths": [
+        "packages/db/src/directory.ts",
+        "packages/db/src/principals.ts",
+        "packages/db/src/readiness.ts",
+        "packages/auth/src/index.ts",
+        "apps/api/src/api/app.ts"
+      ],
+      "test_case_ids": ["TC-DB-FOUNDATION-004", "TC-DB-ARC-008-050"],
+      "notes": "Explicit deployment-confirmed source mapping; synthetic Provider test is not Neon smoke"
+    },
+    {
+      "rule_id": "DEV-AUTH-007",
+      "code_paths": ["packages/db/src/directory.ts"],
+      "test_case_ids": ["TC-DB-FOUNDATION-004"],
+      "notes": "Only restricted view, never credentials/session reads"
+    },
+    {
+      "rule_id": "REL-DB-002",
+      "code_paths": ["packages/db/src/transaction.ts"],
+      "test_case_ids": ["TC-DB-FOUNDATION-005", "TC-DB-FOUNDATION-009"],
+      "notes": "No blind constraint retries"
+    },
+    {
+      "rule_id": "INF-DB-004",
+      "code_paths": ["packages/db/src/database.ts"],
+      "test_case_ids": ["TC-DB-FOUNDATION-006"],
+      "notes": "Direct TLS connection and hostname verification"
+    },
+    {
+      "rule_id": "INF-HLT-002",
+      "code_paths": ["packages/db/src/readiness.ts"],
+      "test_case_ids": ["TC-DB-FOUNDATION-006"],
+      "notes": "Missing deployment mapping/schema/extension/hash/grant not ready"
+    },
+    {
+      "rule_id": "REL-DB-012",
+      "code_paths": ["packages/db/src/readiness.ts"],
+      "test_case_ids": ["TC-DB-FOUNDATION-006"],
+      "notes": "No schema/extension fallback"
+    },
+    {
+      "rule_id": "SEC-DEP-002",
+      "code_paths": ["packages/db/src/database.ts"],
+      "test_case_ids": ["TC-DB-FOUNDATION-006"],
+      "notes": "TLS verification never disabled in production adapter"
+    },
+    {
+      "rule_id": "REL-DB-006",
+      "code_paths": ["packages/db/src/transaction.ts"],
+      "test_case_ids": ["TC-DB-FOUNDATION-007"],
+      "notes": "Real COMMIT-ack loss is unknown and discards session"
+    },
+    {
+      "rule_id": "REL-DB-007",
+      "code_paths": ["packages/db/src/transaction.ts"],
+      "test_case_ids": ["TC-DB-FOUNDATION-007"],
+      "notes": "No new Cause or callback replay after ambiguous commit"
+    },
+    {
+      "rule_id": "DEV-DB-011",
+      "code_paths": ["packages/db/src/transaction.ts"],
+      "test_case_ids": ["TC-DB-FOUNDATION-007"],
+      "notes": "Unknown commit result returned for reconciliation by future business service"
+    },
+    {
+      "rule_id": "INF-DEP-001",
+      "code_paths": [
+        "scripts/build-backend.mts",
+        "infra/backend.Dockerfile",
+        ".github/workflows/backend-foundation.yml",
+        "packages/config/src/build.ts"
+      ],
+      "test_case_ids": ["TC-INF-DEP-001-001"],
+      "notes": "Configuration check plus separately recorded actual build; no production deployment performed"
+    },
+    {
+      "rule_id": "DEV-REP-001",
+      "code_paths": ["scripts/build-backend.mts"],
+      "test_case_ids": ["TC-INF-DEP-001-001"],
+      "notes": "Three process entrypoints and reusable packages"
+    },
+    {
+      "rule_id": "DEV-TRC-003",
+      "code_paths": ["scripts/validate-traceability.mts"],
+      "test_case_ids": ["TC-DEV-TRC-003-030"],
+      "notes": "Nested provider behavioral source coverage"
+    },
+    {
+      "rule_id": "OBS-COR-005",
+      "code_paths": ["packages/security/src/index.ts"],
+      "test_case_ids": ["TC-COMMON-001"],
+      "notes": "Canonical correlation fingerprint only; not authorization or idempotency authority"
+    },
+    {
+      "rule_id": "DEV-OBS-003",
+      "code_paths": ["packages/security/src/index.ts"],
+      "test_case_ids": ["TC-COMMON-001"],
+      "notes": "Environment supplied HMAC key; no raw value output"
+    },
+    {
+      "rule_id": "INF-SEC-004",
+      "code_paths": ["packages/security/src/index.ts"],
+      "test_case_ids": ["TC-COMMON-002"],
+      "notes": "Keyring validation only; no QR workflow"
+    },
+    {
+      "rule_id": "REL-DB-001",
+      "code_paths": ["packages/reliability/src/index.ts", "packages/db/src/transaction.ts"],
+      "test_case_ids": ["TC-COMMON-003", "TC-DB-FOUNDATION-010"],
+      "notes": "Only explicit SQLSTATE allowlist; lock-timeout specification conflict reported"
+    },
+    {
+      "rule_id": "DEV-DB-007",
+      "code_paths": ["packages/reliability/src/index.ts"],
+      "test_case_ids": ["TC-COMMON-003"],
+      "notes": "SQLSTATE classification"
+    },
+    {
+      "rule_id": "REL-TMO-003",
+      "code_paths": [
+        "packages/reliability/src/index.ts",
+        "packages/application/src/worker.ts",
+        "apps/email-worker/src/main.ts",
+        "apps/reconciliation-worker/src/main.ts",
+        "packages/providers/resend/src/index.ts",
+        "packages/application/src/index.ts",
+        "packages/db/src/transaction.ts",
+        "apps/email-worker/src/bootstrap/host.ts",
+        "apps/reconciliation-worker/src/bootstrap/host.ts"
+      ],
+      "test_case_ids": [
+        "TC-COMMON-004",
+        "TC-COMMON-009",
+        "TC-FOUNDATION-RUNTIME-006",
+        "TC-FOUNDATION-RUNTIME-011",
+        "TC-FOUNDATION-RUNTIME-015",
+        "TC-FOUNDATION-RUNTIME-018",
+        "TC-DB-FOUNDATION-010",
+        "TC-FOUNDATION-RUNTIME-022"
+      ],
+      "notes": "Abort-aware bounded caller deadline"
+    },
+    {
+      "rule_id": "DEV-REL-002",
+      "code_paths": ["packages/reliability/src/index.ts"],
+      "test_case_ids": ["TC-COMMON-004", "TC-COMMON-009"],
+      "notes": "Shared dependency timeout primitives"
+    },
+    {
+      "rule_id": "DEV-REL-003",
+      "code_paths": ["packages/reliability/src/index.ts"],
+      "test_case_ids": ["TC-COMMON-008"],
+      "notes": "Canonical policy registry and jitter, no business retry loop"
+    },
+    {
+      "rule_id": "REL-RTY-002",
+      "code_paths": ["packages/reliability/src/index.ts"],
+      "test_case_ids": ["TC-COMMON-008"],
+      "notes": "Full jitter formula"
+    },
+    {
+      "rule_id": "OBS-LOG-001",
+      "code_paths": ["packages/observability/src/index.ts"],
+      "test_case_ids": ["TC-COMMON-005", "TC-COMMON-010"],
+      "notes": "Schema-only structured emitter"
+    },
+    {
+      "rule_id": "OBS-LOG-002",
+      "code_paths": ["packages/observability/src/index.ts"],
+      "test_case_ids": ["TC-COMMON-005", "TC-COMMON-010"],
+      "notes": "No automatic request/provider/SQL serialization"
+    },
+    {
+      "rule_id": "OBS-LOG-003",
+      "code_paths": ["packages/observability/src/index.ts"],
+      "test_case_ids": ["TC-COMMON-005"],
+      "notes": "Bounded event naming"
+    },
+    {
+      "rule_id": "INF-ENV-006",
+      "code_paths": ["packages/config/src/index.ts"],
+      "test_case_ids": ["TC-COMMON-006", "TC-COMMON-012"],
+      "notes": "Syntactic validation; runtime identities independently verified"
+    },
+    {
+      "rule_id": "INF-ENV-001",
+      "code_paths": ["packages/config/src/index.ts"],
+      "test_case_ids": ["TC-COMMON-011"],
+      "notes": "Canonical environment identity"
+    },
+    {
+      "rule_id": "INF-SEC-003",
+      "code_paths": ["packages/config/src/index.ts"],
+      "test_case_ids": ["TC-COMMON-007"],
+      "notes": "Per-process secret reader boundary"
+    },
+    {
+      "rule_id": "DEV-SEC-001",
+      "code_paths": ["packages/config/src/index.ts"],
+      "test_case_ids": ["TC-COMMON-006"],
+      "notes": "Fail-closed server environment schema"
+    },
+    {
+      "rule_id": "SEC-ERR-005",
+      "code_paths": ["packages/config/src/index.ts", "packages/security/src/index.ts"],
+      "test_case_ids": [
+        "TC-COMMON-002",
+        "TC-COMMON-006",
+        "TC-COMMON-007",
+        "TC-COMMON-011",
+        "TC-COMMON-012"
+      ],
+      "notes": "No warning-only invalid security configuration"
+    },
+    {
+      "rule_id": "DEV-DB-013",
+      "code_paths": ["scripts/validate-generated-migrations.mts"],
+      "test_case_ids": ["TC-DEV-DB-013-001"],
+      "notes": "Conservative migration source review aid; not a SQL parser"
+    },
+    {
       "rule_id": "DEV-DEP-006",
       "code_paths": [
         "scripts/check-import-boundaries.mts",
@@ -21,6 +313,7 @@
         "apps/web/src/config/mypage-routes.ts"
       ],
       "test_case_ids": [
+        "TC-DEV-DEP-006-030",
         "TC-DEV-DEP-006-001",
         "TC-DEV-DEP-006-002",
         "TC-DEV-DEP-006-003",
@@ -1072,7 +1365,9 @@
         "apps/web/src/mock/backend/session-store.ts",
         "apps/web/src/features/cart/cart-count.ts",
         "apps/web/src/mock/dev-ui/scenario-panel.tsx",
-        "apps/web/src/features/cart/cart-model.ts"
+        "apps/web/src/features/cart/cart-model.ts",
+        "packages/providers/resend/src/index.ts",
+        "packages/application/src/index.ts"
       ],
       "test_case_ids": [
         "TC-DEV-TS-004-101",
@@ -1087,7 +1382,8 @@
         "TC-DEV-WEB-013-202",
         "TC-PG-CRT-001-401",
         "TC-PG-CRT-001-422",
-        "TC-PG-CRT-001-462"
+        "TC-PG-CRT-001-462",
+        "TC-FOUNDATION-RUNTIME-016"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
@@ -2552,12 +2848,309 @@
       "code_paths": ["scripts/secret-scan.mts"],
       "test_case_ids": [
         "TC-DEV-SEC-004-001",
+        "TC-DEV-SEC-004-020",
         "TC-DEV-SEC-004-002",
         "TC-DEV-SEC-004-006",
         "TC-DEV-SEC-004-007",
         "TC-DEV-SEC-004-009"
       ],
       "notes": "implementation mapping only: secret / raw QR / PII scan; matched values are never printed"
+    },
+    {
+      "rule_id": "SEC-AUTH-001",
+      "code_paths": ["packages/auth/src/index.ts"],
+      "test_case_ids": ["TC-SEC-AUTH-001-050", "TC-SEC-AUTH-005-051"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "SEC-AUTH-002",
+      "code_paths": ["packages/auth/src/index.ts"],
+      "test_case_ids": ["TC-SEC-AUTH-001-050", "TC-SEC-AUTH-005-051"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "SEC-AUTH-004",
+      "code_paths": ["packages/auth/src/index.ts"],
+      "test_case_ids": ["TC-SEC-AUTH-001-050"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "SEC-AUTH-008",
+      "code_paths": ["packages/auth/src/index.ts"],
+      "test_case_ids": ["TC-SEC-AUTH-001-050"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "DEV-AUTH-002",
+      "code_paths": ["packages/auth/src/index.ts"],
+      "test_case_ids": ["TC-SEC-AUTH-001-050"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "DEV-AUTH-008",
+      "code_paths": ["packages/auth/src/index.ts"],
+      "test_case_ids": ["TC-DEV-AUTH-008-050"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "SEC-AUTH-005",
+      "code_paths": ["packages/auth/src/index.ts"],
+      "test_case_ids": ["TC-DEV-AUTH-008-050", "TC-SEC-AUTH-005-051"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "AR-ROLE-012",
+      "code_paths": [
+        "packages/auth/src/index.ts",
+        "packages/db/src/principals.ts",
+        "apps/api/src/api/app.ts"
+      ],
+      "test_case_ids": ["TC-AR-ROLE-012-050", "TC-DB-ARC-008-050"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "SEC-AZ-002",
+      "code_paths": ["packages/auth/src/index.ts"],
+      "test_case_ids": ["TC-AR-ROLE-012-050"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "SEC-AZ-013",
+      "code_paths": [
+        "packages/auth/src/index.ts",
+        "apps/api/src/api/app.ts",
+        "packages/db/src/principals.ts"
+      ],
+      "test_case_ids": ["TC-SEC-AZ-013-050", "TC-DB-ARC-008-050"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "SEC-AUTH-015",
+      "code_paths": ["packages/auth/src/index.ts", "apps/api/src/api/app.ts"],
+      "test_case_ids": ["TC-SEC-AZ-013-050"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "AR-AZ-002",
+      "code_paths": ["packages/auth/src/index.ts", "apps/api/src/api/app.ts"],
+      "test_case_ids": ["TC-SEC-AZ-013-050"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "AR-ROLE-003",
+      "code_paths": ["packages/auth/src/index.ts", "apps/api/src/api/app.ts"],
+      "test_case_ids": ["TC-SEC-AZ-013-050"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "DEV-API-004",
+      "code_paths": ["packages/auth/src/index.ts", "apps/api/src/api/app.ts"],
+      "test_case_ids": ["TC-SEC-AZ-013-050"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "SEC-ABU-001",
+      "code_paths": ["apps/api/src/api/app.ts", "apps/api/src/bootstrap"],
+      "test_case_ids": ["TC-SEC-ABU-001-050"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "INF-RWY-005",
+      "code_paths": [
+        "apps/api/src/api/app.ts",
+        "apps/api/src/bootstrap",
+        "packages/application/src/worker.ts",
+        "apps/email-worker/src/main.ts",
+        "apps/reconciliation-worker/src/main.ts",
+        "apps/email-worker/src/bootstrap/host.ts",
+        "apps/reconciliation-worker/src/bootstrap/host.ts"
+      ],
+      "test_case_ids": [
+        "TC-SEC-ABU-001-050",
+        "TC-FOUNDATION-RUNTIME-003",
+        "TC-FOUNDATION-RUNTIME-022"
+      ],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "DEV-API-003",
+      "code_paths": ["apps/api/src/api", "packages/api-contract/src/index.ts"],
+      "test_case_ids": ["TC-DEV-API-003-050"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "DEV-API-002",
+      "code_paths": ["apps/api/src/api", "packages/api-contract/src/index.ts"],
+      "test_case_ids": ["TC-DEV-API-003-050"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "SEC-API-004",
+      "code_paths": ["apps/api/src/api", "packages/api-contract/src/index.ts"],
+      "test_case_ids": ["TC-DEV-API-003-050"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "SEC-API-006",
+      "code_paths": ["apps/api/src/api", "packages/api-contract/src/index.ts"],
+      "test_case_ids": ["TC-DEV-API-003-050"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "SEC-API-007",
+      "code_paths": ["apps/api/src/api", "packages/api-contract/src/index.ts"],
+      "test_case_ids": ["TC-DEV-API-003-050"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "SEC-API-008",
+      "code_paths": ["apps/api/src/api", "packages/api-contract/src/index.ts"],
+      "test_case_ids": ["TC-DEV-API-003-050"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "SEC-API-014",
+      "code_paths": ["apps/api/src/api", "packages/api-contract/src/index.ts"],
+      "test_case_ids": ["TC-DEV-API-003-050"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "SEC-API-015",
+      "code_paths": ["apps/api/src/api", "packages/api-contract/src/index.ts"],
+      "test_case_ids": ["TC-DEV-API-003-050"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "SEC-API-023",
+      "code_paths": ["apps/api/src/api", "packages/api-contract/src/index.ts"],
+      "test_case_ids": ["TC-DEV-API-003-050"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "SEC-WEB-015",
+      "code_paths": ["apps/api/src/api", "packages/api-contract/src/index.ts"],
+      "test_case_ids": ["TC-DEV-API-003-050"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "SEC-WEB-007",
+      "code_paths": ["apps/api/src/api", "packages/api-contract/src/index.ts"],
+      "test_case_ids": ["TC-DEV-API-003-050"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "REL-RTY-004",
+      "code_paths": ["packages/providers/resend/src/index.ts", "packages/application/src/index.ts"],
+      "test_case_ids": ["TC-FOUNDATION-RUNTIME-001", "TC-FOUNDATION-RUNTIME-017"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "EML-IDM-001",
+      "code_paths": ["packages/providers/resend/src/index.ts", "packages/application/src/index.ts"],
+      "test_case_ids": ["TC-FOUNDATION-RUNTIME-001", "TC-FOUNDATION-RUNTIME-016"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "EML-IDM-002",
+      "code_paths": ["packages/providers/resend/src/index.ts", "packages/application/src/index.ts"],
+      "test_case_ids": ["TC-FOUNDATION-RUNTIME-002"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "DEV-REL-007",
+      "code_paths": [
+        "packages/application/src/worker.ts",
+        "apps/email-worker/src/main.ts",
+        "apps/reconciliation-worker/src/main.ts",
+        "apps/email-worker/src/bootstrap/host.ts",
+        "apps/reconciliation-worker/src/bootstrap/host.ts"
+      ],
+      "test_case_ids": ["TC-FOUNDATION-RUNTIME-003", "TC-FOUNDATION-RUNTIME-022"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "INF-WRK-003",
+      "code_paths": [
+        "packages/application/src/worker.ts",
+        "apps/email-worker/src/main.ts",
+        "apps/reconciliation-worker/src/main.ts",
+        "packages/application/src/reconciliation.ts",
+        "apps/reconciliation-worker/src/bootstrap/advisory-lock.ts",
+        "apps/email-worker/src/bootstrap/host.ts",
+        "apps/reconciliation-worker/src/bootstrap/host.ts"
+      ],
+      "test_case_ids": [
+        "TC-FOUNDATION-RUNTIME-004",
+        "TC-FOUNDATION-RUNTIME-007",
+        "TC-FOUNDATION-RUNTIME-012",
+        "TC-FOUNDATION-RUNTIME-013",
+        "TC-FOUNDATION-RUNTIME-014"
+      ],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "REL-REC-002",
+      "code_paths": [
+        "packages/application/src/worker.ts",
+        "apps/email-worker/src/main.ts",
+        "apps/reconciliation-worker/src/main.ts"
+      ],
+      "test_case_ids": ["TC-FOUNDATION-RUNTIME-005"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "PAY-WHK-003",
+      "code_paths": ["packages/providers/stripe/src/index.ts", "packages/application/src/index.ts"],
+      "test_case_ids": ["TC-FOUNDATION-RUNTIME-008", "TC-FOUNDATION-RUNTIME-019"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "REL-RTY-005",
+      "code_paths": ["packages/providers/stripe/src/index.ts", "packages/application/src/index.ts"],
+      "test_case_ids": ["TC-FOUNDATION-RUNTIME-009", "TC-FOUNDATION-RUNTIME-020"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "PAY-WHK-005",
+      "code_paths": ["packages/providers/stripe/src/index.ts", "packages/application/src/index.ts"],
+      "test_case_ids": ["TC-FOUNDATION-RUNTIME-010"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "INF-HLT-001",
+      "code_paths": [
+        "apps/email-worker/src/bootstrap/host.ts",
+        "apps/reconciliation-worker/src/bootstrap/host.ts"
+      ],
+      "test_case_ids": ["TC-FOUNDATION-RUNTIME-012"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "DEV-DEP-007",
+      "code_paths": [
+        "packages/application/src/reconciliation.ts",
+        "apps/reconciliation-worker/src/bootstrap/advisory-lock.ts"
+      ],
+      "test_case_ids": ["TC-FOUNDATION-RUNTIME-013"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "INF-PRV-001",
+      "code_paths": ["packages/providers/stripe/src/index.ts", "packages/application/src/index.ts"],
+      "test_case_ids": ["TC-FOUNDATION-RUNTIME-019"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "DEV-REL-004",
+      "code_paths": ["packages/providers/stripe/src/index.ts", "packages/application/src/index.ts"],
+      "test_case_ids": ["TC-FOUNDATION-RUNTIME-020"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "OBS-LOG-004",
+      "code_paths": ["packages/providers/resend/src/index.ts", "packages/application/src/index.ts"],
+      "test_case_ids": ["TC-FOUNDATION-RUNTIME-021"],
+      "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
     }
   ]
 }

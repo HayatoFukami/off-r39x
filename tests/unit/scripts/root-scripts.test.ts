@@ -35,7 +35,7 @@ describe("TC-DEV-WEB-011-202 mock build scripts are cross-platform and the plain
   });
 
   it("the plain build and dev scripts do not set NEXT_PUBLIC_UI_MOCK (mock stays opt-in)", () => {
-    expect(pkg.scripts.build).toBe("pnpm --filter @off-r39x/web build");
+    expect(pkg.scripts.build).toBe("pnpm build:backend && pnpm --filter @off-r39x/web build");
     for (const name of ["build", "dev", "start"]) {
       expect(pkg.scripts[name] ?? "", name).not.toMatch(/NEXT_PUBLIC_UI_MOCK/);
     }

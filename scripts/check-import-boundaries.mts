@@ -106,6 +106,9 @@ function collectSourceFiles(root: string): string[] {
   for (const pkg of listDirs(join(root, "packages"))) {
     roots.push(join(root, "packages", pkg, "src"));
   }
+  for (const provider of listDirs(join(root, "packages/providers"))) {
+    roots.push(join(root, "packages/providers", provider, "src"));
+  }
   return [...roots.flatMap(walk), ...files].sort();
 }
 
@@ -216,6 +219,38 @@ function classify(root: string, file: string, ref: ImportRef): string | null {
     if ((target !== null && isUnder(target, "packages/db")) || isWebDbBare(specifier)) {
       return "web-no-db";
     }
+    if (
+      /^@off-r39x\/(config|security|auth|observability|reliability|providers?[-/])/.test(
+        specifier,
+      ) ||
+      (target !== null &&
+        /^packages\/(config|security|auth|observability|providers)(\/|$)/.test(target))
+    ) {
+      return "web-no-server";
+    }
+  }
+
+  if (
+    isUnder(rel, "packages/application/src") &&
+    (/^@off-r39x\/(db|auth|config|providers?[-/])/.test(specifier) ||
+      /^(pg|drizzle-orm|stripe|resend)(\/|$)/.test(specifier) ||
+      (target !== null && /^packages\/(db|auth|config|providers)(\/|$)/.test(target)))
+  ) {
+    return "application-no-adapters";
+  }
+  if (
+    /^packages\/(db|providers)\//.test(rel) &&
+    ((target !== null && isUnder(target, "apps")) ||
+      /^@off-r39x\/(api|.*worker)(\/|$)/.test(specifier))
+  ) {
+    return "adapter-no-transport";
+  }
+  if (
+    isUnder(rel, "packages/api-contract/src") &&
+    ((target !== null && /^apps\/|^packages\/(db|auth|config|providers)\//.test(target)) ||
+      /^@off-r39x\/(db|auth|config|api$|providers?[-/])/.test(specifier))
+  ) {
+    return "contract-no-server";
   }
 
   if (target !== null && isUnder(target, `${WEB}/src/mock`)) {

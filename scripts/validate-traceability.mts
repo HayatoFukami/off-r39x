@@ -398,6 +398,8 @@ function checkSourceCoverage(root: string, entries: readonly MapEntry[]): void {
   }
   for (const pkg of listDirs(join(root, "packages")))
     roots.push(join(root, "packages", pkg, "src"));
+  for (const provider of listDirs(join(root, "packages/providers")))
+    roots.push(join(root, "packages/providers", provider, "src"));
   const files = roots.flatMap((dir) =>
     walk(
       dir,

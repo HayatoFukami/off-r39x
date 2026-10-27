@@ -1,0 +1,6 @@
+# No public domain. Same immutable image digest as API and reconciliation-worker.
+[deploy]
+startCommand = "node dist/workers/email-worker.js"
+healthcheckPath = "/internal/health/ready"
+healthcheckTimeout = 180
+restartPolicyType = "ON_FAILURE"
