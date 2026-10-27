@@ -5,7 +5,9 @@ import { expect, type Page, test } from "@playwright/test";
 import { copy } from "../../apps/web/src/presentation/copy/ja.ts";
 import { formatBusinessDate } from "../../apps/web/src/presentation/format/datetime.ts";
 import { CONTEXT_VALUE, loginWith } from "../harness/browser/auth.ts";
+import { expectedGoodsDetail } from "../harness/browser/cart.ts";
 import { gotoHydrated, reloadHydrated } from "../harness/browser/hydration.ts";
+import { navLink, navToggle } from "../harness/browser/mypage.ts";
 import { dbJson, expectedAnnouncements, fixClock } from "../harness/browser/public.ts";
 import { heading1, mainOf, openAs } from "../harness/browser/purchase.ts";
 import {
@@ -110,7 +112,9 @@ const CASES: readonly UrlCase[] = [
   {
     route: `/goods/${GOODS.tshirt}`,
     session: false,
-    h1: () => copy.goods.detail.heading,
+    // After the read the h1 is the Goods name (goods-detail.spec.ts); copy.goods.detail.heading is only the loading/failed h1.
+    // The document title stays fixed and never carries the Goods name.
+    h1: () => expectedGoodsDetail(GOODS.tshirt).name,
     title: () => title(copy.goods.detail.pageTitle),
   },
   {
@@ -546,13 +550,20 @@ test.describe("TC-STACK-008-307 a route whose param changes remounts its content
     const textB = await detailText(ORDER.confirmedGoods);
     expect(textA).not.toBe(textB);
 
-    // Client-side only from here: list -> A, back, list -> B; then one history step of two returns to A.
+    // Client-side only from here, so every entry after the first is a pushState of the router:
+    // [list, A, list, B]. One history step of two goes B -> A directly, with the same route element and another param.
     await openAs(page, "/mypage/orders");
     const link = (ref: string) => mainOf(page).locator(`a[href="/mypage/orders/${ref}"]`).first();
     await link(ORDER.confirmedEntry).click();
     await expect(page).toHaveURL(new RegExp(`/mypage/orders/${ORDER.confirmedEntry}$`));
     await expect.poll(() => mainOf(page).innerText(), { timeout: 15_000 }).toBe(textA);
-    await page.goBack();
+    // The Mypage menu is a disclosure on Mobile and always open on Desktop (no toggle there).
+    const toggle = navToggle(page);
+    if (await toggle.isVisible()) {
+      if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
+      await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    }
+    await navLink(page, "orders").click();
     await expect(page).toHaveURL(/\/mypage\/orders$/);
     await link(ORDER.confirmedGoods).click();
     await expect(page).toHaveURL(new RegExp(`/mypage/orders/${ORDER.confirmedGoods}$`));
