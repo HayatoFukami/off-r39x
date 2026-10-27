@@ -15847,6 +15847,29 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": true
+    },
+    {
+      "test_case_id": "TC-STRIPE-AUDIT-003",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["REL-TMO-003", "DEV-REL-002"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Monotonic elapsed deadline expires while callback/JSON completion delays timer scheduling",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": ["event_loop_delay"],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Fail closed within the canonical boundary; no unintended business mutation"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
     }
   ]
 }

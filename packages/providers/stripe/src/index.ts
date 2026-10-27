@@ -1,6 +1,6 @@
 import type { PaymentLookup, PaymentWebhookVerifier } from "@off-r39x/application";
 import type { LogEvent } from "@off-r39x/observability";
-import { TIMEOUTS, withDeadline } from "@off-r39x/reliability";
+import { DeadlineError, TIMEOUTS, withDeadline } from "@off-r39x/reliability";
 import Stripe from "stripe";
 
 function client(secret: string, transport?: typeof fetch): Stripe {
@@ -34,19 +34,22 @@ export function createStripeLookup(
   logger?: Logger,
   transport?: typeof fetch,
 ): PaymentLookup {
-  const request = <T>(operation: (sdk: Stripe) => Promise<T>) =>
-    withDeadline(
-      (signal) =>
-        operation(
-          client(secret, (url, init) =>
-            (transport ?? fetch)(url, {
-              ...init,
-              signal: init?.signal ? AbortSignal.any([signal, init.signal]) : signal,
-            }),
-          ),
+  const request = <T>(operation: (sdk: Stripe) => Promise<T>) => {
+    const started = performance.now();
+    return withDeadline(async (signal) => {
+      const value = await operation(
+        client(secret, (url, init) =>
+          (transport ?? fetch)(url, {
+            ...init,
+            signal: init?.signal ? AbortSignal.any([signal, init.signal]) : signal,
+          }),
         ),
-      TIMEOUTS.stripeMs,
-    );
+      );
+      // A delayed event loop/JSON parse must never turn a late response into success.
+      if (performance.now() - started >= TIMEOUTS.stripeMs) throw new DeadlineError();
+      return value;
+    }, TIMEOUTS.stripeMs);
+  };
   return {
     async checkout(id) {
       if (!/^cs_[A-Za-z0-9_]+$/.test(id)) return { kind: "BLOCKED" };

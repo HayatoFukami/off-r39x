@@ -224,7 +224,8 @@
         "TC-DB-FOUNDATION-010",
         "TC-FOUNDATION-RUNTIME-022",
         "TC-STRIPE-AUDIT-001",
-        "TC-STRIPE-AUDIT-002"
+        "TC-STRIPE-AUDIT-002",
+        "TC-STRIPE-AUDIT-003"
       ],
       "notes": "Abort-aware bounded caller deadline"
     },
@@ -235,7 +236,8 @@
         "TC-COMMON-004",
         "TC-COMMON-009",
         "TC-STRIPE-AUDIT-001",
-        "TC-STRIPE-AUDIT-002"
+        "TC-STRIPE-AUDIT-002",
+        "TC-STRIPE-AUDIT-003"
       ],
       "notes": "Shared dependency timeout primitives"
     },
