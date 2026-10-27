@@ -1,6 +1,6 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
 import type { PrimaryNavItem } from "../../config/site";
+import { Link } from "../../routing/link";
 import { cn } from "../components/ui/cn";
 import { copy } from "../copy/ja";
 

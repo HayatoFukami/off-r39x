@@ -19,7 +19,7 @@ function walk(dir: string): string[] {
 }
 
 const viewFiles = [
-  ...walk(join(webDir, "app")),
+  ...walk(join(webDir, "src/routes")),
   ...walk(join(webDir, "src/presentation")),
   ...walk(join(webDir, "src/features")),
   ...walk(join(webDir, "src/mock/dev-ui")),

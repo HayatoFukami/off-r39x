@@ -21,7 +21,7 @@ function walk(dir: string): string[] {
   });
 }
 
-const sources = [...walk(abs("app")), ...walk(abs("src"))].filter((f) => /\.(ts|tsx|css)$/.test(f));
+const sources = walk(abs("src")).filter((f) => /\.(ts|tsx|css)$/.test(f));
 
 describe("TC-DEV-WEB-001-201 the S3 shell files exist at the contracted paths (SPEC-190 DEV-WEB-001, section 0)", () => {
   const required = [
@@ -50,11 +50,22 @@ describe("TC-DEV-WEB-001-201 the S3 shell files exist at the contracted paths (S
     "src/presentation/components/ui/dialog.tsx",
     "src/mock/dev-ui/scenario-panel.tsx",
     "src/mock/dev-ui/mock-mode-badge.tsx",
-    "app/not-found.tsx",
-    "app/error.tsx",
-    "app/dev/layout.tsx",
-    "app/dev/scenarios/page.tsx",
-    "app/dev/error-probe/page.tsx",
+    "src/presentation/components/not-found-view.tsx",
+    "index.html",
+    "vite.config.ts",
+    "src/main.tsx",
+    "src/styles/globals.css",
+    "src/config/build-env.ts",
+    "src/routing/link.tsx",
+    "src/routing/navigation.ts",
+    "src/routes/route-table.tsx",
+    "src/routes/document-title.ts",
+    "src/routes/root-layout.tsx",
+    "src/routes/route-error.tsx",
+    "src/routes/root-error.tsx",
+    "src/routes/dev/dev-layout.tsx",
+    "src/routes/dev/scenarios.tsx",
+    "src/routes/dev/error-probe.tsx",
   ];
   for (const path of required) {
     it(`has ${path}`, () => {
@@ -71,10 +82,13 @@ describe("TC-DEV-WEB-001-201 the S3 shell files exist at the contracted paths (S
 });
 
 describe("TC-DEV-WEB-001-202 root layout wiring (contract section 4.1, DEV-WEB-012)", () => {
-  const layout = read("app/layout.tsx");
+  const layout = read("src/routes/root-layout.tsx");
 
-  it("keeps the ja document and renders the single main landmark with the skip link target", () => {
-    expect(layout).toMatch(/lang="ja"/);
+  it("keeps the ja document (index.html) and renders the single main landmark with the skip link target", () => {
+    const html = read("index.html");
+    expect(html).toMatch(/<html[^>]+lang="ja"/);
+    expect(html).not.toMatch(/<title[\s>]/);
+    expect(html).not.toMatch(/<script(?![^>]*\bsrc=)[^>]*>/);
     expect(layout).toMatch(/id="main-content"/);
     expect(layout).toMatch(/#main-content/);
   });
@@ -85,6 +99,24 @@ describe("TC-DEV-WEB-001-202 root layout wiring (contract section 4.1, DEV-WEB-0
     expect(layout).toMatch(/MockModeBadge/);
   });
 
+  it("renders the Outlet inside the single main, keeps the shell order and marks hydration", () => {
+    expect(layout).toMatch(/\bOutlet\b/);
+    expect(layout).toMatch(/\bHydrationMarker\b/);
+    const at = (needle: string): number => layout.indexOf(`<${needle}`);
+    expect(at("SiteHeader")).toBeGreaterThan(-1);
+    expect(at("SiteHeader")).toBeLessThan(at("main"));
+    expect(at("main")).toBeLessThan(at("SiteFooter"));
+    expect(at("SiteFooter")).toBeLessThan(at("SiteFloatingTicket"));
+    expect(at("SiteFloatingTicket")).toBeLessThan(at("MockModeBadge"));
+  });
+
+  it("restores scroll without keying on the URL (no query in sessionStorage, SEC-AUTH-018) and sets one title", () => {
+    expect(layout).toMatch(/<ScrollRestoration\b/);
+    expect(layout).not.toMatch(/getKey/);
+    expect(layout).toMatch(/formatDocumentTitle/);
+    expect((layout.match(/<title[\s>]/g) ?? []).length).toBe(1);
+  });
+
   it("imports mock code only for the MockModeBadge", () => {
     const mockImports = [...layout.matchAll(/from\s+["']([^"']*\/mock\/[^"']*)["']/g)].map(
       (m) => m[1] ?? "",
@@ -93,41 +125,69 @@ describe("TC-DEV-WEB-001-202 root layout wiring (contract section 4.1, DEV-WEB-0
     expect(mockImports[0]).toMatch(/mock\/dev-ui\/mock-mode-badge(\.tsx?)?$/);
   });
 
-  it("is the only place that renders <main>: pages and system pages must not", () => {
-    const pageLikes = walk(abs("app")).filter((f) => /(page|not-found|error)\.tsx$/.test(f));
-    expect(pageLikes.length).toBeGreaterThan(2);
-    for (const file of pageLikes)
+  it("renders <main> only in the root layout and in the root error fallback (route modules, features and presentation must not)", () => {
+    const allowed = new Set(["src/routes/root-layout.tsx", "src/routes/root-error.tsx"]);
+    const files = [
+      ...walk(abs("src/routes")),
+      ...walk(abs("src/features")),
+      ...walk(abs("src/presentation")),
+    ].filter((f) => /\.tsx$/.test(f));
+    expect(files.length).toBeGreaterThan(20);
+    for (const file of files.filter((f) => !allowed.has(rel(f)))) {
       expect(readFileSync(file, "utf8"), rel(file)).not.toMatch(/<main[\s>]/);
+    }
+    expect(read("src/routes/root-layout.tsx")).toMatch(/<main[\s>]/);
+    expect(read("src/routes/root-error.tsx")).toMatch(/<main[\s>]/);
+  });
+
+  it("imports nothing from next or next/* in any source file (SPEC-190 DEV-WEB-001: Vite + React Router)", () => {
+    for (const file of sources.filter((f) => /\.(ts|tsx)$/.test(f))) {
+      expect(readFileSync(file, "utf8"), rel(file)).not.toMatch(
+        /(?:from|import)\s*\(?\s*["']next(?:\/[^"']*)?["']/,
+      );
+    }
   });
 });
 
 describe("TC-PG-XFN-002-202 not-found and error pages (SPEC-050 19.1, SEC-WEB-012)", () => {
-  it("uses the shared copy for Not Found", () => {
-    expect(read("app/not-found.tsx")).toMatch(/copy\.notFound/);
+  it("uses the shared copy for Not Found and renders it for every unknown path", () => {
+    expect(read("src/presentation/components/not-found-view.tsx")).toMatch(/copy\.notFound/);
+    const table = read("src/routes/route-table.tsx");
+    expect(table).toMatch(/path:\s*["']\*["']/);
+    expect(table).toMatch(/\bNotFoundView\b/);
   });
 
-  it("renders the error page from copy only and never from the error object", () => {
-    const source = read("app/error.tsx");
-    expect(source).toMatch(/^\s*["']use client["']/);
-    expect(source).toMatch(/copy\.errorPage/);
-    expect(source).not.toMatch(/\berror\s*\.\s*(message|stack|digest|name|cause)\b/);
-    expect(source).not.toMatch(/\bconsole\s*\./);
-    expect(source).not.toMatch(/dangerouslySetInnerHTML/);
+  it("renders the error pages from copy only and never from the error object", () => {
+    for (const path of ["src/routes/route-error.tsx", "src/routes/root-error.tsx"]) {
+      const source = read(path);
+      expect(source.length, path).toBeGreaterThan(0);
+      expect(source, path).toMatch(/copy\.errorPage/);
+      expect(source, path).not.toMatch(/\berror\s*\.\s*(message|stack|digest|name|cause)\b/);
+      expect(source, path).not.toMatch(/\buseRouteError\b/);
+      expect(source, path).not.toMatch(/\bconsole\s*\./);
+      expect(source, path).not.toMatch(/dangerouslySetInnerHTML/);
+    }
+  });
+
+  it("retries by a replace navigation to the same location, not by a full reload", () => {
+    const source = read("src/routes/route-error.tsx");
+    expect(source).toMatch(/replace:\s*true/);
+    expect(source).not.toMatch(/location\.reload|window\.location/);
   });
 });
 
 describe("TC-DEV-WEB-012-102 dev area is guarded and kept out of general navigation (DEV-WEB-012)", () => {
-  it("guards /dev/* with isDevAreaEnabled + notFound and marks it noindex", () => {
-    const source = read("app/dev/layout.tsx");
+  it("guards /dev/* with isDevAreaEnabled + NotFoundView and marks it noindex", () => {
+    const source = read("src/routes/dev/dev-layout.tsx");
     expect(source).toMatch(/isDevAreaEnabled/);
-    expect(source).toMatch(/notFound\s*\(/);
-    expect(source).toMatch(/robots/);
-    expect(source).toMatch(/index:\s*false/);
+    expect(source).toMatch(/\bNotFoundView\b/);
+    expect(source).not.toMatch(/notFound\s*\(/);
+    expect(source).toMatch(/name="robots"/);
+    expect(source).toMatch(/noindex/);
   });
 
   it("makes the error probe throw during render with a synthetic marker", () => {
-    const source = read("app/dev/error-probe/page.tsx");
-    expect(source).toMatch(/^\s*["']use client["']/);
+    const source = read("src/routes/dev/error-probe.tsx");
     expect(source).toMatch(/throw new Error\(/);
     expect(source).toMatch(/SENSITIVE-MARKER-9f3a/);
   });
@@ -159,7 +219,7 @@ describe("TC-DEV-WEB-012-102 dev area is guarded and kept out of general navigat
 });
 
 describe("TC-DEV-WEB-001-203 design tokens and no external font (SPEC-050 24.3, SEC-WEB-004)", () => {
-  const css = read("app/globals.css");
+  const css = read("src/styles/globals.css");
   const theme = /@theme\s*\{([\s\S]*?)\n\}/.exec(css)?.[1] ?? "";
 
   it("defines the brand, tone, radius, font and hero gradient tokens in @theme", () => {
@@ -194,6 +254,10 @@ describe("TC-DEV-WEB-001-203 design tokens and no external font (SPEC-050 24.3, 
       expect(source, rel(file)).not.toMatch(/@import\s+url\(/);
       expect(source, rel(file)).not.toMatch(/url\(\s*["']?(https?:)?\/\//);
     }
+    const html = read("index.html");
+    expect(html.length).toBeGreaterThan(0);
+    expect(html).not.toMatch(/fonts\.(googleapis|gstatic)\.com/);
+    expect(html).not.toMatch(/<link[^>]+rel=["']stylesheet["'][^>]+href=["'](https?:)?\/\//);
   });
 });
 

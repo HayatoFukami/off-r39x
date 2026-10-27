@@ -1,12 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { type ChangeEvent, type FormEvent, useId, useState } from "react";
 import type { CartLine, Money } from "../../api-client/types";
 import { CART_HREF } from "../../config/site";
 import { Button } from "../../presentation/components/ui/button";
 import { Input } from "../../presentation/components/ui/input";
 import { copy } from "../../presentation/copy/ja";
+import { Link } from "../../routing/link";
 import { formatDisplayTotal, parseQuantityInput, type QuantityParse } from "./quantity";
 import { type CartAddOutcome, useCart } from "./use-cart";
 

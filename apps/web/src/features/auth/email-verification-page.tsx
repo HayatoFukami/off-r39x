@@ -1,7 +1,5 @@
 "use client";
 
-import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import {
   accountPath,
@@ -13,6 +11,8 @@ import { useAuth } from "../../auth/use-auth";
 import { useSession } from "../../auth/use-session";
 import { Button } from "../../presentation/components/ui/button";
 import { copy } from "../../presentation/copy/ja";
+import { Link } from "../../routing/link";
+import { useSearchParams } from "../../routing/navigation";
 import { CONTEXT_PARAM, readContext, removeContextFromUrl } from "./context-param";
 import { ServiceFailure } from "./service-failure";
 

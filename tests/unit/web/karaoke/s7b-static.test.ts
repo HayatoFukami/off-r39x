@@ -33,7 +33,7 @@ const VIEWS = [
   "src/features/karaoke/use-karaoke-purchase.ts",
   "src/features/karaoke/karaoke-slot-page.tsx",
 ] as const;
-const ROUTE = "app/karaoke/slots/[slotRef]/page.tsx";
+const ROUTE = "src/routes/public/karaoke-slot.tsx";
 
 const s7bSources = [...PURE, ...VIEWS, ROUTE].map((p) => abs(p)).filter((f) => existsSync(f));
 
@@ -58,25 +58,27 @@ describe("TC-DEV-WEB-001-701 the S7b modules and the route exist at the contract
   });
 });
 
-describe("TC-DEV-WEB-001-702 the slot route is a thin public server shell (DEV-WEB-001, SPEC-050 5.2 / 13.3)", () => {
+describe("TC-DEV-WEB-001-702 the slot route is a thin public route module (DEV-WEB-001, SPEC-050 5.2 / 13.3)", () => {
   const route = stripComments(read(ROUTE));
 
-  it("validates the param, 404s a bad one, sets the title and renders the container", () => {
+  it("validates the param, shows Not Found for a bad one, sets the title handle and renders the container by key", () => {
     expect(route).not.toMatch(/^\s*["']use client["']/);
-    expect(route).toMatch(/export\s+const\s+metadata/);
+    expect(route).toMatch(/export\s+const\s+handle/);
     expect(route).toMatch(/copy\.pageTitle\.karaokeSlot/);
-    expect(route).toMatch(/await\s+params|params\s*\)\s*=>|await\s+props\.params/);
+    expect(route).toMatch(/\buseParams\b/);
     expect(route).toMatch(/parseSlotRef/);
-    expect(route).toMatch(/\bnotFound\s*\(/);
+    expect(route).toMatch(/\bNotFoundView\b/);
+    expect(route).not.toMatch(/\bnotFound\s*\(/);
     expect(route).toMatch(/KaraokeSlotPage/);
+    expect(route).toMatch(/\bkey=/);
     expect(route).not.toMatch(/<main[\s>]/);
     expect(route).not.toMatch(/from\s+["'][^"']*\/mock\//);
     expect(route).not.toMatch(/\b(fetch|localStorage|sessionStorage)\b/);
   });
 
-  it("is a public route: not under (self), not behind the AuthGate", () => {
-    expect(ROUTE.startsWith("app/(self)/")).toBe(false);
-    expect(ROUTE.startsWith("app/karaoke/")).toBe(true);
+  it("is a public route: not under src/routes/self, not behind the AuthGate", () => {
+    expect(ROUTE.startsWith("src/routes/self/")).toBe(false);
+    expect(ROUTE.startsWith("src/routes/public/")).toBe(true);
   });
 });
 
@@ -84,7 +86,7 @@ describe("TC-DEV-WEB-001-703 the pure modules are pure and reuse the shared deci
   for (const path of PURE) {
     it(`${path} imports no React, Next, storage, clock, random or mock backend`, () => {
       const code = stripComments(read(path));
-      expect(code, path).not.toMatch(/from\s+["'](react|next)[/"']/);
+      expect(code, path).not.toMatch(/from\s+["'](react|next|react-router)[/"']/);
       expect(code, path).not.toMatch(/\b(localStorage|sessionStorage|document|window|fetch)\b/);
       expect(code, path).not.toMatch(/from\s+["'][^"']*\/mock\//);
       expect(code, path).not.toMatch(/\b(Date\.now|Math\.random|crypto\.randomUUID)\b/);

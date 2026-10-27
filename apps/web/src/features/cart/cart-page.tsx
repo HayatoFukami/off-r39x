@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { type ChangeEvent, useCallback, useEffect, useId, useState } from "react";
 import { useApi } from "../../api-client/provider";
 import { settleRead } from "../../api-client/settle-read";
@@ -14,6 +13,7 @@ import { StatusBadge } from "../../presentation/components/status-badge";
 import { Button } from "../../presentation/components/ui/button";
 import { Input } from "../../presentation/components/ui/input";
 import { copy } from "../../presentation/copy/ja";
+import { Link } from "../../routing/link";
 import { CartPurchaseFeedback } from "../purchase/cart-purchase-feedback";
 import { useCartPurchase } from "../purchase/use-cart-purchase";
 import { CartRecovery } from "./cart-recovery";

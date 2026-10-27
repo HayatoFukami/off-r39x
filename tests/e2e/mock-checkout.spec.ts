@@ -73,7 +73,7 @@ test.describe("TC-PAY-BRW-001-611 the mock Checkout is a labelled stand-in with 
     expect(errors.errors).toEqual([]);
   });
 
-  test("a well-formed ref is shown whether or not that Order exists (the stand-in reads nothing); a malformed ref is a 404", async ({
+  test("a well-formed ref is shown whether or not that Order exists (the stand-in reads nothing); a malformed ref shows Not Found (HTTP 200 shell)", async ({
     page,
   }) => {
     await fixClock(page);
@@ -82,8 +82,8 @@ test.describe("TC-PAY-BRW-001-611 the mock Checkout is a labelled stand-in with 
     expect(ok?.status()).toBe(200);
     await expect(heading1(page)).toHaveText(copy.mockCheckout.heading);
 
-    const bad = await page.goto("/dev/mock-checkout/not-a-uuid");
-    expect(bad?.status()).toBe(404);
+    const bad = await gotoHydrated(page, "/dev/mock-checkout/not-a-uuid");
+    expect(bad?.status()).toBe(200);
     await expect(heading1(page)).toHaveText(copy.notFound.title);
     await expect(mainOf(page)).not.toContainText(copy.mockCheckout.heading);
   });

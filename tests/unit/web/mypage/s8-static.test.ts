@@ -59,20 +59,21 @@ const VIEWS = [
 ] as const;
 
 const ROUTES = {
-  overview: "app/(self)/mypage/page.tsx",
-  profile: "app/(self)/mypage/profile/page.tsx",
-  orders: "app/(self)/mypage/orders/page.tsx",
-  order: "app/(self)/mypage/orders/[orderRef]/page.tsx",
-  tickets: "app/(self)/mypage/entry-tickets/page.tsx",
-  ticket: "app/(self)/mypage/entry-tickets/[ticketRef]/page.tsx",
-  ticketQr: "app/(self)/mypage/entry-tickets/[ticketRef]/qr/page.tsx",
-  reservations: "app/(self)/mypage/karaoke/page.tsx",
-  reservation: "app/(self)/mypage/karaoke/[reservationRef]/page.tsx",
-  reservationQr: "app/(self)/mypage/karaoke/[reservationRef]/qr/page.tsx",
-  goodsItems: "app/(self)/mypage/goods/page.tsx",
-  goodsItem: "app/(self)/mypage/goods/[goodsItemRef]/page.tsx",
+  overview: "src/routes/self/mypage-overview.tsx",
+  profile: "src/routes/self/mypage-profile.tsx",
+  orders: "src/routes/self/mypage-orders.tsx",
+  order: "src/routes/self/mypage-order-detail.tsx",
+  tickets: "src/routes/self/mypage-entry-tickets.tsx",
+  ticket: "src/routes/self/mypage-entry-ticket-detail.tsx",
+  ticketQr: "src/routes/self/mypage-entry-ticket-qr.tsx",
+  reservations: "src/routes/self/mypage-karaoke.tsx",
+  reservation: "src/routes/self/mypage-reservation-detail.tsx",
+  reservationQr: "src/routes/self/mypage-reservation-qr.tsx",
+  goodsItems: "src/routes/self/mypage-goods.tsx",
+  goodsItem: "src/routes/self/mypage-goods-item-detail.tsx",
 } as const;
-const LAYOUT = "app/(self)/mypage/layout.tsx";
+const LAYOUT = "src/routes/self/mypage-layout.tsx";
+const SELF_LAYOUT = "src/routes/self/self-layout.tsx";
 
 const s8Sources = [...PURE, ...CONTAINERS, ...VIEWS, ...Object.values(ROUTES), LAYOUT]
   .map((p) => abs(p))
@@ -106,7 +107,7 @@ describe("TC-DEV-WEB-001-802 the S8 modules and routes exist at the contracted p
   });
 });
 
-describe("TC-DEV-WEB-001-803 the S8 page.tsx files are thin server shells that never reveal the target (DEV-WEB-001, SPEC-050 5.2 / 19.2)", () => {
+describe("TC-DEV-WEB-001-803 the S8 route modules are thin shells that never reveal the target (DEV-WEB-001, SPEC-050 5.2 / 19.2)", () => {
   const titles: Record<keyof typeof ROUTES, RegExp> = {
     overview: /copy\.mypage\.pageTitle/,
     profile: /copy\.mypage\.profile\.pageTitle/,
@@ -123,11 +124,11 @@ describe("TC-DEV-WEB-001-803 the S8 page.tsx files are thin server shells that n
   };
 
   for (const [key, path] of Object.entries(ROUTES) as [keyof typeof ROUTES, string][]) {
-    it(`${path} is a Server Component with metadata, no <main>, no storage, no mock`, () => {
+    it(`${path} is a thin route module with a title handle, no <main>, no storage, no mock`, () => {
       const code = stripComments(read(path));
       expect(code.length, path).toBeGreaterThan(0);
       expect(code).not.toMatch(/^\s*["']use client["']/);
-      expect(code).toMatch(/export\s+const\s+metadata/);
+      expect(code).toMatch(/export\s+const\s+handle/);
       expect(code).toMatch(titles[key]);
       expect(code).not.toMatch(/<main[\s>]/);
       expect(code).not.toMatch(/from\s+["'][^"']*\/mock\//);
@@ -144,13 +145,14 @@ describe("TC-DEV-WEB-001-803 the S8 page.tsx files are thin server shells that n
     ["goodsItem", /parseGoodsItemRef/, /copy\.accessDenied\.goodsItemsLink/],
   ];
   for (const [key, parser, label] of guarded) {
-    it(`${ROUTES[key]} awaits params and shows Access Denied (HTTP 200, never notFound) for a malformed ref`, () => {
+    it(`${ROUTES[key]} reads useParams and shows Access Denied (never Not Found) for a malformed ref, and remounts the container by key`, () => {
       const code = stripComments(read(ROUTES[key]));
-      expect(code).toMatch(/await\s+params|params\s*\)\s*=>|await\s+props\.params/);
+      expect(code).toMatch(/\buseParams\b/);
       expect(code).toMatch(parser);
       expect(code).toMatch(/AccessDeniedView/);
       expect(code).toMatch(label);
-      expect(code).not.toMatch(/\bnotFound\s*\(/);
+      expect(code).not.toMatch(/\bnotFound\s*\(|\bNotFoundView\b/);
+      expect(code).toMatch(/\bkey=/);
     });
   }
 
@@ -176,19 +178,20 @@ describe("TC-DEV-WEB-001-803 the S8 page.tsx files are thin server shells that n
 
   it("the S6 placeholder is gone: /mypage renders the Overview and the marker copy key is not used anywhere", () => {
     expect(stripComments(read(ROUTES.overview))).not.toMatch(/protectedMarker/);
-    for (const file of walk(abs("src")).concat(walk(abs("app")))) {
+    for (const file of walk(abs("src"))) {
       if (!/\.(ts|tsx)$/.test(file)) continue;
       expect(readFileSync(file, "utf8"), rel(file)).not.toMatch(/protectedMarker/);
     }
   });
 
-  it("the (self) layout still wraps everything in AuthGate and the Mypage layout only adds the local navigation", () => {
-    const self = stripComments(read("app/(self)/layout.tsx"));
+  it("the self layout still wraps everything in AuthGate and the Mypage layout only adds the local navigation", () => {
+    const self = stripComments(read(SELF_LAYOUT));
     expect(self).toMatch(/AuthGate/);
+    expect(self).toMatch(/\bOutlet\b/);
     const layout = stripComments(read(LAYOUT));
     expect(layout).not.toMatch(/^\s*["']use client["']/);
     expect(layout).toMatch(/MypageNav/);
-    expect(layout).toMatch(/children/);
+    expect(layout).toMatch(/\bOutlet\b/);
     expect(layout).not.toMatch(/<main[\s>]/);
     expect(layout).not.toMatch(/AuthGate/);
   });
@@ -199,7 +202,7 @@ describe("TC-DEV-WEB-001-804 the pure modules are pure and build on the shared p
     it(`${path} imports no React, Next, storage, clock, random or mock backend`, () => {
       const code = stripComments(read(path));
       expect(code.length, path).toBeGreaterThan(0);
-      expect(code, path).not.toMatch(/from\s+["'](react|next)[/"']/);
+      expect(code, path).not.toMatch(/from\s+["'](react|next|react-router)[/"']/);
       expect(code, path).not.toMatch(/\b(localStorage|sessionStorage|document|window|fetch)\b/);
       expect(code, path).not.toMatch(/from\s+["'][^"']*\/mock\//);
       expect(code, path).not.toMatch(

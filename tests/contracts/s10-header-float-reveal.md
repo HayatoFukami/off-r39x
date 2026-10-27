@@ -21,11 +21,12 @@ Tailwind の `md` breakpoint（768px）未満を mobile とする（既存 `isDe
 | `apps/web/src/presentation/layout/floating-ticket-visibility.ts`（新規） | 純粋 | `isFloatingTicketVisible(pathname: string): boolean`（§4.1） |
 | `apps/web/src/presentation/layout/plain-primary-click.ts`（新規） | 純粋 | `isPlainPrimaryClick(event: ClickLike): boolean`（§3）。import なし |
 | `apps/web/src/presentation/layout/floating-ticket-button.tsx`（新規） | view | `FloatingTicketButton`（Link。§4.2） |
-| `apps/web/src/features/shell/` 配下の container（名前は任意） | client | `usePathname()` を読み、`FloatingTicketButton` へ props で渡す。`app/layout.tsx` が描画する |
+| `apps/web/src/features/shell/` 配下の container（名前は任意） | client | `usePathname()` を読み、`FloatingTicketButton` へ props で渡す。`src/routes/root-layout.tsx` が描画する |
 | `apps/web/src/presentation/components/section-heading.tsx` | view | §6 のフェードイン属性と挙動（実装は client 部品へ委譲してよい） |
 | `apps/web/src/mock/dev-ui/mock-mode-badge.tsx` | view | 左下へ移動（§5） |
-| `apps/web/app/layout.tsx` | route | Floating button を Footer の後・MockModeBadge の前に描画。`viewport` export で `viewportFit: "cover"`（§4.2） |
-| `apps/web/app/globals.css` | token | `[data-reveal]` の規則と `prefers-reduced-motion` の上書き（§6） |
+| `apps/web/src/routes/root-layout.tsx` | route | Floating button を Footer の後・MockModeBadge の前に描画（§4.2） |
+| `apps/web/index.html` | 静的 shell | `<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">`（§4.2） |
+| `apps/web/src/styles/globals.css` | token | `[data-reveal]` の規則と `prefers-reduced-motion` の上書き（§6） |
 | `apps/web/src/presentation/copy/ja.ts` | copy | §1 |
 | 既存のサイト名 Link（`global-header.tsx` 内） | view / client | `/` 表示中は先頭へ scroll（§3）。`onClick` が要るため client 部品へ切り出してよい |
 
@@ -88,10 +89,10 @@ segment 境界で比較する: `/entry` と `/entry/` と `/entry/x` は false�
 ### 4.2 見た目と DOM
 
 - `FloatingTicketButton`（`pathname` を props で受ける）は `isFloatingTicketVisible` が false のとき `null`（DOM に存在しない）。client-side 遷移でも切り替わる（layout は再 mount されない）。
-- `<a>`（Next `Link`、`prefetch={false}`）、`href="/entry"`、`data-testid="floating-ticket-button"`、accessible name = `copy.layout.floatingTicket.label`（可視テキスト。アイコンだけにしない）。**Header の主要 CTA と accessible name が異なる**ことで、`getByRole("link", { name })` が strict mode で一意になる。
+- `<a>`（`src/routing/link.tsx` の `Link`、`prefetch={false}`）、`href="/entry"`、`data-testid="floating-ticket-button"`、accessible name = `copy.layout.floatingTicket.label`（可視テキスト。アイコンだけにしない）。**Header の主要 CTA と accessible name が異なる**ことで、`getByRole("link", { name })` が strict mode で一意になる。
 - `position: fixed`、右下（右端・下端からの距離は各 64px 以内）。Page を scroll しても同じ位置に追従する。高さ 36px 以上。
 - DOM 位置: `<header>`・`<main>`・`<footer>`・`<nav>` の外、Footer の**後**（focus 順が DOM 順と一致）。MockModeBadge の前でも後でもよい。
-- safe area: `bottom` と `right` に `env(safe-area-inset-bottom)` / `env(safe-area-inset-right)` を足す（ソースに `safe-area-inset-bottom` を含める）。`app/layout.tsx` は `viewport` を export し `viewportFit: "cover"` を設定する（`<meta name="viewport">` の content に `viewport-fit=cover` が入る。これが無いと iOS で env() が 0 になる）。`width=device-width` と `initial-scale=1` は保つ。
+- safe area: `bottom` と `right` に `env(safe-area-inset-bottom)` / `env(safe-area-inset-right)` を足す（ソースに `safe-area-inset-bottom` を含める）。`apps/web/index.html` の `<meta name="viewport">` の content に `viewport-fit=cover` を入れる（これが無いと iOS で env() が 0 になる）。`width=device-width` と `initial-scale=1` は保つ。
 - 覆わない: Page の末尾まで scroll したとき、Floating button の矩形は、Footer 内のすべての要素（Event 名称、Footer navigation の Link、Sponsor Logo 領域の画像・テキスト）および Page 上のすべての操作要素（`a[href]`, `button`, `input`, `select`, `textarea`）の矩形と交差しない。末尾に Button の高さ + 余白 + safe area 分の余白を確保する（`body` か Footer の `padding-bottom` など。表示する Page でだけ確保してもよい）。Floating button を非表示にする Page では余白を足さなくてよい。
 - Floating button が Header の主要 CTA を置き換えない（両方が存在する）。
 - tab 順: Footer の最後の Link の次が Floating button。
@@ -111,13 +112,13 @@ segment 境界で比較する: `/entry` と `/entry/` と `/entry/x` は false�
 
 | 値 | 意味 | computed 値 |
 |---|---|---|
-| `static` | server 出力と最初の client render の値。演出を行わない | `opacity: 1` |
+| `static` | 静的な値（JS が動く前の CSS の既定と、最初の client render）。演出を行わない | `opacity: 1` |
 | `pending` | client が演出を準備した。画面内に入るのを待つ | `opacity: 0`（`display: none` / `visibility: hidden` / `aria-hidden` は使わない。DOM に存在し続ける） |
 | `revealed` | 画面内に入り表示済み | `opacity: 1` |
 
 - `data-reveal` は h2 / h3 以外に付けない。h1 には付けず、`opacity: 1` を保つ。
 - 遷移は一方向（`static` → `pending` → `revealed`、または `static` → `revealed`）。`revealed` に戻って `pending` へ戻ることはない（scroll して出入りしても再び隠さない）。
-- JavaScript が無効: server 出力は `static` のままで、見出しは常に `opacity: 1`。
+- JavaScript が無効: `static` の見出しは常に `opacity: 1`（CSS の契約。SPA は JS なしで内容を描画しない（SPEC-050 §5.4）ので、E2E は静的 shell の `#root` に `data-reveal="static"` の見出しを差し込んで検証する。TC-SPEC-050-25-003）。
 - `prefers-reduced-motion: reduce`: `pending` を使わない（`static` のまま、または即 `revealed`）。見出しは常に `opacity: 1` で、`transition-duration` は `0s`（CSS でも `@media (prefers-reduced-motion: reduce)` で `[data-reveal]` の opacity を 1、transition を無効にして二重に守る）。
 - それ以外で `IntersectionObserver` が使える場合: client が mount した後（`useLayoutEffect` 相当で最初の paint 前）、その要素が viewport の下方にあり画面内にまだ入っていなければ `pending` にする。すでに画面内に入っている要素は `pending` にせず、`static` のままか即 `revealed`（最終的に `opacity: 1`）。`pending` の要素が viewport と交差したら `revealed` にする。
 - hydration 後に mount した見出し（データ取得後に描画される Home の各 Section など）にも同じ処理を行う。

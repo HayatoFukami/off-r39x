@@ -36,9 +36,6 @@ playwright-report/
 blob-report/
 generated/
 
-# Next.js generated
-next-env.d.ts
-
 # Superseded agent instructions (merged into AGENTS.md)
 AGENTS_old.md
 

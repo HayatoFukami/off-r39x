@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useApi } from "../../api-client/provider";
 import { settleRead } from "../../api-client/settle-read";
@@ -11,6 +10,7 @@ import { PageState } from "../../presentation/components/page-state";
 import { PlainText } from "../../presentation/components/plain-text";
 import { SectionHeading } from "../../presentation/components/section-heading";
 import { copy } from "../../presentation/copy/ja";
+import { Link } from "../../routing/link";
 import { buildHomeModel, HOME_NEWS_LIMIT, type HomeSection } from "./home-model";
 
 type Section<K extends HomeSection["key"]> = Extract<HomeSection, { key: K }>;

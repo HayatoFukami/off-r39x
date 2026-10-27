@@ -1,12 +1,12 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { useEffect, useId, useState } from "react";
 import { currentNavKey, MYPAGE_NAV_KEYS, MYPAGE_PATHS } from "../../config/mypage-routes";
 import { Button } from "../../presentation/components/ui/button";
 import { cn } from "../../presentation/components/ui/cn";
 import { copy } from "../../presentation/copy/ja";
+import { Link } from "../../routing/link";
+import { usePathname } from "../../routing/navigation";
 
 // Mypage local navigation (SPEC-050 17.2, 24.1, 25). A landmark with six links and no list markup.
 // Desktop shows it permanently; Mobile hides it behind a disclosure that reports its state.

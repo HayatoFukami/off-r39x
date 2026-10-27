@@ -187,7 +187,8 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "VIOLATION mock-allowlist for non-allowlisted importers",
-        "api-client/index.ts, auth/index.ts, app/dev/**, app/layout.tsx and mock/** itself are allowed",
+        "api-client/index.ts, auth/index.ts, src/routes/dev/**, src/routes/root-layout.tsx (mock-mode-badge) and mock/** itself are allowed",
+        "src/main.tsx, vite.config.ts, other route modules and the former app/dev/** and app/layout.tsx are rejected",
         "a top-level apps/web/next.config.ts is outside the allowlist and yields mock-allowlist"
       ],
       "expected_db_postconditions": [],
@@ -332,7 +333,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "isUiMockEnabled is true only for NEXT_PUBLIC_UI_MOCK === \"1\""
+        "isUiMockEnabled is true only for VITE_UI_MOCK === \"1\"; the former NEXT_PUBLIC_UI_MOCK alone is disabled"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -355,7 +356,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "assertUiMockNotInProductionBuild throws (message contains 'UI mock') only when mock is enabled and VERCEL_ENV is production"
+        "assertUiMockNotInProductionBuild throws (message contains 'UI mock') only when mock is enabled and APP_ENV is production (VERCEL_ENV is not the signal)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -457,7 +458,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -482,15 +483,15 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; headers asserted regardless of body (404 allowed); both viewports run the same request-level check",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); headers asserted regardless of body (SPA shell, HTTP 200); both viewports run the same request-level check",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "/mypage, /purchase/anything and /account/login responses carry Cache-Control containing no-store and private, and Pragma no-cache",
-        "GET / is not marked private"
+        "/account/login, /auth/anything, /purchase/anything, /mypage, /admin and /staff/anything (the six SEC-WEB-009 prefixes) answer 200 with Cache-Control containing no-store and private, and Pragma no-cache, from dist/_headers",
+        "GET / is marked neither private nor no-store"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -2792,7 +2793,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "isDevAreaEnabled is true only for NEXT_PUBLIC_UI_MOCK=1 outside production; false otherwise"
+        "isDevAreaEnabled is true only for VITE_UI_MOCK=1 outside APP_ENV=production; false otherwise (NEXT_PUBLIC_UI_MOCK is not read)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -2815,7 +2816,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "dev layout guards with notFound and noindex; shell sources never link /admin, /staff or /dev; error probe throws a synthetic marker"
+        "dev layout guards with isDevAreaEnabled + NotFoundView and noindex; shell sources never link /admin, /staff or /dev; error probe throws a synthetic marker"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -2928,7 +2929,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "createApiPort / createAuthPort throw 'real ... client not implemented' unless NEXT_PUBLIC_UI_MOCK=1 and touch no storage"
+        "createApiPort / createAuthPort throw 'real ... client not implemented' unless VITE_UI_MOCK=1 and touch no storage"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -3090,7 +3091,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -3119,7 +3120,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -3149,7 +3150,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -3180,7 +3181,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -3211,7 +3212,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -3240,7 +3241,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -3271,7 +3272,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -3300,7 +3301,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -3331,7 +3332,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -3361,7 +3362,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -3392,7 +3393,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -3421,7 +3422,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -3452,7 +3453,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -3482,7 +3483,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -3511,7 +3512,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -3540,7 +3541,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -3569,7 +3570,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -3598,7 +3599,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -3621,7 +3622,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -3651,7 +3652,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -3680,7 +3681,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -3709,7 +3710,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -3738,7 +3739,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -3767,14 +3768,14 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
       "fault_points": [],
-      "expected_http": 404,
+      "expected_http": 200,
       "expected_domain_postconditions": [
-        "unmatched route answers 404 with h1, description and a Home link inside the shell; no requested path or framework default text; Home link returns to /"
+        "unmatched route answers 200 text/html (static SPA shell) and shows the Not Found h1, description and a Home link inside the shell; no requested path or framework default text; Home link returns to /"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -3796,7 +3797,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -3842,7 +3843,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; authenticated session and image_broken sponsor scenario preseeded",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; authenticated session and image_broken sponsor scenario preseeded",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -3906,7 +3907,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "modules and route files exist; page.tsx are Server Component shells with metadata, async params and notFound()",
+        "modules and route modules exist; route modules are thin shells with a title handle, useParams, NotFoundView and a keyed container",
         "containers are client components that read only through useApi() after mount and build a view model"
       ],
       "expected_db_postconditions": [],
@@ -4655,7 +4656,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "Not Found page with no title / body / ref leak; draft and unknown indistinguishable; malformed ref answers HTTP 404"
+        "Not Found page with no title / body / ref leak; draft and unknown indistinguishable; malformed ref shows the same Not Found view (static shell, HTTP 200)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -4868,7 +4869,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "malformed date answers HTTP 404; non-sales date shows Not Found; only the reload button, no purchase operation"
+        "malformed date shows Not Found (static shell, HTTP 200); non-sales date shows Not Found; only the reload button, no purchase operation"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -5032,7 +5033,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "each page has its metadata title (Home = site name, others 'Page | site name')"
+        "each page has its title handle and the root layout builds the document title (Home = site name, others 'Page | site name')"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -5869,7 +5870,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "S5 page.tsx files are thin server shells with metadata; Goods detail awaits params and calls notFound for an invalid ref"
+        "S5 route modules are thin shells with a title handle; Goods detail reads useParams and renders NotFoundView for an invalid ref"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -6348,9 +6349,9 @@
       "clock_instant": "2027-03-01T03:00:00Z",
       "concurrency_seed": null,
       "fault_points": [],
-      "expected_http": 404,
+      "expected_http": 200,
       "expected_domain_postconditions": [
-        "non-canonical UUID answers HTTP 404; non-public and unknown refs show the same Not Found view without the item"
+        "non-canonical UUID shows the Not Found view (static shell, HTTP 200); non-public and unknown refs show the same Not Found view without the item"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -7501,7 +7502,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "S6 page.tsx files are thin server shells with metadata titles; (self) layout wraps AuthGate"
+        "S6 route modules are thin shells with title handles; the self layout wraps AuthGate and an Outlet"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -8729,7 +8730,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "thin server shells; Purchase Status shows Access Denied for a bad ref; the mock Checkout 404s a bad ref under the dev guard"
+        "thin route modules; Purchase Status shows Access Denied for a bad ref; the mock Checkout shows Not Found for a bad ref under the dev guard"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -9051,7 +9052,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "stand-in notice, two return links to the same Purchase Status, no input field; dev-only, noindex; malformed ref is 404"
+        "stand-in notice, two return links to the same Purchase Status, no input field; dev-only, noindex; malformed ref shows Not Found (static shell, HTTP 200)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -9945,7 +9946,9 @@
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
-      "expected_domain_postconditions": ["not found, malformed 404, failed read are distinct"],
+      "expected_domain_postconditions": [
+        "not found, malformed ref (Not Found view, HTTP 200 shell, no purchase button), failed read are distinct"
+      ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
       "expected_observability": [],
@@ -10343,7 +10346,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "route shells are thin; malformed refs render Access Denied (never notFound); placeholder removed"
+        "route modules are thin; malformed refs render Access Denied (never Not Found); placeholder removed"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -13373,10 +13376,10 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": false,
-      "preconditions": "Fixture trees with apps/web/.next static and server output",
+      "preconditions": "Fixture trees with apps/web/dist (assets, html, _headers, nested files) and a stale apps/web/.next",
       "expected_http": null,
       "expected_domain_postconditions": [
-        "static and the full server tree are scanned for secret values; mock-seed-field is scanned only under server/app; cache ignored; --require-build and custom --build-dir are covered"
+        "every file under apps/web/dist is scanned for secret values; mock-seed-field only in html; a stale .next is not scanned; --require-build (default apps/web/dist) and custom --build-dir are covered"
       ]
     },
     {
@@ -13438,10 +13441,10 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": false,
-      "preconditions": "next.config.ts loaded in a child process with controlled env",
+      "preconditions": "apps/web/vite.config.ts loaded in a child process with controlled env and called with command and mode",
       "expected_http": null,
       "expected_domain_postconditions": [
-        "production deploy with NEXT_PUBLIC_UI_MOCK=1 throws; preview and unflagged production load"
+        "APP_ENV=production with VITE_UI_MOCK=1 throws in build and serve; staging and unflagged production load; VERCEL_ENV and NEXT_PUBLIC_UI_MOCK are not honoured; sourcemap false and outDir dist"
       ]
     },
     {
@@ -13464,7 +13467,7 @@
       "preconditions": "Root package.json",
       "expected_http": null,
       "expected_domain_postconditions": [
-        "build:mock and start:mock use scripts/mock-web.mts; no POSIX env prefix; plain build does not set the flag"
+        "build:mock and start:mock use scripts/mock-web.mts; no POSIX env prefix; plain build and dev (root and apps/web) do not set the flag; apps/web builds with vite then generate-web-headers, dev is vite, no start script"
       ]
     },
     {
@@ -13487,7 +13490,7 @@
       "preconditions": "scripts/mock-web.mts --dry-run with controlled env",
       "expected_http": null,
       "expected_domain_postconditions": [
-        "prints flag and command only; refuses VERCEL_ENV=production; USAGE exit 2"
+        "prints VITE_UI_MOCK=1 and the command only (start = node scripts/serve-web-dist.mts); refuses APP_ENV=production and ignores VERCEL_ENV; USAGE exit 2"
       ]
     },
     {
@@ -13539,7 +13542,7 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": false,
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; synthetic data only",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; synthetic data only",
       "expected_http": 200,
       "expected_domain_postconditions": [
         "guest to login to purchase to AWAITING_PAYMENT to CONFIRMED to Mypage to Entry QR to logout on both projects",
@@ -13572,7 +13575,7 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": false,
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; synthetic data only",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; synthetic data only",
       "expected_http": 200,
       "expected_domain_postconditions": [
         "guest to slot to login to HELD to CONFIRMED (slot SOLD) to Reservation QR to logout on both projects",
@@ -13603,7 +13606,7 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": false,
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; synthetic data only",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; synthetic data only",
       "expected_http": 200,
       "expected_domain_postconditions": [
         "every public page reachable by navigation as a guest with one h1, no login redirect and no horizontal overflow on both projects"
@@ -13722,7 +13725,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -13752,7 +13755,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -13782,7 +13785,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md; modified-click case emulates prefers-reduced-motion and cancels the browser default in a test-only window listener",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md; modified-click case emulates prefers-reduced-motion and cancels the browser default in a test-only window listener",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -13812,7 +13815,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -13843,7 +13846,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -13874,7 +13877,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -13905,7 +13908,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -13935,7 +13938,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -13965,7 +13968,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -13995,14 +13998,14 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "With JavaScript disabled a server-rendered section heading (data-reveal=static, spliced into the real server HTML because UI mock pages render sections on the client) is opaque under the real stylesheet and nothing is pending"
+        "With JavaScript disabled a static section heading (data-reveal=static, spliced into the empty #root of the real static shell because the SPA renders nothing without JavaScript) is opaque under the real stylesheet and nothing is pending"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -14025,7 +14028,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "apps/web built and started with NEXT_PUBLIC_UI_MOCK=1 on port 3100; desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md",
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s10-header-float-reveal.md",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -14323,6 +14326,807 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "Sale details remain visible while quantity selection and Cart addition are disabled; stored Cart remains unchanged"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-001",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["DEV-WEB-001", "DEV-WEB-003", "INF-VCL-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Source tree read (apps/web); contract tests/contracts/s3-layout.md section 13",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "apps/web depends on react-router, vite and @vitejs/plugin-react and not on next; no app/ directory, next.config.* or next-env.d.ts; tsconfig and components.json no longer know Next.js",
+        "no source imports next or next/*; react-router is imported only from src/routing, src/routes and src/main.tsx",
+        "no Server Action directive, no Pages Functions, no 404.html / _redirects / _headers override in public"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-002",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["DEV-WEB-001", "DEV-WEB-003", "INF-VCL-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Source tree read (apps/web); contract tests/contracts/s3-layout.md section 13",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "route-table.tsx has the 31 absolute paths once each plus the catch-all, no other path literal, two errorElements (root and pathless)",
+        "purchase route is under SelfLayout, the 12 Mypage routes under MypageLayout, the 3 dev routes under DevLayout; the catch-all renders NotFoundView outside SelfLayout",
+        "every route with a path except the catch-all has caseSensitive: true (31 occurrences, none false, none on the catch-all or the pathless layouts), so URLs differing only in letter case fall to the catch-all"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-003",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["DEV-WEB-001", "DEV-WEB-003", "INF-VCL-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Source tree read (apps/web); contract tests/contracts/s3-layout.md section 13",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "main.tsx mounts RouterProvider(createBrowserRouter) in StrictMode with createRoot (no hydrateRoot), loads styles/globals.css, imports no mock and has no non-null assertion",
+        "only src/config/build-env.ts reads import.meta.env; no process.env, NEXT_PUBLIC_ or VERCEL_ENV in src"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-004",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["DEV-WEB-001", "DEV-WEB-003", "INF-VCL-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Source tree read (apps/web); contract tests/contracts/s3-layout.md section 13",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "routing/navigation.ts exports usePathname, useRouter (stabilised with useMemo around useNavigate) and useSearchParams without a setter",
+        "routing/link.tsx destructures prefetch away from the DOM props and renders the React Router Link with to={href}"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-005",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["SEC-WEB-003", "DEV-WEB-001"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Source tree read (apps/web/src/main.tsx, apps/web/src/config/zod-jitless.ts); contract tests/contracts/s3-layout.md section 13",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "zod-jitless.ts calls z.config({ jitless: true }) so that Zod never probes eval under a CSP without unsafe-eval",
+        "main.tsx has zod-jitless as its first JavaScript import (side-effect import, stylesheet aside), so it is evaluated before any module that defines a Zod schema; Zod is imported only under src/features and src/mock"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-101",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "DEV-WEB-001",
+        "SEC-WEB-009",
+        "SPEC-140-22",
+        "SPEC-180-13.1",
+        "TST-GEN-006"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v2); requests sent with node:http so the path is not normalised",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "extension-less unknown paths (/mypage, /goods/not-a-uuid, /no-such/deeper, /assets) answer 200 text/html with the index.html body"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-102",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "DEV-WEB-001",
+        "SEC-WEB-009",
+        "SPEC-140-22",
+        "SPEC-180-13.1",
+        "TST-GEN-006"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v2); requests sent with node:http so the path is not normalised",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "existing assets answer 200 with the content type of their extension; missing assets (/assets/missing.js, /mock/sponsors/__broken__.svg) answer 404 text/plain without HTML"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-103",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "DEV-WEB-001",
+        "SEC-WEB-009",
+        "SPEC-140-22",
+        "SPEC-180-13.1",
+        "TST-GEN-006"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v2); requests sent with node:http so the path is not normalised",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "protected prefixes (6 prefixes, the prefix itself and below) carry Cache-Control no-store, private, max-age=0, Pragma no-cache and Referrer-Policy \"strict-origin-when-cross-origin, no-referrer\"; public paths and prefix look-alikes carry neither",
+        "the CSP and the five other security headers appear exactly once on every response including 404; same-name headers of several matching rules are joined with \", \" in file order"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-104",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "DEV-WEB-001",
+        "SEC-WEB-009",
+        "SPEC-140-22",
+        "SPEC-180-13.1",
+        "TST-GEN-006"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v2); requests sent with node:http so the path is not normalised",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "traversal, encoded traversal, backslash, NUL, dotfiles, /_headers and /_redirects answer 404 and never return content from outside dist or from reserved files; a malformed percent escape does not crash the server"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-105",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "DEV-WEB-001",
+        "SEC-WEB-009",
+        "SPEC-140-22",
+        "SPEC-180-13.1",
+        "TST-GEN-006"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v2); requests sent with node:http so the path is not normalised",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "POST, PUT and DELETE answer 405 with Allow: GET, HEAD; HEAD returns the headers of GET without a body"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-106",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "DEV-WEB-001",
+        "SEC-WEB-009",
+        "SPEC-140-22",
+        "SPEC-180-13.1",
+        "TST-GEN-006"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v2); requests sent with node:http so the path is not normalised",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "a missing dist, index.html or _headers, an unsupported _headers syntax (!, :placeholder, absolute URL, middle wildcard) and a port in use each print the specified ERROR line and exit 1 without listening"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-107",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "DEV-WEB-001",
+        "SEC-WEB-009",
+        "SPEC-140-22",
+        "SPEC-180-13.1",
+        "TST-GEN-006"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v2); requests sent with node:http so the path is not normalised",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "invalid CLI input prints USAGE and exits 2; READY carries the actual port; no request URL, query or header value reaches stdout or stderr"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-201",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "SEC-WEB-003",
+        "SEC-WEB-004",
+        "SEC-WEB-005",
+        "SEC-WEB-006",
+        "SEC-WEB-007",
+        "SEC-WEB-008",
+        "SEC-WEB-009",
+        "SEC-WEB-026",
+        "SPEC-140-21",
+        "SPEC-140-22",
+        "SPEC-140-22.1",
+        "SPEC-180-13.2"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "scripts/generate-web-headers.mts run as a child process with --dist on a synthetic dist in os.tmpdir() and a controlled SPONSOR_IMAGE_ALLOWED_ORIGINS",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "with no inline script and no origin the generated dist/_headers equals the v2 content character for character (rule order, CSP, six security headers, 12 protected rules); stdout OK headers inline-scripts=0 img-origins=0"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-202",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "SEC-WEB-003",
+        "SEC-WEB-004",
+        "SEC-WEB-005",
+        "SEC-WEB-006",
+        "SEC-WEB-007",
+        "SEC-WEB-008",
+        "SEC-WEB-009",
+        "SEC-WEB-026",
+        "SPEC-140-21",
+        "SPEC-140-22",
+        "SPEC-140-22.1",
+        "SPEC-180-13.2"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "scripts/generate-web-headers.mts run as a child process with --dist on a synthetic dist in os.tmpdir() and a controlled SPONSOR_IMAGE_ALLOWED_ORIGINS",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "script-src lists the SHA-256 (base64) of each src-less inline script once, in order, across all html files; scripts with a src are not hashed"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-203",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "SEC-WEB-003",
+        "SEC-WEB-004",
+        "SEC-WEB-005",
+        "SEC-WEB-006",
+        "SEC-WEB-007",
+        "SEC-WEB-008",
+        "SEC-WEB-009",
+        "SEC-WEB-026",
+        "SPEC-140-21",
+        "SPEC-140-22",
+        "SPEC-140-22.1",
+        "SPEC-180-13.2"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "scripts/generate-web-headers.mts run as a child process with --dist on a synthetic dist in os.tmpdir() and a controlled SPONSOR_IMAGE_ALLOWED_ORIGINS",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "SPONSOR_IMAGE_ALLOWED_ORIGINS is normalised, de-duplicated and kept in input order in img-src only; empty, unset and [] leave no placeholder"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-204",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "SEC-WEB-003",
+        "SEC-WEB-004",
+        "SEC-WEB-005",
+        "SEC-WEB-006",
+        "SEC-WEB-007",
+        "SEC-WEB-008",
+        "SEC-WEB-009",
+        "SEC-WEB-026",
+        "SPEC-140-21",
+        "SPEC-140-22",
+        "SPEC-140-22.1",
+        "SPEC-180-13.2"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "scripts/generate-web-headers.mts run as a child process with --dist on a synthetic dist in os.tmpdir() and a controlled SPONSOR_IMAGE_ALLOWED_ORIGINS",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "http, wildcard, IP literal, localhost, .local, port, path, query, fragment, userinfo, non-JSON and non-array inputs fail with ERROR sponsor-image-origin-invalid, write no _headers, keep an existing one and print no input value"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-205",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "SEC-WEB-003",
+        "SEC-WEB-004",
+        "SEC-WEB-005",
+        "SEC-WEB-006",
+        "SEC-WEB-007",
+        "SEC-WEB-008",
+        "SEC-WEB-009",
+        "SEC-WEB-026",
+        "SPEC-140-21",
+        "SPEC-140-22",
+        "SPEC-140-22.1",
+        "SPEC-180-13.2"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "scripts/generate-web-headers.mts run as a child process with --dist on a synthetic dist in os.tmpdir() and a controlled SPONSOR_IMAGE_ALLOWED_ORIGINS",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "script-src never contains unsafe-inline or unsafe-eval; inline event attributes and javascript: URLs fail with ERROR inline-handler <relative path>"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-206",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "SEC-WEB-003",
+        "SEC-WEB-004",
+        "SEC-WEB-005",
+        "SEC-WEB-006",
+        "SEC-WEB-007",
+        "SEC-WEB-008",
+        "SEC-WEB-009",
+        "SEC-WEB-026",
+        "SPEC-140-21",
+        "SPEC-140-22",
+        "SPEC-140-22.1",
+        "SPEC-180-13.2"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "scripts/generate-web-headers.mts run as a child process with --dist on a synthetic dist in os.tmpdir() and a controlled SPONSOR_IMAGE_ALLOWED_ORIGINS",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "--check exits 0 for a matching file without writing; a changed file, a changed inline script or a missing file fails with ERROR headers-stale and is not repaired or created"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-207",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "SEC-WEB-003",
+        "SEC-WEB-004",
+        "SEC-WEB-005",
+        "SEC-WEB-006",
+        "SEC-WEB-007",
+        "SEC-WEB-008",
+        "SEC-WEB-009",
+        "SEC-WEB-026",
+        "SPEC-140-21",
+        "SPEC-140-22",
+        "SPEC-140-22.1",
+        "SPEC-180-13.2"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "scripts/generate-web-headers.mts run as a child process with --dist on a synthetic dist in os.tmpdir() and a controlled SPONSOR_IMAGE_ALLOWED_ORIGINS",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "a dist without index.html fails with ERROR index-missing; an unclosed <script fails with ERROR html-unparsable; invalid CLI input exits 2"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-301",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": ["DEV-WEB-001", "PG-XFN-002", "SPEC-050-5.4", "TST-E2E-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s3-layout.md section 13",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": 200,
+      "expected_domain_postconditions": [
+        "all 31 URL patterns open directly with HTTP 200 text/html, show the expected single h1 and title, and show the same after a reload"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-302",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": ["DEV-WEB-001", "PG-XFN-002", "SPEC-050-5.4", "TST-E2E-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s3-layout.md section 13",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": 200,
+      "expected_domain_postconditions": [
+        "unknown URLs (/no-such/deeper, /mypage/no-such, /dev/no-such) show the Not Found view with the shell for a Guest, without redirect or AuthGate; no Mypage navigation for a signed-in user",
+        "URLs that differ from an application URL only in letter case (Guest: /GOODS, /Mypage, /MYPAGE/orders; signed in: /Mypage, /MYPAGE/entry-tickets/<valid ref>/qr) are unknown URLs: HTTP 200 SPA shell, Not Found h1, pathname kept, no login redirect for a Guest, and for a signed-in user no Mypage navigation, no Mypage h1, no Entry QR image or figure (the router matches case-sensitively like dist/_headers)"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-303",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": ["DEV-WEB-001", "PG-XFN-002", "SPEC-050-5.4", "TST-E2E-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s3-layout.md section 13",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": 404,
+      "expected_domain_postconditions": ["missing assets answer 404 with a non-HTML body"],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-304",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "SEC-WEB-003",
+        "SEC-WEB-007",
+        "SEC-WEB-008",
+        "SEC-WEB-009",
+        "SEC-WEB-010",
+        "SPEC-140-22",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s3-layout.md section 13",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": 200,
+      "expected_domain_postconditions": [
+        "page responses carry the CSP of dist/_headers (no unsafe-inline / unsafe-eval in script-src), nosniff, DENY, HSTS, COOP and a Permissions-Policy that does not allow the camera",
+        "public pages are neither private nor no-store and use the default Referrer-Policy; the six protected prefixes carry no-store, Pragma and an effective no-referrer"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-305",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "SEC-WEB-011",
+        "DEV-WEB-002",
+        "INF-VCL-005",
+        "SPEC-050-5.4",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s3-layout.md section 13",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "the built html shells have an empty #root, no text, no personal data or seed markers and no inline script; dist has no source map",
+        "generate-web-headers --check exits 0 on the built dist (CSP hashes match the artifact)"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-306",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": ["SEC-WEB-003", "SEC-AUTH-018", "TST-E2E-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s3-layout.md section 13",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "representative pages raise no securitypolicyviolation event and print no Refused-to console message",
+        "after the authentication flows sessionStorage holds no URL, path or context value (scroll restoration keys on the location key)"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-307",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": ["DEV-WEB-001", "SPEC-050-25", "TST-E2E-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s3-layout.md section 13",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "a route whose param changes (Karaoke day next link, a history step between two Mypage order details) shows only the new resource, not the previous one"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-308",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": ["DEV-WEB-001", "SPEC-050-25", "TST-E2E-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s3-layout.md section 13",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "navigating to another page starts at scrollY 0 and Back returns to the previous page; the skip link focuses main#main-content and keeps it after re-render"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-DEV-WEB-011-204",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["DEV-WEB-011"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "apps/web/vite.config.ts loaded in a child process and called with command serve or build",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "serve with VITE_UI_MOCK unset sets it to 1; an explicit 0 stays 0; build leaves an unset flag unset (fail closed)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],

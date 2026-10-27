@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { resolveBrowserStorage, type StorageLike } from "../../config/browser-storage";
+import { Link } from "../../routing/link";
 import { systemClock } from "../backend/clock";
 import { createMockDb } from "../backend/db";
 import {

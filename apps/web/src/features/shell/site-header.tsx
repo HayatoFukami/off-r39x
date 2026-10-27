@@ -1,8 +1,8 @@
 "use client";
 
-import { usePathname } from "next/navigation";
 import { useSession } from "../../auth/use-session";
 import { GlobalHeader, type HeaderSession } from "../../presentation/layout/global-header";
+import { usePathname } from "../../routing/navigation";
 import { useCartCount } from "../cart/use-cart-count";
 
 /** Container: reads the cart count and the session, hands plain props to the Global Header. */

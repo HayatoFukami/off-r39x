@@ -2,7 +2,7 @@
 
 ## 1. Current repository, not the planned system
 
-- Only the Next.js UI mock and pure domain types are implemented. Hono API, database, real auth, Stripe and Resend integrations are not implemented; mock tests do not prove those contracts.
+- Only the UI mock (a Vite + React Router static SPA, output `apps/web/dist`) and pure domain types are implemented. Hono API, database, real auth, Stripe and Resend integrations are not implemented; mock tests do not prove those contracts.
 - `README.md` is the setup overview; executable configuration wins for commands and current behavior. Business requirements remain owned by `docs/specs/` (`SPEC-000`–`SPEC-200`), not existing code or `docs/drafts/`.
 - `.claude/agents/*.md` still contain obsolete claims that source/test directories do not exist. They are not canonical specifications or a required OpenCode orchestration scheme. `CLAUDE.md` only points here.
 
@@ -13,23 +13,23 @@ Use Node **24.x** and **pnpm 12.3.4** (`package.json`). `scripts/*.mts` run with
 ```sh
 corepack enable
 pnpm install --frozen-lockfile
-pnpm dev                         # next dev; defaults to mock mode when flag is unset
-pnpm build:mock                  # explicitly sets NEXT_PUBLIC_UI_MOCK=1
-pnpm start:mock                  # built mock at http://127.0.0.1:3100
+pnpm dev                         # vite dev server; defaults to mock mode when the flag is unset
+pnpm build:mock                  # explicitly sets VITE_UI_MOCK=1; output apps/web/dist
+pnpm start:mock                  # serves apps/web/dist and dist/_headers (scripts/serve-web-dist.mts) at http://127.0.0.1:3100
 pnpm start:mock --port 3200       # no extra -- separator
 ```
 
-- `apps/web/next.config.ts` supplies the dev-server default. Builds do **not** default to mock mode: use `build:mock` for UI verification. Non-mock API/auth factories currently throw (fail closed).
-- Mock builds are refused when `VERCEL_ENV=production`; do not bypass that guard.
+- `apps/web/vite.config.ts` supplies the dev-server default. Builds do **not** default to mock mode: use `build:mock` for UI verification. Non-mock API/auth factories currently throw (fail closed).
+- Mock builds are refused when `APP_ENV=production` (this repository's choice to satisfy DEV-WEB-011; the spec does not name the variable); do not bypass that guard.
 - `/dev/scenarios` controls mock outcomes. Mock data persists in browser localStorage (`r39x.mock.*`; cart: `r39x.cart.v1`); reset that origin's storage when reproducing from a clean state. Use synthetic data only.
 
 ## 3. Architecture and import boundaries
 
-- `apps/web/app/` contains thin App Router shells; containers and logic live in `src/features/`, prop-driven views in `src/presentation/`. Japanese UI copy is centralized in `src/presentation/copy/ja.ts`; read the relevant `tests/contracts/*.md` before changing DOM, accessible names or port shapes.
-- `apps/web/app/layout.tsx` mounts API/session providers and owns the **single `<main>`**. Pages must not introduce another main landmark.
-- `packages/domain` exports TypeScript source directly (`src/index.ts`); Next transpiles it via `transpilePackages`. It must not import external packages or app/framework code.
-- Features use API/auth ports, never `src/mock/` directly. Mock imports are allowed only in `src/api-client/index.ts`, `src/auth/index.ts`, `app/dev/**`, mock internals, and the root layout's `MockModeBadge`. Presentation must not import features, mock implementations or provider hooks. Exact exceptions are enforced by `scripts/check-import-boundaries.mts`.
-- Planned business data flow is `Browser → Next.js Web → Hono API → Supabase PostgreSQL` (`SPEC-010`). Browser/Web never query the Business DB directly; Hono owns business mutation/authorization, Supabase Auth owns authentication. Do not treat client IDs, roles, prices or payment results as authority.
+- `apps/web/src/routes/` contains the React Router route table and thin route modules; containers and logic live in `src/features/`, prop-driven views in `src/presentation/`. Japanese UI copy is centralized in `src/presentation/copy/ja.ts`; read the relevant `tests/contracts/*.md` before changing DOM, accessible names or port shapes.
+- `apps/web/src/routes/root-layout.tsx` mounts API/session providers and owns the **single `<main>`**. Pages must not introduce another main landmark.
+- `packages/domain` exports TypeScript source directly (`src/index.ts`); Vite bundles the TypeScript source directly. It must not import external packages or app/framework code.
+- Features use API/auth ports, never `src/mock/` directly. Mock imports are allowed only in `src/api-client/index.ts`, `src/auth/index.ts`, `src/routes/dev/**`, mock internals, and the root layout's `MockModeBadge`. Presentation must not import features, mock implementations or provider hooks. Import `react-router` only from `src/routing/`, `src/routes/` and `src/main.tsx` (a convention, not enforced by the boundary script). Exact exceptions are enforced by `scripts/check-import-boundaries.mts`.
+- Planned business data flow is `Browser → React SPA → Hono API → Supabase PostgreSQL` (`SPEC-010`). Browser/Web never query the Business DB directly; Hono owns business mutation/authorization, Supabase Auth owns authentication. Do not treat client IDs, roles, prices or payment results as authority.
 - For backend work, preserve verified-provider payment confirmation (never browser redirects), external calls outside DB transactions, and reconciliation instead of blind retries after unknown outcomes (`SPEC-070`, `SPEC-150`). Entry/Karaoke QR purposes stay separate and check-in atomic/single-use (`SPEC-080`).
 
 ## 4. Implementation workflow
@@ -48,7 +48,7 @@ pnpm typecheck                   # recursive workspace checks
 pnpm check:boundaries            # separate gate, not included in lint
 pnpm validate:traceability       # separate gate, not included in typecheck
 pnpm test:unit                   # Vitest unit AND security projects, Node environment
-pnpm test:e2e                    # Playwright UI-mock suite; builds and starts its own server
+pnpm test:e2e                    # Playwright UI-mock suite; builds apps/web/dist and serves it itself
 pnpm build:mock                  # UI-mock build; standard non-mock command is pnpm build
 pnpm secret-scan --require-build # run after build to require and inspect build output
 ```
@@ -62,11 +62,11 @@ pnpm --dir tests exec playwright test e2e/cart-page.spec.ts --project=desktop-ch
 pnpm --dir tests exec playwright install chromium  # if the browser binary is missing
 ```
 
-- Playwright reserves `127.0.0.1:3100`, refuses an existing server, and rebuilds `apps/web/.next`; do not run alongside `start:mock` or another build/E2E run. Default projects are desktop/mobile Chromium, workers=2, timezone=UTC, retries=0. Windows loopback stalls are documented; use `--workers=1` for diagnosis, not retries to erase a failure.
+- Playwright reserves `127.0.0.1:3100`, refuses an existing server, and rebuilds `apps/web/dist` and serves it with `scripts/serve-web-dist.mts`; do not run alongside `start:mock` or another build/E2E run. Default projects are desktop/mobile Chromium, workers=2, timezone=UTC, retries=0. Windows loopback stalls are documented; use `--workers=1` for diagnosis, not retries to erase a failure.
 - Use `gotoHydrated`/`waitForHydration` from `tests/harness/browser/hydration.ts` before interactive assertions; navigation completing does not mean React is ready.
 - E2E is the auxiliary `e2e-ui-mock` suite, not real DB/API/provider coverage or SPEC-170 G8. Tests needing constraints, locks or transaction races require real PostgreSQL; provider contract tests require nonproduction credentials.
 - Both runners have retries=0. Do not skip/quarantine critical tests or rewrite expectations to match a spec-violating implementation. Report unexecuted checks with reasons and release impact, never as passed.
-- Secret scan covers root files, `apps/`, `packages/`, `scripts/`, `tests/`, `traceability/`, plus `.next/static/**` and `.next/server/app/**`; it does **not** cover server chunks/middleware or `.github/workflows/**` (README Issue #16). `OK` is not a full-bundle audit. Never put real secrets, raw QR, credentials, webhook bodies or unnecessary PII in source, fixtures, logs, screenshots or reports. Synthetic email domains must be reserved (`example.com`, `.test`, `.invalid`, etc.).
+- Secret scan covers root files, `.github/**`, `apps/`, `packages/`, `scripts/`, `tests/`, `traceability/`, plus the whole build output `apps/web/dist/**`. `OK` is not a full-bundle audit. Never put real secrets, raw QR, credentials, webhook bodies or unnecessary PII in source, fixtures, logs, screenshots or reports. Synthetic email domains must be reserved (`example.com`, `.test`, `.invalid`, etc.).
 
 ## 6. Git policy
 

@@ -220,51 +220,51 @@ describe("TC-DEV-SEC-004-006 scan scope", () => {
   });
 });
 
-describe("TC-DEV-SEC-004-007 build output: apps/web/.next static and server files (SEC-WEB-005 / DEV-SEC-002, ACC-DEV-007)", () => {
-  const STATIC = "apps/web/.next/static/chunks/app.js";
-  const HTML = "apps/web/.next/server/app/index.html";
-  const SERVER_CHUNK = "apps/web/.next/server/chunks/123.js";
-  const SSR_CHUNK = "apps/web/.next/server/chunks/ssr/456.js";
-  const MIDDLEWARE = "apps/web/.next/server/middleware.js";
+describe("TC-DEV-SEC-004-007 build output: every file under apps/web/dist (DEV-SEC-004, DEV-WEB-002, SEC-WEB-011, ACC-DEV-007)", () => {
+  const JS = "apps/web/dist/assets/index-x.js";
+  const NESTED = "apps/web/dist/assets/chunks/deep/vendor-y.js";
+  const HTML = "apps/web/dist/index.html";
+  const HEADERS = "apps/web/dist/_headers";
+  const SVG = "apps/web/dist/mock/sponsors/alpha.svg";
 
-  it("scans credential, token and seed values throughout .next/server as well as .next/static", () => {
-    expectFinding(scan(withScan({ [STATIC]: line(SAMPLE.stripeLive) })), "stripe-key", STATIC);
-    expectFinding(scan(withScan({ [STATIC]: line(SAMPLE.rawQr) })), "raw-qr-token", STATIC);
-    expectFinding(scan(withScan({ [STATIC]: line(SAMPLE.matrixSeed) })), "mock-seed-leak", STATIC);
+  it("scans credential, token and seed values in every dist file: assets, nested chunks, html, _headers and public assets", () => {
+    expectFinding(scan(withScan({ [JS]: line(SAMPLE.stripeLive) })), "stripe-key", JS);
+    expectFinding(scan(withScan({ [JS]: line(SAMPLE.rawQr) })), "raw-qr-token", JS);
+    expectFinding(scan(withScan({ [JS]: line(SAMPLE.matrixSeed) })), "mock-seed-leak", JS);
+    expectFinding(scan(withScan({ [NESTED]: line(SAMPLE.stripeLive) })), "stripe-key", NESTED);
     expectFinding(scan(withScan({ [HTML]: `<p>${SAMPLE.jwt}</p>\n` })), "jwt", HTML);
+    expectFinding(scan(withScan({ [HEADERS]: `# ${SAMPLE.resendKey}\n` })), "resend-key", HEADERS);
     expectFinding(
-      scan(withScan({ [SERVER_CHUNK]: line(SAMPLE.stripeLive) })),
-      "stripe-key",
-      SERVER_CHUNK,
-    );
-    expectFinding(scan(withScan({ [SSR_CHUNK]: line(SAMPLE.rawQr) })), "raw-qr-token", SSR_CHUNK);
-    expectFinding(
-      scan(withScan({ [MIDDLEWARE]: line(SAMPLE.matrixSeed) })),
+      scan(withScan({ [SVG]: `<!-- ${SAMPLE.matrixSeed} -->\n` })),
       "mock-seed-leak",
-      MIDDLEWARE,
+      SVG,
     );
   });
 
-  it("mock-seed-field: the field name is a finding only in server/app prerendered output", () => {
+  it("never prints the matched value of a dist finding", () => {
+    const result = scan(withScan({ [JS]: line(SAMPLE.stripeLive) }));
+    expect(result.output).not.toContain(SAMPLE.stripeLive);
+    expect(result.output).not.toContain(SAMPLE.stripeLive.slice(0, 12));
+  });
+
+  it("mock-seed-field: the field name is a finding only in the static shell (dist html), not in JS chunks or other files", () => {
     expectFinding(
       scan(withScan({ [HTML]: `{"${SAMPLE.matrixSeedField}":"x"}\n` })),
       "mock-seed-field",
       HTML,
     );
-    expectNoFinding(scan(withScan({ [STATIC]: `a.${SAMPLE.matrixSeedField};\n` })));
-    expectNoFinding(scan(withScan({ [SERVER_CHUNK]: `a.${SAMPLE.matrixSeedField};\n` })));
-    expectNoFinding(scan(withScan({ [SSR_CHUNK]: `a.${SAMPLE.matrixSeedField};\n` })));
-    expectNoFinding(scan(withScan({ [MIDDLEWARE]: `a.${SAMPLE.matrixSeedField};\n` })));
-    expectNoFinding(
-      scan(
-        withScan({
-          "apps/web/.next/server/application/routes.js": `a.${SAMPLE.matrixSeedField};\n`,
-        }),
-      ),
+    expectFinding(
+      scan(withScan({ "apps/web/dist/guide/index.html": `<i>${SAMPLE.matrixSeedField}</i>\n` })),
+      "mock-seed-field",
+      "apps/web/dist/guide/index.html",
     );
+    expectNoFinding(scan(withScan({ [JS]: `a.${SAMPLE.matrixSeedField};\n` })));
+    expectNoFinding(scan(withScan({ [NESTED]: `a.${SAMPLE.matrixSeedField};\n` })));
+    expectNoFinding(scan(withScan({ [HEADERS]: `# ${SAMPLE.matrixSeedField}\n` })));
+    expectNoFinding(scan(withScan({ [SVG]: `<!-- ${SAMPLE.matrixSeedField} -->\n` })));
   });
 
-  it("detects a server/app field name even when a secret value appears on the same line", () => {
+  it("detects the html seed field name even when a secret value appears on the same line", () => {
     const result = scan(
       withScan({ [HTML]: `{"${SAMPLE.matrixSeedField}":"${SAMPLE.stripeLive}"}\n` }),
     );
@@ -273,28 +273,53 @@ describe("TC-DEV-SEC-004-007 build output: apps/web/.next static and server file
     expect(result.output).not.toContain(SAMPLE.stripeLive);
   });
 
-  it("ignores .next/cache, and applies no PII rule to vendor chunks", () => {
-    expectNoFinding(
-      scan(withScan({ "apps/web/.next/cache/webpack/x.js": line(SAMPLE.stripeLive) })),
-    );
-    expectNoFinding(scan(withScan({ [STATIC]: `${line(SAMPLE.email)}${line(SAMPLE.phone)}` })));
+  it("applies no PII rule to vendor chunks in the build output", () => {
+    expectNoFinding(scan(withScan({ [JS]: `${line(SAMPLE.email)}${line(SAMPLE.phone)}` })));
   });
 
-  it("--require-build fails with an ERROR line when the build output is missing; without it the scan is SKIPped", () => {
-    const missing = scan(cleanWithBuildSkipped(), ["--require-build"]);
+  it("does not scan a stale apps/web/.next as source (the previous Next.js build output)", () => {
+    expectNoFinding(
+      scan(
+        withScan({
+          "apps/web/.next/static/chunks/old.js": line(SAMPLE.stripeLive),
+          "apps/web/.next/server/app/index.html": `{"${SAMPLE.matrixSeedField}":"x"}\n`,
+          "apps/web/.next/cache/webpack/x.js": line(SAMPLE.stripeLive),
+        }),
+      ),
+    );
+  });
+
+  it("--require-build fails with an ERROR line when apps/web/dist is missing; without it the scan is SKIPped", () => {
+    const missing = scan(withScan({}), ["--require-build"]);
     expect(missing.status).toBe(1);
-    expect(missing.output).toMatch(/^ERROR build-output-missing/m);
-    const present = scan(withScan({ [STATIC]: "export {};\n" }), ["--require-build"]);
+    expect(missing.output).toMatch(/^ERROR build-output-missing apps\/web\/dist$/m);
+    const skipped = scan(withScan({}));
+    expect(skipped.output).toMatch(/^SKIP build-output apps\/web\/dist not found$/m);
+    const present = scan(withScan({ [JS]: "export {};\n", [HTML]: "<!doctype html>\n" }), [
+      "--require-build",
+    ]);
     expectNoFinding(present);
     expect(present.stdout).not.toMatch(/^SKIP build-output/m);
   });
 
-  it("--build-dir selects another build directory and scans its server tree", () => {
-    const result = scan(withScan({ "out/server/chunks/a.js": line(SAMPLE.stripeLive) }), [
-      "--build-dir",
-      "out",
+  it("an old .next build output alone does not satisfy --require-build", () => {
+    const result = scan(withScan({ "apps/web/.next/static/chunks/old.js": "export {};\n" }), [
+      "--require-build",
     ]);
-    expectFinding(result, "stripe-key", "out/server/chunks/a.js");
+    expect(result.status).toBe(1);
+    expect(result.output).toMatch(/^ERROR build-output-missing apps\/web\/dist$/m);
+  });
+
+  it("--build-dir selects another build directory and scans every file under it", () => {
+    const result = scan(
+      withScan({
+        "out/assets/a.js": line(SAMPLE.stripeLive),
+        "out/index.html": `{"${SAMPLE.matrixSeedField}":"x"}\n`,
+      }),
+      ["--build-dir", "out"],
+    );
+    expectFinding(result, "stripe-key", "out/assets/a.js");
+    expectFinding(result, "mock-seed-field", "out/index.html");
   });
 });
 

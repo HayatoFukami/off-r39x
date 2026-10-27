@@ -11,7 +11,7 @@
 共通の約束（S4 の約束をそのまま引き継ぐ）:
 
 - 文言は `apps/web/src/presentation/copy/ja.ts` の `copy` に集める。S5 の `features/{cart,entry,goods}/**` と新規 `presentation/components/**` に**日本語の直書き・`¥` の直書き・色の直書きを置かない**。金額は `formatMoney` / `multiplyMoney` / `sumMoney`（bigint）、日時は `format/datetime.ts`（JST）。
-- page.tsx は Server Component の薄い殻（`metadata` と route param の検証だけ）。データ取得は `"use client"` の container が mount 後（`useEffect`）に `useApi()` 経由で行う。container から `mock/**` を import しない。公開 Content（説明文）は `PlainText` で描画する。
+- route module（`src/routes/**`。React Router。旧 `app/**/page.tsx`）は薄い殻（`export const handle = { title }` と route param の検証だけ。`useParams()` で値を取り、feature container に `key={生の param 値}` を付けて描画して param の変化で再マウントする）。`<main>` を描画せず、mock・`fetch`・storage を参照しない。データ取得は `"use client"` の container が mount 後（`useEffect`）に `useApi()` 経由で行う。container から `mock/**` を import しない。公開 Content（説明文）は `PlainText` で描画する。
 - Cart は**参照と数量だけ**を持つ（FR-CRT-003）。価格・金額・通貨・在庫・販売可否・Owner・Role・個人情報・Secret は保存せず、保存値を権威値にしない。Karaoke は型としても schema としても表現できない（FR-CRT-002）。
 - Cart の追加・変更・削除は Business effect を作らない（FR-CRT-001 / BR-ORD-020）。S5 は `purchase.*`（`startCartPurchase` / `startCheckout` / `startKaraokePurchase`）を**呼ばない**。mock DB（`r39x.mock.db.v1`）を書き換える操作も行わない。
 - 取得 3 状態（loading / empty / unavailable）の区別は S4 §0 と同じ。loading 中の `main` に、売り切れ / 販売済み / 販売停止 / 販売終了 / 販売開始前 / `0件` / 金額（`¥` + 数字）/ empty 文言 / unavailable 文言を出さない。loading は `role="status"` で `copy.pageState.loading` を含む。
@@ -36,11 +36,11 @@
 | `apps/web/src/features/goods/goods-detail-model.ts` | 純粋 | `GoodsDetailModel`, `buildGoodsDetailModel` |
 | `apps/web/src/features/goods/goods-detail-page.tsx` | client container | `GoodsDetailPage`（props `{ goodsRef: Ref<"goods"> }`） |
 | `apps/web/src/features/public/route-params.ts` | 純粋（S4 既存。追加のみ） | `parseGoodsRef` を追加 |
-| `apps/web/app/entry/page.tsx` | route | `/entry`（PG-TKT-001）。`metadata.title = copy.entry.pageTitle` |
-| `apps/web/app/goods/[goodsRef]/page.tsx` | route | PG-GDS-002。async `params` を `await`。`parseGoodsRef` が null なら `notFound()`。`metadata.title = copy.goods.detail.pageTitle` |
-| `apps/web/app/cart/page.tsx` | route | `/cart`（PG-CRT-001）。`metadata.title = copy.cart.pageTitle` |
+| `apps/web/src/routes/public/entry.tsx` | route | `/entry`（PG-TKT-001）。`metadata.title = copy.entry.pageTitle` |
+| `apps/web/src/routes/public/goods-detail.tsx` | route | PG-GDS-002。`useParams()`。`parseGoodsRef` が null なら `NotFoundView`（HTTP 200）。container は `key` 付き。`handle.title = copy.goods.detail.pageTitle` |
+| `apps/web/src/routes/public/cart.tsx` | route | `/cart`（PG-CRT-001）。`metadata.title = copy.cart.pageTitle` |
 
-route 用ファイルは `app/<path>/page.tsx` でも `app/(public)/<path>/page.tsx` でもよい。`app/layout.tsx` の title template（`%s | SITE_NAME`）により、title は `${copy.entry.pageTitle} | ${SITE_NAME}` 等になる。**title は `copy.pageTitle` へ足さない**（S4 の `s4-copy.test.ts` が `copy.pageTitle` の全 key を固定しているため）。
+route module の位置は上の表のとおり。title は `export const handle = { title: … }` と `src/routes/root-layout.tsx` の `formatDocumentTitle`（`%s | SITE_NAME`）により `${copy.entry.pageTitle} | ${SITE_NAME}` 等になる。**title は `copy.pageTitle` へ足さない**（S4 の `s4-copy.test.ts` が `copy.pageTitle` の全 key を固定しているため）。
 
 ## 1. 文言 `copy`（`ja.ts` に追加。既存 key は変えない）
 
@@ -322,7 +322,7 @@ focus 順は DOM 順と一致させる。Entry / Goods では**数量入力の�
 
 ### 5.2 `/goods/{goodsRef}`（PG-GDS-002）
 
-- route param が canonical UUID でない → server 側の `notFound()`（HTTP 404、`copy.notFound.title`）。port が `not_found`（非公開・存在しない）→ Not Found 表示（`copy.notFound` と同じ見た目で、商品名・「非公開」等を出さない）。`unavailable` → `h1` = `copy.goods.detail.heading` + `role="alert"` + `copy.pageState.unavailable(copy.goods.detail.subject)` + retry（有効な Add を出さない）。loading: `h1` = `copy.goods.detail.heading` + status。
+- route param が canonical UUID でない → route module が `NotFoundView` を描画する（`copy.notFound.title`。HTTP status は静的 shell の 200）。port が `not_found`（非公開・存在しない）→ Not Found 表示（`copy.notFound` と同じ見た目で、商品名・「非公開」等を出さない）。`unavailable` → `h1` = `copy.goods.detail.heading` + `role="alert"` + `copy.pageState.unavailable(copy.goods.detail.subject)` + retry（有効な Add を出さない）。loading: `h1` = `copy.goods.detail.heading` + status。
 - ready: `h1` = 商品名、説明（`PlainText`）、価格、販売期間、状態の label と description、`copy.goods.detail.pickupNotice`、数量入力、Add button、表示用合計、`Cartを見る` Link、`copy.goods.detail.backToList` Link（`/goods`）、live region（§5.1 と同じ規則）。**配送先住所・配送業者・配送追跡の field や文言を置かない**（入力欄は数量だけ）。`<ul>` / `<li>` を使わない。
 - 状態表（§14.2）: ON_SALE のとき Add 有効、その他（販売期間外 / 停止 / 売り切れ / 開始前）は無効 + 理由。Add の検証・結果・購入開始なしは §5.1 と同じ。
 
@@ -384,7 +384,7 @@ focus 順は DOM 順と一致させる。Entry / Goods では**数量入力の�
 9. **再取得中**: 数量変更後は直前の resolution で行を表示したまま、購入手続きだけを無効にする。入力欄を unmount しない（focus と入力の継続性）。
 10. **title**: `copy.pageTitle` は S4 のテストが全 key を固定しているため、S5 の title は `copy.entry` / `copy.cart` / `copy.goods.detail` の `pageTitle` に置く。
 11. **Cache-Control**: `/entry` と `/cart` は静的 route として S4 §4 と同じ扱い（`private` / `no-store` を含まない）。
-12. **Goods 詳細の `not_found`**: S4 の Announcement 詳細と同じく、client が Not Found 表示（HTTP 200）。不正な UUID だけ server の `notFound()`（HTTP 404）。
+12. **Goods 詳細の `not_found`**: S4 の Announcement 詳細と同じく、client が Not Found 表示（HTTP 200）。不正な UUID も route module が `NotFoundView` を描画する（HTTP 200）。
 13. **認証とCart lifecycle**: Login・Logout・Session復元・保護Page / Actionでの期限切れ判定は `FR-CRT-012` に従う。Cart本体とは別の非識別metadataを使い、必要なclearと停止状態の確定後に認証結果を公開する。LogoutはHomeへ戻り、clearのstorage障害でも認証結果を維持する。storage障害では保存値を成功として扱わず、内容・件数・編集・購入を停止し、明示的なclear再試行を提供する。公開PageのGuest照会だけではclearしない。
 14. **session 変化での再取得**: Entry / Cart の販売状態は現在のユーザーの購入済み数量に依存するため、Guest で開いたまま別 tab でログインした画面は Guest 時の状態を残してはならない（SPEC-050 §14A.1: 現在の販売状態を Server-side の値で表示）。Cart store は session を知らないまま。`SessionProvider` は `sameSessionState` で、実際に変わったときだけ state の参照を変える（他 tab の Cart 書き込みの `storage` event だけでは再取得しない）。session が `loading` の間は読まない。再取得の間は前の表示を残し、Cart ページは購入手続きだけを無効にする。
 15. **数量 overflow**: UI から到達できる（Cart ページの数量入力は上限なしで `9007199254740991` を保存でき、その後 Entry / Goods で 1 を追加すると合算が overflow）。保存先に書けない失敗（`storage_unavailable`）とは別の原因なので、別の結果 kind（`quantity_overflow`）と別の文言（`copy.sales.addQuantityOverflow`）で示す。例外 class（`CartQuantityOverflowError extends RangeError`）で区別し、UI で `instanceof RangeError` を使わない。
@@ -393,7 +393,7 @@ focus 順は DOM 順と一致させる。Entry / Goods では**数量入力の�
 
 mobile-chromium で、React の hydration 完了前に test が操作・DOM 変更・待機を始めると、click が捨てられる、`main` に足した要素が hydration で消える、5 秒の待機が尽きる、といった間欠失敗が起きる（runner retry は 0 なので許されない）。
 
-- Web は root layout（`app/layout.tsx`）の `<body>` 内に、**子の後ろ**へ極小の client component を 1 つ置き、`useEffect`（mount 時 1 回）で `document.documentElement.dataset.hydrated = "true"` を設定する。表示せず（`null` を返す）、business データ・token・storage は読まない。
+- Web は root layout（`src/routes/root-layout.tsx`）に、**子の後ろ**へ極小の `HydrationMarker` を 1 つ置き（SPA は `createRoot` で描画し hydration しないが、名前と挙動は不変）、`useEffect`（mount 時 1 回、初回 commit の後）で `document.documentElement.dataset.hydrated = "true"` を設定する。表示せず（`null` を返す）、business データ・token・storage は読まない。
 - ハーネスは `tests/harness/browser/hydration.ts` の `gotoHydrated` / `reloadHydrated` / `waitForHydration` で `html[data-hydrated="true"]` を最大 15 秒待つ。無ければ「production の signal が無い」と明示するエラーで失敗する。
 - 対象 spec: `layout-*`、`public-*`、`entry-sales`、`goods-detail`、`cart-*`。error boundary を検査する `system-pages` / `layout-runtime-errors` / `dev-scenarios` / `smoke` は対象外（root layout が置き換わる可能性があるため）。
 - `seedLocalStorage` は呼び出しごとに別の sessionStorage flag を使う（同じ page への 2 回目以降の呼び出しも次の navigation で反映される）。

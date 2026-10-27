@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useApi } from "../../api-client/provider";
 import { settleRead } from "../../api-client/settle-read";
@@ -11,6 +10,7 @@ import { NotFoundView } from "../../presentation/components/not-found-view";
 import { PageState } from "../../presentation/components/page-state";
 import { PlainText } from "../../presentation/components/plain-text";
 import { copy } from "../../presentation/copy/ja";
+import { Link } from "../../routing/link";
 import { buildAnnouncementDetailModel } from "./announcement-model";
 
 const linkClass = "text-brand underline underline-offset-4";

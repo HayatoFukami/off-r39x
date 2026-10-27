@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { StatusBadge } from "../../presentation/components/status-badge";
 import { copy } from "../../presentation/copy/ja";
+import { Link } from "../../routing/link";
 import type { OrderListRow } from "./order-list-model";
 
 // One Order of a Mypage list (PG-MYP-001 / 003). The state is text; the tone only colours the badge.

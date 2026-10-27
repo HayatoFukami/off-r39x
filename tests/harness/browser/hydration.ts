@@ -2,8 +2,9 @@ import type { Page, Request, Response } from "@playwright/test";
 
 // Hydration-ready signal for the UI mock suite (SPEC-170 section 69 / TST-FLK-001: runner retry is 0, so a
 // test must not act before the page is interactive). The Web app sets `data-hydrated="true"` on <html>
-// from a tiny client component in the root layout once React has hydrated (tests/contracts/s5-cart.md
-// section 12). Test-only; no business data is read.
+// from the HydrationMarker rendered by src/routes/root-layout.tsx once React has committed its first render
+// (the SPA mounts with createRoot; the name and the signal are kept, tests/contracts/s5-cart.md section 12).
+// Test-only; no business data is read.
 //
 // Host stalls (tests/contracts/s5-cart.md section 9.3): the first wait is HYDRATION_TIMEOUT_MS. If it
 // expires, the helper inspects a request ledger. Only when NO request failed, NO page error / console

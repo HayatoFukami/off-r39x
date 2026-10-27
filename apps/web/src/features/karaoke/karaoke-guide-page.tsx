@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useApi } from "../../api-client/provider";
 import { settleRead } from "../../api-client/settle-read";
@@ -10,6 +9,7 @@ import { PageState } from "../../presentation/components/page-state";
 import { SectionHeading } from "../../presentation/components/section-heading";
 import { StatusBadge } from "../../presentation/components/status-badge";
 import { copy } from "../../presentation/copy/ja";
+import { Link } from "../../routing/link";
 import { buildKaraokeGuideModel } from "./karaoke-guide-model";
 
 const guide = copy.karaoke.guide;
