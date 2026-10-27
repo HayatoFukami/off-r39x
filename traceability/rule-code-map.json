@@ -31,8 +31,14 @@
     },
     {
       "rule_id": "INF-DB-008",
-      "code_paths": ["packages/db/src/migrations.ts", "packages/db/src/migrate-cli.ts"],
-      "test_case_ids": ["TC-DB-FOUNDATION-001"],
+      "code_paths": [
+        "packages/db/src/migrations.ts",
+        "packages/db/src/migrate-cli.ts",
+        "packages/db/src/readiness.ts",
+        "packages/db/src/schema-contract.ts",
+        "packages/db/src/schema-contract.json"
+      ],
+      "test_case_ids": ["TC-DB-FOUNDATION-001", "TC-DB-AUDIT-001"],
       "notes": "Dedicated migration identity and bounded advisory lock; source hash journal"
     },
     {
@@ -109,8 +115,12 @@
     },
     {
       "rule_id": "REL-DB-012",
-      "code_paths": ["packages/db/src/readiness.ts"],
-      "test_case_ids": ["TC-DB-FOUNDATION-006"],
+      "code_paths": [
+        "packages/db/src/readiness.ts",
+        "packages/db/src/schema-contract.ts",
+        "packages/db/src/schema-contract.json"
+      ],
+      "test_case_ids": ["TC-DB-FOUNDATION-006", "TC-DB-AUDIT-001"],
       "notes": "No schema/extension fallback"
     },
     {

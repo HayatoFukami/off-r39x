@@ -1,0 +1,228 @@
+{
+  "tables": [
+    ["business_profiles", "r", "app_migrator", false],
+    ["role_assignments", "r", "app_migrator", false],
+    ["schema_migrations", "r", "app_migrator", false]
+  ],
+  "columns": [
+    ["business_profiles", "id", "bigint", true, "a", "", null],
+    ["business_profiles", "public_ref", "uuid", true, "", "", "gen_random_uuid()"],
+    ["business_profiles", "auth_subject", "uuid", true, "", "", null],
+    ["business_profiles", "display_name", "text", false, "", "", null],
+    [
+      "business_profiles",
+      "created_at",
+      "timestamp with time zone",
+      true,
+      "",
+      "",
+      "transaction_timestamp()"
+    ],
+    [
+      "business_profiles",
+      "updated_at",
+      "timestamp with time zone",
+      true,
+      "",
+      "",
+      "transaction_timestamp()"
+    ],
+    ["role_assignments", "id", "bigint", true, "a", "", null],
+    ["role_assignments", "public_ref", "uuid", true, "", "", "gen_random_uuid()"],
+    ["role_assignments", "profile_id", "bigint", true, "", "", null],
+    ["role_assignments", "role", "text", true, "", "", null],
+    ["role_assignments", "state", "text", true, "", "", null],
+    ["role_assignments", "granted_by_profile_id", "bigint", false, "", "", null],
+    ["role_assignments", "revoked_by_profile_id", "bigint", false, "", "", null],
+    [
+      "role_assignments",
+      "granted_at",
+      "timestamp with time zone",
+      true,
+      "",
+      "",
+      "transaction_timestamp()"
+    ],
+    ["role_assignments", "revoked_at", "timestamp with time zone", false, "", "", null],
+    [
+      "role_assignments",
+      "created_at",
+      "timestamp with time zone",
+      true,
+      "",
+      "",
+      "transaction_timestamp()"
+    ],
+    ["schema_migrations", "version", "text", true, "", "", null],
+    ["schema_migrations", "source_hash", "text", true, "", "", null],
+    [
+      "schema_migrations",
+      "applied_at",
+      "timestamp with time zone",
+      true,
+      "",
+      "",
+      "transaction_timestamp()"
+    ]
+  ],
+  "indexes": [
+    [
+      "business_profiles",
+      "CREATE UNIQUE INDEX pk_business_profiles ON app.business_profiles USING btree (id)",
+      true,
+      true,
+      true
+    ],
+    [
+      "business_profiles",
+      "CREATE UNIQUE INDEX uq_business_profiles_auth_subject ON app.business_profiles USING btree (auth_subject)",
+      true,
+      true,
+      true
+    ],
+    [
+      "business_profiles",
+      "CREATE UNIQUE INDEX uq_business_profiles_public_ref ON app.business_profiles USING btree (public_ref)",
+      true,
+      true,
+      true
+    ],
+    [
+      "role_assignments",
+      "CREATE UNIQUE INDEX pk_role_assignments ON app.role_assignments USING btree (id)",
+      true,
+      true,
+      true
+    ],
+    [
+      "role_assignments",
+      "CREATE UNIQUE INDEX uq_role_assignments_public_ref ON app.role_assignments USING btree (public_ref)",
+      true,
+      true,
+      true
+    ],
+    [
+      "role_assignments",
+      "CREATE UNIQUE INDEX ux_role_assignments_profile_role_active ON app.role_assignments USING btree (profile_id, role) WHERE (state = 'ACTIVE'::text)",
+      true,
+      true,
+      true
+    ],
+    [
+      "schema_migrations",
+      "CREATE UNIQUE INDEX pk_schema_migrations ON app.schema_migrations USING btree (version)",
+      true,
+      true,
+      true
+    ]
+  ],
+  "schemas": [["app", "app_migrator"], ["auth_read", "app_migrator"]],
+  "sequences": [
+    ["business_profiles_id_seq", "bigint", "app_migrator"],
+    ["role_assignments_id_seq", "bigint", "app_migrator"]
+  ],
+  "constraints": [
+    [
+      "business_profiles",
+      "ck_business_profiles_display_name",
+      "c",
+      "CHECK (((display_name IS NULL) OR ((char_length(display_name) >= 1) AND (char_length(display_name) <= 80))))",
+      true,
+      false,
+      false
+    ],
+    ["business_profiles", "pk_business_profiles", "p", "PRIMARY KEY (id)", true, false, false],
+    [
+      "business_profiles",
+      "uq_business_profiles_auth_subject",
+      "u",
+      "UNIQUE (auth_subject)",
+      true,
+      false,
+      false
+    ],
+    [
+      "business_profiles",
+      "uq_business_profiles_public_ref",
+      "u",
+      "UNIQUE (public_ref)",
+      true,
+      false,
+      false
+    ],
+    [
+      "role_assignments",
+      "ck_role_assignments_revocation",
+      "c",
+      "CHECK ((((state = 'ACTIVE'::text) AND (revoked_at IS NULL) AND (revoked_by_profile_id IS NULL)) OR ((state = 'REVOKED'::text) AND (revoked_at IS NOT NULL))))",
+      true,
+      false,
+      false
+    ],
+    [
+      "role_assignments",
+      "ck_role_assignments_role",
+      "c",
+      "CHECK ((role = ANY (ARRAY['STAFF'::text, 'ADMINISTRATOR'::text])))",
+      true,
+      false,
+      false
+    ],
+    [
+      "role_assignments",
+      "ck_role_assignments_state",
+      "c",
+      "CHECK ((state = ANY (ARRAY['ACTIVE'::text, 'REVOKED'::text])))",
+      true,
+      false,
+      false
+    ],
+    [
+      "role_assignments",
+      "fk_role_assignments_granted_by_profile",
+      "f",
+      "FOREIGN KEY (granted_by_profile_id) REFERENCES app.business_profiles(id) ON DELETE RESTRICT",
+      true,
+      false,
+      false
+    ],
+    [
+      "role_assignments",
+      "fk_role_assignments_profile",
+      "f",
+      "FOREIGN KEY (profile_id) REFERENCES app.business_profiles(id) ON DELETE RESTRICT",
+      true,
+      false,
+      false
+    ],
+    [
+      "role_assignments",
+      "fk_role_assignments_revoked_by_profile",
+      "f",
+      "FOREIGN KEY (revoked_by_profile_id) REFERENCES app.business_profiles(id) ON DELETE RESTRICT",
+      true,
+      false,
+      false
+    ],
+    ["role_assignments", "pk_role_assignments", "p", "PRIMARY KEY (id)", true, false, false],
+    [
+      "role_assignments",
+      "uq_role_assignments_public_ref",
+      "u",
+      "UNIQUE (public_ref)",
+      true,
+      false,
+      false
+    ],
+    [
+      "schema_migrations",
+      "ck_schema_migrations_hash",
+      "c",
+      "CHECK ((source_hash ~ '^[0-9a-f]{64}$'::text))",
+      true,
+      false,
+      false
+    ],
+    ["schema_migrations", "pk_schema_migrations", "p", "PRIMARY KEY (version)", true, false, false]
+  ]
+}

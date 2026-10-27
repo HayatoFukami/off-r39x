@@ -1,6 +1,8 @@
+import { isDeepStrictEqual } from "node:util";
 import type { Pool } from "pg";
 import type { DirectorySourceMapping } from "./directory.ts";
 import { computeMigrationSetHash, migrationIdentity } from "./migrations.ts";
+import { catalogQuery, requiredCatalog } from "./schema-contract.ts";
 
 export type ReadinessExpectations = {
   environment: string;
@@ -56,6 +58,8 @@ export async function checkReadiness(
       )
     ).rows;
     fail("extensions", extensions.length === 2);
+    const catalog = (await client.query(catalogQuery)).rows[0].catalog;
+    fail("release_schema_contract", isDeepStrictEqual(catalog, requiredCatalog));
     const migration = await migrationIdentity();
     if (!expected.migrationSetHash) failures.push("release_migration_hash_missing");
     else

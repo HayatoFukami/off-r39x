@@ -1,0 +1,58 @@
+import { Pool } from "pg";
+import { expect, it } from "vitest";
+import { checkReadiness, computeMigrationSetHash } from "../../packages/db/src/index.ts";
+import { installSyntheticDirectory, prepareFoundationDatabase } from "../harness/db/foundation.ts";
+
+it("TC-DB-AUDIT-001 detects missing and altered release schema, constraints and indexes even with an intact journal", async () => {
+  if (!process.env.TEST_DATABASE_URL) throw new Error("Real PG17 required");
+  const pool = new Pool({ connectionString: process.env.TEST_DATABASE_URL, max: 1 });
+  const client = await pool.connect();
+  try {
+    await prepareFoundationDatabase(client);
+    await installSyntheticDirectory(client);
+    await client.query("SET r39x.environment='test'");
+  } finally {
+    client.release();
+  }
+  const expected = {
+    environment: "test",
+    environmentMarkerSetting: "r39x.environment",
+    migrationSetHash: await computeMigrationSetHash(),
+    directoryMapping: {
+      deploymentConfirmed: true as const,
+      providerSchemaVersion: "synthetic-test-v1",
+      schema: "synthetic_provider",
+      table: "identities",
+      subjectColumn: "subject",
+      emailColumn: "current_email",
+      verifiedColumn: "verified",
+    },
+  };
+  try {
+    expect(await checkReadiness(pool, expected)).toEqual({ ready: true, failures: [] });
+    for (const injection of [
+      "ALTER TABLE app.business_profiles DROP CONSTRAINT uq_business_profiles_auth_subject",
+      "ALTER TABLE app.business_profiles DROP CONSTRAINT ck_business_profiles_display_name; ALTER TABLE app.business_profiles ADD CONSTRAINT ck_business_profiles_display_name CHECK (true)",
+      "ALTER TABLE app.role_assignments DROP CONSTRAINT fk_role_assignments_profile",
+      "DROP INDEX app.ux_role_assignments_profile_role_active",
+      "DROP INDEX app.ux_role_assignments_profile_role_active; CREATE INDEX ux_role_assignments_profile_role_active ON app.role_assignments(profile_id,role)",
+      "ALTER TABLE app.business_profiles ALTER COLUMN auth_subject DROP NOT NULL",
+      "ALTER TABLE app.business_profiles ALTER COLUMN created_at DROP DEFAULT",
+      "ALTER TABLE app.role_assignments RENAME TO missing_role_assignments",
+      "ALTER SCHEMA app RENAME TO missing_app",
+      "DROP EXTENSION btree_gist",
+    ]) {
+      // A single real backend connection; every fault is reverted without modifying migration sources/journal.
+      await pool.query("BEGIN");
+      try {
+        await pool.query(injection);
+        expect((await checkReadiness(pool, expected)).ready, injection).toBe(false);
+      } finally {
+        await pool.query("ROLLBACK");
+      }
+      expect((await checkReadiness(pool, expected)).ready, injection).toBe(true);
+    }
+  } finally {
+    await pool.end();
+  }
+});

@@ -15662,6 +15662,36 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": false
+    },
+    {
+      "test_case_id": "TC-DB-AUDIT-001",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": ["REL-DB-012", "INF-DB-008"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Fresh real PostgreSQL17 with journal unchanged; required catalog compared before, during and after rollback of each DDL fault",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "required_constraint_removed",
+        "constraint_definition_changed",
+        "index_removed_or_changed",
+        "schema_missing",
+        "column_contract_changed",
+        "extension_missing"
+      ],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Fail closed within the canonical boundary; no unintended business mutation"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
     }
   ]
 }
