@@ -1,14 +1,30 @@
 import { describe, expect, it } from "vitest";
 import { cartLineKey } from "../../../../apps/web/src/api-client/cart-line-key.ts";
-import type { CartLine, PurchaseReason, Ref } from "../../../../apps/web/src/api-client/types.ts";
+import type {
+  CartLine,
+  PurchaseEligibility,
+  PurchaseEligibilityRead,
+  PurchaseReason,
+  Ref,
+} from "../../../../apps/web/src/api-client/types.ts";
+import { SCENARIO_STORAGE_KEY } from "../../../../apps/web/src/mock/backend/scenario.ts";
+import { SESSION_STORAGE_KEY } from "../../../../apps/web/src/mock/backend/session-store.ts";
 import {
   type Backend,
   createBackend,
   dbFingerprint,
   okData,
+  storedRemaining,
 } from "../../../harness/mock-backend.ts";
 import { EMAIL, GOODS, NOW_ISO, OFFERING } from "../../../harness/mock-seed.ts";
 import { PURCHASE_REASONS } from "../../../harness/purchase-reasons.ts";
+
+function eligibilityData(read: PurchaseEligibilityRead): readonly PurchaseEligibility[] {
+  if (read.kind !== "ok") {
+    throw new Error(`expected an ok eligibility read but got ${read.kind}`);
+  }
+  return read.data;
+}
 
 const entry = (offeringRef: Ref<"offering">, quantity: number): CartLine => ({
   kind: "ENTRY_TICKET",
@@ -33,10 +49,21 @@ async function freshBackend(): Promise<Backend> {
   return backend;
 }
 
-async function regularMax(backend: Backend): Promise<number | null> {
-  const offerings = okData(await backend.api.public.listEntryOfferings());
-  const regular = offerings.find((o) => o.offeringRef === OFFERING.regular);
-  return regular?.availability.kind === "ON_SALE" ? regular.availability.maxSelectableQuantity : -1;
+/**
+ * The signed-in user's own condition for one regular Entry ticket, read through
+ * getPurchaseEligibility (API-PUR-ELG-001). The per-account quota is owner specific, so the public
+ * read (listEntryOfferings) cannot show how much of it was consumed (SPEC-050 12.1).
+ */
+async function regularQuota(backend: Backend) {
+  const [item] = eligibilityData(
+    await backend.api.purchase.getPurchaseEligibility([entry(OFFERING.regular, 1)]),
+  );
+  if (item === undefined) throw new Error("expected one eligibility item");
+  return {
+    purchasable: item.purchasable,
+    reasons: item.reasons,
+    maxPurchasableQuantity: item.maxPurchasableQuantity,
+  };
 }
 
 async function tshirtMax(backend: Backend): Promise<number | null> {
@@ -108,8 +135,10 @@ describe("TC-BR-ORD-014-101 all-or-nothing purchase start with item failures (BR
     const backend = await freshBackend();
     const before = dbFingerprint(backend);
     const ids = backend.ids.count();
-    const regularBefore = await regularMax(backend);
+    // The allocation is read from the stored DB: a public read cannot tell it apart (it is viewer independent).
+    const regularBefore = storedRemaining(backend, OFFERING.regular);
     const tshirtBefore = await tshirtMax(backend);
+    expect(regularBefore).toBe(10);
     const lines = [
       entry(OFFERING.regular, 2),
       goods(GOODS.tshirt, 1),
@@ -124,7 +153,7 @@ describe("TC-BR-ORD-014-101 all-or-nothing purchase start with item failures (BR
     expect(dbFingerprint(backend)).toBe(before);
     expect(backend.ids.count()).toBe(ids);
     expect(okData(await backend.api.self.listOrders())).toEqual([]);
-    expect(await regularMax(backend)).toBe(regularBefore);
+    expect(storedRemaining(backend, OFFERING.regular)).toBe(regularBefore);
     expect(await tshirtMax(backend)).toBe(tshirtBefore);
   });
 
@@ -255,6 +284,8 @@ describe("TC-BR-ORD-014-102 a successful purchase start persists one Order with 
   it("creates one PREPARED Order, takes the allocation and sums the Snapshot prices", async () => {
     const backend = await freshBackend();
     const lines = [entry(OFFERING.regular, 2), goods(GOODS.tshirt, 1)];
+    expect(storedRemaining(backend, OFFERING.regular)).toBe(10);
+    expect(storedRemaining(backend, GOODS.tshirt)).toBe(20);
     const result = await backend.api.purchase.startCartPurchase(lines, { idempotencyKey: "k-ok" });
     if (result.kind !== "created") throw new Error(`expected created but got ${result.kind}`);
     expect(result.orderRef).toMatch(/^f0000000-0000-4000-8000-[0-9]{12}$/);
@@ -288,8 +319,14 @@ describe("TC-BR-ORD-014-102 a successful purchase start persists one Order with 
       goodsItems: [],
     });
 
-    // The allocation is held: remaining 10 -> 8 for the offering, the per-account quota 4 -> 2.
-    expect(await regularMax(backend)).toBe(2);
+    // The allocation is held: stored remaining 10 -> 8 / 20 -> 19; the per-account quota 4 -> 2 is read through getPurchaseEligibility.
+    expect(storedRemaining(backend, OFFERING.regular)).toBe(8);
+    expect(storedRemaining(backend, GOODS.tshirt)).toBe(19);
+    expect(await regularQuota(backend)).toEqual({
+      purchasable: true,
+      reasons: [],
+      maxPurchasableQuantity: 2,
+    });
     expect(await tshirtMax(backend)).toBe(19);
   });
 
@@ -299,14 +336,31 @@ describe("TC-BR-ORD-014-102 a successful purchase start persists one Order with 
       idempotencyKey: "k-q1",
     });
     expect(first.kind).toBe("created");
+    expect(storedRemaining(backend, OFFERING.regular)).toBe(6);
+    // The consumed quota is the owner's own condition: only getPurchaseEligibility shows it.
+    expect(await regularQuota(backend)).toEqual({
+      purchasable: false,
+      reasons: ["PURCHASE_LIMIT_EXCEEDED"],
+      maxPurchasableQuantity: 0,
+    });
+    // Regression: the public read does not reflect the owner's consumption (viewer independent).
     const offerings = okData(await backend.api.public.listEntryOfferings());
     expect(offerings.find((o) => o.offeringRef === OFFERING.regular)?.availability).toEqual({
-      kind: "PURCHASE_LIMIT_EXCEEDED",
+      kind: "ON_SALE",
+      maxSelectableQuantity: 4,
     });
-    const second = await backend.api.purchase.startCartPurchase([entry(OFFERING.regular, 1)], {
+    const line = entry(OFFERING.regular, 1);
+    const before = dbFingerprint(backend);
+    const ids = backend.ids.count();
+    const second = await backend.api.purchase.startCartPurchase([line], {
       idempotencyKey: "k-q2",
     });
-    expect(second).toMatchObject({ kind: "rejected" });
+    expect(second).toEqual({
+      kind: "rejected",
+      itemFailures: [{ lineKey: cartLineKey(line), reasons: ["PURCHASE_LIMIT_EXCEEDED"] }],
+    });
+    expect(dbFingerprint(backend)).toBe(before);
+    expect(backend.ids.count()).toBe(ids);
   });
 
   it("shows SOLD_OUT once the whole remaining quantity is allocated", async () => {
@@ -412,7 +466,9 @@ describe("TC-PG-CRT-001-103 idempotencyKey replay returns the same Order and a c
     expect(okData(await backend.api.self.listOrders()).length).toBe(1);
     expect(backend.ids.count()).toBe(idsAfterFirst);
     expect(dbFingerprint(backend)).toBe(fingerprint);
-    expect(await regularMax(backend)).toBe(2);
+    // No second allocation: the stored stock stays at 8 and the owner's quota stays consumed by 2 only.
+    expect(storedRemaining(backend, OFFERING.regular)).toBe(8);
+    expect((await regularQuota(backend)).maxPurchasableQuantity).toBe(2);
   });
 
   it("treats the same content in another line order as the same request", async () => {
@@ -601,5 +657,285 @@ describe("TC-PG-CRT-001-104 invalid purchase input is a programmer error, not a 
       itemFailures: [{ lineKey: cartLineKey(line), reasons: ["INSUFFICIENT_QUANTITY"] }],
     });
     expect(dbFingerprint(backend)).toBe(before);
+  });
+});
+
+describe("TC-PG-CRT-001-105 getPurchaseEligibility is the owner-scoped read-only pre-check of API-PUR-ELG-001 (FR-CRT-005, AR-AZ-011, SEC-API-029, SPEC-050 12.1)", () => {
+  const eligible = async (backend: Backend, lines: readonly CartLine[]) =>
+    eligibilityData(await backend.api.purchase.getPurchaseEligibility(lines));
+
+  /** Nothing is written, no id is drawn and no idempotency record appears (SEC-API-029). */
+  async function expectReadOnly(backend: Backend, run: () => Promise<unknown>): Promise<void> {
+    // Prime the lazily seeded DB so that only the call under test can write.
+    okData(await backend.api.public.listEntryOfferings());
+    const before = dbFingerprint(backend);
+    const dump = backend.storage.dump();
+    const writes = backend.storage.writes.length;
+    const ids = backend.ids.count();
+    await run();
+    expect(dbFingerprint(backend)).toBe(before);
+    expect(Object.keys(backend.storage.dump()).sort()).toEqual(Object.keys(dump).sort());
+    expect(backend.storage.dump()).toEqual(dump);
+    expect(backend.storage.writes).toHaveLength(writes);
+    expect(backend.ids.count()).toBe(ids);
+  }
+
+  it("answers a guest with auth_required and an unverified user with email_unverified, and changes nothing", async () => {
+    const guest = createBackend();
+    await expectReadOnly(guest, async () => {
+      expect(await guest.api.purchase.getPurchaseEligibility([entry(OFFERING.regular, 1)])).toEqual(
+        {
+          kind: "auth_required",
+        },
+      );
+    });
+    const unverified = createBackend();
+    await unverified.signInAs(EMAIL.unverified);
+    await expectReadOnly(unverified, async () => {
+      expect(
+        await unverified.api.purchase.getPurchaseEligibility([entry(OFFERING.regular, 1)]),
+      ).toEqual({
+        kind: "email_unverified",
+      });
+    });
+  });
+
+  it("answers unavailable when the session cannot be read (fail closed)", async () => {
+    const backend = await freshBackend();
+    backend.storage.seedRaw(SESSION_STORAGE_KEY, "{oops");
+    expect(await backend.api.purchase.getPurchaseEligibility([entry(OFFERING.regular, 1)])).toEqual(
+      {
+        kind: "unavailable",
+      },
+    );
+  });
+
+  it("answers a verified user in input order with purchasable, reasons and the maximum quantity", async () => {
+    const backend = createBackend();
+    await backend.signInAs(EMAIL.demo);
+    const lines = [entry(OFFERING.limit, 1), entry(OFFERING.regular, 1), goods(GOODS.tshirt, 1)];
+    await expectReadOnly(backend, async () => {
+      const data = await eligible(backend, lines);
+      expect(data.map((item) => item.lineKey)).toEqual(lines.map(cartLineKey));
+      // The demo user already used the limit offering; the other two are open to them.
+      expect(data).toEqual([
+        {
+          lineKey: cartLineKey(lines[0] as CartLine),
+          purchasable: false,
+          reasons: ["PURCHASE_LIMIT_EXCEEDED"],
+          maxPurchasableQuantity: 0,
+        },
+        {
+          lineKey: cartLineKey(lines[1] as CartLine),
+          purchasable: true,
+          reasons: [],
+          maxPurchasableQuantity: 4,
+        },
+        {
+          lineKey: cartLineKey(lines[2] as CartLine),
+          purchasable: true,
+          reasons: [],
+          maxPurchasableQuantity: 20,
+        },
+      ]);
+    });
+  });
+
+  it("counts the quota of the signed-in user only: another account gets the full limit", async () => {
+    const backend = await freshBackend();
+    const over = entry(OFFERING.limit, 3);
+    expect(await eligible(backend, [over])).toEqual([
+      {
+        lineKey: cartLineKey(over),
+        purchasable: false,
+        reasons: ["PURCHASE_LIMIT_EXCEEDED"],
+        maxPurchasableQuantity: 2,
+      },
+    ]);
+    const within = entry(OFFERING.limit, 2);
+    expect(await eligible(backend, [within])).toEqual([
+      {
+        lineKey: cartLineKey(within),
+        purchasable: true,
+        reasons: [],
+        maxPurchasableQuantity: 2,
+      },
+    ]);
+  });
+
+  it("gives a maximum of 0 outside the sales window and for a sold-out offering, with the reason", async () => {
+    const backend = await freshBackend();
+    const cases = [
+      [OFFERING.early, "SALES_NOT_STARTED"],
+      [OFFERING.ended, "SALES_CLOSED"],
+      [OFFERING.suspended, "SALES_STOPPED"],
+      [OFFERING.soldout, "SOLD_OUT"],
+    ] as const;
+    const data = await eligible(
+      backend,
+      cases.map(([ref]) => entry(ref, 1)),
+    );
+    expect(data).toEqual(
+      cases.map(([ref, reason]) => ({
+        lineKey: cartLineKey(entry(ref, 1)),
+        purchasable: false,
+        reasons: [reason],
+        maxPurchasableQuantity: 0,
+      })),
+    );
+  });
+
+  it("answers a non-public item and an unknown ref identically: NOT_PUBLIC_OR_NOT_FOUND alone, maximum 0", async () => {
+    const backend = await freshBackend();
+    const hidden = goods(GOODS.hidden, 1);
+    const unknown = goods(unknownGoods(3), 2);
+    const [first, second] = await eligible(backend, [hidden, unknown]);
+    expect(first).toEqual({
+      lineKey: cartLineKey(hidden),
+      purchasable: false,
+      reasons: ["NOT_PUBLIC_OR_NOT_FOUND"],
+      maxPurchasableQuantity: 0,
+    });
+    expect({ ...second, lineKey: "" }).toEqual({ ...first, lineKey: "" });
+    expect(second?.lineKey).toBe(cartLineKey(unknown));
+  });
+
+  it("holds purchasable === (reasons.length === 0) and the canonical reason order for every item", async () => {
+    const backend = await freshBackend();
+    const lines = [
+      entry(OFFERING.regular, 5),
+      entry(OFFERING.limit, 2),
+      entry(OFFERING.early, 1),
+      entry(OFFERING.soldout, 1),
+      goods(GOODS.towel, 4),
+      goods(GOODS.tshirt, 3),
+      goods(GOODS.hidden, 1),
+      goods(unknownGoods(4), 1),
+    ];
+    const data = await eligible(backend, lines);
+    expect(data).toHaveLength(lines.length);
+    expect(data.some((item) => item.purchasable)).toBe(true);
+    expect(data.some((item) => !item.purchasable)).toBe(true);
+    for (const item of data) {
+      expect(item.purchasable).toBe(item.reasons.length === 0);
+      if (item.reasons.length > 0) expectCanonicalReasons(item.reasons);
+      expect(Number.isInteger(item.maxPurchasableQuantity)).toBe(true);
+      expect(item.maxPurchasableQuantity).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("gives the same reasons as the purchase start would for the same lines (a pre-check, not a promise)", async () => {
+    const backend = await freshBackend();
+    const lines = [
+      entry(OFFERING.early, 1),
+      entry(OFFERING.ended, 1),
+      entry(OFFERING.suspended, 1),
+      entry(OFFERING.soldout, 1),
+      goods(GOODS.towel, 4),
+      entry(OFFERING.limit, 3),
+      goods(GOODS.hidden, 1),
+    ];
+    const data = await eligible(backend, lines);
+    const result = await backend.api.purchase.startCartPurchase(lines, {
+      idempotencyKey: "k-elg-compare",
+    });
+    expect(failuresOf(result)).toEqual(
+      data.map((item) => ({ lineKey: item.lineKey, reasons: item.reasons })),
+    );
+  });
+
+  it("is not a reservation and draws no id: only a purchase start takes the allocation", async () => {
+    const backend = await freshBackend();
+    const lines = [entry(OFFERING.regular, 2)];
+    await eligible(backend, lines);
+    await eligible(backend, lines);
+    expect(backend.ids.count()).toBe(0);
+    expect(storedRemaining(backend, OFFERING.regular)).toBe(10);
+    const created = await backend.api.purchase.startCartPurchase(lines, { idempotencyKey: "k-e1" });
+    expect(created.kind).toBe("created");
+    expect(storedRemaining(backend, OFFERING.regular)).toBe(8);
+    expect((await regularQuota(backend)).maxPurchasableQuantity).toBe(2);
+  });
+
+  it("evaluates 50 lines and quantity 2147483647 as a business answer (the limits are inclusive)", async () => {
+    const backend = await freshBackend();
+    const fifty = Array.from({ length: 50 }, (_, i) => goods(unknownGoods(300 + i), 1));
+    const data = await eligible(backend, fifty);
+    expect(data.map((item) => item.lineKey)).toEqual(fifty.map(cartLineKey));
+    for (const item of data) expect(item.reasons).toEqual(["NOT_PUBLIC_OR_NOT_FOUND"]);
+    const [huge] = await eligible(backend, [goods(GOODS.tshirt, MAX_QUANTITY)]);
+    expect(huge).toMatchObject({
+      purchasable: false,
+      reasons: ["INSUFFICIENT_QUANTITY"],
+      maxPurchasableQuantity: 20,
+    });
+  });
+
+  it.each([
+    ["no lines", [] as CartLine[]],
+    ["quantity 0", [entry(OFFERING.regular, 0)]],
+    ["negative quantity", [entry(OFFERING.regular, -1)]],
+    ["fractional quantity", [entry(OFFERING.regular, 1.5)]],
+    ["quantity 2147483648", [goods(GOODS.tshirt, MAX_QUANTITY + 1)]],
+    [
+      "the same Entry offering on two lines",
+      [entry(OFFERING.regular, 1), entry(OFFERING.regular, 2)],
+    ],
+    ["51 lines", Array.from({ length: 51 }, (_, i) => goods(unknownGoods(400 + i), 1))],
+  ])(
+    "rejects the promise for %s without changing state (programmer error)",
+    async (_name, lines) => {
+      const backend = await freshBackend();
+      await expectReadOnly(backend, async () => {
+        await expect(backend.api.purchase.getPurchaseEligibility(lines)).rejects.toThrow(
+          RangeError,
+        );
+      });
+    },
+  );
+
+  it("scenario cart.state = eligibility_fail makes a verified user's read unavailable while resolveCartLines still works", async () => {
+    const backend = await freshBackend();
+    const lines = [entry(OFFERING.regular, 1), goods(GOODS.tshirt, 1)];
+    const resolvedBefore = okData(await backend.api.public.resolveCartLines(lines));
+    backend.setScenario({ cart: { state: "eligibility_fail" as const } });
+    await expectReadOnly(backend, async () => {
+      expect(await backend.api.purchase.getPurchaseEligibility(lines)).toEqual({
+        kind: "unavailable",
+      });
+    });
+    expect(okData(await backend.api.public.resolveCartLines(lines))).toEqual(resolvedBefore);
+  });
+
+  it("answers unavailable and writes nothing when the stored scenario is corrupted (fail closed)", async () => {
+    const backend = await freshBackend();
+    // Prime the lazily seeded DB so that only the call under test could write.
+    okData(await backend.api.public.listEntryOfferings());
+    backend.storage.seedRaw(SCENARIO_STORAGE_KEY, "{oops");
+    const before = backend.storage.dump();
+    const writes = backend.storage.writes.length;
+    expect(await backend.api.purchase.getPurchaseEligibility([entry(OFFERING.regular, 1)])).toEqual(
+      {
+        kind: "unavailable",
+      },
+    );
+    expect(backend.storage.dump()).toEqual(before);
+    expect(backend.storage.writes).toHaveLength(writes);
+  });
+
+  it("checks authentication before the eligibility_fail scenario (a guest never sees unavailable)", async () => {
+    const guest = createBackend();
+    guest.setScenario({ cart: { state: "eligibility_fail" as const } });
+    expect(await guest.api.purchase.getPurchaseEligibility([entry(OFFERING.regular, 1)])).toEqual({
+      kind: "auth_required",
+    });
+    const unverified = createBackend();
+    await unverified.signInAs(EMAIL.unverified);
+    unverified.setScenario({ cart: { state: "eligibility_fail" as const } });
+    expect(
+      await unverified.api.purchase.getPurchaseEligibility([entry(OFFERING.regular, 1)]),
+    ).toEqual({
+      kind: "email_unverified",
+    });
   });
 });

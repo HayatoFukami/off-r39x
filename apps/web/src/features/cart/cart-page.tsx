@@ -1,6 +1,7 @@
 "use client";
 
 import { type ChangeEvent, useCallback, useEffect, useId, useState } from "react";
+import type { ApiPort } from "../../api-client/port";
 import { useApi } from "../../api-client/provider";
 import { settleRead } from "../../api-client/settle-read";
 import type { CartLine, CartLineResolution } from "../../api-client/types";
@@ -15,6 +16,13 @@ import { Input } from "../../presentation/components/ui/input";
 import { copy } from "../../presentation/copy/ja";
 import { Link } from "../../routing/link";
 import { CartPurchaseFeedback } from "../purchase/cart-purchase-feedback";
+import {
+  type EligibilityInput,
+  type EligibilityMode,
+  eligibilityMode,
+  eligibilityTargets,
+  toEligibilityInput,
+} from "../purchase/eligibility-model";
 import { useCartPurchase } from "../purchase/use-cart-purchase";
 import { CartRecovery } from "./cart-recovery";
 import { buildCartPageModel, type CartRow } from "./cart-view-model";
@@ -29,9 +37,29 @@ type Resolution = {
   /** The session state they were read under (null before the first read). */
   session: SessionState | null;
   value: Loadable<readonly CartLineResolution[]>;
+  /** The owner-scoped eligibility read together with `value`. Kept in memory only (SEC-API-029). */
+  eligibility: EligibilityInput;
 };
 
 const signatureOf = (lines: readonly CartLine[]): string => JSON.stringify(lines);
+
+/** Reads the eligibility of the lines that are purchasable on the public conditions (verified owners only). */
+async function readEligibility(
+  api: ApiPort,
+  mode: Exclude<EligibilityMode, "wait">,
+  lines: readonly CartLine[],
+  resolutions: Loadable<readonly CartLineResolution[]>,
+): Promise<EligibilityInput> {
+  if (mode === "not_applicable") return { kind: "not_applicable" };
+  if (mode === "unavailable" || resolutions.kind !== "ok") return { kind: "unavailable" };
+  const targets = eligibilityTargets(lines, resolutions.data);
+  if (targets.length === 0) return { kind: "ok", data: [] };
+  try {
+    return toEligibilityInput(await api.purchase.getPurchaseEligibility(targets));
+  } catch {
+    return { kind: "unavailable" };
+  }
+}
 
 function CartRowView({
   row,
@@ -121,6 +149,7 @@ export function CartPage() {
     signature: null,
     session: null,
     value: { kind: "loading" },
+    eligibility: { kind: "loading" },
   });
   const [attempt, setAttempt] = useState(0);
   const summaryId = useId();
@@ -133,13 +162,17 @@ export function CartPage() {
   // `attempt` only re-runs the read for the retry button.
   // biome-ignore lint/correctness/useExhaustiveDependencies: `attempt` triggers a re-read on retry
   useEffect(() => {
-    if (session.status === "loading") return;
     if (lines === null || lines.length === 0) return;
+    const mode = eligibilityMode(session);
+    if (mode === "wait") return;
     let active = true;
     const signature = signatureOf(lines);
-    void settleRead(api.public.resolveCartLines(lines)).then((value) => {
-      if (active) setResolution({ signature, session, value });
-    });
+    // The public read and the owner-scoped eligibility are applied together, once (API-PUR-ELG-001).
+    void (async () => {
+      const value = await settleRead(api.public.resolveCartLines(lines));
+      const eligibility = await readEligibility(api, mode, lines, value);
+      if (active) setResolution({ signature, session, value, eligibility });
+    })();
     return () => {
       active = false;
     };
@@ -151,7 +184,12 @@ export function CartPage() {
   }, []);
 
   const retry = useCallback((): void => {
-    setResolution({ signature: null, session: null, value: { kind: "loading" } });
+    setResolution({
+      signature: null,
+      session: null,
+      value: { kind: "loading" },
+      eligibility: { kind: "loading" },
+    });
     setAttempt((count) => count + 1);
   }, []);
 
@@ -166,6 +204,7 @@ export function CartPage() {
         : { kind: "loading" },
     resolutions: resolution.value,
     refreshing,
+    eligibility: resolution.eligibility,
   });
 
   const names = new Map<string, string | null>(

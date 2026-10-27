@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import type { ApiPort } from "../../api-client/port";
 import { useApi } from "../../api-client/provider";
 import { settleRead } from "../../api-client/settle-read";
-import type { EntryOffering } from "../../api-client/types";
+import type { CartLine, EntryOffering } from "../../api-client/types";
 import { useSession } from "../../auth/use-session";
 import { CART_HREF } from "../../config/site";
 import type { Loadable } from "../../presentation/components/list-state";
@@ -13,6 +14,12 @@ import { StatusBadge } from "../../presentation/components/status-badge";
 import { copy } from "../../presentation/copy/ja";
 import { Link } from "../../routing/link";
 import { type AddResult, AddResultNotice, AddToCartForm } from "../cart/add-to-cart-form";
+import {
+  type EligibilityInput,
+  type EligibilityMode,
+  eligibilityMode,
+  toEligibilityInput,
+} from "../purchase/eligibility-model";
 import { buildEntryModel, type EntryOfferingItem } from "./entry-model";
 
 const linkClass = "text-brand underline underline-offset-4";
@@ -61,39 +68,74 @@ function OfferingView({
   );
 }
 
+type EntryState = {
+  offerings: Loadable<readonly EntryOffering[]>;
+  /** The owner-scoped eligibility read together with the offerings. Kept in memory only (SEC-API-029). */
+  eligibility: EligibilityInput;
+};
+
+/** Reads the eligibility (quantity 1) of the offerings that are on sale publicly; verified owners only. */
+async function readEligibility(
+  api: ApiPort,
+  mode: Exclude<EligibilityMode, "wait">,
+  offerings: Loadable<readonly EntryOffering[]>,
+): Promise<EligibilityInput> {
+  if (mode === "not_applicable") return { kind: "not_applicable" };
+  if (mode === "unavailable") return { kind: "unavailable" };
+  if (offerings.kind !== "ok") return { kind: "ok", data: [] };
+  const lines = offerings.data.flatMap((offering): CartLine[] =>
+    offering.availability.kind === "ON_SALE"
+      ? [{ kind: "ENTRY_TICKET", offeringRef: offering.offeringRef, quantity: 1 }]
+      : [],
+  );
+  if (lines.length === 0) return { kind: "ok", data: [] };
+  try {
+    return toEligibilityInput(await api.purchase.getPurchaseEligibility(lines));
+  } catch {
+    return { kind: "unavailable" };
+  }
+}
+
 // PG-TKT-001 container: reads after mount through the port. Adding to the Cart starts no purchase.
 export function EntryPage() {
   const api = useApi();
-  const [input, setInput] = useState<Loadable<readonly EntryOffering[]>>({ kind: "loading" });
+  const [state, setState] = useState<EntryState>({
+    offerings: { kind: "loading" },
+    eligibility: { kind: "loading" },
+  });
   const [result, setResult] = useState<AddResult>({ kind: "idle" });
   const { state: session } = useSession();
   const token = useRef(0);
 
   const load = useCallback(() => {
+    const mode = eligibilityMode(session);
+    if (mode === "wait") return;
     token.current += 1;
     const current = token.current;
-    void settleRead(api.public.listEntryOfferings()).then((read) => {
-      if (token.current === current) setInput(read);
-    });
-  }, [api]);
+    // The public offerings and the owner-scoped eligibility are applied together, once.
+    void (async () => {
+      const offerings = await settleRead(api.public.listEntryOfferings());
+      const eligibility = await readEligibility(api, mode, offerings);
+      if (token.current === current) setState({ offerings, eligibility });
+    })();
+  }, [api, session]);
 
-  // Sale states depend on the session (per-account limit), so the offerings are read again when it changes.
+  // The owner conditions depend on the session (per-account limit), so both are read again when it changes.
   // The previous list stays shown meanwhile; a response for an older session is dropped by the token.
   useEffect(() => {
-    if (session.status === "loading") return;
     const ref = token;
     load();
     return () => {
       ref.current += 1;
     };
-  }, [load, session]);
+  }, [load]);
 
   const reload = (): void => {
-    setInput({ kind: "loading" });
+    setState({ offerings: { kind: "loading" }, eligibility: { kind: "loading" } });
     load();
   };
 
-  const list = buildEntryModel(input);
+  const list = buildEntryModel(state.offerings, state.eligibility);
 
   return (
     <div className="flex flex-col gap-4">
@@ -116,6 +158,13 @@ export function EntryPage() {
       ) : null}
       {list.kind === "items" ? (
         <>
+          {state.eligibility.kind === "unavailable" ? (
+            <PageState
+              state="unavailable"
+              message={copy.pageState.unavailable(copy.entry.eligibilitySubject)}
+              onRetry={reload}
+            />
+          ) : null}
           <AddResultNotice result={result} />
           <ul className="flex flex-col gap-4">
             {list.items.map((item) => (

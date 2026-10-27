@@ -215,7 +215,7 @@ export type KaraokePurchasePhase =
 ## 8. 曖昧さ・仕様の不足についてテスト担当が決めたこと
 
 1. **HELD の表示**: SPEC-050 §13.3 表は「他の購入試行で確保中」。S1 / S4 の既存ラベルは「他の方が確保中」。→ `stateLabel` は既存の `presentSlot("HELD").label`（日 page と揃える）、「他の購入試行で確保中」は `disabledReason.HELD` に含める。
-2. **Purchase Limit の事前表示**: port は閲覧者別の上限可否を返さない（UCR-110-001 の既知の不足。数値も創作しない）。→ 事前の無効化はできないため、`purchase_limit_exceeded` の結果を受けたあとに alert と無効化で示す（`karaoke-guide` の `purchaseLimit` 案内文は常時表示）。
+2. **Purchase Limit の事前表示**: port の Karaoke 向けの read は閲覧者別の上限可否を返さない（本人別の上限可否は `API-PUR-ELG-001` として正本化されたが、Karaoke Slot への適用は未対応で、B4c の判断待ち。数値も創作しない）。→ 事前の無効化はできないため、`purchase_limit_exceeded` の結果を受けたあとに alert と無効化で示す（`karaoke-guide` の `purchaseLimit` 案内文は常時表示）。
 3. **Hold 失効後の「PG-KRK-002 へ戻す」**: 設計書は「示し、戻す」。自動遷移すると文言が見えなくなる。→ Slot 画面に留まって `failure.expired` と Link を出す（遷移は利用者の操作）。同様に競合も Link を出すだけで自動遷移しない。
 4. **Hold 失効の発生点**: `opportunity_expired` は `startCheckout` の結果（S2 実装済み）。Slot 画面は購入開始の一連の流れの中でだけこれを受ける。PG-XFN-001 側で `startCheckout` を再試行して失効した場合は S7a どおり `EXPIRED` の表示（「もう一度購入する」→ `/karaoke`）になる。
 5. **Guest の購入ボタン**: SPEC は「Guest: Login」。→ ラベルを `proceedGuest`（設計書 §6「ログインして購入手続きへ」）にし、押すと API を呼ばず Login へ。session が `loading` / `unavailable` のときは `proceed` を出し、server の結果に従う（S7a の `planProceed` と同じ）。

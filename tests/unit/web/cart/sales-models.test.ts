@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type {
   EntryOffering,
   GoodsDetail,
+  PurchaseEligibility,
   Ref,
   SaleAvailability,
   UtcInstant,
@@ -11,7 +12,10 @@ import { buildGoodsDetailModel } from "../../../../apps/web/src/features/goods/g
 import { parseGoodsRef } from "../../../../apps/web/src/features/public/route-params.ts";
 import { copy } from "../../../../apps/web/src/presentation/copy/ja.ts";
 import { formatJstDateTime } from "../../../../apps/web/src/presentation/format/datetime.ts";
-import { presentAvailability } from "../../../../apps/web/src/presentation/state-mapping/availability.ts";
+import {
+  presentAvailability,
+  presentPurchaseReasons,
+} from "../../../../apps/web/src/presentation/state-mapping/availability.ts";
 
 // Contract: tests/contracts/s5-cart.md sections 4.1 - 4.3 (SPEC-050 12.1 state table, 14.2 state table, 9, 21,
 // 31 items 4 and 6). Pure view models of the Entry sales page and the Goods detail page.
@@ -134,6 +138,141 @@ describe("TC-PG-TKT-001-411 buildEntryModel shows the six sale states with their
   it("does not mutate its input", () => {
     const frozen = Object.freeze(SIX.map((o) => Object.freeze(o)));
     expect(buildEntryModel({ kind: "ok", data: frozen }).kind).toBe("items");
+  });
+
+  it("reads the public conditions only when the eligibility is not applicable (guest and unverified users)", () => {
+    expect(buildEntryModel({ kind: "ok", data: SIX }, { kind: "not_applicable" })).toEqual(
+      buildEntryModel({ kind: "ok", data: SIX }),
+    );
+  });
+});
+
+describe("TC-PG-TKT-001-413 buildEntryModel shows the owner-scoped eligibility on top of the public state and never shows an unconfirmed offering as on sale (API-PUR-ELG-001, SPEC-050 12.1, FR-TKT-026)", () => {
+  const lineKeyOf = (n: number): string => `ENTRY_TICKET:e0000000-0000-4000-8000-00000000000${n}`;
+  const eligible = (n: number, patch: Partial<PurchaseEligibility> = {}): PurchaseEligibility => ({
+    lineKey: lineKeyOf(n),
+    purchasable: true,
+    reasons: [],
+    maxPurchasableQuantity: 4,
+    ...patch,
+  });
+  const unknown = presentAvailability({ kind: "unavailable" });
+  const itemsOf = (model: ReturnType<typeof buildEntryModel>) => {
+    if (model.kind !== "items") throw new Error(`expected items but got ${model.kind}`);
+    return model.items;
+  };
+
+  it.each([
+    ["loading", { kind: "loading" }],
+    ["unavailable", { kind: "unavailable" }],
+    ["ok without an entry for the offering", { kind: "ok", data: [] }],
+  ] as const)(
+    "an on-sale offering is shown as cannot-confirm and cannot be added while the eligibility is %s",
+    (_name, eligibility) => {
+      const items = itemsOf(buildEntryModel({ kind: "ok", data: SIX }, eligibility));
+      const first = items[0];
+      expect(first?.status).toEqual(unknown);
+      expect(first?.status.label).not.toBe(copy.availability.label.ON_SALE);
+      expect(first?.addable).toBe(false);
+      expect(first?.maxSelectableQuantity).toBeNull();
+    },
+  );
+
+  it("adds with the smaller of the public maximum and the owner's maximum when the eligibility says purchasable", () => {
+    const publicMax4 = offering(1, { kind: "ON_SALE", maxSelectableQuantity: 4 }, 4);
+    const lower = itemsOf(
+      buildEntryModel(
+        { kind: "ok", data: [publicMax4] },
+        { kind: "ok", data: [eligible(1, { maxPurchasableQuantity: 2 })] },
+      ),
+    );
+    expect(lower[0]?.status).toEqual(
+      presentAvailability({ kind: "ON_SALE", maxSelectableQuantity: 2 }),
+    );
+    expect(lower[0]?.addable).toBe(true);
+    expect(lower[0]?.maxSelectableQuantity).toBe(2);
+    const higher = itemsOf(
+      buildEntryModel(
+        { kind: "ok", data: [publicMax4] },
+        { kind: "ok", data: [eligible(1, { maxPurchasableQuantity: 9 })] },
+      ),
+    );
+    expect(higher[0]?.maxSelectableQuantity).toBe(4);
+    const noPublicMax = itemsOf(
+      buildEntryModel(
+        { kind: "ok", data: [offering(1, { kind: "ON_SALE", maxSelectableQuantity: null })] },
+        { kind: "ok", data: [eligible(1, { maxPurchasableQuantity: 3 })] },
+      ),
+    );
+    expect(noPublicMax[0]?.maxSelectableQuantity).toBe(3);
+    expect(noPublicMax[0]?.addable).toBe(true);
+  });
+
+  it("shows the reasons and cannot add when the eligibility refuses an on-sale offering", () => {
+    const refused = eligible(1, {
+      purchasable: false,
+      reasons: ["PURCHASE_LIMIT_EXCEEDED"],
+      maxPurchasableQuantity: 0,
+    });
+    const items = itemsOf(
+      buildEntryModel(
+        { kind: "ok", data: [offering(1, { kind: "ON_SALE", maxSelectableQuantity: 4 }, 4)] },
+        { kind: "ok", data: [refused] },
+      ),
+    );
+    expect(items[0]?.status).toEqual(presentPurchaseReasons(["PURCHASE_LIMIT_EXCEEDED"], 0));
+    expect(items[0]?.status.label).toBe(copy.availability.label.PURCHASE_LIMIT_EXCEEDED);
+    expect(items[0]?.addable).toBe(false);
+    expect(items[0]?.maxSelectableQuantity).toBeNull();
+  });
+
+  it("leaves an offering that is not on sale publicly as it is, whatever the eligibility says", () => {
+    const publicOnly = itemsOf(
+      buildEntryModel({ kind: "ok", data: SIX }, { kind: "not_applicable" }),
+    );
+    for (const eligibility of [
+      { kind: "loading" },
+      { kind: "unavailable" },
+      {
+        kind: "ok",
+        data: [2, 3, 4, 5, 6].map((n) => eligible(n)),
+      },
+    ] as const) {
+      const items = itemsOf(buildEntryModel({ kind: "ok", data: SIX }, eligibility));
+      for (const index of [1, 2, 3, 4, 5]) {
+        expect(items[index], `${eligibility.kind} #${index}`).toEqual(publicOnly[index]);
+      }
+    }
+    // BEFORE_SALES keeps the configured start time.
+    expect(publicOnly[1]?.status.description).toContain(formatJstDateTime(SOON));
+  });
+
+  it("keeps the per-account limit text input, the order and the price as they are", () => {
+    const publicOnly = itemsOf(buildEntryModel({ kind: "ok", data: SIX }));
+    const items = itemsOf(
+      buildEntryModel(
+        { kind: "ok", data: SIX },
+        { kind: "ok", data: [eligible(1, { maxPurchasableQuantity: 1 })] },
+      ),
+    );
+    expect(items.map((item) => item.offeringRef)).toEqual(
+      publicOnly.map((item) => item.offeringRef),
+    );
+    expect(items.map((item) => item.perAccountLimit)).toEqual([4, null, null, null, null, 2]);
+    expect(items.map((item) => item.priceText)).toEqual(publicOnly.map((item) => item.priceText));
+  });
+
+  it("keeps loading, empty and unavailable as they are and does not mutate its inputs", () => {
+    for (const eligibility of [{ kind: "loading" }, { kind: "unavailable" }] as const) {
+      expect(buildEntryModel({ kind: "loading" }, eligibility)).toEqual({ kind: "loading" });
+      expect(buildEntryModel({ kind: "ok", data: [] }, eligibility)).toEqual({ kind: "empty" });
+      expect(buildEntryModel({ kind: "unavailable" }, eligibility)).toEqual({
+        kind: "unavailable",
+      });
+    }
+    const data = Object.freeze([Object.freeze(eligible(1))]);
+    const frozen = Object.freeze(SIX.map((o) => Object.freeze(o)));
+    expect(buildEntryModel({ kind: "ok", data: frozen }, { kind: "ok", data }).kind).toBe("items");
   });
 });
 

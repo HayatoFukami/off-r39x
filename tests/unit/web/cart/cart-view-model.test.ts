@@ -3,6 +3,7 @@ import { cartLineKey } from "../../../../apps/web/src/api-client/cart-line-key.t
 import type {
   CartLine,
   CartLineResolution,
+  PurchaseEligibility,
   Ref,
   SaleAvailability,
   UtcInstant,
@@ -13,8 +14,12 @@ import {
   type CartInput,
 } from "../../../../apps/web/src/features/cart/cart-view-model.ts";
 import { copy } from "../../../../apps/web/src/presentation/copy/ja.ts";
+import { formatJstDateTime } from "../../../../apps/web/src/presentation/format/datetime.ts";
 import { formatMoney } from "../../../../apps/web/src/presentation/format/money.ts";
-import { presentAvailability } from "../../../../apps/web/src/presentation/state-mapping/availability.ts";
+import {
+  presentAvailability,
+  presentPurchaseReasons,
+} from "../../../../apps/web/src/presentation/state-mapping/availability.ts";
 
 // Contract: tests/contracts/s5-cart.md section 3.2 (SPEC-050 9, 14A.1 Fields / Summary / State, 21, 26.4,
 // FR-CRT-005, DEV-TS-006 / 007). Pure view-model builder: lines + resolutions -> display rows.
@@ -57,6 +62,8 @@ const ok = (data: CartLineResolution[]): CartInput["resolutions"] => ({ kind: "o
 const input = (patch: Partial<CartInput> & Pick<CartInput, "cart">): CartInput => ({
   resolutions: { kind: "loading" },
   refreshing: false,
+  // Guest and unverified users read the public conditions only; the existing cases keep that meaning.
+  eligibility: { kind: "not_applicable" },
   ...patch,
 });
 
@@ -306,7 +313,209 @@ describe("TC-PG-CRT-001-445 the builder does not mutate its input and does not r
       kind: "ok" as const,
       data: Object.freeze([Object.freeze(resolved(e, "Regular", "3000"))]),
     });
-    const model = buildCartPageModel({ cart, resolutions, refreshing: false });
+    const model = buildCartPageModel({
+      cart,
+      resolutions,
+      refreshing: false,
+      eligibility: { kind: "not_applicable" },
+    });
+    expect(model.kind).toBe("ready");
+  });
+});
+
+describe("TC-PG-CRT-001-446 the Cart page model shows the owner-scoped eligibility per line and never shows an unconfirmed line as on sale (API-PUR-ELG-001, SPEC-050 12.1 / 14A.1 / 21, FR-CRT-005)", () => {
+  const e = entry(2);
+  const g = goods(1);
+  const soon = goods(1, GOODS_2);
+  const lines = [e, g, soon];
+  const publicResolutions = (): CartLineResolution[] => [
+    resolved(e, "Regular", "3000", { kind: "ON_SALE", maxSelectableQuantity: 4 }),
+    resolved(g, "Towel", "1800"),
+    resolved(soon, "Poster", "500", { kind: "BEFORE_SALES", startsAt: SOON }),
+  ];
+  const eligible = (
+    line: CartLine,
+    patch: Partial<PurchaseEligibility> = {},
+  ): PurchaseEligibility => ({
+    lineKey: cartLineKey(line),
+    purchasable: true,
+    reasons: [],
+    maxPurchasableQuantity: 4,
+    ...patch,
+  });
+  const unknown = presentAvailability({ kind: "unavailable" });
+
+  it("is loading while the eligibility is being read (the resolutions alone are not enough)", () => {
+    const model = buildCartPageModel(
+      input({
+        cart: ready(lines),
+        resolutions: ok(publicResolutions()),
+        eligibility: { kind: "loading" },
+      }),
+    );
+    expect(model).toEqual({ kind: "loading" });
+  });
+
+  it("ignores the eligibility in the states that come before it: corrupted, empty, loading and failed resolutions", () => {
+    for (const eligibility of [
+      { kind: "loading" },
+      { kind: "unavailable" },
+      { kind: "not_applicable" },
+    ] as const) {
+      expect(buildCartPageModel(input({ cart: { kind: "corrupted" }, eligibility }))).toEqual({
+        kind: "corrupted",
+      });
+      expect(
+        buildCartPageModel(
+          input({ cart: ready([]), resolutions: ok(publicResolutions()), eligibility }),
+        ),
+      ).toEqual({ kind: "empty" });
+      expect(
+        buildCartPageModel(
+          input({ cart: ready(lines), resolutions: { kind: "loading" }, eligibility }),
+        ),
+      ).toEqual({ kind: "loading" });
+    }
+    const failed = buildCartPageModel(
+      input({
+        cart: ready(lines),
+        resolutions: { kind: "unavailable" },
+        eligibility: { kind: "ok", data: [] },
+      }),
+    );
+    expect(failed.kind).toBe("unavailable");
+  });
+
+  it("keeps the names and amounts when the eligibility failed; unconfirmed lines say so and proceeding is blocked", () => {
+    const model = buildCartPageModel(
+      input({
+        cart: ready(lines),
+        resolutions: ok(publicResolutions()),
+        eligibility: { kind: "unavailable" },
+      }),
+    );
+    expect(model.kind).toBe("unavailable");
+    if (model.kind !== "unavailable") return;
+    expect(model.rows.map((row) => row.lineKey)).toEqual(lines.map(cartLineKey));
+    expect(model.rows.map((row) => row.name)).toEqual(["Regular", "Towel", "Poster"]);
+    expect(model.rows.map((row) => row.unitPriceText)).toEqual(["¥3,000", "¥1,800", "¥500"]);
+    expect(model.rows.map((row) => row.subtotalText)).toEqual(["¥6,000", "¥1,800", "¥500"]);
+    // Purchasable on the public conditions, but not confirmed for the owner: "cannot confirm".
+    expect(model.rows[0]?.status).toEqual(unknown);
+    expect(model.rows[1]?.status).toEqual(unknown);
+    // Not purchasable on the public conditions: the public answer, with the configured start time.
+    expect(model.rows[2]?.status).toEqual(
+      presentAvailability({ kind: "BEFORE_SALES", startsAt: SOON }),
+    );
+    expect(model.rows[2]?.status.description).toContain(formatJstDateTime(SOON));
+    for (const row of model.rows) {
+      expect(row.status.label).not.toBe(copy.availability.label.ON_SALE);
+      expect(row.status.purchasable).toBe(false);
+    }
+    expect(model.proceed).toEqual(canProceed(lines, publicResolutions(), { kind: "unavailable" }));
+    expect(model.proceed.canProceed).toBe(false);
+  });
+
+  it("asks only for the unknown reason when the eligibility failed and no line is blocked on the public conditions", () => {
+    const model = buildCartPageModel(
+      input({
+        cart: ready([e, g]),
+        resolutions: ok([resolved(e, "Regular", "3000"), resolved(g, "Towel", "1800")]),
+        eligibility: { kind: "unavailable" },
+      }),
+    );
+    expect(model.kind).toBe("unavailable");
+    if (model.kind !== "unavailable") return;
+    expect(model.proceed).toEqual({ canProceed: false, reasons: [{ kind: "unresolved" }] });
+  });
+
+  it("shows each line from its own eligibility once it is ok: on sale with the maximum, or the reasons", () => {
+    const refused = eligible(g, {
+      purchasable: false,
+      reasons: ["INSUFFICIENT_QUANTITY", "PURCHASE_LIMIT_EXCEEDED"],
+      maxPurchasableQuantity: 1,
+    });
+    const model = buildCartPageModel(
+      input({
+        cart: ready(lines),
+        resolutions: ok(publicResolutions()),
+        eligibility: { kind: "ok", data: [refused, eligible(e, { maxPurchasableQuantity: 4 })] },
+      }),
+    );
+    expect(model.kind).toBe("ready");
+    if (model.kind !== "ready") return;
+    expect(model.rows[0]?.status).toEqual(
+      presentAvailability({ kind: "ON_SALE", maxSelectableQuantity: 4 }),
+    );
+    expect(model.rows[1]?.status).toEqual(presentPurchaseReasons(refused.reasons, 1));
+    expect(model.rows[1]?.status.label).toBe(copy.availability.label.INSUFFICIENT_QUANTITY);
+    expect(model.rows[1]?.status.description).toContain(
+      copy.availability.description.PURCHASE_LIMIT_EXCEEDED,
+    );
+    // A line that is not purchasable publicly keeps its public answer: the eligibility is not read for it.
+    expect(model.rows[2]?.status).toEqual(
+      presentAvailability({ kind: "BEFORE_SALES", startsAt: SOON }),
+    );
+    expect(model.proceed.canProceed).toBe(false);
+    expect(model.totalText).toBe("¥8,300");
+  });
+
+  it("is purchasable only when every public-purchasable line is purchasable for the owner", () => {
+    const model = buildCartPageModel(
+      input({
+        cart: ready([e, g]),
+        resolutions: ok([resolved(e, "Regular", "3000"), resolved(g, "Towel", "1800")]),
+        eligibility: { kind: "ok", data: [eligible(e), eligible(g)] },
+      }),
+    );
+    expect(model.kind).toBe("ready");
+    if (model.kind !== "ready") return;
+    for (const row of model.rows) {
+      expect(row.status.label).toBe(copy.availability.label.ON_SALE);
+      expect(row.status.purchasable).toBe(true);
+    }
+    expect(model.proceed).toEqual({ canProceed: true });
+    expect(model.totalText).toBe("¥7,800");
+  });
+
+  it("shows a line without an eligibility entry as cannot-confirm, never as on sale", () => {
+    const model = buildCartPageModel(
+      input({
+        cart: ready([e, g]),
+        resolutions: ok([resolved(e, "Regular", "3000"), resolved(g, "Towel", "1800")]),
+        eligibility: { kind: "ok", data: [eligible(e)] },
+      }),
+    );
+    expect(model.kind).toBe("ready");
+    if (model.kind !== "ready") return;
+    expect(model.rows[0]?.status.label).toBe(copy.availability.label.ON_SALE);
+    expect(model.rows[1]?.status).toEqual(unknown);
+    expect(model.proceed.canProceed).toBe(false);
+  });
+
+  it("keeps the previous rows and blocks proceeding while the lines are re-read, with the eligibility too", () => {
+    const base = {
+      cart: ready([e, g]),
+      resolutions: ok([resolved(e, "Regular", "3000"), resolved(g, "Towel", "1800")]),
+      eligibility: { kind: "ok", data: [eligible(e), eligible(g)] } as const,
+    };
+    const settled = buildCartPageModel(input({ ...base, refreshing: false }));
+    const refreshing = buildCartPageModel(input({ ...base, refreshing: true }));
+    if (settled.kind !== "ready" || refreshing.kind !== "ready") throw new Error("expected ready");
+    expect(settled.proceed).toEqual({ canProceed: true });
+    expect(refreshing.rows).toEqual(settled.rows);
+    expect(refreshing.proceed).toEqual({ canProceed: false, reasons: [{ kind: "unresolved" }] });
+  });
+
+  it("does not mutate the eligibility input", () => {
+    const data = Object.freeze([Object.freeze(eligible(e))]);
+    const model = buildCartPageModel(
+      input({
+        cart: ready([e]),
+        resolutions: ok([resolved(e, "Regular", "3000")]),
+        eligibility: { kind: "ok", data },
+      }),
+    );
     expect(model.kind).toBe("ready");
   });
 });

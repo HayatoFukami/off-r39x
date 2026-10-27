@@ -8,6 +8,7 @@ import {
   describedText,
   entryLine,
   expectedOfferings,
+  FORBIDDEN_ELIGIBILITY_IN_STORAGE,
   FORBIDDEN_IN_CART_STORAGE,
   failCartWrites,
   headerCartLink,
@@ -21,6 +22,8 @@ import {
   readCartRaw,
   readDbRaw,
   rowByHeading,
+  storageKeys,
+  storedText,
   writeStorage,
 } from "../harness/browser/cart.ts";
 import { gotoHydrated, reloadHydrated } from "../harness/browser/hydration.ts";
@@ -32,7 +35,7 @@ import {
   seedLocalStorage,
   sessionJson,
 } from "../harness/browser/shell.ts";
-import { OFFERING } from "../harness/mock-seed.ts";
+import { NOW_ISO, OFFERING } from "../harness/mock-seed.ts";
 
 // UI mock suite (TST-E2E-004: auxiliary, not G8). Contract: tests/contracts/s5-cart.md sections 5.1, 6.
 // PG-TKT-001 (SPEC-050 12.1), 8.5, 9, 21, 25, 26.4, 31 items 2 / 4 / 24 (first half), FR-CRT-001 / 003 / 004, BR-ORD-020.
@@ -569,5 +572,161 @@ test.describe("TC-PG-TKT-001-510 a quantity that no longer fits in the Cart is r
     const alert = main(page).getByRole("alert");
     await expect(alert).toContainText(copy.sales.addFailed);
     await expect(alert).not.toContainText(copy.sales.addQuantityOverflow);
+  });
+});
+
+test.describe("TC-PG-TKT-001-511 the owner-scoped eligibility is read for a verified owner only; a failed read is 'cannot confirm' and blocks Cart add, and nothing is persisted (API-PUR-ELG-001, SEC-API-029, SPEC-050 12.1 / 21 / 26.2, FR-TKT-026)", () => {
+  const failScenario = scenarioJson({ cart: { state: "eligibility_fail", purchaseStart: "ok" } });
+  const okScenario = scenarioJson();
+  const label = () => copy.availability.label;
+  const description = () => copy.availability.description;
+  const alertOf = (page: Page) => main(page).getByRole("alert");
+  const retryOf = (page: Page) =>
+    alertOf(page).getByRole("button", { name: copy.pageState.retry, exact: true });
+
+  test("a verified user whose eligibility cannot be read cannot add the open offerings; the others keep their public state", async ({
+    page,
+  }) => {
+    await openReady(page, {
+      [KEYS.session]: authenticatedSession(),
+      [KEYS.scenario]: failScenario,
+    });
+    // One alert that names the purchase conditions (not the sales information), with a retry button.
+    await expect(alertOf(page)).toHaveCount(1);
+    await expect(alertOf(page)).toContainText(
+      copy.pageState.unavailable(copy.entry.eligibilitySubject),
+    );
+    await expect(alertOf(page)).toContainText("購入条件を取得できません");
+    await expect(retryOf(page)).toBeVisible();
+    // The open offerings are 'cannot confirm': never on sale, and Add is disabled with the reason attached.
+    for (const ref of [OFFERING.regular, OFFERING.limit]) {
+      const item = row(page, ref);
+      await expect(item).toContainText(label().UNAVAILABLE);
+      await expect(item).toContainText(description().UNAVAILABLE);
+      await expect(item).not.toContainText(label().ON_SALE);
+      await expect(item).not.toContainText(label().PURCHASE_LIMIT_EXCEEDED);
+      await expect(addButton(item)).toBeDisabled();
+      expect(await describedText(addButton(item))).toContain(description().UNAVAILABLE);
+    }
+    // The offerings that are not on sale publicly keep their public label; they are not 'cannot confirm'.
+    const publicOnly = [
+      [OFFERING.early, label().BEFORE_SALES],
+      [OFFERING.ended, label().SALES_ENDED],
+      [OFFERING.suspended, label().SUSPENDED],
+      [OFFERING.soldout, label().SOLD_OUT],
+    ] as const;
+    for (const [ref, text] of publicOnly) {
+      await expect(row(page, ref)).toContainText(text);
+      await expect(row(page, ref)).not.toContainText(label().UNAVAILABLE);
+      await expect(addButton(row(page, ref))).toBeDisabled();
+    }
+
+    // Reading again only reads: the Cart, the mock database and the storage keys do not change.
+    const dbBefore = await readDbRaw(page);
+    const keysBefore = await storageKeys(page);
+    await retryOf(page).click();
+    await expect(alertOf(page)).toHaveCount(1);
+    await expect(main(page).getByRole("listitem")).toHaveCount(6);
+    await expect(addButton(row(page, OFFERING.regular))).toBeDisabled();
+    expect(await readCartRaw(page)).toBeNull();
+    expect(await readDbRaw(page)).toBe(dbBefore);
+    expect(await storageKeys(page)).toEqual(keysBefore);
+  });
+
+  test("retry recovers without a reload once the eligibility works: the owner's own limit and the open offering", async ({
+    page,
+  }) => {
+    await openReady(page, {
+      [KEYS.session]: authenticatedSession(),
+      [KEYS.scenario]: failScenario,
+    });
+    await expect(alertOf(page)).toHaveCount(1);
+    await writeStorage(page, KEYS.scenario, okScenario);
+    await retryOf(page).click();
+    await expect(alertOf(page)).toHaveCount(0);
+    await expect(row(page, OFFERING.limit)).toContainText(label().PURCHASE_LIMIT_EXCEEDED);
+    await expect(row(page, OFFERING.limit)).toContainText(description().PURCHASE_LIMIT_EXCEEDED);
+    await expect(addButton(row(page, OFFERING.limit))).toBeDisabled();
+    await expect(row(page, OFFERING.regular)).toContainText(label().ON_SALE);
+    await expect(addButton(row(page, OFFERING.regular))).toBeEnabled();
+    // The answer lives in memory only; the Cart is untouched.
+    expect(await storedText(page, [KEYS.scenario])).not.toMatch(FORBIDDEN_ELIGIBILITY_IN_STORAGE);
+    expect(await readCartRaw(page)).toBeNull();
+  });
+
+  test("after a reload with a working eligibility the owner sees their own limit and may add the open offering", async ({
+    page,
+  }) => {
+    await openReady(page, {
+      [KEYS.session]: authenticatedSession(),
+      [KEYS.scenario]: failScenario,
+    });
+    await writeStorage(page, KEYS.scenario, okScenario);
+    await reloadHydrated(page);
+    await expect(main(page).getByRole("listitem")).toHaveCount(6);
+    await expect(alertOf(page)).toHaveCount(0);
+    await expect(row(page, OFFERING.limit)).toContainText(label().PURCHASE_LIMIT_EXCEEDED);
+    await expect(addButton(row(page, OFFERING.regular))).toBeEnabled();
+    await addButton(row(page, OFFERING.regular)).click();
+    await expect
+      .poll(() => readCart(page))
+      .toEqual(cartWith([{ offeringRef: OFFERING.regular, quantity: 1 }]));
+    expect(await readCartRaw(page)).not.toMatch(FORBIDDEN_IN_CART_STORAGE);
+    expect(await storedText(page, [KEYS.scenario])).not.toMatch(FORBIDDEN_ELIGIBILITY_IN_STORAGE);
+  });
+
+  test("a guest and an unverified user get the public state only: the eligibility is not read, so its failure is invisible", async ({
+    page,
+    context,
+  }) => {
+    await openReady(page, { [KEYS.scenario]: failScenario });
+    await expect(alertOf(page)).toHaveCount(0);
+    for (const ref of [OFFERING.regular, OFFERING.limit]) {
+      await expect(row(page, ref)).toContainText(label().ON_SALE);
+      await expect(addButton(row(page, ref))).toBeEnabled();
+    }
+
+    const other = await context.newPage();
+    await other.clock.setFixedTime(new Date(NOW_ISO));
+    await seedLocalStorage(other, {
+      [KEYS.scenario]: failScenario,
+      [KEYS.session]: sessionJson({
+        kind: "authenticated",
+        email: "unverified@example.com",
+        emailVerified: false,
+      }),
+    });
+    await gotoHydrated(other, "/entry");
+    await expect(main(other).getByRole("listitem")).toHaveCount(6);
+    await expect(alertOf(other)).toHaveCount(0);
+    await expect(addButton(row(other, OFFERING.regular))).toBeEnabled();
+    await expect(addButton(row(other, OFFERING.limit))).toBeEnabled();
+    await other.close();
+  });
+
+  test("a session change in another tab turns the eligibility on and off without a reload; the previous owner's answer does not stay", async ({
+    page,
+    context,
+  }) => {
+    await openReady(page, { [KEYS.scenario]: failScenario });
+    await expect(alertOf(page)).toHaveCount(0);
+    const dbBefore = await readDbRaw(page);
+    const other = await openSecondTab(context);
+    await other.goto("/");
+
+    await writeStorage(other, KEYS.session, authenticatedSession());
+    await expect(alertOf(page)).toHaveCount(1);
+    await expect(row(page, OFFERING.regular)).toContainText(label().UNAVAILABLE);
+    await expect(addButton(row(page, OFFERING.regular))).toBeDisabled();
+
+    await writeStorage(other, KEYS.session, sessionJson());
+    await expect(alertOf(page)).toHaveCount(0);
+    await expect(row(page, OFFERING.regular)).toContainText(label().ON_SALE);
+    await expect(row(page, OFFERING.limit)).toContainText(label().ON_SALE);
+    await expect(row(page, OFFERING.limit)).not.toContainText(label().UNAVAILABLE);
+    await expect(addButton(row(page, OFFERING.regular))).toBeEnabled();
+    expect(await readCartRaw(page)).toBeNull();
+    expect(await readDbRaw(page)).toBe(dbBefore);
+    await other.close();
   });
 });

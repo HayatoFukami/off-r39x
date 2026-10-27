@@ -6,7 +6,13 @@ import { formatMoney, multiplyMoney, sumMoney } from "../../presentation/format/
 import {
   type AvailabilityPresentation,
   presentAvailability,
+  presentPurchaseReasons,
 } from "../../presentation/state-mapping/availability";
+import {
+  type EligibilityInput,
+  eligibilityTargets,
+  findEligibility,
+} from "../purchase/eligibility-model";
 import { canProceed, type ProceedDecision } from "./can-proceed";
 import type { CartSnapshot } from "./cart-store";
 
@@ -18,6 +24,8 @@ export type CartInput = {
   resolutions: Loadable<readonly CartLineResolution[]>;
   /** The quantity changed and the resolutions are not yet re-read for the current Cart. */
   refreshing: boolean;
+  /** API-PUR-ELG-001 answer for a verified owner; not_applicable for Guest and unverified users. */
+  eligibility: EligibilityInput;
 };
 
 export type CartRow = {
@@ -74,8 +82,20 @@ function resolvedRow(line: CartLine, resolution: CartLineResolution | undefined)
   }
 }
 
+/** The state of a line that is purchasable on the public conditions, from the owner-scoped answer. */
+function eligibilityStatus(
+  line: CartLine,
+  eligibility: Exclude<EligibilityInput, { kind: "not_applicable" }>,
+): AvailabilityPresentation {
+  const item = findEligibility(eligibility, cartLineKey(line));
+  if (item === undefined) return presentAvailability({ kind: "unavailable" });
+  return item.purchasable
+    ? presentAvailability({ kind: "ON_SALE", maxSelectableQuantity: item.maxPurchasableQuantity })
+    : presentPurchaseReasons(item.reasons, item.maxPurchasableQuantity);
+}
+
 export function buildCartPageModel(input: CartInput): CartPageModel {
-  const { cart, resolutions, refreshing } = input;
+  const { cart, resolutions, refreshing, eligibility } = input;
   if (cart.kind === "loading") return { kind: "loading" };
   if (cart.kind === "corrupted") return { kind: "corrupted" };
   const lines = cart.cart.lines;
@@ -90,9 +110,23 @@ export function buildCartPageModel(input: CartInput): CartPageModel {
     };
   }
   const data = resolutions.data;
+  // The owner-scoped answer is pending: show no state a pending read could contradict.
+  if (eligibility.kind === "loading") return { kind: "loading" };
   const find = (line: CartLine): CartLineResolution | undefined =>
     data.find((resolution) => resolution.lineKey === cartLineKey(line));
-  const rows = lines.map((line) => resolvedRow(line, find(line)));
+  const rows = lines.map((line) => {
+    const resolution = find(line);
+    const row = resolvedRow(line, resolution);
+    // Only a line that is purchasable on the public conditions takes its state from the eligibility.
+    if (
+      eligibility.kind === "not_applicable" ||
+      resolution === undefined ||
+      eligibilityTargets([line], [resolution]).length === 0
+    ) {
+      return row;
+    }
+    return { ...row, status: eligibilityStatus(line, eligibility) };
+  });
   const subtotals = lines.flatMap((line) => {
     const resolution = find(line);
     return resolution?.status === "resolved"
@@ -101,12 +135,9 @@ export function buildCartPageModel(input: CartInput): CartPageModel {
   });
   // The total is claimed only when every line has a price.
   const totalText = subtotals.length === lines.length ? formatMoney(sumMoney(subtotals)) : null;
-  return {
-    kind: "ready",
-    rows,
-    totalText,
-    proceed: refreshing
-      ? { canProceed: false, reasons: [{ kind: "unresolved" }] }
-      : canProceed(lines, data),
-  };
+  const proceed: ProceedDecision = refreshing
+    ? { canProceed: false, reasons: [{ kind: "unresolved" }] }
+    : canProceed(lines, data, eligibility);
+  if (eligibility.kind === "unavailable") return { kind: "unavailable", rows, proceed };
+  return { kind: "ready", rows, totalText, proceed };
 }

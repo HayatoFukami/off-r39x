@@ -55,6 +55,36 @@ export async function readDbRaw(page: Page): Promise<string | null> {
   return page.evaluate((key) => window.localStorage.getItem(key), KEYS.db);
 }
 
+/** Every key of localStorage and sessionStorage of the current origin, tagged by area and sorted. */
+export async function storageKeys(page: Page): Promise<string[]> {
+  return page.evaluate(() =>
+    [
+      ...Object.keys(window.localStorage).map((key) => `local:${key}`),
+      ...Object.keys(window.sessionStorage).map((key) => `session:${key}`),
+    ].sort(),
+  );
+}
+
+/**
+ * Every stored value of the origin (localStorage and sessionStorage) joined into one text, without the
+ * values of the given keys. Used to prove that an owner-scoped answer is never persisted (SEC-API-029).
+ */
+export async function storedText(page: Page, exceptKeys: readonly string[] = []): Promise<string> {
+  return page.evaluate((except) => {
+    const parts: string[] = [];
+    for (const area of [window.localStorage, window.sessionStorage]) {
+      for (const key of Object.keys(area)) {
+        if (!except.includes(key)) parts.push(`${key}=${area.getItem(key) ?? ""}`);
+      }
+    }
+    return parts.join("\n");
+  }, exceptKeys);
+}
+
+/** What an owner-scoped eligibility answer would leave behind if it were persisted. */
+export const FORBIDDEN_ELIGIBILITY_IN_STORAGE =
+  /eligib|purchasable|maxPurchasable|"reasons"|PURCHASE_LIMIT_EXCEEDED|NOT_PUBLIC_OR_NOT_FOUND/;
+
 /**
  * Replaces the whole localStorage of the current origin. seedLocalStorage applies its entries once per tab
  * (so that a reload keeps later changes), which means a loop over several states must reset explicitly.

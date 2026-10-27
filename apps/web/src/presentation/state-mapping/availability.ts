@@ -65,6 +65,29 @@ export function presentAvailability(input: AvailabilityInput): AvailabilityPrese
   }
 }
 
+/**
+ * The owner-specific reasons of API-PUR-ELG-001 for one line. The label is the first reason's; the
+ * description lists every reason in the received order (no reason is merged or dropped).
+ */
+export function presentPurchaseReasons(
+  reasons: readonly PurchaseReason[],
+  maxPurchasableQuantity: number,
+): AvailabilityPresentation {
+  const first = reasons[0];
+  if (first === undefined) return presentAvailability({ kind: "unavailable" });
+  const details = reasons.map((reason) =>
+    reason === "INSUFFICIENT_QUANTITY" && maxPurchasableQuantity >= 1
+      ? copy.availability.insufficientQuantity(String(maxPurchasableQuantity))
+      : presentRejectionReason(reason).description,
+  );
+  return {
+    label: presentRejectionReason(first).label,
+    description: details.join(" "),
+    tone: first === "INSUFFICIENT_QUANTITY" ? "failure" : "neutral",
+    purchasable: false,
+  };
+}
+
 export type RejectionPresentation = {
   readonly label: string;
   readonly description: string;

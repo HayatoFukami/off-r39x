@@ -112,6 +112,8 @@ describe("TC-DEV-WEB-013-101 scenario schema and defaults (design section 8, DEV
       { cart: { state: "partial", purchaseStart: "reject_one" } },
       { cart: { state: "ok", purchaseStart: "limit" } },
       { cart: { state: "ok", purchaseStart: "unavailable" } },
+      { cart: { state: "eligibility_fail", purchaseStart: "ok" } },
+      { cart: { state: "eligibility_fail", purchaseStart: "reject_one" } },
       { auth: { ...auth, session: "unavailable" } },
       { auth: { ...auth, login: "credential_failure" } },
       { auth: { ...auth, login: "unavailable" } },
@@ -127,6 +129,45 @@ describe("TC-DEV-WEB-013-101 scenario schema and defaults (design section 8, DEV
     for (const patch of cases) {
       expect(scenarioSchema.safeParse({ ...defaultScenario(), ...patch }).success).toBe(true);
     }
+  });
+
+  it("adds eligibility_fail to cart.state without changing the default or the existing values (DEV-WEB-013: additive)", () => {
+    expect(defaultScenario().cart.state).toBe("ok");
+    for (const state of ["ok", "fail", "partial", "eligibility_fail"]) {
+      const scenario = { ...defaultScenario(), cart: { state, purchaseStart: "ok" } };
+      expect(scenarioSchema.safeParse(scenario).success, state).toBe(true);
+    }
+    for (const state of ["eligibility_failed", "eligibility", "unavailable", ""]) {
+      const scenario = { ...defaultScenario(), cart: { state, purchaseStart: "ok" } };
+      expect(scenarioSchema.safeParse(scenario).success, state).toBe(false);
+    }
+  });
+
+  it("round-trips cart.state = eligibility_fail through the storage and keeps the stored legacy values valid", () => {
+    const storage = createMemoryStorage();
+    const scenario = {
+      ...defaultScenario(),
+      cart: { state: "eligibility_fail" as const, purchaseStart: "ok" as const },
+    };
+    saveScenario(storage, scenario);
+    expect(loadScenario(storage)).toEqual({ kind: "ok", scenario });
+    for (const state of ["ok", "fail", "partial"]) {
+      const legacy = createMemoryStorage();
+      legacy.seedRaw(
+        SCENARIO_STORAGE_KEY,
+        JSON.stringify({ ...defaultScenario(), cart: { state, purchaseStart: "ok" } }),
+      );
+      expect(loadScenario(legacy).kind, state).toBe("ok");
+    }
+    const unknown = createMemoryStorage();
+    unknown.seedRaw(
+      SCENARIO_STORAGE_KEY,
+      JSON.stringify({
+        ...defaultScenario(),
+        cart: { state: "eligibility_failed", purchaseStart: "ok" },
+      }),
+    );
+    expect(loadScenario(unknown).kind).toBe("corrupted");
   });
 
   it("is strict at every level and rejects unknown keys, values and versions", () => {

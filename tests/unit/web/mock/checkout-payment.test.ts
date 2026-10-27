@@ -1,6 +1,11 @@
 import type { OrderState } from "@off-r39x/domain";
 import { describe, expect, it } from "vitest";
-import type { CartLine, Ref } from "../../../../apps/web/src/api-client/types.ts";
+import type {
+  CartLine,
+  PurchaseEligibility,
+  PurchaseEligibilityRead,
+  Ref,
+} from "../../../../apps/web/src/api-client/types.ts";
 import type { Scenario } from "../../../../apps/web/src/mock/backend/scenario.ts";
 import type { ScenarioPatch } from "../../../harness/mock-backend.ts";
 import {
@@ -8,9 +13,17 @@ import {
   createBackend,
   dbFingerprint,
   okData,
+  storedRemaining,
 } from "../../../harness/mock-backend.ts";
 import { EMAIL, GOODS, OFFERING, ORDER } from "../../../harness/mock-seed.ts";
 import { hasLegacyNotice, notificationScenario } from "../../../harness/notification-summary.ts";
+
+function eligibilityData(read: PurchaseEligibilityRead): readonly PurchaseEligibility[] {
+  if (read.kind !== "ok") {
+    throw new Error(`expected an ok eligibility read but got ${read.kind}`);
+  }
+  return read.data;
+}
 
 const entry = (offeringRef: Ref<"offering">, quantity: number): CartLine => ({
   kind: "ENTRY_TICKET",
@@ -46,18 +59,27 @@ async function stateOf(backend: Backend, orderRef: Ref<"order">): Promise<OrderS
   return orders.find((o) => o.orderRef === orderRef)?.state ?? null;
 }
 
+/**
+ * What a held or released allocation looks like. The stock comes from the stored DB (a public read
+ * is viewer independent and cannot tell a hold from a release); the owner's consumed per-account
+ * quota comes from getPurchaseEligibility (API-PUR-ELG-001). Reading it must not advance any Order.
+ */
 async function remaining(
   backend: Backend,
-): Promise<{ regular: number | null; tshirt: number | null }> {
-  const offerings = okData(await backend.api.public.listEntryOfferings());
-  const goodsList = okData(await backend.api.public.listGoods());
-  const regular = offerings.find((o) => o.offeringRef === OFFERING.regular)?.availability;
-  const tshirt = goodsList.find((g) => g.goodsRef === GOODS.tshirt)?.availability;
+): Promise<{ regularStock: number; tshirtStock: number; regularQuota: number }> {
+  const [item] = eligibilityData(
+    await backend.api.purchase.getPurchaseEligibility([entry(OFFERING.regular, 1)]),
+  );
+  if (item === undefined) throw new Error("expected one eligibility item");
   return {
-    regular: regular?.kind === "ON_SALE" ? regular.maxSelectableQuantity : -1,
-    tshirt: tshirt?.kind === "ON_SALE" ? tshirt.maxSelectableQuantity : -1,
+    regularStock: storedRemaining(backend, OFFERING.regular),
+    tshirtStock: storedRemaining(backend, GOODS.tshirt),
+    regularQuota: item.maxPurchasableQuantity,
   };
 }
+
+const HELD = { regularStock: 8, tshirtStock: 19, regularQuota: 2 };
+const RELEASED = { regularStock: 10, tshirtStock: 20, regularQuota: 4 };
 
 const COMPOSITE = [entry(OFFERING.regular, 2), goods(GOODS.tshirt, 1)] as const;
 
@@ -110,7 +132,7 @@ describe("TC-PG-XFN-001-102 Checkout start failure keeps the same PREPARED Order
     expect(failed).toEqual({ kind: "start_failed" });
     expect(await stateOf(backend, orderRef)).toBe("PREPARED");
     const afterFail = await remaining(backend);
-    expect(afterFail).toEqual({ regular: 2, tshirt: 19 });
+    expect(afterFail).toEqual(HELD);
     expect(okData(await backend.api.self.listOrders()).length).toBe(1);
 
     backend.setScenario({ checkout: "ok" });
@@ -137,11 +159,11 @@ describe("TC-PG-XFN-001-103 opportunity_expired makes the Order terminal and rel
   it("moves the Order to EXPIRED, restores remaining and rejects a later checkout", async () => {
     const backend = await freshBackend({ checkout: "opportunity_expired" });
     const orderRef = await prepare(backend, COMPOSITE);
-    expect(await remaining(backend)).toEqual({ regular: 2, tshirt: 19 });
+    expect(await remaining(backend)).toEqual(HELD);
     const result = await backend.api.purchase.startCheckout(orderRef, { idempotencyKey: "c-x" });
     expect(result).toEqual({ kind: "opportunity_expired" });
     expect(await stateOf(backend, orderRef)).toBe("EXPIRED");
-    expect(await remaining(backend)).toEqual({ regular: 4, tshirt: 20 });
+    expect(await remaining(backend)).toEqual(RELEASED);
 
     backend.setScenario({ checkout: "ok" });
     expect(await backend.api.purchase.startCheckout(orderRef, { idempotencyKey: "c-y" })).toEqual({
@@ -308,9 +330,7 @@ describe("TC-PAY-BRW-001-102 payment outcome only changes through the scenario (
         goodsItems: [],
       });
     }
-    expect(await remaining(backend)).toEqual(
-      released ? { regular: 4, tshirt: 20 } : { regular: 2, tshirt: 19 },
-    );
+    expect(await remaining(backend)).toEqual(released ? RELEASED : HELD);
   });
 
   it("evaluates the scenario at read time: a switch to confirm applies to the next read", async () => {
