@@ -72,6 +72,7 @@
         "apps/web/app/dev/error-probe/page.tsx",
         "apps/web/src/mock/dev-ui/mock-mode-badge.tsx",
         "apps/web/app/layout.tsx",
+        "apps/web/src/routes/root-layout.tsx",
         "apps/web/src/config/site.ts",
         "apps/web/src/mock/dev-ui/mock-checkout-screen.tsx",
         "apps/web/app/dev/mock-checkout/[orderRef]/page.tsx"
@@ -1930,13 +1931,15 @@
         "apps/web/src/features/auth/password-reset-complete-page.tsx",
         "apps/web/src/features/auth/context-param.ts",
         "apps/web/src/features/mypage/profile-page.tsx",
-        "apps/web/src/features/mypage/profile-model.ts"
+        "apps/web/src/features/mypage/profile-model.ts",
+        "apps/web/src/routes/root-layout.tsx"
       ],
       "test_case_ids": [
         "TC-SEC-AUTH-018-101",
         "TC-SEC-AUTH-018-501",
         "TC-SEC-AUTH-018-701",
-        "TC-DEV-WEB-001-801"
+        "TC-DEV-WEB-001-801",
+        "TC-STACK-008-306"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
@@ -2092,7 +2095,12 @@
     },
     {
       "rule_id": "SEC-WEB-012",
-      "code_paths": ["apps/web/app/error.tsx", "apps/web/app/dev/error-probe/page.tsx"],
+      "code_paths": [
+        "apps/web/app/error.tsx",
+        "apps/web/app/dev/error-probe/page.tsx",
+        "apps/web/src/routes/route-error.tsx",
+        "apps/web/src/routes/root-error.tsx"
+      ],
       "test_case_ids": ["TC-PG-XFN-002-202", "TC-SEC-WEB-012-101"],
       "notes": "implementation mapping only: UI mock shell (not API/DB/provider coverage)"
     },

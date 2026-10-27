@@ -15,7 +15,9 @@ import * as home from "./public/home";
 import * as karaoke from "./public/karaoke";
 import * as karaokeDay from "./public/karaoke-day";
 import * as karaokeSlot from "./public/karaoke-slot";
+import RootError from "./root-error";
 import RootLayout from "./root-layout";
+import RouteError from "./route-error";
 import * as mypageEntryTicketDetail from "./self/mypage-entry-ticket-detail";
 import * as mypageEntryTicketQr from "./self/mypage-entry-ticket-qr";
 import * as mypageEntryTickets from "./self/mypage-entry-tickets";
@@ -36,12 +38,16 @@ import SelfLayout from "./self/self-layout";
 // - SelfLayout (AuthGate) covers /purchase/* and /mypage/*. The unknown-URL route stays outside it, so a Guest
 //   sees Not Found there and not a login redirect.
 // - Dynamic segment names stay the same as in the former file-system routes.
+// - Two error boundaries: the root one for a layout that cannot render, and one around every page so the header
+//   and footer stay (SEC-WEB-012).
 // - A route module exports its page as the default component and its title as `handle` (see route-handle.ts).
 export const routes: RouteObject[] = [
   {
     element: <RootLayout />,
+    errorElement: <RootError />,
     children: [
       {
+        errorElement: <RouteError />,
         children: [
           { path: "/", Component: home.default },
           {

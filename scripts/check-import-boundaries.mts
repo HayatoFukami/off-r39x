@@ -195,7 +195,10 @@ function mockImportAllowed(rel: string, target: string): boolean {
   if (rel === `${WEB}/src/api-client/index.ts` || rel === `${WEB}/src/auth/index.ts`) return true;
   if (isUnder(rel, `${WEB}/app/dev`)) return true;
   // DEV-WEB-012: the root layout may only mount the MockModeBadge.
-  return rel === `${WEB}/app/layout.tsx` && target === `${WEB}/src/mock/dev-ui/mock-mode-badge`;
+  return (
+    (rel === `${WEB}/app/layout.tsx` || rel === `${WEB}/src/routes/root-layout.tsx`) &&
+    target === `${WEB}/src/mock/dev-ui/mock-mode-badge`
+  );
 }
 
 function isWebDbBare(specifier: string): boolean {
