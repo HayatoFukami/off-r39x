@@ -2,6 +2,7 @@
   "name": "@off-r39x/web",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build && node ../../scripts/generate-web-headers.mts",
@@ -12,7 +13,6 @@
     "@off-r39x/domain": "workspace:*",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "next": "16.3.4",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-router": "^8.5.0",

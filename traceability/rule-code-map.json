@@ -11,7 +11,7 @@
         "apps/web/src/mock/dev-ui/mock-checkout-screen.tsx",
         "apps/web/src/features/purchase/purchase-status-page.tsx",
         "apps/web/src/features/purchase/use-cart-purchase.ts",
-        "apps/web/app/karaoke/slots/[slotRef]/page.tsx",
+        "apps/web/src/routes/public/karaoke-slot.tsx",
         "apps/web/src/features/karaoke/karaoke-slot-model.ts",
         "apps/web/src/features/karaoke/karaoke-purchase-flow.ts",
         "apps/web/src/features/karaoke/use-karaoke-purchase.ts",
@@ -67,15 +67,14 @@
       "code_paths": [
         "scripts/check-import-boundaries.mts",
         "apps/web/src/config/ui-mock.ts",
-        "apps/web/app/dev/layout.tsx",
-        "apps/web/app/dev/scenarios/page.tsx",
-        "apps/web/app/dev/error-probe/page.tsx",
+        "apps/web/src/routes/dev/dev-layout.tsx",
+        "apps/web/src/routes/dev/scenarios.tsx",
+        "apps/web/src/routes/dev/error-probe.tsx",
         "apps/web/src/mock/dev-ui/mock-mode-badge.tsx",
-        "apps/web/app/layout.tsx",
         "apps/web/src/routes/root-layout.tsx",
         "apps/web/src/config/site.ts",
         "apps/web/src/mock/dev-ui/mock-checkout-screen.tsx",
-        "apps/web/app/dev/mock-checkout/[orderRef]/page.tsx",
+        "apps/web/src/routes/dev/mock-checkout.tsx",
         "apps/web/src/routes/dev"
       ],
       "test_case_ids": [
@@ -102,12 +101,11 @@
       "rule_id": "DEV-WEB-011",
       "code_paths": [
         "apps/web/src/config/ui-mock.ts",
-        "apps/web/next.config.ts",
+        "apps/web/vite.config.ts",
+        "apps/web/src/config/build-env.ts",
         "apps/web/src/api-client/index.ts",
         "apps/web/src/auth/index.ts",
-        "scripts/mock-web.mts",
-        "apps/web/vite.config.ts",
-        "apps/web/src/config/build-env.ts"
+        "scripts/mock-web.mts"
       ],
       "test_case_ids": [
         "TC-DEV-WEB-011-001",
@@ -147,24 +145,23 @@
     {
       "rule_id": "SEC-WEB-009",
       "code_paths": [
-        "apps/web/next.config.ts",
-        "apps/web/app/account",
-        "apps/web/app/(self)/mypage/page.tsx",
-        "apps/web/app/(self)/purchase/orders/[orderRef]/page.tsx",
-        "apps/web/app/(self)/mypage/layout.tsx",
-        "apps/web/app/(self)/mypage/profile/page.tsx",
-        "apps/web/app/(self)/mypage/orders/page.tsx",
-        "apps/web/app/(self)/mypage/orders/[orderRef]/page.tsx",
-        "apps/web/app/(self)/mypage/entry-tickets/page.tsx",
-        "apps/web/app/(self)/mypage/entry-tickets/[ticketRef]/page.tsx",
-        "apps/web/app/(self)/mypage/entry-tickets/[ticketRef]/qr/page.tsx",
-        "apps/web/app/(self)/mypage/karaoke/page.tsx",
-        "apps/web/app/(self)/mypage/karaoke/[reservationRef]/page.tsx",
-        "apps/web/app/(self)/mypage/karaoke/[reservationRef]/qr/page.tsx",
-        "apps/web/app/(self)/mypage/goods/page.tsx",
-        "apps/web/app/(self)/mypage/goods/[goodsItemRef]/page.tsx",
         "scripts/generate-web-headers.mts",
-        "scripts/serve-web-dist.mts"
+        "scripts/serve-web-dist.mts",
+        "apps/web/src/routes/auth",
+        "apps/web/src/routes/self/mypage-overview.tsx",
+        "apps/web/src/routes/self/purchase-order.tsx",
+        "apps/web/src/routes/self/mypage-layout.tsx",
+        "apps/web/src/routes/self/mypage-profile.tsx",
+        "apps/web/src/routes/self/mypage-orders.tsx",
+        "apps/web/src/routes/self/mypage-order-detail.tsx",
+        "apps/web/src/routes/self/mypage-entry-tickets.tsx",
+        "apps/web/src/routes/self/mypage-entry-ticket-detail.tsx",
+        "apps/web/src/routes/self/mypage-entry-ticket-qr.tsx",
+        "apps/web/src/routes/self/mypage-karaoke.tsx",
+        "apps/web/src/routes/self/mypage-reservation-detail.tsx",
+        "apps/web/src/routes/self/mypage-reservation-qr.tsx",
+        "apps/web/src/routes/self/mypage-goods.tsx",
+        "apps/web/src/routes/self/mypage-goods-item-detail.tsx"
       ],
       "test_case_ids": [
         "TC-SEC-WEB-009-001",
@@ -183,9 +180,9 @@
       "rule_id": "SEC-WEB-004",
       "code_paths": [
         "apps/web/src/styles/globals.css",
-        "apps/web/app/layout.tsx",
+        "apps/web/src/routes/root-layout.tsx",
         "apps/web/src/features/mypage/mypage-nav.tsx",
-        "apps/web/app/(self)/mypage/layout.tsx",
+        "apps/web/src/routes/self/mypage-layout.tsx",
         "scripts/generate-web-headers.mts"
       ],
       "test_case_ids": [
@@ -218,7 +215,7 @@
         "apps/web/src/features/purchase/purchase-again.ts",
         "apps/web/src/features/purchase/order-outcome.tsx",
         "apps/web/src/features/purchase/purchase-status-page.tsx",
-        "apps/web/app/(self)/purchase/orders/[orderRef]/page.tsx",
+        "apps/web/src/routes/self/purchase-order.tsx",
         "apps/web/src/api-client/latest-request.ts"
       ],
       "test_case_ids": [
@@ -279,7 +276,7 @@
         "apps/web/src/features/mypage/order-list-model.ts",
         "apps/web/src/features/mypage/order-list-page.tsx",
         "apps/web/src/features/mypage/order-row.tsx",
-        "apps/web/app/(self)/mypage/orders/page.tsx"
+        "apps/web/src/routes/self/mypage-orders.tsx"
       ],
       "test_case_ids": [
         "TC-PG-XFN-001-001",
@@ -304,7 +301,7 @@
         "apps/web/src/features/mypage/order-detail-page.tsx",
         "apps/web/src/features/purchase/purchase-status-page.tsx",
         "apps/web/src/presentation/components/external-link.tsx",
-        "apps/web/app/(self)/mypage/orders/[orderRef]/page.tsx",
+        "apps/web/src/routes/self/mypage-order-detail.tsx",
         "apps/web/src/api-client/latest-request.ts"
       ],
       "test_case_ids": [
@@ -381,8 +378,8 @@
         "apps/web/src/presentation/format/datetime.ts",
         "apps/web/src/mock/backend/karaoke-buckets.ts",
         "apps/web/src/mock/backend/mock-api.ts",
-        "apps/web/app/karaoke/page.tsx",
-        "apps/web/app/karaoke/schedule/[date]/page.tsx",
+        "apps/web/src/routes/public/karaoke.tsx",
+        "apps/web/src/routes/public/karaoke-day.tsx",
         "apps/web/src/features/karaoke/karaoke-guide-model.ts",
         "apps/web/src/features/karaoke/karaoke-guide-page.tsx",
         "apps/web/src/features/karaoke/karaoke-day-model.ts",
@@ -431,7 +428,7 @@
       "code_paths": [
         "apps/web/src/presentation/state-mapping/karaoke.ts",
         "apps/web/src/mock/backend/mock-api.ts",
-        "apps/web/app/karaoke/slots/[slotRef]/page.tsx",
+        "apps/web/src/routes/public/karaoke-slot.tsx",
         "apps/web/src/features/karaoke/karaoke-slot-model.ts",
         "apps/web/src/features/karaoke/karaoke-purchase-flow.ts",
         "apps/web/src/features/karaoke/use-karaoke-purchase.ts",
@@ -487,7 +484,7 @@
         "apps/web/src/features/mypage/reservation-model.ts",
         "apps/web/src/features/mypage/reservation-detail-page.tsx",
         "apps/web/src/features/mypage/receipt-link.tsx",
-        "apps/web/app/(self)/mypage/karaoke/[reservationRef]/page.tsx"
+        "apps/web/src/routes/self/mypage-reservation-detail.tsx"
       ],
       "test_case_ids": [
         "TC-PG-MYP-009-001",
@@ -507,7 +504,7 @@
         "apps/web/src/mock/backend/mock-api.ts",
         "apps/web/src/features/mypage/goods-item-model.ts",
         "apps/web/src/features/mypage/goods-item-list-page.tsx",
-        "apps/web/app/(self)/mypage/goods/page.tsx"
+        "apps/web/src/routes/self/mypage-goods.tsx"
       ],
       "test_case_ids": [
         "TC-PG-MYP-012-001",
@@ -528,7 +525,7 @@
         "apps/web/src/features/mypage/goods-item-model.ts",
         "apps/web/src/features/mypage/goods-item-detail-page.tsx",
         "apps/web/src/features/mypage/receipt-link.tsx",
-        "apps/web/app/(self)/mypage/goods/[goodsItemRef]/page.tsx"
+        "apps/web/src/routes/self/mypage-goods-item-detail.tsx"
       ],
       "test_case_ids": [
         "TC-PG-MYP-012-001",
@@ -594,7 +591,7 @@
         "apps/web/src/features/cart/cart-model.ts",
         "apps/web/src/features/cart/cart-store.ts",
         "apps/web/src/features/cart/use-cart.ts",
-        "apps/web/app/cart/page.tsx",
+        "apps/web/src/routes/public/cart.tsx",
         "apps/web/src/presentation/copy/ja.ts",
         "apps/web/src/presentation/components/ui/input.tsx",
         "apps/web/src/features/purchase/cart-purchase-flow.ts",
@@ -750,7 +747,7 @@
         "apps/web/src/features/cart/cart-model.ts",
         "apps/web/src/features/cart/cart-page.tsx",
         "apps/web/src/features/purchase/purchase-again.ts",
-        "apps/web/app/karaoke/slots/[slotRef]/page.tsx",
+        "apps/web/src/routes/public/karaoke-slot.tsx",
         "apps/web/src/features/karaoke/karaoke-slot-model.ts",
         "apps/web/src/features/karaoke/karaoke-purchase-flow.ts",
         "apps/web/src/features/karaoke/use-karaoke-purchase.ts",
@@ -840,7 +837,7 @@
       "rule_id": "BR-ORD-019",
       "code_paths": [
         "apps/web/src/mock/backend/mock-api.ts",
-        "apps/web/app/karaoke/slots/[slotRef]/page.tsx",
+        "apps/web/src/routes/public/karaoke-slot.tsx",
         "apps/web/src/features/karaoke/karaoke-slot-model.ts",
         "apps/web/src/features/karaoke/karaoke-purchase-flow.ts",
         "apps/web/src/features/karaoke/use-karaoke-purchase.ts",
@@ -864,12 +861,12 @@
         "apps/web/src/features/mypage/reservation-model.ts",
         "apps/web/src/features/mypage/goods-item-model.ts",
         "apps/web/src/features/mypage/qr-model.ts",
-        "apps/web/app/(self)/mypage/orders/[orderRef]/page.tsx",
-        "apps/web/app/(self)/mypage/entry-tickets/[ticketRef]/page.tsx",
-        "apps/web/app/(self)/mypage/entry-tickets/[ticketRef]/qr/page.tsx",
-        "apps/web/app/(self)/mypage/karaoke/[reservationRef]/page.tsx",
-        "apps/web/app/(self)/mypage/karaoke/[reservationRef]/qr/page.tsx",
-        "apps/web/app/(self)/mypage/goods/[goodsItemRef]/page.tsx"
+        "apps/web/src/routes/self/mypage-order-detail.tsx",
+        "apps/web/src/routes/self/mypage-entry-ticket-detail.tsx",
+        "apps/web/src/routes/self/mypage-entry-ticket-qr.tsx",
+        "apps/web/src/routes/self/mypage-reservation-detail.tsx",
+        "apps/web/src/routes/self/mypage-reservation-qr.tsx",
+        "apps/web/src/routes/self/mypage-goods-item-detail.tsx"
       ],
       "test_case_ids": [
         "TC-AR-AZ-011-101",
@@ -884,12 +881,11 @@
       "code_paths": [
         "apps/web/src/mock/backend/mock-api.ts",
         "apps/web/src/mock/dev-ui/mock-checkout-screen.tsx",
-        "apps/web/app/dev/mock-checkout/[orderRef]/page.tsx",
         "apps/web/src/routes/dev/mock-checkout.tsx",
         "apps/web/src/features/purchase/purchase-status-page.tsx",
         "apps/web/src/features/purchase/cart-purchase-flow.ts",
         "apps/web/src/presentation/copy/ja.ts",
-        "apps/web/app/karaoke/slots/[slotRef]/page.tsx",
+        "apps/web/src/routes/public/karaoke-slot.tsx",
         "apps/web/src/features/karaoke/karaoke-slot-model.ts",
         "apps/web/src/features/karaoke/karaoke-purchase-flow.ts",
         "apps/web/src/features/karaoke/use-karaoke-purchase.ts",
@@ -919,7 +915,7 @@
         "apps/web/src/mock/backend/mock-api.ts",
         "apps/web/src/mock/dev-ui/mock-checkout-screen.tsx",
         "apps/web/src/features/purchase/purchase-status-page.tsx",
-        "apps/web/app/karaoke/slots/[slotRef]/page.tsx",
+        "apps/web/src/routes/public/karaoke-slot.tsx",
         "apps/web/src/features/karaoke/karaoke-slot-model.ts",
         "apps/web/src/features/karaoke/karaoke-purchase-flow.ts",
         "apps/web/src/features/karaoke/use-karaoke-purchase.ts",
@@ -956,7 +952,7 @@
         "apps/web/src/features/purchase/cart-purchase-flow.ts",
         "apps/web/src/features/purchase/use-cart-purchase.ts",
         "apps/web/src/features/purchase/purchase-status-page.tsx",
-        "apps/web/app/karaoke/slots/[slotRef]/page.tsx",
+        "apps/web/src/routes/public/karaoke-slot.tsx",
         "apps/web/src/features/karaoke/karaoke-slot-model.ts",
         "apps/web/src/features/karaoke/karaoke-purchase-flow.ts",
         "apps/web/src/features/karaoke/use-karaoke-purchase.ts",
@@ -983,12 +979,12 @@
         "apps/web/src/presentation/components/access-denied-view.tsx",
         "apps/web/src/presentation/copy/ja.ts",
         "apps/web/src/config/mypage-routes.ts",
-        "apps/web/app/(self)/mypage/orders/[orderRef]/page.tsx",
-        "apps/web/app/(self)/mypage/entry-tickets/[ticketRef]/page.tsx",
-        "apps/web/app/(self)/mypage/entry-tickets/[ticketRef]/qr/page.tsx",
-        "apps/web/app/(self)/mypage/karaoke/[reservationRef]/page.tsx",
-        "apps/web/app/(self)/mypage/karaoke/[reservationRef]/qr/page.tsx",
-        "apps/web/app/(self)/mypage/goods/[goodsItemRef]/page.tsx"
+        "apps/web/src/routes/self/mypage-order-detail.tsx",
+        "apps/web/src/routes/self/mypage-entry-ticket-detail.tsx",
+        "apps/web/src/routes/self/mypage-entry-ticket-qr.tsx",
+        "apps/web/src/routes/self/mypage-reservation-detail.tsx",
+        "apps/web/src/routes/self/mypage-reservation-qr.tsx",
+        "apps/web/src/routes/self/mypage-goods-item-detail.tsx"
       ],
       "test_case_ids": [
         "TC-PG-XFN-003-101",
@@ -1040,7 +1036,7 @@
         "apps/web/src/mock/backend/mock-api.ts",
         "apps/web/src/mock/backend/mock-auth.ts",
         "apps/web/src/mock/dev-ui/scenario-panel.tsx",
-        "apps/web/app/dev/scenarios/page.tsx",
+        "apps/web/src/routes/dev/scenarios.tsx",
         "apps/web/src/routes/dev",
         "apps/web/src/config/browser-storage.ts",
         "apps/web/public/mock/sponsors"
@@ -1128,8 +1124,8 @@
       "rule_id": "PG-KRK-001",
       "code_paths": [
         "apps/web/src/mock/backend/mock-api.ts",
-        "apps/web/app/karaoke/page.tsx",
-        "apps/web/app/karaoke/schedule/[date]/page.tsx",
+        "apps/web/src/routes/public/karaoke.tsx",
+        "apps/web/src/routes/public/karaoke-day.tsx",
         "apps/web/src/features/karaoke/karaoke-guide-model.ts",
         "apps/web/src/features/karaoke/karaoke-guide-page.tsx",
         "apps/web/src/features/karaoke/karaoke-day-model.ts",
@@ -1167,8 +1163,8 @@
       "code_paths": [
         "apps/web/src/mock/backend/mock-api.ts",
         "apps/web/src/mock/backend/seed.ts",
-        "apps/web/app/layout.tsx",
-        "apps/web/app/page.tsx",
+        "apps/web/src/routes/root-layout.tsx",
+        "apps/web/src/routes/public/home.tsx",
         "apps/web/src/config/site.ts",
         "apps/web/src/config/assets.ts",
         "apps/web/src/presentation/layout",
@@ -1263,8 +1259,8 @@
       "code_paths": [
         "apps/web/src/mock/backend/mock-api.ts",
         "apps/web/src/mock/backend/seed.ts",
-        "apps/web/app/announcements/page.tsx",
-        "apps/web/app/announcements/[announcementRef]/page.tsx",
+        "apps/web/src/routes/public/announcements.tsx",
+        "apps/web/src/routes/public/announcement-detail.tsx",
         "apps/web/src/features/public/announcement-model.ts",
         "apps/web/src/features/public/announcement-list-page.tsx",
         "apps/web/src/features/public/announcement-detail-page.tsx",
@@ -1277,7 +1273,7 @@
         "apps/web/src/presentation/components/section-heading.tsx",
         "apps/web/src/api-client/settle-read.ts",
         "apps/web/src/presentation/components/date-time.tsx",
-        "apps/web/app/layout.tsx"
+        "apps/web/src/routes/root-layout.tsx"
       ],
       "test_case_ids": [
         "TC-PG-PUB-002-101",
@@ -1302,8 +1298,8 @@
       "code_paths": [
         "apps/web/src/mock/backend/mock-api.ts",
         "apps/web/src/mock/backend/seed.ts",
-        "apps/web/app/announcements/page.tsx",
-        "apps/web/app/announcements/[announcementRef]/page.tsx",
+        "apps/web/src/routes/public/announcements.tsx",
+        "apps/web/src/routes/public/announcement-detail.tsx",
         "apps/web/src/features/public/announcement-model.ts",
         "apps/web/src/features/public/announcement-list-page.tsx",
         "apps/web/src/features/public/announcement-detail-page.tsx",
@@ -1316,7 +1312,7 @@
         "apps/web/src/presentation/components/section-heading.tsx",
         "apps/web/src/api-client/settle-read.ts",
         "apps/web/src/presentation/components/date-time.tsx",
-        "apps/web/app/layout.tsx"
+        "apps/web/src/routes/root-layout.tsx"
       ],
       "test_case_ids": [
         "TC-PG-PUB-003-101",
@@ -1464,7 +1460,7 @@
         "apps/web/src/features/entry/entry-page.tsx",
         "apps/web/src/features/entry/entry-model.ts",
         "apps/web/src/features/cart/add-to-cart-form.tsx",
-        "apps/web/app/entry/page.tsx"
+        "apps/web/src/routes/public/entry.tsx"
       ],
       "test_case_ids": [
         "TC-PG-TKT-001-101",
@@ -1496,7 +1492,7 @@
       "rule_id": "PG-GDS-001",
       "code_paths": [
         "apps/web/src/mock/backend/mock-api.ts",
-        "apps/web/app/goods/page.tsx",
+        "apps/web/src/routes/public/goods.tsx",
         "apps/web/src/features/goods/goods-list-model.ts",
         "apps/web/src/features/goods/goods-list-page.tsx",
         "apps/web/src/presentation/components/status-badge.tsx",
@@ -1540,7 +1536,7 @@
         "apps/web/src/features/goods/goods-detail-model.ts",
         "apps/web/src/features/public/route-params.ts",
         "apps/web/src/features/cart/add-to-cart-form.tsx",
-        "apps/web/app/goods/[goodsRef]/page.tsx"
+        "apps/web/src/routes/public/goods-detail.tsx"
       ],
       "test_case_ids": [
         "TC-PG-GDS-001-101",
@@ -1604,8 +1600,8 @@
         "apps/web/src/features/mypage/reservation-row.tsx",
         "apps/web/src/features/mypage/use-read.ts",
         "apps/web/src/config/mypage-routes.ts",
-        "apps/web/app/(self)/mypage/layout.tsx",
-        "apps/web/app/(self)/mypage/page.tsx",
+        "apps/web/src/routes/self/mypage-layout.tsx",
+        "apps/web/src/routes/self/mypage-overview.tsx",
         "apps/web/src/api-client/latest-request.ts"
       ],
       "test_case_ids": [
@@ -1647,7 +1643,7 @@
         "apps/web/src/mock/backend/mock-api.ts",
         "apps/web/src/features/mypage/profile-model.ts",
         "apps/web/src/features/mypage/profile-page.tsx",
-        "apps/web/app/(self)/mypage/profile/page.tsx"
+        "apps/web/src/routes/self/mypage-profile.tsx"
       ],
       "test_case_ids": [
         "TC-PG-MYP-002-101",
@@ -1670,7 +1666,7 @@
         "apps/web/src/mock/backend/mock-api.ts",
         "apps/web/src/features/mypage/entry-ticket-model.ts",
         "apps/web/src/features/mypage/entry-ticket-list-page.tsx",
-        "apps/web/app/(self)/mypage/entry-tickets/page.tsx"
+        "apps/web/src/routes/self/mypage-entry-tickets.tsx"
       ],
       "test_case_ids": [
         "TC-PG-MYP-005-101",
@@ -1687,7 +1683,7 @@
         "apps/web/src/mock/backend/mock-api.ts",
         "apps/web/src/features/mypage/entry-ticket-model.ts",
         "apps/web/src/features/mypage/entry-ticket-detail-page.tsx",
-        "apps/web/app/(self)/mypage/entry-tickets/[ticketRef]/page.tsx"
+        "apps/web/src/routes/self/mypage-entry-ticket-detail.tsx"
       ],
       "test_case_ids": [
         "TC-PG-MYP-005-101",
@@ -1707,7 +1703,7 @@
         "apps/web/src/features/mypage/qr-model.ts",
         "apps/web/src/features/mypage/entry-qr-page.tsx",
         "apps/web/src/presentation/components/qr-placeholder.tsx",
-        "apps/web/app/(self)/mypage/entry-tickets/[ticketRef]/qr/page.tsx"
+        "apps/web/src/routes/self/mypage-entry-ticket-qr.tsx"
       ],
       "test_case_ids": [
         "TC-PG-MYP-007-101",
@@ -1731,7 +1727,7 @@
         "apps/web/src/features/mypage/reservation-model.ts",
         "apps/web/src/features/mypage/reservation-list-page.tsx",
         "apps/web/src/features/mypage/reservation-row.tsx",
-        "apps/web/app/(self)/mypage/karaoke/page.tsx"
+        "apps/web/src/routes/self/mypage-karaoke.tsx"
       ],
       "test_case_ids": [
         "TC-PG-MYP-008-101",
@@ -1749,7 +1745,7 @@
         "apps/web/src/features/mypage/qr-model.ts",
         "apps/web/src/features/mypage/karaoke-qr-page.tsx",
         "apps/web/src/presentation/components/qr-placeholder.tsx",
-        "apps/web/app/(self)/mypage/karaoke/[reservationRef]/qr/page.tsx"
+        "apps/web/src/routes/self/mypage-reservation-qr.tsx"
       ],
       "test_case_ids": [
         "TC-PG-MYP-010-101",
@@ -1790,7 +1786,7 @@
         "apps/web/src/mock/backend/mock-auth.ts",
         "apps/web/src/auth/port.ts",
         "apps/web/src/features/auth/register-page.tsx",
-        "apps/web/app/account/register/page.tsx",
+        "apps/web/src/routes/auth/register.tsx",
         "apps/web/src/features/auth/form-validation.ts",
         "apps/web/src/presentation/components/form-field.tsx",
         "apps/web/src/presentation/components/error-summary.tsx",
@@ -1818,7 +1814,7 @@
         "apps/web/src/auth/port.ts",
         "apps/web/src/features/auth/email-verification-page.tsx",
         "apps/web/src/features/auth/context-param.ts",
-        "apps/web/app/account/email-verification/page.tsx"
+        "apps/web/src/routes/auth/email-verification.tsx"
       ],
       "test_case_ids": ["TC-PG-AUTH-002-101", "TC-PG-AUTH-002-301"],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
@@ -1832,7 +1828,7 @@
         "apps/web/src/features/auth/login-notice.ts",
         "apps/web/src/features/auth/continuation-notice.tsx",
         "apps/web/src/features/auth/continuation-view.ts",
-        "apps/web/app/account/login/page.tsx",
+        "apps/web/src/routes/auth/login.tsx",
         "apps/web/src/features/auth/form-validation.ts",
         "apps/web/src/presentation/components/form-field.tsx",
         "apps/web/src/presentation/components/error-summary.tsx",
@@ -1863,7 +1859,7 @@
       "code_paths": [
         "apps/web/src/mock/backend/mock-auth.ts",
         "apps/web/src/features/auth/password-reset-request-page.tsx",
-        "apps/web/app/account/password-reset/page.tsx",
+        "apps/web/src/routes/auth/password-reset.tsx",
         "apps/web/src/features/auth/form-validation.ts",
         "apps/web/src/presentation/components/form-field.tsx",
         "apps/web/src/presentation/components/error-summary.tsx",
@@ -1881,7 +1877,7 @@
         "apps/web/src/features/auth/password-reset-complete-page.tsx",
         "apps/web/src/features/auth/context-param.ts",
         "apps/web/src/features/auth/login-notice.ts",
-        "apps/web/app/account/password-reset/complete/page.tsx",
+        "apps/web/src/routes/auth/password-reset-complete.tsx",
         "apps/web/src/features/auth/form-validation.ts",
         "apps/web/src/presentation/components/form-field.tsx",
         "apps/web/src/presentation/components/error-summary.tsx",
@@ -1954,10 +1950,10 @@
         "apps/web/src/auth/auth-gate.tsx",
         "apps/web/src/auth/gate-decision.ts",
         "apps/web/src/auth/logout-signal.ts",
-        "apps/web/app/(self)/layout.tsx",
-        "apps/web/app/(self)/mypage/page.tsx",
-        "apps/web/app/(self)/purchase/orders/[orderRef]/page.tsx",
-        "apps/web/app/(self)/mypage/layout.tsx"
+        "apps/web/src/routes/self/self-layout.tsx",
+        "apps/web/src/routes/self/mypage-overview.tsx",
+        "apps/web/src/routes/self/purchase-order.tsx",
+        "apps/web/src/routes/self/mypage-layout.tsx"
       ],
       "test_case_ids": [
         "TC-AR-SES-007-101",
@@ -2076,13 +2072,13 @@
     {
       "rule_id": "PG-XFN-002",
       "code_paths": [
-        "apps/web/app/not-found.tsx",
-        "apps/web/app/error.tsx",
-        "apps/web/app/dev/error-probe/page.tsx",
+        "apps/web/src/routes/route-table.tsx",
+        "apps/web/src/routes/route-error.tsx",
+        "apps/web/src/routes/root-error.tsx",
+        "apps/web/src/routes/dev/error-probe.tsx",
         "apps/web/src/presentation/components/not-found-view.tsx",
         "apps/web/src/features/goods/goods-detail-page.tsx",
-        "apps/web/app/goods/[goodsRef]/page.tsx",
-        "apps/web/src/routes/route-table.tsx"
+        "apps/web/src/routes/public/goods-detail.tsx"
       ],
       "test_case_ids": [
         "TC-PG-XFN-002-201",
@@ -2099,11 +2095,9 @@
     {
       "rule_id": "SEC-WEB-012",
       "code_paths": [
-        "apps/web/app/error.tsx",
-        "apps/web/app/dev/error-probe/page.tsx",
-        "apps/web/src/routes/dev/error-probe.tsx",
         "apps/web/src/routes/route-error.tsx",
-        "apps/web/src/routes/root-error.tsx"
+        "apps/web/src/routes/root-error.tsx",
+        "apps/web/src/routes/dev/error-probe.tsx"
       ],
       "test_case_ids": ["TC-PG-XFN-002-202", "TC-SEC-WEB-012-101"],
       "notes": "implementation mapping only: UI mock shell (not API/DB/provider coverage)"
@@ -2117,47 +2111,48 @@
     {
       "rule_id": "DEV-WEB-001",
       "code_paths": [
-        "apps/web/app/layout.tsx",
-        "apps/web/app/not-found.tsx",
-        "apps/web/app/error.tsx",
+        "apps/web/src/routes/root-layout.tsx",
+        "apps/web/src/routes/route-table.tsx",
+        "apps/web/src/routes/route-error.tsx",
+        "apps/web/src/routes/root-error.tsx",
         "apps/web/src/api-client/provider.tsx",
         "apps/web/src/auth/session-provider.tsx",
         "apps/web/src/auth/use-session.ts",
         "apps/web/src/features/shell",
         "apps/web/src/features/cart/use-cart-count.ts",
-        "apps/web/app/page.tsx",
+        "apps/web/src/routes/public/home.tsx",
         "apps/web/src/features/public/home-model.ts",
         "apps/web/src/features/public/home-page.tsx",
-        "apps/web/app/announcements/page.tsx",
-        "apps/web/app/announcements/[announcementRef]/page.tsx",
+        "apps/web/src/routes/public/announcements.tsx",
+        "apps/web/src/routes/public/announcement-detail.tsx",
         "apps/web/src/features/public/announcement-model.ts",
         "apps/web/src/features/public/announcement-list-page.tsx",
         "apps/web/src/features/public/announcement-detail-page.tsx",
         "apps/web/src/features/public/route-params.ts",
         "apps/web/src/presentation/components/not-found-view.tsx",
-        "apps/web/app/karaoke/page.tsx",
-        "apps/web/app/karaoke/schedule/[date]/page.tsx",
+        "apps/web/src/routes/public/karaoke.tsx",
+        "apps/web/src/routes/public/karaoke-day.tsx",
         "apps/web/src/features/karaoke/karaoke-guide-model.ts",
         "apps/web/src/features/karaoke/karaoke-guide-page.tsx",
         "apps/web/src/features/karaoke/karaoke-day-model.ts",
         "apps/web/src/features/karaoke/karaoke-day-page.tsx",
         "apps/web/src/presentation/state-mapping/karaoke-sale-status.ts",
         "apps/web/src/presentation/components/status-badge.tsx",
-        "apps/web/app/goods/page.tsx",
+        "apps/web/src/routes/public/goods.tsx",
         "apps/web/src/features/goods/goods-list-model.ts",
         "apps/web/src/features/goods/goods-list-page.tsx",
         "apps/web/src/presentation/components/money.tsx",
         "apps/web/src/presentation/components/page-state.tsx",
-        "apps/web/app/entry/page.tsx",
-        "apps/web/app/cart/page.tsx",
-        "apps/web/app/goods/[goodsRef]/page.tsx",
+        "apps/web/src/routes/public/entry.tsx",
+        "apps/web/src/routes/public/cart.tsx",
+        "apps/web/src/routes/public/goods-detail.tsx",
         "apps/web/src/features/cart/cart-page.tsx",
         "apps/web/src/features/entry/entry-page.tsx",
         "apps/web/src/features/goods/goods-detail-page.tsx",
         "apps/web/src/auth",
         "apps/web/src/features/auth",
-        "apps/web/app/account",
-        "apps/web/app/(self)",
+        "apps/web/src/routes/auth",
+        "apps/web/src/routes/self",
         "apps/web/src/presentation/components/form-field.tsx",
         "apps/web/src/presentation/components/error-summary.tsx",
         "apps/web/src/config/purchase-routes.ts",
@@ -2170,9 +2165,9 @@
         "apps/web/src/features/purchase/purchase-status-page.tsx",
         "apps/web/src/presentation/components/access-denied-view.tsx",
         "apps/web/src/mock/dev-ui/mock-checkout-screen.tsx",
-        "apps/web/app/(self)/purchase/orders/[orderRef]/page.tsx",
-        "apps/web/app/dev/mock-checkout/[orderRef]/page.tsx",
-        "apps/web/app/karaoke/slots/[slotRef]/page.tsx",
+        "apps/web/src/routes/self/purchase-order.tsx",
+        "apps/web/src/routes/dev/mock-checkout.tsx",
+        "apps/web/src/routes/public/karaoke-slot.tsx",
         "apps/web/src/features/karaoke/karaoke-slot-model.ts",
         "apps/web/src/features/karaoke/karaoke-purchase-flow.ts",
         "apps/web/src/features/karaoke/use-karaoke-purchase.ts",
@@ -2180,19 +2175,19 @@
         "apps/web/src/features/mypage",
         "apps/web/src/config/mypage-routes.ts",
         "apps/web/src/presentation/components/qr-placeholder.tsx",
-        "apps/web/app/(self)/mypage/layout.tsx",
-        "apps/web/app/(self)/mypage/page.tsx",
-        "apps/web/app/(self)/mypage/profile/page.tsx",
-        "apps/web/app/(self)/mypage/orders/page.tsx",
-        "apps/web/app/(self)/mypage/orders/[orderRef]/page.tsx",
-        "apps/web/app/(self)/mypage/entry-tickets/page.tsx",
-        "apps/web/app/(self)/mypage/entry-tickets/[ticketRef]/page.tsx",
-        "apps/web/app/(self)/mypage/entry-tickets/[ticketRef]/qr/page.tsx",
-        "apps/web/app/(self)/mypage/karaoke/page.tsx",
-        "apps/web/app/(self)/mypage/karaoke/[reservationRef]/page.tsx",
-        "apps/web/app/(self)/mypage/karaoke/[reservationRef]/qr/page.tsx",
-        "apps/web/app/(self)/mypage/goods/page.tsx",
-        "apps/web/app/(self)/mypage/goods/[goodsItemRef]/page.tsx",
+        "apps/web/src/routes/self/mypage-layout.tsx",
+        "apps/web/src/routes/self/mypage-overview.tsx",
+        "apps/web/src/routes/self/mypage-profile.tsx",
+        "apps/web/src/routes/self/mypage-orders.tsx",
+        "apps/web/src/routes/self/mypage-order-detail.tsx",
+        "apps/web/src/routes/self/mypage-entry-tickets.tsx",
+        "apps/web/src/routes/self/mypage-entry-ticket-detail.tsx",
+        "apps/web/src/routes/self/mypage-entry-ticket-qr.tsx",
+        "apps/web/src/routes/self/mypage-karaoke.tsx",
+        "apps/web/src/routes/self/mypage-reservation-detail.tsx",
+        "apps/web/src/routes/self/mypage-reservation-qr.tsx",
+        "apps/web/src/routes/self/mypage-goods.tsx",
+        "apps/web/src/routes/self/mypage-goods-item-detail.tsx",
         "apps/web/src/routes",
         "apps/web/src/routing",
         "apps/web/src/main.tsx",
@@ -2261,7 +2256,7 @@
       "rule_id": "INV-010-04",
       "code_paths": [
         "apps/web/src/features/karaoke/karaoke-day-model.ts",
-        "apps/web/app/karaoke/slots/[slotRef]/page.tsx",
+        "apps/web/src/routes/public/karaoke-slot.tsx",
         "apps/web/src/features/karaoke/karaoke-slot-model.ts",
         "apps/web/src/features/karaoke/karaoke-purchase-flow.ts",
         "apps/web/src/features/karaoke/use-karaoke-purchase.ts",
@@ -2435,8 +2430,7 @@
         "apps/web/src/auth/auth-gate.tsx",
         "apps/web/src/features/purchase/use-cart-purchase.ts",
         "apps/web/src/features/karaoke/use-karaoke-purchase.ts",
-        "apps/web/src/features/karaoke/karaoke-slot-page.tsx",
-        "apps/web/src/features/cart/use-cart.ts"
+        "apps/web/src/features/karaoke/karaoke-slot-page.tsx"
       ],
       "test_case_ids": [
         "TC-PG-CRT-001-424",
@@ -2499,14 +2493,14 @@
         "apps/web/src/auth/continuation.ts",
         "apps/web/src/features/auth/continuation-view.ts",
         "apps/web/src/features/purchase/cart-purchase-flow.ts",
-        "apps/web/app/(self)/purchase/orders/[orderRef]/page.tsx",
-        "apps/web/app/karaoke/slots/[slotRef]/page.tsx",
+        "apps/web/src/routes/self/purchase-order.tsx",
+        "apps/web/src/routes/public/karaoke-slot.tsx",
         "apps/web/src/features/karaoke/karaoke-slot-model.ts",
         "apps/web/src/features/karaoke/karaoke-purchase-flow.ts",
         "apps/web/src/features/karaoke/use-karaoke-purchase.ts",
         "apps/web/src/features/karaoke/karaoke-slot-page.tsx",
         "apps/web/src/features/public/route-params.ts",
-        "apps/web/app/(self)/mypage/layout.tsx",
+        "apps/web/src/routes/self/mypage-layout.tsx",
         "apps/web/src/config/mypage-routes.ts"
       ],
       "test_case_ids": [

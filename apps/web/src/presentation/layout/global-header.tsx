@@ -37,7 +37,6 @@ export function GlobalHeader({ cartCount, session, pathname, onLogout }: Props) 
           {assets.logo === null ? (
             SITE_NAME
           ) : (
-            // biome-ignore lint/performance/noImgElement: the logo slot is a plain configured asset
             <img src={assets.logo.src} alt={assets.logo.alt} className="inline-block h-6 w-auto" />
           )}
         </SiteNameLink>
