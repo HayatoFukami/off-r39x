@@ -3226,6 +3226,12 @@
       "code_paths": ["apps/api/src/api/app.ts", "packages/observability/src/index.ts"],
       "test_case_ids": ["TC-OBS-AUDIT-002"],
       "notes": "Foundation audit repair; local synthetic evidence does not assert live-provider or release readiness"
+    },
+    {
+      "rule_id": "SEC-API-022",
+      "code_paths": ["apps/api/src/api/app.ts"],
+      "test_case_ids": ["TC-HTTP-AUDIT-001"],
+      "notes": "Foundation audit repair; local synthetic evidence does not assert live-provider or release readiness"
     }
   ]
 }

@@ -15801,6 +15801,29 @@
       ],
       "sensitivity_class": "synthetic",
       "critical": true
+    },
+    {
+      "test_case_id": "TC-HTTP-AUDIT-001",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["SEC-API-022"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Hono exact and parameterized paths; valid Origin; GET-only endpoints receive unsupported PUT",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [200, 404, 405],
+      "expected_domain_postconditions": [
+        "Fail closed within the canonical boundary; no unintended business mutation"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
     }
   ]
 }

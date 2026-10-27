@@ -12,6 +12,7 @@ import {
 import type { createLogger, LogEvent } from "@off-r39x/observability";
 import { Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { TrieRouter } from "hono/router/trie-router";
 import { secureHeaders } from "hono/secure-headers";
 import { type ErrorCode, errorSchema, errorStatuses } from "./schemas/common.ts";
 
@@ -193,7 +194,20 @@ export function createApp(dependencies: AppDependencies) {
     }
     return c.json({ status: "unavailable" }, 503);
   });
-  app.notFound((c) => failure(c, "RESOURCE_NOT_FOUND"));
+  app.notFound((c) => {
+    // Middleware wildcards do not establish an endpoint. Reuse Hono's path
+    // matching so parameterized routes have the same 405 semantics as literals.
+    const paths = new TrieRouter<string>();
+    for (const route of app.routes)
+      if (route.method !== "ALL") paths.add("ALL", route.path, route.method);
+    const methods = new Set(paths.match("ALL", c.req.path)[0].map(([method]) => method));
+    if (methods.has("GET")) methods.add("HEAD");
+    if (methods.size) {
+      c.header("Allow", [...methods].sort().join(", "));
+      return failure(c, "MALFORMED_REQUEST", 405);
+    }
+    return failure(c, "RESOURCE_NOT_FOUND");
+  });
   return app;
 }
 export function requirePrincipal(
