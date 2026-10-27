@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type {
-  CartLine,
   CartPurchaseStart,
-  CartRejectionReasonCode,
   CheckoutStart,
+  PurchaseReason,
   Ref,
 } from "../../../../apps/web/src/api-client/types.ts";
 import type { SessionState } from "../../../../apps/web/src/auth/use-session.ts";
@@ -12,11 +11,13 @@ import {
   interpretCartStart,
   interpretCheckoutStart,
   isSafeCheckoutUrl,
-  orderedLines,
   planProceed,
 } from "../../../../apps/web/src/features/purchase/cart-purchase-flow.ts";
 import { copy } from "../../../../apps/web/src/presentation/copy/ja.ts";
 import { presentRejectionReason } from "../../../../apps/web/src/presentation/state-mapping/availability.ts";
+import { PURCHASE_REASONS } from "../../../harness/purchase-reasons.ts";
+
+type ItemFailure = { lineKey: string; reasons: readonly PurchaseReason[] };
 
 // Contract: tests/contracts/s7a-purchase.md section 3.2 (SPEC-050 14A.1 Actions / Purchase start result,
 // SEC-WEB-005, SPEC-060 AR-CONT-001, AR-AUTH-006..008). Pure decisions; no Order is created here.
@@ -61,35 +62,29 @@ describe("TC-PG-CRT-001-621 planProceed sends only a known Guest to Login and le
   });
 });
 
-describe("TC-PG-CRT-001-622 interpretCartStart maps each purchase start result to one next step (SPEC-050 14A.1 Purchase start result)", () => {
-  it("created continues to Checkout with the same Order and the included line keys", () => {
-    const result: CartPurchaseStart = {
-      kind: "created",
-      orderRef: ORDER,
-      includedLineKeys: ["ENTRY_TICKET:a", "GOODS:b"],
-    };
-    expect(interpretCartStart(result)).toEqual({
-      kind: "checkout",
-      orderRef: ORDER,
-      includedLineKeys: ["ENTRY_TICKET:a", "GOODS:b"],
-    });
+describe("TC-PG-CRT-001-622 interpretCartStart maps each purchase start result to one next step (SPEC-050 14A.1 Purchase start result, API-PUR-CART-001)", () => {
+  it("created continues to Checkout with the same Order and nothing else (every sent line is in the Order)", () => {
+    const result: CartPurchaseStart = { kind: "created", orderRef: ORDER };
+    const step = interpretCartStart(result);
+    expect(step).toEqual({ kind: "checkout", orderRef: ORDER });
+    expect(Object.keys(step).sort()).toEqual(["kind", "orderRef"]);
   });
 
-  it("rejected stays a rejection with the rejections unchanged, in order (no Order was created)", () => {
-    const rejections: { lineKey: string; reason: CartRejectionReasonCode }[] = [
-      { lineKey: "GOODS:b", reason: "SOLD_OUT" },
-      { lineKey: "ENTRY_TICKET:a", reason: "PURCHASE_LIMIT_EXCEEDED" },
+  it("rejected stays a rejection with the item failures unchanged, in order (no Order was created)", () => {
+    const itemFailures: ItemFailure[] = [
+      { lineKey: "GOODS:b", reasons: ["SOLD_OUT"] },
+      { lineKey: "ENTRY_TICKET:a", reasons: ["INSUFFICIENT_QUANTITY", "PURCHASE_LIMIT_EXCEEDED"] },
     ];
-    expect(interpretCartStart({ kind: "rejected", rejections })).toEqual({
+    expect(interpretCartStart({ kind: "rejected", itemFailures })).toEqual({
       kind: "rejected",
-      rejections,
+      itemFailures,
     });
   });
 
-  it("an empty rejection list is still a rejection, never a created Order", () => {
-    expect(interpretCartStart({ kind: "rejected", rejections: [] })).toEqual({
+  it("an empty failure list is still a rejection, never a created Order", () => {
+    expect(interpretCartStart({ kind: "rejected", itemFailures: [] })).toEqual({
       kind: "rejected",
-      rejections: [],
+      itemFailures: [],
     });
   });
 
@@ -109,14 +104,15 @@ describe("TC-PG-CRT-001-622 interpretCartStart maps each purchase start result t
   });
 
   it("does not mutate its input", () => {
-    const result: CartPurchaseStart = {
-      kind: "created",
-      orderRef: ORDER,
-      includedLineKeys: ["ENTRY_TICKET:a"],
+    const created: CartPurchaseStart = { kind: "created", orderRef: ORDER };
+    const rejected: CartPurchaseStart = {
+      kind: "rejected",
+      itemFailures: [{ lineKey: "GOODS:b", reasons: ["SOLD_OUT", "PURCHASE_LIMIT_EXCEEDED"] }],
     };
-    const copyOf = structuredClone(result);
-    interpretCartStart(result);
-    expect(result).toEqual(copyOf);
+    const before = structuredClone([created, rejected]);
+    interpretCartStart(created);
+    interpretCartStart(rejected);
+    expect([created, rejected]).toEqual(before);
   });
 });
 
@@ -204,18 +200,18 @@ describe("TC-SEC-WEB-005-602 isSafeCheckoutUrl allows a same-origin path or an h
   });
 });
 
-describe("TC-PG-CRT-001-623 describeRejections names each rejected line with a distinct reason (SPEC-050 14A.1, 21)", () => {
+describe("TC-PG-CRT-001-623 describeRejections names each failing Item with all its reasons from the shared presentation (SPEC-050 14A.1, 21, API-PUR-CART-001)", () => {
   const names = new Map<string, string | null>([
     ["ENTRY_TICKET:a", "Alpha Ticket"],
     ["GOODS:b", "Bravo Goods"],
     ["GOODS:c", null],
   ]);
 
-  it("keeps the input order, one entry per rejection, with the line's name", () => {
+  it("keeps the input order, one entry per failing Item, with the name of the line", () => {
     const lines = describeRejections(
       [
-        { lineKey: "GOODS:b", reason: "SOLD_OUT" },
-        { lineKey: "ENTRY_TICKET:a", reason: "ALLOCATION_CONFLICT" },
+        { lineKey: "GOODS:b", reasons: ["SOLD_OUT"] },
+        { lineKey: "ENTRY_TICKET:a", reasons: ["INSUFFICIENT_QUANTITY"] },
       ],
       names,
     );
@@ -223,37 +219,59 @@ describe("TC-PG-CRT-001-623 describeRejections names each rejected line with a d
     expect(lines.map((l) => l.name)).toEqual(["Bravo Goods", "Alpha Ticket"]);
   });
 
-  it("takes label and description from the shared rejection presentation, for all eight reasons", () => {
-    const reasons: CartRejectionReasonCode[] = [
-      "BEFORE_SALES",
-      "SALES_ENDED",
-      "SUSPENDED",
-      "SOLD_OUT",
-      "INSUFFICIENT_QUANTITY",
-      "PURCHASE_LIMIT_EXCEEDED",
-      "ALLOCATION_CONFLICT",
-      "NOT_PUBLIC",
-    ];
-    const lines = describeRejections(
-      reasons.map((reason) => ({ lineKey: "ENTRY_TICKET:a", reason })),
+  it("lists every reason of one Item in the received order, each from presentRejectionReason", () => {
+    const [line] = describeRejections(
+      [
+        {
+          lineKey: "ENTRY_TICKET:a",
+          reasons: ["INSUFFICIENT_QUANTITY", "PURCHASE_LIMIT_EXCEEDED"],
+        },
+      ],
       names,
     );
-    expect(lines).toHaveLength(8);
+    expect(line?.reasons).toEqual([
+      presentRejectionReason("INSUFFICIENT_QUANTITY"),
+      presentRejectionReason("PURCHASE_LIMIT_EXCEEDED"),
+    ]);
+    expect(line?.reasons.map((r) => r.label)).toEqual([
+      copy.availability.label.INSUFFICIENT_QUANTITY,
+      copy.availability.label.PURCHASE_LIMIT_EXCEEDED,
+    ]);
+    // A reversed list is shown reversed: the view never re-sorts the order it received.
+    const [reversed] = describeRejections(
+      [
+        {
+          lineKey: "ENTRY_TICKET:a",
+          reasons: ["PURCHASE_LIMIT_EXCEEDED", "INSUFFICIENT_QUANTITY"],
+        },
+      ],
+      names,
+    );
+    expect(reversed?.reasons.map((r) => r.label)).toEqual([
+      copy.availability.label.PURCHASE_LIMIT_EXCEEDED,
+      copy.availability.label.INSUFFICIENT_QUANTITY,
+    ]);
+  });
+
+  it("takes label and description from the shared rejection presentation, for all nine reasons", () => {
+    const lines = describeRejections(
+      PURCHASE_REASONS.map((reason) => ({ lineKey: "ENTRY_TICKET:a", reasons: [reason] })),
+      names,
+    );
+    expect(lines).toHaveLength(9);
     lines.forEach((line, index) => {
-      const reason = reasons[index];
+      const reason = PURCHASE_REASONS[index];
       if (reason === undefined) throw new Error("reason expected");
-      const expected = presentRejectionReason(reason);
-      expect(line.label).toBe(expected.label);
-      expect(line.description).toBe(expected.description);
+      expect(line.reasons).toEqual([presentRejectionReason(reason)]);
     });
-    expect(new Set(lines.map((l) => l.label)).size).toBe(8);
+    expect(new Set(lines.flatMap((l) => l.reasons.map((r) => r.label))).size).toBe(9);
   });
 
   it("uses the generic name for a line whose name is unknown (null or not in the map)", () => {
     const lines = describeRejections(
       [
-        { lineKey: "GOODS:c", reason: "NOT_PUBLIC" },
-        { lineKey: "GOODS:z", reason: "SOLD_OUT" },
+        { lineKey: "GOODS:c", reasons: ["NOT_PUBLIC_OR_NOT_FOUND"] },
+        { lineKey: "GOODS:z", reasons: ["SOLD_OUT"] },
       ],
       names,
     );
@@ -263,61 +281,13 @@ describe("TC-PG-CRT-001-623 describeRejections names each rejected line with a d
     ]);
   });
 
-  it("returns nothing for no rejections and does not mutate its input", () => {
+  it("returns nothing for no failures and does not mutate its input", () => {
     expect(describeRejections([], names)).toEqual([]);
-    const rejections = [{ lineKey: "GOODS:b", reason: "SOLD_OUT" as const }];
-    const before = structuredClone(rejections);
-    describeRejections(rejections, names);
-    expect(rejections).toEqual(before);
-  });
-});
-
-describe("TC-PG-CRT-001-624 orderedLines returns the sent lines the Order included, at the sent quantity (FR-CRT-011, BR-ORD-014)", () => {
-  const entryLine: CartLine = {
-    kind: "ENTRY_TICKET",
-    offeringRef: "e0000000-0000-4000-8000-000000000001" as Ref<"offering">,
-    quantity: 2,
-  };
-  const goodsLine: CartLine = {
-    kind: "GOODS",
-    goodsRef: "a0000000-0000-4000-8000-000000000001" as Ref<"goods">,
-    quantity: 3,
-  };
-  const otherGoods: CartLine = {
-    kind: "GOODS",
-    goodsRef: "a0000000-0000-4000-8000-000000000002" as Ref<"goods">,
-    quantity: 1,
-  };
-  const keyOf = (line: CartLine): string =>
-    line.kind === "ENTRY_TICKET" ? `ENTRY_TICKET:${line.offeringRef}` : `GOODS:${line.goodsRef}`;
-
-  it("returns the included lines in the snapshot order with the sent quantities", () => {
-    const sent = [entryLine, goodsLine, otherGoods];
-    expect(orderedLines(sent, [keyOf(otherGoods), keyOf(entryLine)])).toEqual([
-      entryLine,
-      otherGoods,
-    ]);
-  });
-
-  it("leaves out the sent lines the Order did not include", () => {
-    expect(orderedLines([entryLine, goodsLine], [keyOf(goodsLine)])).toEqual([goodsLine]);
-    expect(orderedLines([entryLine, goodsLine], [])).toEqual([]);
-  });
-
-  it("does not count a line twice when the included keys repeat", () => {
-    const result = orderedLines([entryLine], [keyOf(entryLine), keyOf(entryLine)]);
-    expect(result).toEqual([entryLine]);
-  });
-
-  it("ignores an included key that was never sent", () => {
-    expect(orderedLines([entryLine], [keyOf(entryLine), keyOf(otherGoods)])).toEqual([entryLine]);
-  });
-
-  it("does not mutate its inputs", () => {
-    const sent = Object.freeze([Object.freeze({ ...entryLine }), Object.freeze({ ...goodsLine })]);
-    const keys = Object.freeze([keyOf(entryLine)]);
-    const before = JSON.stringify({ sent, keys });
-    orderedLines(sent, keys);
-    expect(JSON.stringify({ sent, keys })).toBe(before);
+    const itemFailures: ItemFailure[] = [
+      { lineKey: "GOODS:b", reasons: ["SOLD_OUT", "PURCHASE_LIMIT_EXCEEDED"] },
+    ];
+    const before = structuredClone(itemFailures);
+    describeRejections(itemFailures, names);
+    expect(itemFailures).toEqual(before);
   });
 });

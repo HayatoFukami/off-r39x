@@ -1,7 +1,6 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { cartLineKey } from "../../../../apps/web/src/api-client/cart-line-key.ts";
 import type { CartLine } from "../../../../apps/web/src/api-client/types.ts";
 import {
   type Backend,
@@ -33,157 +32,51 @@ async function freshBackend(): Promise<Backend> {
   return backend;
 }
 
-type Reason = "SOLD_OUT" | "INSUFFICIENT_QUANTITY" | "PURCHASE_LIMIT_EXCEEDED";
-
-/** Rejection is a business result: no exception, and no stored state or id changes. */
-async function expectRejectedUnchanged(
+/** A duplicate line is invalid input (API-PUR-CART-001 400 VALIDATION_FAILED): the promise rejects and nothing is written. */
+async function expectDuplicateRefused(
   backend: Backend,
   lines: readonly CartLine[],
-  only: { index: number; reason: Reason },
   key: string,
 ): Promise<void> {
   const before = dbFingerprint(backend);
   const ids = backend.ids.count();
-  const result = await backend.api.purchase.startCartPurchase(lines, { idempotencyKey: key });
-  expect(result).toEqual({
-    kind: "rejected",
-    rejections: [{ lineKey: cartLineKey(lines[only.index] as CartLine), reason: only.reason }],
-  });
+  const orders = okData(await backend.api.self.listOrders()).length;
+  await expect(
+    backend.api.purchase.startCartPurchase(lines, { idempotencyKey: key }),
+  ).rejects.toThrow(RangeError);
   expect(dbFingerprint(backend)).toBe(before);
   expect(backend.ids.count()).toBe(ids);
+  expect(okData(await backend.api.self.listOrders()).length).toBe(orders);
 }
 
-describe("TC-BR-ORD-014-110 duplicate cart lines never oversell (BR-ORD-014, BR-ORD-017, FR-CRT-007, SPEC-050 14A.1)", () => {
-  it("rejects only the overflowing duplicate Goods line when the total exceeds the stock", async () => {
-    // Towel has 3 left; each line alone fits (2 <= 3) but together they need 4.
-    await expectRejectedUnchanged(
-      await freshBackend(),
-      [towel(2), towel(2)],
-      { index: 1, reason: "INSUFFICIENT_QUANTITY" },
-      "dup-a",
-    );
+describe("TC-BR-ORD-014-110 duplicate cart lines are invalid input, never evaluated in sequence (BR-ORD-014, FR-CRT-007, API-PUR-CART-001, TST-UNT-004)", () => {
+  it("refuses duplicate Goods lines whose total exceeds the stock, whatever the total", async () => {
+    // Towel has 3 left; 2 + 2 needs 4.
+    await expectDuplicateRefused(await freshBackend(), [towel(2), towel(2)], "dup-a");
   });
 
-  it("reports SOLD_OUT for a duplicate line after the earlier lines took all the stock", async () => {
-    await expectRejectedUnchanged(
-      await freshBackend(),
-      [towel(3), towel(1)],
-      { index: 1, reason: "SOLD_OUT" },
-      "dup-a1",
-    );
+  it("refuses duplicate Goods lines whose total fits the stock exactly (the former purchasable case)", async () => {
+    await expectDuplicateRefused(await freshBackend(), [towel(2), towel(1)], "dup-fit-goods");
   });
 
-  it("keeps input order and ignores lines of other items between the duplicates", async () => {
-    await expectRejectedUnchanged(
-      await freshBackend(),
-      [towel(2), tshirt(1), towel(2)],
-      { index: 2, reason: "INSUFFICIENT_QUANTITY" },
-      "dup-a2",
-    );
+  it("refuses a duplicate that is separated by a line of another item", async () => {
+    await expectDuplicateRefused(await freshBackend(), [towel(2), tshirt(1), towel(2)], "dup-a2");
   });
 
-  it("rejects the duplicate Entry line that pushes the total over the per-account limit (step 6)", async () => {
-    // Regular: limit 4, stock 10. 3 + 2 = 5 > 4.
-    await expectRejectedUnchanged(
-      await freshBackend(),
-      [regular(3), regular(2)],
-      { index: 1, reason: "PURCHASE_LIMIT_EXCEEDED" },
-      "dup-b1",
-    );
+  it("refuses duplicate Entry lines over the per-account limit and ones that fit it exactly", async () => {
+    // Regular: limit 4, stock 10. 3 + 2 = 5 > 4, and 2 + 2 = 4 fits exactly.
+    await expectDuplicateRefused(await freshBackend(), [regular(3), regular(2)], "dup-b1");
+    await expectDuplicateRefused(await freshBackend(), [regular(2), regular(2)], "dup-fit-entry");
+    await expectDuplicateRefused(await freshBackend(), [regular(4), regular(1)], "dup-b2");
   });
 
-  it("rejects the duplicate Entry line once the earlier lines used the whole limit (step 4)", async () => {
-    await expectRejectedUnchanged(
-      await freshBackend(),
-      [regular(4), regular(1)],
-      { index: 1, reason: "PURCHASE_LIMIT_EXCEEDED" },
-      "dup-b2",
-    );
-  });
-
-  it("adds the already persisted usage to the in-flight duplicate quantity", async () => {
+  it("refuses a duplicate even after a persisted purchase, and leaves that purchase as it was", async () => {
     const backend = await freshBackend();
     const pre = await backend.api.purchase.startCartPurchase([regular(1)], {
       idempotencyKey: "k-pre",
     });
     expect(pre.kind).toBe("created");
-    // Used 1 already: 2 fits (1 + 2 <= 4), the second 2 does not (1 + 4 > 4).
-    await expectRejectedUnchanged(
-      backend,
-      [regular(2), regular(2)],
-      { index: 1, reason: "PURCHASE_LIMIT_EXCEEDED" },
-      "dup-b3",
-    );
-  });
-});
-
-describe("TC-BR-ORD-014-111 duplicate lines that fit exactly are purchasable (BR-ORD-014, BR-ORD-018, FR-CRT-007)", () => {
-  it("creates one Order with one item per duplicate Goods line and takes exactly the stock", async () => {
-    const backend = await freshBackend();
-    const lines = [towel(2), towel(1)];
-    const result = await backend.api.purchase.startCartPurchase(lines, {
-      idempotencyKey: "fit-goods",
-    });
-    if (result.kind !== "created") throw new Error(`expected created but got ${result.kind}`);
-    expect(result.includedLineKeys).toEqual([
-      cartLineKey(lines[0] as CartLine),
-      cartLineKey(lines[1] as CartLine),
-    ]);
-
-    const orders = okData(await backend.api.self.listOrders());
-    expect(orders.map((o) => [o.orderRef, o.state, o.purpose])).toEqual([
-      [result.orderRef, "PREPARED", "GOODS_PURCHASE"],
-    ]);
-    const detail = okData(await backend.api.self.getOrder(result.orderRef));
-    expect(detail.items.map((i) => [i.kind, i.quantity])).toEqual([
-      ["GOODS", 2],
-      ["GOODS", 1],
-    ]);
-    expect(detail.items.map((i) => i.subtotal)).toEqual([
-      { amount: "3600", currency: "JPY" },
-      { amount: "1800", currency: "JPY" },
-    ]);
-    expect(detail.total).toEqual({ amount: "5400", currency: "JPY" });
-
-    const list = okData(await backend.api.public.listGoods());
-    expect(list.find((g) => g.goodsRef === GOODS.towel)?.availability).toEqual({
-      kind: "SOLD_OUT",
-    });
-    const state = backend.db.load();
-    if (state.kind !== "ready") throw new Error("expected a ready DB");
-    expect(state.state.goods.find((g) => g.ref === GOODS.towel)?.remaining).toBe(0);
-  });
-
-  it("creates one Order with one item per duplicate Entry line and takes exactly the limit", async () => {
-    const backend = await freshBackend();
-    const lines = [regular(2), regular(2)];
-    const result = await backend.api.purchase.startCartPurchase(lines, {
-      idempotencyKey: "fit-entry",
-    });
-    if (result.kind !== "created") throw new Error(`expected created but got ${result.kind}`);
-    expect(result.includedLineKeys).toEqual([
-      cartLineKey(lines[0] as CartLine),
-      cartLineKey(lines[1] as CartLine),
-    ]);
-
-    const orders = okData(await backend.api.self.listOrders());
-    expect(orders.map((o) => [o.state, o.purpose])).toEqual([
-      ["PREPARED", "ENTRY_TICKET_PURCHASE"],
-    ]);
-    const detail = okData(await backend.api.self.getOrder(result.orderRef));
-    expect(detail.items.map((i) => [i.kind, i.quantity])).toEqual([
-      ["ENTRY_TICKET", 2],
-      ["ENTRY_TICKET", 2],
-    ]);
-    expect(detail.total).toEqual({ amount: "12000", currency: "JPY" });
-
-    const state = backend.db.load();
-    if (state.kind !== "ready") throw new Error("expected a ready DB");
-    expect(state.state.offerings.find((o) => o.ref === OFFERING.regular)?.remaining).toBe(6);
-    const offerings = okData(await backend.api.public.listEntryOfferings());
-    expect(offerings.find((o) => o.offeringRef === OFFERING.regular)?.availability).toEqual({
-      kind: "PURCHASE_LIMIT_EXCEEDED",
-    });
+    await expectDuplicateRefused(backend, [regular(1), regular(1)], "dup-b3");
   });
 });
 

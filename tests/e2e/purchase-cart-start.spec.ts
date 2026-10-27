@@ -28,13 +28,16 @@ import {
   proceedButton,
   proceedToMockCheckout,
   remainingOf,
+  restrictOffering,
   seenTexts,
   setScenario,
+  storedOrders,
+  suspendGoods,
   suspendOffering,
   waitSeen,
   watchTexts,
 } from "../harness/browser/purchase.ts";
-import { KEYS } from "../harness/browser/shell.ts";
+import { KEYS, sessionJson } from "../harness/browser/shell.ts";
 import { EMAIL, GOODS, OFFERING } from "../harness/mock-seed.ts";
 
 // UI mock suite (TST-E2E-004: auxiliary, not G8). Contract: tests/contracts/s7a-purchase.md sections 4, 9.
@@ -244,7 +247,7 @@ test.describe("TC-PG-CRT-001-613 progress is shown without claiming success, and
   });
 });
 
-test.describe("TC-PG-CRT-001-614 a rejected purchase start creates nothing, keeps the Cart and names the lines (E2E 26, BR-ORD-014, SPEC-050 14A.1, 21)", () => {
+test.describe("TC-PG-CRT-001-614 a rejected purchase start creates nothing, keeps the Cart and names the lines (E2E 26, BR-ORD-014, API-PUR-CART-001, SPEC-050 14A.1, 21)", () => {
   const alertOf = (page: Page) => alertsOf(page);
 
   test("reject_one: 'not started' with the rejected line and its reason, focus on the summary, Cart and DB untouched", async ({
@@ -263,10 +266,11 @@ test.describe("TC-PG-CRT-001-614 a rejected purchase start creates nothing, keep
     await expect(summary).toHaveCount(1);
     await expect(summary).toContainText(copy.cart.purchase.rejectedTitle);
     await expect(summary).toContainText(copy.cart.purchase.rejectedBody);
-    // Only the first line is rejected (ALLOCATION_CONFLICT); the other line is not blamed.
+    // Only the first line is rejected (INSUFFICIENT_QUANTITY: the chosen quantity could not be secured,
+    // SPEC-050 14A.1); the other line is not blamed.
     await expect(summary).toContainText(offeringName(OFFERING.regular));
-    await expect(summary).toContainText(copy.availability.label.ALLOCATION_CONFLICT);
-    await expect(summary).toContainText(copy.availability.description.ALLOCATION_CONFLICT);
+    await expect(summary).toContainText(copy.availability.label.INSUFFICIENT_QUANTITY);
+    await expect(summary).toContainText(copy.availability.description.INSUFFICIENT_QUANTITY);
     await expect(summary).not.toContainText(expectedGoodsDetail(GOODS.tshirt).name);
     expect((await focused(page)).role).toBe("alert");
 
@@ -369,6 +373,69 @@ test.describe("TC-PG-CRT-001-614 a rejected purchase start creates nothing, keep
     expect(await readCartRaw(page)).toBe(cartBefore);
     expect(parsed(await readDbRaw(page))).toEqual(dbBefore);
     await expect(proceedButton(page)).toBeEnabled();
+  });
+});
+
+test.describe("TC-PG-CRT-001-616 a rejection names every failing Item with all of its reasons, in the order received (FR-CRT-005, BR-ORD-014, API-PUR-CART-001, SPEC-050 14A.1, 21)", () => {
+  test("one Item fails on stock and Purchase Limit at once, another is suspended: one alert, one paragraph per Item, nothing created", async ({
+    page,
+  }) => {
+    const limitName = offeringName(OFFERING.limit);
+    const towelName = expectedGoodsDetail(GOODS.towel).name;
+    await openCart(page, [entryLine(OFFERING.limit, 2), goodsLine(GOODS.towel, 1)], {
+      session: sessionJson({ kind: "authenticated", email: EMAIL.fresh, emailVerified: true }),
+    });
+    await expect(proceedButton(page)).toBeEnabled();
+
+    // After the render, the server-side conditions change (the re-verification at purchase start sees them).
+    await restrictOffering(page, OFFERING.limit, { remaining: 1, perAccountLimit: 1 });
+    await suspendGoods(page, GOODS.towel);
+    const dbBefore = parsed(await readDbRaw(page));
+    const cartBefore = await readCartRaw(page);
+    const ordersBefore = (await storedOrders(page)).length;
+
+    await proceedButton(page).click();
+    const summary = alertsOf(page);
+    await expect(summary).toHaveCount(1);
+    await expect(summary).toContainText(copy.cart.purchase.rejectedTitle);
+    await expect(summary).toContainText(copy.cart.purchase.rejectedBody);
+    expect((await focused(page)).role).toBe("alert");
+
+    // Title and body, then exactly one paragraph per failing Item.
+    const paragraphs = summary.locator("p");
+    await expect(paragraphs).toHaveCount(4);
+    const limitItem = paragraphs.filter({ hasText: limitName });
+    const towelItem = paragraphs.filter({ hasText: towelName });
+    await expect(limitItem).toHaveCount(1);
+    await expect(towelItem).toHaveCount(1);
+
+    // The limit Item: name, then "数量不足", then "購入上限により購入不可", each with its description.
+    const limitText = (await limitItem.innerText()).replace(/\s+/g, " ");
+    const expectedOrder = [
+      limitName,
+      copy.availability.label.INSUFFICIENT_QUANTITY,
+      copy.availability.description.INSUFFICIENT_QUANTITY,
+      copy.availability.label.PURCHASE_LIMIT_EXCEEDED,
+      copy.availability.description.PURCHASE_LIMIT_EXCEEDED,
+    ];
+    const positions = expectedOrder.map((part) => limitText.indexOf(part));
+    expect(positions.every((position) => position >= 0)).toBe(true);
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    expect(limitText).not.toContain(copy.availability.label.SUSPENDED);
+
+    // The suspended Item shows its own reason only.
+    await expect(towelItem).toContainText(copy.availability.label.SUSPENDED);
+    await expect(towelItem).toContainText(copy.availability.description.SUSPENDED);
+    await expect(towelItem).not.toContainText(copy.availability.label.PURCHASE_LIMIT_EXCEEDED);
+    await expect(towelItem).not.toContainText(copy.availability.label.INSUFFICIENT_QUANTITY);
+
+    // Nothing was created, allocated or removed.
+    await expect(page).toHaveURL(/\/cart$/);
+    expect(urlOf(page).pathname).toBe("/cart");
+    expect(await readCartRaw(page)).toBe(cartBefore);
+    expect(parsed(await readDbRaw(page))).toEqual(dbBefore);
+    expect(await storedOrders(page)).toHaveLength(ordersBefore);
+    expect(await newOrders(page)).toHaveLength(0);
   });
 });
 

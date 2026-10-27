@@ -11,7 +11,6 @@ import {
   describeRejections,
   interpretCartStart,
   interpretCheckoutStart,
-  orderedLines,
   planProceed,
   type RejectionLine,
 } from "./cart-purchase-flow";
@@ -72,7 +71,7 @@ export function useCartPurchase(options: UseCartPurchaseOptions): {
         router.push(step.to);
         return;
       case "rejected":
-        setPhase({ kind: "rejected", rejections: describeRejections(step.rejections, names) });
+        setPhase({ kind: "rejected", rejections: describeRejections(step.itemFailures, names) });
         inFlight.current = false;
         onRejected();
         return;
@@ -83,8 +82,9 @@ export function useCartPurchase(options: UseCartPurchaseOptions): {
       case "checkout": {
         setPhase({ kind: "preparing" });
         // The Order exists: a failed Cart write must not stop the hand-off to Checkout.
-        // Subtract only what the Order took from the current Cart (edits of this and other tabs included).
-        subtractLines(orderedLines(lines, step.includedLineKeys));
+        // Every sent line is in the Order (all-or-nothing): subtract the sent snapshot from the current Cart
+        // (edits of this and other tabs included).
+        subtractLines(lines);
         const checkout: CheckoutStart = await api.purchase
           .startCheckout(step.orderRef, { idempotencyKey: crypto.randomUUID() })
           .catch((): CheckoutStart => ({ kind: "unavailable" }));
