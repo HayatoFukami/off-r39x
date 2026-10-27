@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { assets } from "../../config/assets";
 import { CTA_HREF, GUEST_ACCOUNT_LINKS, MYPAGE_HREF, SITE_NAME } from "../../config/site";
+import { Link } from "../../routing/link";
 import { buttonVariants } from "../components/ui/button";
 import { cn } from "../components/ui/cn";
 import { copy } from "../copy/ja";

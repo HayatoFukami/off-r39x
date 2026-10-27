@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "../../routing/link";
 import { copy } from "../copy/ja";
 
 // PG-XFN-003 part (SPEC-050 19.2). It shows nothing about the target: not its content, its existence,

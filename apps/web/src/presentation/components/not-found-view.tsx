@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { HOME_HREF } from "../../config/site";
+import { Link } from "../../routing/link";
 import { copy } from "../copy/ja";
 
 // Same view as app/not-found.tsx (PG-XFN-002): shows nothing about the requested resource (SPEC-050 19.1).

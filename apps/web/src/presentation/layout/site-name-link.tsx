@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import type { MouseEvent, ReactNode } from "react";
 import { HOME_HREF } from "../../config/site";
+import { Link } from "../../routing/link";
 import { isPlainPrimaryClick } from "./plain-primary-click";
 
 /**

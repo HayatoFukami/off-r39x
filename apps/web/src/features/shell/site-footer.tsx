@@ -1,6 +1,5 @@
 "use client";
 
-import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useApi } from "../../api-client/provider";
 import { GlobalFooter } from "../../presentation/layout/global-footer";
@@ -8,6 +7,7 @@ import {
   buildSponsorAreaModel,
   type SponsorAreaInput,
 } from "../../presentation/layout/sponsor-area-model";
+import { usePathname } from "../../routing/navigation";
 
 /** Container: loads the Sponsor Logos after mount and passes the view model to the Global Footer. */
 export function SiteFooter() {
