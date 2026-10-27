@@ -6,7 +6,6 @@ import type {
   CartLine,
   CartLineResolution,
   CartPurchaseStart,
-  CartRejectionReasonCode,
   EntryTicketDetail,
   EntryTicketSummary,
   EventInfo,
@@ -16,6 +15,7 @@ import type {
   OrderDetail,
   OrderItem,
   OrderSummary,
+  PurchaseReason,
   QrPresentation,
   Read,
   ReservationDetail,
@@ -31,6 +31,7 @@ import { createMockDb, type DbState, type MockStorage } from "./db";
 import type { IdGenerator } from "./ids";
 import { buildKaraokeBuckets, filterSlotsByBusinessDate } from "./karaoke-buckets";
 import { applyLatency, type Sleep } from "./latency";
+import { evaluatePurchaseConditions } from "./purchase-conditions";
 import { decidePurpose, type OrderLineKind } from "./purpose";
 import { loadScenario, type Scenario } from "./scenario";
 import { loadSessionState } from "./session-store";
@@ -334,6 +335,51 @@ function webhookResult(outcome: Scenario["paymentOutcome"], reads: number): Orde
 
 function isValidQuantity(quantity: number): boolean {
   return Number.isSafeInteger(quantity) && quantity >= 1;
+}
+
+const MAX_CART_LINES = 50;
+const MAX_LINE_QUANTITY = 2147483647;
+
+/** API-PUR-CART-001 Body: 1..50 lines, quantity 1..2147483647, no repeated target. Invalid input is a programmer error. */
+function validateCartLines(lines: readonly CartLine[]): void {
+  if (lines.length === 0 || lines.length > MAX_CART_LINES) {
+    throw new RangeError("A purchase needs between 1 and 50 lines");
+  }
+  const seen = new Set<string>();
+  for (const line of lines) {
+    if (!isValidQuantity(line.quantity) || line.quantity > MAX_LINE_QUANTITY) {
+      throw new RangeError("A line quantity must be an integer between 1 and 2147483647");
+    }
+    const key = cartLineKey(line);
+    if (seen.has(key)) throw new RangeError("A purchase must not repeat the same target");
+    seen.add(key);
+  }
+}
+
+/** True when the sent lines and the stored Order items hold the same quantity per target (order ignored). */
+function sameQuantities(lines: readonly CartLine[], items: readonly OrderItemRow[]): boolean {
+  const sent = new Map<string, number>();
+  for (const line of lines) sent.set(cartLineKey(line), line.quantity);
+  const stored = new Map<string, number>();
+  for (const item of items) {
+    let key: string;
+    switch (item.kind) {
+      case "ENTRY_TICKET":
+        key = `ENTRY_TICKET:${item.offeringRef}`;
+        break;
+      case "GOODS":
+        key = `GOODS:${item.goodsRef}`;
+        break;
+      default:
+        continue;
+    }
+    stored.set(key, (stored.get(key) ?? 0) + item.quantity);
+  }
+  if (sent.size !== stored.size) return false;
+  for (const [key, quantity] of sent) {
+    if (stored.get(key) !== quantity) return false;
+  }
+  return true;
 }
 
 export function createMockApi(deps: MockApiDeps): ApiPort {
@@ -734,46 +780,48 @@ export function createMockApi(deps: MockApiDeps): ApiPort {
     },
   };
 
-  /**
-   * Natural rejection reason of one cart line, or null when the line can be purchased.
-   * `taken` is the quantity already allocated to earlier accepted lines with the same key.
-   */
-  function rejectionOf(
-    ctx: Ctx,
-    line: CartLine,
-    email: string,
-    taken: number,
-  ): CartRejectionReasonCode | null {
-    let availability: SaleAvailability;
+  /** Every confirmed reason that stops one cart line (empty when the line can be purchased). */
+  function reasonsOf(ctx: Ctx, line: CartLine, email: string): PurchaseReason[] {
     switch (line.kind) {
       case "ENTRY_TICKET": {
         const offering = ctx.state.offerings.find((o) => o.ref === line.offeringRef && o.published);
-        if (offering === undefined) return "NOT_PUBLIC";
-        availability = evaluate(
-          { ...offering, remaining: offering.remaining - taken },
-          offering.perAccountLimit,
+        if (offering === undefined)
+          return evaluatePurchaseConditions({ kind: "missing" }, 0, 0).reasons;
+        return evaluatePurchaseConditions(
+          {
+            kind: "sellable",
+            control: offering.control,
+            startsAt: offering.startsAt,
+            endsAt: offering.endsAt,
+            remaining: offering.remaining,
+            perAccountLimit: offering.perAccountLimit,
+            used: usedQuantity(ctx.state, email, offering.ref),
+          },
           line.quantity,
-          usedQuantity(ctx.state, email, offering.ref) + taken,
           ctx.nowMs,
-        );
-        break;
+        ).reasons;
       }
       case "GOODS": {
         const goods = ctx.state.goods.find((g) => g.ref === line.goodsRef && g.published);
-        if (goods === undefined) return "NOT_PUBLIC";
-        availability = evaluate(
-          { ...goods, remaining: goods.remaining - taken },
-          null,
+        if (goods === undefined)
+          return evaluatePurchaseConditions({ kind: "missing" }, 0, 0).reasons;
+        return evaluatePurchaseConditions(
+          {
+            kind: "sellable",
+            control: goods.control,
+            startsAt: goods.startsAt,
+            endsAt: goods.endsAt,
+            remaining: goods.remaining,
+            perAccountLimit: null,
+            used: 0,
+          },
           line.quantity,
-          0,
           ctx.nowMs,
-        );
-        break;
+        ).reasons;
       }
       default:
         return assertNever(line);
     }
-    return availability.kind === "ON_SALE" ? null : availability.kind;
   }
 
   const purchaseApi: ApiPort["purchase"] = {
@@ -783,9 +831,7 @@ export function createMockApi(deps: MockApiDeps): ApiPort {
       const gate = access(viewerOf(ctx.state));
       if (!gate.ok) return { kind: gate.reason };
       if (ctx.scenario.cart.purchaseStart === "unavailable") return UNAVAILABLE;
-      if (lines.length === 0 || lines.some((l) => !isValidQuantity(l.quantity))) {
-        throw new RangeError("A purchase needs at least one line with an integer quantity >= 1");
-      }
+      validateCartLines(lines);
       const email = gate.user.email;
       const { state } = ctx;
 
@@ -793,36 +839,33 @@ export function createMockApi(deps: MockApiDeps): ApiPort {
         (r) => r.kind === "cart" && r.ownerEmail === email && r.key === o.idempotencyKey,
       );
       if (replay !== undefined && replay.kind === "cart") {
-        return {
-          kind: "created",
-          orderRef: asRef<"order">(replay.orderRef),
-          includedLineKeys: replay.includedLineKeys,
-        };
+        const order = state.orders.find((x) => x.ref === replay.orderRef);
+        if (order !== undefined && !sameQuantities(lines, order.items)) {
+          throw new Error("idempotency key reused with a different request");
+        }
+        return { kind: "created", orderRef: asRef<"order">(replay.orderRef) };
       }
 
-      // Duplicate lines are allocated in order against the quantity already taken (BR-ORD-014).
-      const taken = new Map<string, number>();
-      const reasons = lines.map((line) => {
-        const key = cartLineKey(line);
-        const before = taken.get(key) ?? 0;
-        const reason = rejectionOf(ctx, line, email, before);
-        if (reason === null) taken.set(key, before + line.quantity);
-        return reason;
-      });
+      // Each line is evaluated on its own (BR-ORD-017); the valid input has no duplicate lines.
+      const reasons = lines.map((line) => reasonsOf(ctx, line, email));
       const forced = ctx.scenario.cart.purchaseStart;
-      if (forced === "reject_one" || forced === "limit") {
-        if (reasons[0] === null) {
-          reasons[0] = forced === "reject_one" ? "ALLOCATION_CONFLICT" : "PURCHASE_LIMIT_EXCEEDED";
-        }
+      const first = reasons[0];
+      if (
+        (forced === "reject_one" || forced === "limit") &&
+        first !== undefined &&
+        first.length === 0
+      ) {
+        reasons[0] =
+          forced === "reject_one" ? ["INSUFFICIENT_QUANTITY"] : ["PURCHASE_LIMIT_EXCEEDED"];
       }
-      const rejections = lines.flatMap((line, index) => {
-        const reason = reasons[index];
-        return reason === null || reason === undefined
+      const itemFailures = lines.flatMap((line, index) => {
+        const lineReasons = reasons[index];
+        return lineReasons === undefined || lineReasons.length === 0
           ? []
-          : [{ lineKey: cartLineKey(line), reason }];
+          : [{ lineKey: cartLineKey(line), reasons: lineReasons }];
       });
       // All-or-nothing (BR-ORD-014): a rejection leaves every stored value unchanged.
-      if (rejections.length > 0) return { kind: "rejected", rejections };
+      if (itemFailures.length > 0) return { kind: "rejected", itemFailures };
 
       const orderRef = idGenerator();
       const items: OrderItemRow[] = [];
@@ -869,7 +912,6 @@ export function createMockApi(deps: MockApiDeps): ApiPort {
             assertNever(line);
         }
       }
-      const includedLineKeys = lines.map(cartLineKey);
       state.orders.push({
         ref: orderRef,
         ownerEmail: email,
@@ -887,10 +929,11 @@ export function createMockApi(deps: MockApiDeps): ApiPort {
         ownerEmail: email,
         key: o.idempotencyKey,
         orderRef,
-        includedLineKeys,
+        // Legacy field, not exposed through the port; kept so stored r39x.mock.db.v1 values stay valid.
+        includedLineKeys: lines.map(cartLineKey),
       });
       db.save(state);
-      return { kind: "created", orderRef: asRef<"order">(orderRef), includedLineKeys };
+      return { kind: "created", orderRef: asRef<"order">(orderRef) };
     },
 
     startKaraokePurchase: async (slotRef, o) => {

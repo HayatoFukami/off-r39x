@@ -792,18 +792,19 @@
       "test_case_id": "TC-PG-CRT-001-002",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-005", "TST-UNT-004"],
+      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-005", "TST-UNT-004", "API-PUR-CART-001"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "Pure function (node environment, no DOM); contract tests/contracts/s1-presentation.md",
+      "preconditions": "Pure function (node environment, no DOM); contract tests/contracts/s1-presentation.md; the 9 API-PUR-ELG-001 reasons shared by API-PUR-CART-001",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "8 rejection reasons of a Cart purchase start are distinct and share labels with availability"
+        "the 9 rejection reasons of a Cart purchase start (API-PUR-ELG-001 set) are distinct, dictionary-backed and share labels with availability where availability also shows them",
+        "the two Karaoke-only reasons have their own labels; the retired ALLOCATION_CONFLICT and the pre-contract names fail closed"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -1268,7 +1269,13 @@
       "test_case_id": "TC-BR-ORD-014-101",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["BR-ORD-014", "FR-CRT-007", "PG-CRT-001", "TST-UNT-004"],
+      "upstream_rule_ids": [
+        "BR-ORD-014",
+        "FR-CRT-007",
+        "PG-CRT-001",
+        "TST-UNT-004",
+        "API-PUR-CART-001"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -1279,8 +1286,9 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "no Order, allocation, inventory or stored state changes",
-        "rejections list exactly the failing lineKeys with the correct reasons"
+        "no Order, allocation, inventory or stored state changes and no id is generated",
+        "itemFailures list exactly the failing lineKeys in input order, each with non-empty, duplicate-free reasons in the SPEC-110 canonical order; reject_one = INSUFFICIENT_QUANTITY, limit = PURCHASE_LIMIT_EXCEEDED, a natural reason of the first line is kept",
+        "the result has no rejections / includedLineKeys property"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -1304,7 +1312,8 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "one PREPARED Order with a price Snapshot and exact total",
-        "allocation and per-account quota are consumed"
+        "allocation and per-account quota are consumed",
+        "the result is created { orderRef } only: every sent line is in the Order (all-or-nothing)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -1454,7 +1463,7 @@
       "test_case_id": "TC-DEV-WEB-010-102",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["DEV-WEB-010", "DEV-WEB-013", "TST-UNT-004"],
+      "upstream_rule_ids": ["DEV-WEB-010", "DEV-WEB-013", "TST-UNT-004", "API-PUR-CART-001"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -1466,7 +1475,8 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "exactly the documented methods and types (expectTypeOf)",
-        "Cart cannot express Karaoke or prices; QR presentation carries a mock seed only"
+        "Cart cannot express Karaoke or prices; QR presentation carries a mock seed only",
+        "CartPurchaseStart is created { orderRef } | rejected { itemFailures: { lineKey, reasons: PurchaseReason[] }[] } | auth_required | email_unverified | unavailable; PurchaseReason is the 9 API-PUR-ELG-001 codes in the canonical order; types.ts keeps no includedLineKeys / ALLOCATION_CONFLICT / rejections"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -1483,7 +1493,8 @@
         "DEV-GEN-003",
         "API-ORD-003",
         "API-PUB-012",
-        "TST-UNT-004"
+        "TST-UNT-004",
+        "API-PUR-CART-001"
       ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
@@ -1499,7 +1510,8 @@
         "ports without an Operation ID are marked and no new Operation ID is invented",
         "the Profile ports cite API-AUTH-002 / API-AUTH-004 and no longer cite the superseded UCR-100-001",
         "getOrder cites API-ORD-003 (notification_summary) without UCR-110-001 or Operation ID なし",
-        "listSponsorLogos cites API-PUB-012 (PUBLISHED only, public_ref ASC tie-break) without UCR-110-001 or Operation ID なし; only startCartPurchase stays marked UCR-110-001"
+        "listSponsorLogos cites API-PUB-012 (PUBLISHED only, public_ref ASC tie-break) without UCR-110-001 or Operation ID なし",
+        "startCartPurchase cites API-PUR-CART-001 (all-or-nothing, API-CHK-001 hand-off) without UCR-110-001 or Operation ID なし; only listEntryOfferings and resolveCartLines stay marked UCR-110-001 until B4b"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -1747,18 +1759,19 @@
       "test_case_id": "TC-PG-CRT-001-103",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-CRT-001", "FR-XFN-012", "TST-UNT-004"],
+      "upstream_rule_ids": ["PG-CRT-001", "FR-XFN-012", "TST-UNT-004", "API-PUR-CART-001"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "startCartPurchase replay with the same idempotencyKey; contract tests/contracts/s2-mock-backend.md; UI mock test double (not API/DB/Provider coverage)",
+      "preconditions": "startCartPurchase replay with the same idempotencyKey and with a changed request; contract tests/contracts/s2-mock-backend.md; UI mock test double (not API/DB/Provider coverage)",
       "fixture_ids": ["MOCK-SEED-PUBLIC"],
       "clock_instant": "2027-03-01T03:00:00Z",
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "same result, no second Order, no second allocation, no new id",
+        "same key and same content (in any line order): the same orderRef, no second Order, no second allocation, no new id, stored state unchanged",
+        "same key with different content (quantity, added line, other item): the promise rejects and nothing is created",
         "key is user-scoped; rejections are not memoized"
       ],
       "expected_db_postconditions": [],
@@ -1771,7 +1784,7 @@
       "test_case_id": "TC-PG-CRT-001-104",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-CRT-001", "DEV-TS-004", "TST-UNT-004"],
+      "upstream_rule_ids": ["PG-CRT-001", "DEV-TS-004", "TST-UNT-004", "API-PUR-CART-001"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -1782,7 +1795,8 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "empty lines or non-positive-integer quantity reject the promise and change nothing"
+        "no lines, 51 lines, a duplicate line key or a quantity outside 1..2147483647 reject the promise and change nothing",
+        "50 lines and quantity 2147483647 are business results: an unknown ref is NOT_PUBLIC_OR_NOT_FOUND, an excess quantity INSUFFICIENT_QUANTITY"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -2641,40 +2655,45 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": false,
-      "upstream_rule_ids": [
-        "BR-ORD-014",
-        "BR-ORD-017",
-        "FR-CRT-007",
-        "SPEC-050-14A.1",
-        "TST-UNT-004"
-      ],
-      "preconditions": "Cart with duplicate lines of one item exceeding stock or per-account limit; contract tests/contracts/s2-mock-backend.md 11.1; UI mock test double (not API/DB coverage)",
+      "upstream_rule_ids": ["BR-ORD-014", "FR-CRT-007", "API-PUR-CART-001", "TST-UNT-004"],
+      "preconditions": "Cart lines with a duplicate line key (cartLineKey), including totals that exceed or exactly fit the stock or per-account limit; contract tests/contracts/s2-mock-backend.md 11.1; UI mock test double (not API/DB coverage)",
       "expected_domain_postconditions": [
-        "rejected (no exception) listing only the overflowing duplicate line with SOLD_OUT / INSUFFICIENT_QUANTITY / PURCHASE_LIMIT_EXCEEDED; no Order, allocation, idempotency record or stored state change"
+        "duplicate line keys are invalid input: the promise rejects and nothing is written (no Order, allocation, idempotency record, id or stored state change)"
       ]
     },
     {
-      "test_case_id": "TC-BR-ORD-014-111",
+      "test_case_id": "TC-BR-ORD-014-112",
       "level": "Unit",
       "suite": "unit",
+      "upstream_rule_ids": [
+        "BR-ORD-014",
+        "BR-ORD-017",
+        "FR-CRT-005",
+        "FR-CRT-007",
+        "API-PUR-CART-001",
+        "API-PUR-ELG-001",
+        "TST-UNT-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
+      "preconditions": "Stored mock DB edited before the call (offering stock, quota, control and period); contract tests/contracts/s2-mock-backend.md 11.1; UI mock test double (not API/DB coverage)",
       "fixture_ids": ["MOCK-SEED-PUBLIC"],
       "clock_instant": "2027-03-01T03:00:00Z",
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
+      "expected_domain_postconditions": [
+        "every line is evaluated on its own and each failing Item lists all confirmed reasons without duplicates, in the SPEC-110 canonical order (stock and quota together; suspended, ended and sold out together)",
+        "a non-public item and an unknown ref return NOT_PUBLIC_OR_NOT_FOUND alone and are identical apart from the lineKey",
+        "a sold-out offering returns SOLD_OUT only, never INSUFFICIENT_QUANTITY as well",
+        "stored state and generated ids are unchanged by every rejection"
+      ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
       "expected_observability": [],
       "sensitivity_class": "synthetic",
-      "critical": false,
-      "upstream_rule_ids": ["BR-ORD-014", "BR-ORD-018", "FR-CRT-007", "TST-UNT-004"],
-      "preconditions": "Cart with duplicate lines of one item whose total fits exactly in stock or per-account limit; contract tests/contracts/s2-mock-backend.md 11.1; UI mock test double (not API/DB coverage)",
-      "expected_domain_postconditions": [
-        "one PREPARED Order with one item per duplicate line; remaining decremented by the total and never negative; includedLineKeys in input order"
-      ]
+      "critical": false
     },
     {
       "test_case_id": "TC-DEV-TS-013-101",
@@ -8527,18 +8546,18 @@
       "test_case_id": "TC-PG-CRT-001-622",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-CRT-001", "BR-ORD-014"],
+      "upstream_rule_ids": ["PG-CRT-001", "BR-ORD-014", "API-PUR-CART-001"],
       "system_invariant_ids": ["INV-010-01"],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "interpretCartStart over all five purchase start results",
+      "preconditions": "interpretCartStart over all five purchase start results (created { orderRef }, rejected { itemFailures })",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "created continues to Checkout; rejected stays rejected; auth_required and email_unverified keep the Cart intent; unavailable is a failure"
+        "created continues to Checkout with the Order only; rejected stays rejected with the item failures unchanged (empty included); auth_required and email_unverified keep the Cart intent; unavailable is a failure; input unchanged"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -8550,41 +8569,18 @@
       "test_case_id": "TC-PG-CRT-001-623",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-005"],
+      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-005", "API-PUR-CART-001"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "describeRejections over eight reasons and unknown names",
+      "preconditions": "describeRejections over the nine reasons, multi-reason Items and unknown names",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "input order kept; label and description from the shared presentation; unknown name uses the generic name"
-      ],
-      "expected_db_postconditions": [],
-      "expected_provider_postconditions": [],
-      "expected_observability": [],
-      "sensitivity_class": "synthetic",
-      "critical": false
-    },
-    {
-      "test_case_id": "TC-PG-CRT-001-624",
-      "level": "Unit",
-      "suite": "unit",
-      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-011", "BR-ORD-014"],
-      "system_invariant_ids": [],
-      "api_operation_ids": [],
-      "db_constraint_names": [],
-      "preconditions": "orderedLines over the sent snapshot and the Order's included line keys, with repeated and unknown keys",
-      "fixture_ids": [],
-      "clock_instant": null,
-      "concurrency_seed": null,
-      "fault_points": [],
-      "expected_http": null,
-      "expected_domain_postconditions": [
-        "the sent lines the Order included are returned in snapshot order at the sent quantity; repeated included keys do not count twice; unknown keys are ignored; inputs unchanged"
+        "input order kept; every reason of one Item listed in the received order with label and description from the shared presentation; unknown name uses the generic name; input unchanged"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -9058,7 +9054,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "handleProceed delegates to one hook with the three pure decisions, a fresh idempotency key and subtractLines over orderedLines (only the ordered quantities leave the Cart); the feedback view has a live region and a focusable alert"
+        "handleProceed delegates to one hook with the three pure decisions, a fresh idempotency key and subtractLines over the sent snapshot (every sent line is in the Order; only the sent quantities leave the Cart); the feedback view has a live region, a focusable alert and lists the reasons of each Item"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -9266,6 +9262,39 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "no Order, no allocation change and the Cart kept; rejected lines named with reasons and focus on the summary; the write re-verifies server state"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-CRT-001-616",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-CRT-001",
+        "FR-CRT-005",
+        "BR-ORD-014",
+        "API-PUR-CART-001",
+        "SPEC-050-14A.1",
+        "SPEC-050-21",
+        "TST-E2E-003",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": ["INV-010-01"],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock mode; user new; Cart = limit x2 + towel x1; after render the stock and quota of limit shrink and towel is suspended; contract tests/contracts/s7a-purchase.md; UI mock test double (not API/DB/Provider coverage)",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "one focused alert with title and body and exactly one paragraph per failing Item; the limit Item lists its name, the insufficient-quantity label and description, then the purchase-limit label and description in that order; the suspended Item shows only the suspension",
+        "no Order is created, the Cart storage value and the mock DB are unchanged by the click, the URL stays /cart"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],

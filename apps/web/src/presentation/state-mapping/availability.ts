@@ -1,5 +1,5 @@
 import { assertNever } from "@off-r39x/domain";
-import type { SaleAvailability } from "../../api-client/types";
+import type { PurchaseReason, SaleAvailability } from "../../api-client/types";
 import { copy } from "../copy/ja";
 import { formatJstDateTime } from "../format/datetime";
 import type { Tone } from "./order";
@@ -65,28 +65,20 @@ export function presentAvailability(input: AvailabilityInput): AvailabilityPrese
   }
 }
 
-export type CartRejectionReason =
-  | "BEFORE_SALES"
-  | "SALES_ENDED"
-  | "SUSPENDED"
-  | "SOLD_OUT"
-  | "INSUFFICIENT_QUANTITY"
-  | "PURCHASE_LIMIT_EXCEEDED"
-  | "ALLOCATION_CONFLICT"
-  | "NOT_PUBLIC";
-
 export type RejectionPresentation = {
   readonly label: string;
   readonly description: string;
 };
 
-export function presentRejectionReason(reason: CartRejectionReason): RejectionPresentation {
+export function presentRejectionReason(reason: PurchaseReason): RejectionPresentation {
   switch (reason) {
-    case "BEFORE_SALES":
+    case "NOT_PUBLIC_OR_NOT_FOUND":
+      return { label: label.NOT_PUBLIC, description: description.NOT_PUBLIC };
+    case "SALES_NOT_STARTED":
       return { label: label.BEFORE_SALES, description: description.BEFORE_SALES };
-    case "SALES_ENDED":
+    case "SALES_CLOSED":
       return { label: label.SALES_ENDED, description: description.SALES_ENDED };
-    case "SUSPENDED":
+    case "SALES_STOPPED":
       return { label: label.SUSPENDED, description: description.SUSPENDED };
     case "SOLD_OUT":
       return { label: label.SOLD_OUT, description: description.SOLD_OUT };
@@ -100,10 +92,13 @@ export function presentRejectionReason(reason: CartRejectionReason): RejectionPr
         label: label.PURCHASE_LIMIT_EXCEEDED,
         description: description.PURCHASE_LIMIT_EXCEEDED,
       };
-    case "ALLOCATION_CONFLICT":
-      return { label: label.ALLOCATION_CONFLICT, description: description.ALLOCATION_CONFLICT };
-    case "NOT_PUBLIC":
-      return { label: label.NOT_PUBLIC, description: description.NOT_PUBLIC };
+    case "SLOT_UNAVAILABLE":
+      return { label: label.SLOT_UNAVAILABLE, description: description.SLOT_UNAVAILABLE };
+    case "PAYMENT_WINDOW_TOO_SHORT":
+      return {
+        label: label.PAYMENT_WINDOW_TOO_SHORT,
+        description: description.PAYMENT_WINDOW_TOO_SHORT,
+      };
     default:
       return assertNever(reason);
   }

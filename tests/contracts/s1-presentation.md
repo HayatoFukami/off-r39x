@@ -23,7 +23,7 @@
 | `apps/web/src/presentation/state-mapping/karaoke.ts` | `SlotPresentation`, `HoldPresentation`, `ReservationTicketPresentation`, `presentSlot`, `presentHold`, `presentReservationTicket` |
 | `apps/web/src/presentation/state-mapping/goods.ts` | `GoodsItemPresentation`, `presentGoodsItem` |
 | `apps/web/src/presentation/state-mapping/notification.ts` | `NotificationPresentation`, `presentNotificationSummary` |
-| `apps/web/src/presentation/state-mapping/availability.ts` | `AvailabilityInput`, `AvailabilityPresentation`, `CartRejectionReason`, `RejectionPresentation`, `presentAvailability`, `presentRejectionReason` |
+| `apps/web/src/presentation/state-mapping/availability.ts` | `AvailabilityInput`, `AvailabilityPresentation`, `RejectionPresentation`, `presentAvailability`, `presentRejectionReason` |
 
 relative import は拡張子なしでも `.ts` 付きでもよい（Vitest と `tests` の `tsc` の両方で解決できること）。`Tone` は `order.ts` で定義し、他の state-mapping は `import type { Tone } from "./order"` する。
 
@@ -456,26 +456,39 @@ export function presentAvailability(input: AvailabilityInput): AvailabilityPrese
 - 未知の `kind` は `Unexpected value` で投げる。
 
 ```ts
-export type CartRejectionReason =
-  | "BEFORE_SALES"
-  | "SALES_ENDED"
-  | "SUSPENDED"
+// SPEC-110 API-PUR-ELG-001 の reasons（9 code。API-PUR-CART-001 の item_failures も同じ有限集合）。
+// 型は apps/web/src/api-client/types.ts の PurchaseReason（presentation は api-client/types だけを import できる）。
+export type PurchaseReason =
+  | "NOT_PUBLIC_OR_NOT_FOUND"
+  | "SALES_NOT_STARTED"
+  | "SALES_CLOSED"
+  | "SALES_STOPPED"
   | "SOLD_OUT"
   | "INSUFFICIENT_QUANTITY"
   | "PURCHASE_LIMIT_EXCEEDED"
-  | "ALLOCATION_CONFLICT"
-  | "NOT_PUBLIC";
+  | "SLOT_UNAVAILABLE"
+  | "PAYMENT_WINDOW_TOO_SHORT";
 
 export type RejectionPresentation = {
   readonly label: string;
   readonly description: string; // 自由。非空。辞書の文字列リーフと完全一致
 };
 
-export function presentRejectionReason(reason: CartRejectionReason): RejectionPresentation;
+export function presentRejectionReason(reason: PurchaseReason): RejectionPresentation;
 ```
 
-購入開始が `rejected` のとき Item ごとに示す理由（SPEC-050 §14 Purchase start result、設計 Design §3 の `CartPurchaseStart.rejections[].reason`）。
+購入開始が `rejected` のとき Item ごとに示す理由（SPEC-050 §14A.1 Purchase start result、SPEC-110 API-PUR-CART-001 の `item_failures[].reasons`、TC-PG-CRT-001-002）。
 
-- `BEFORE_SALES` / `SALES_ENDED` / `SUSPENDED` / `SOLD_OUT` / `INSUFFICIENT_QUANTITY` / `PURCHASE_LIMIT_EXCEEDED` の label は、`presentAvailability` の対応する kind の label と**同じ文字列**。`NOT_PUBLIC` の label は `presentAvailability({kind:"not_public"})` の label と同じ。
-- `ALLOCATION_CONFLICT` の label は自由（`確保` を含む。他の 7 つと異なる）。
-- 8 つの label はすべて互いに異なる。未知の値は `Unexpected value` で投げる。
+| reason | label | description |
+|---|---|---|
+| `NOT_PUBLIC_OR_NOT_FOUND` | `presentAvailability({kind:"not_public"})` と同じ | 同じ kind の description（辞書の `NOT_PUBLIC`） |
+| `SALES_NOT_STARTED` | `presentAvailability({kind:"BEFORE_SALES",…})` と同じ | 辞書の `BEFORE_SALES`（静的な文言。開始日時は含まない） |
+| `SALES_CLOSED` | `SALES_ENDED` の label と同じ | 辞書の `SALES_ENDED` |
+| `SALES_STOPPED` | `SUSPENDED` の label と同じ | 辞書の `SUSPENDED` |
+| `SOLD_OUT` / `INSUFFICIENT_QUANTITY` / `PURCHASE_LIMIT_EXCEEDED` | 同名の kind の label と同じ | 辞書の同名 |
+| `SLOT_UNAVAILABLE` | 自由（`確保` を含む。他の 8 つと異なる） | 自由。非空（辞書の文字列リーフ） |
+| `PAYMENT_WINDOW_TOO_SHORT` | 自由（`支払い` を含む。他の 8 つと異なる） | 自由。非空（辞書の文字列リーフ） |
+
+- `SLOT_UNAVAILABLE` / `PAYMENT_WINDOW_TOO_SHORT` は Karaoke 専用で Cart では生じないが、型と表示は 9 code すべてを持つ。
+- 9 つの label はすべて互いに異なる。未知の値（退役した `ALLOCATION_CONFLICT`、旧名の `NOT_PUBLIC` / `BEFORE_SALES` / `SALES_ENDED` / `SUSPENDED` を含む）は `Unexpected value` で投げる。
+- 辞書（`copy.availability.label` / `description`）は `ALLOCATION_CONFLICT` を持たない。
