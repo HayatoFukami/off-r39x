@@ -66,7 +66,7 @@ pnpm --dir tests exec playwright install chromium  # if the browser binary is mi
 - Use `gotoHydrated`/`waitForHydration` from `tests/harness/browser/hydration.ts` before interactive assertions; navigation completing does not mean React is ready.
 - E2E is the auxiliary `e2e-ui-mock` suite, not real DB/API/provider coverage or SPEC-170 G8. Tests needing constraints, locks or transaction races require real PostgreSQL; provider contract tests require nonproduction credentials.
 - Both runners have retries=0. Do not skip/quarantine critical tests or rewrite expectations to match a spec-violating implementation. Report unexecuted checks with reasons and release impact, never as passed.
-- Secret scan covers root files, `apps/`, `packages/`, `scripts/`, `tests/`, `traceability/`, plus the whole build output `apps/web/dist/**`; it does **not** cover `.github/workflows/**` (README Issue #16). `OK` is not a full-bundle audit. Never put real secrets, raw QR, credentials, webhook bodies or unnecessary PII in source, fixtures, logs, screenshots or reports. Synthetic email domains must be reserved (`example.com`, `.test`, `.invalid`, etc.).
+- Secret scan covers root files, `.github/**`, `apps/`, `packages/`, `scripts/`, `tests/`, `traceability/`, plus the whole build output `apps/web/dist/**`. `OK` is not a full-bundle audit. Never put real secrets, raw QR, credentials, webhook bodies or unnecessary PII in source, fixtures, logs, screenshots or reports. Synthetic email domains must be reserved (`example.com`, `.test`, `.invalid`, etc.).
 
 ## 6. Git policy
 

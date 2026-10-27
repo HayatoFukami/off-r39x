@@ -2645,6 +2645,12 @@
       "code_paths": ["apps/web/vite.config.ts"],
       "test_case_ids": ["TC-STACK-008-305", "TC-DEV-WEB-011-201"],
       "notes": "implementation mapping only: build.sourcemap is false, so no source map is published"
+    },
+    {
+      "rule_id": "SEC-WEB-026",
+      "code_paths": ["scripts/generate-web-headers.mts"],
+      "test_case_ids": ["TC-STACK-008-203", "TC-STACK-008-204"],
+      "notes": "implementation mapping only: Sponsor image origin validation for img-src; not API URL validation"
     }
   ]
 }
