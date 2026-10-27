@@ -318,6 +318,9 @@ importers:
 
   packages/db:
     dependencies:
+      '@off-r39x/observability':
+        specifier: workspace:*
+        version: link:../observability
       '@off-r39x/reliability':
         specifier: workspace:*
         version: link:../reliability

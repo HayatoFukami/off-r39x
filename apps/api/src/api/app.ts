@@ -9,14 +9,19 @@ import {
   resolvePrincipal,
   type TokenVerifier,
 } from "@off-r39x/auth";
-import type { createLogger } from "@off-r39x/observability";
+import type { createLogger, LogEvent } from "@off-r39x/observability";
 import { Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { secureHeaders } from "hono/secure-headers";
 import { type ErrorCode, errorSchema, errorStatuses } from "./schemas/common.ts";
 
 export type ApiEnvironment = {
-  Variables: { requestId: string; principal: Principal; validatedJson: unknown };
+  Variables: {
+    requestId: string;
+    principal: Principal;
+    validatedJson: unknown;
+    logger: ReturnType<typeof createLogger> | undefined;
+  };
 };
 export class ApiFailure extends Error {
   constructor(
@@ -63,6 +68,7 @@ export function createApp(dependencies: AppDependencies) {
   app.use("*", async (c, next) => {
     const started = Date.now();
     c.set("requestId", randomUUID());
+    c.set("logger", dependencies.logger);
     c.header("X-Request-Id", c.get("requestId"));
     c.header("Cache-Control", "no-store");
     await next();
@@ -195,18 +201,51 @@ export function requirePrincipal(
   store: PrincipalStore,
 ): MiddlewareHandler<ApiEnvironment> {
   return async (c, next) => {
-    const match = /^Bearer ([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/.exec(
-      c.req.header("Authorization") ?? "",
-    );
-    if (!match?.[1]) throw new AuthFailure("unauthenticated");
-    c.set("principal", await resolvePrincipal(await verifier.verify(match[1]), store));
+    let identity: Awaited<ReturnType<TokenVerifier["verify"]>>;
+    try {
+      const match = /^Bearer ([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/.exec(
+        c.req.header("Authorization") ?? "",
+      );
+      if (!match?.[1]) throw new AuthFailure("unauthenticated");
+      identity = await verifier.verify(match[1]);
+      securityEvent(c, "auth.verification.completed");
+    } catch (error) {
+      securityEvent(
+        c,
+        "auth.verification.completed",
+        error instanceof AuthFailure && error.kind === "unavailable"
+          ? "AUTH_SERVICE_UNAVAILABLE"
+          : "AUTHENTICATION_REQUIRED",
+      );
+      throw error;
+    }
+    try {
+      c.set("principal", await resolvePrincipal(identity, store));
+      securityEvent(c, "auth.business_profile_resolution.completed");
+      securityEvent(c, "authorization.role_resolution.completed");
+    } catch (error) {
+      const kind = error instanceof AuthFailure ? error.kind : "database";
+      securityEvent(
+        c,
+        "auth.business_profile_resolution.completed",
+        kind === "consistency"
+          ? "BUSINESS_PROFILE_INCONSISTENT"
+          : kind === "database"
+            ? "ROLE_RESOLUTION_UNAVAILABLE"
+            : "BUSINESS_PROFILE_UNRESOLVED",
+      );
+      throw error;
+    }
     await next();
   };
 }
 export function requireCapability(capability: Capability): MiddlewareHandler<ApiEnvironment> {
   return async (c, next) => {
-    if (!c.get("principal") || !hasCapability(c.get("principal"), capability))
+    if (!c.get("principal") || !hasCapability(c.get("principal"), capability)) {
+      securityEvent(c, "authorization.decision.completed", "CAPABILITY_DENIED");
       throw new AuthFailure("denied");
+    }
+    securityEvent(c, "authorization.decision.completed");
     await next();
   };
 }
@@ -217,7 +256,11 @@ export interface SharedRateLimitGuard {
 export function requireVerifiedEmail(): MiddlewareHandler<ApiEnvironment> {
   return async (c, next) => {
     if (!c.get("principal")) throw new AuthFailure("unauthenticated");
-    if (!c.get("principal").emailVerified) throw new AuthFailure("email");
+    if (!c.get("principal").emailVerified) {
+      securityEvent(c, "auth.email_verified_resolution.completed", "EMAIL_VERIFICATION_REQUIRED");
+      throw new AuthFailure("email");
+    }
+    securityEvent(c, "auth.email_verified_resolution.completed");
     await next();
   };
 }
@@ -227,4 +270,35 @@ export async function protectedMountGuard(
   if (!guard) throw new Error("Shared multi-instance rate limiter contract is required");
   await guard.assertAvailable();
   return guard.middleware;
+}
+
+function securityEvent(
+  c: import("hono").Context<ApiEnvironment>,
+  event_name: LogEvent["event_name"],
+  error_code?: string,
+): void {
+  const principal = c.get("principal");
+  c.get("logger")?.log({
+    event_name,
+    level: error_code ? "WARN" : "INFO",
+    result: error_code ? "REJECTED" : "SUCCESS",
+    is_retry: false,
+    request_id: c.get("requestId"),
+    actor_type: principal
+      ? principal.roles.includes("ADMINISTRATOR")
+        ? "ADMINISTRATOR"
+        : principal.roles.includes("STAFF")
+          ? "STAFF"
+          : "AUTHENTICATED_USER"
+      : "GUEST",
+    ...(principal ? { actor_ref: principal.profileRef } : {}),
+    ...(error_code
+      ? {
+          error_code,
+          failure_class: error_code.endsWith("UNAVAILABLE")
+            ? "TEMPORARY_FAILURE"
+            : "SECURITY_FAILURE",
+        }
+      : {}),
+  });
 }

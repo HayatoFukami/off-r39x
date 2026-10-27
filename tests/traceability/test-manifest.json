@@ -15738,6 +15738,69 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": true
+    },
+    {
+      "test_case_id": "TC-OBS-AUDIT-001",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": ["OBS-DB-003", "OBS-DB-004", "OBS-DB-001"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real PG17 SQLSTATE exceptions and COMMIT CommandComplete dropped after server executes commit",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "sqlstate_40001",
+        "sqlstate_40P01",
+        "constraint_loser",
+        "database_unavailable",
+        "commit_acknowledgement_lost"
+      ],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Fail closed within the canonical boundary; no unintended business mutation"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "db.transaction.retry_scheduled",
+        "db.constraint_loser.completed",
+        "db.availability.failed",
+        "reliability.unknown_result.opened"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-OBS-AUDIT-002",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["OBS-AUTH-001", "OBS-AUTH-002"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Actual Hono middleware observes accepted token/current directory roles and invalid/unavailable verification",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": ["auth_service_unavailable"],
+      "expected_http": [200, 401, 503],
+      "expected_domain_postconditions": [
+        "Fail closed within the canonical boundary; no unintended business mutation"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "auth.verification.completed",
+        "auth.email_verified_resolution.completed",
+        "auth.business_profile_resolution.completed",
+        "authorization.role_resolution.completed",
+        "authorization.decision.completed"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
     }
   ]
 }

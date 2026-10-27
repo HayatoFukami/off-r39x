@@ -2,6 +2,7 @@ import { checkServerIdentity } from "node:tls";
 import { TIMEOUTS } from "@off-r39x/reliability";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
+import { type DatabaseLogger, observeDatabase } from "./observability.ts";
 import * as schema from "./schema.ts";
 
 export type DatabaseOptions = {
@@ -9,6 +10,7 @@ export type DatabaseOptions = {
   environment: "production" | "staging" | "development" | "test";
   service: "api" | "email-worker" | "reconciliation-worker";
   ca?: string;
+  logger?: DatabaseLogger;
 };
 export function createDatabase(options: DatabaseOptions) {
   const url = new URL(options.connectionString);
@@ -55,6 +57,16 @@ export function createDatabase(options: DatabaseOptions) {
     options: `-c timezone=UTC -c statement_timeout=${TIMEOUTS.statementMs} -c lock_timeout=${TIMEOUTS.lockMs} -c idle_in_transaction_session_timeout=${TIMEOUTS.transactionMs}`,
   });
   // Pool errors must not leak connection strings through an unhandled event.
-  pool.on("error", () => {});
+  if (options.logger) observeDatabase(pool, options.logger);
+  pool.on("error", () =>
+    options.logger?.log({
+      event_name: "db.availability.failed",
+      level: "ERROR",
+      result: "FAILED",
+      is_retry: false,
+      provider: "NEON_DB",
+      failure_class: "TEMPORARY_FAILURE",
+    }),
+  );
   return { pool, db: drizzle(pool, { schema }), close: () => pool.end() };
 }

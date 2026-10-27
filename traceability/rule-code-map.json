@@ -3169,6 +3169,63 @@
       "code_paths": ["packages/providers/resend/src/index.ts", "packages/application/src/index.ts"],
       "test_case_ids": ["TC-FOUNDATION-RUNTIME-021"],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "OBS-DB-003",
+      "code_paths": [
+        "packages/db/src/transaction.ts",
+        "packages/db/src/observability.ts",
+        "packages/db/src/database.ts",
+        "packages/db/src/readiness.ts",
+        "packages/observability/src/index.ts",
+        "apps/api/src/bootstrap/index.ts",
+        "apps/email-worker/src/main.ts",
+        "apps/reconciliation-worker/src/main.ts"
+      ],
+      "test_case_ids": ["TC-OBS-AUDIT-001"],
+      "notes": "Foundation audit repair; local synthetic evidence does not assert live-provider or release readiness"
+    },
+    {
+      "rule_id": "OBS-DB-004",
+      "code_paths": [
+        "packages/db/src/transaction.ts",
+        "packages/db/src/observability.ts",
+        "packages/db/src/database.ts",
+        "packages/db/src/readiness.ts",
+        "packages/observability/src/index.ts",
+        "apps/api/src/bootstrap/index.ts",
+        "apps/email-worker/src/main.ts",
+        "apps/reconciliation-worker/src/main.ts"
+      ],
+      "test_case_ids": ["TC-OBS-AUDIT-001"],
+      "notes": "Foundation audit repair; local synthetic evidence does not assert live-provider or release readiness"
+    },
+    {
+      "rule_id": "OBS-DB-001",
+      "code_paths": [
+        "packages/db/src/transaction.ts",
+        "packages/db/src/observability.ts",
+        "packages/db/src/database.ts",
+        "packages/db/src/readiness.ts",
+        "packages/observability/src/index.ts",
+        "apps/api/src/bootstrap/index.ts",
+        "apps/email-worker/src/main.ts",
+        "apps/reconciliation-worker/src/main.ts"
+      ],
+      "test_case_ids": ["TC-OBS-AUDIT-001"],
+      "notes": "Foundation audit repair; local synthetic evidence does not assert live-provider or release readiness"
+    },
+    {
+      "rule_id": "OBS-AUTH-001",
+      "code_paths": ["apps/api/src/api/app.ts", "packages/observability/src/index.ts"],
+      "test_case_ids": ["TC-OBS-AUDIT-002"],
+      "notes": "Foundation audit repair; local synthetic evidence does not assert live-provider or release readiness"
+    },
+    {
+      "rule_id": "OBS-AUTH-002",
+      "code_paths": ["apps/api/src/api/app.ts", "packages/observability/src/index.ts"],
+      "test_case_ids": ["TC-OBS-AUDIT-002"],
+      "notes": "Foundation audit repair; local synthetic evidence does not assert live-provider or release readiness"
     }
   ]
 }

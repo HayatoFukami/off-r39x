@@ -12,6 +12,11 @@ export function bootstrap(
   const config = parseServerConfig("api", env);
   if (config.service !== "api") throw new Error("Invalid API service configuration");
   const { publicWebOrigin: webOrigin, port } = config.http;
+  const logger = createLogger({
+    service: "API",
+    environment: config.environment,
+    actor_type: "GUEST",
+  });
   const databaseUrl = new URL(config.database.connectionString);
   if (
     [...databaseUrl.searchParams].some(
@@ -25,17 +30,14 @@ export function bootstrap(
     connectionString: databaseUrl.href,
     environment: config.environment,
     service: "api",
+    logger,
   });
   const verifier = createTokenVerifier(config.auth);
   const migrationSetHash = getBuildMigrationSetHash();
   const principals = createPrincipalRepository(database.pool);
   // No protected routes until shared rate limiting and deployment identity evidence exist.
   // A live listener is not production readiness.
-  const logger = createLogger({
-    service: "API",
-    environment: config.environment,
-    actor_type: "GUEST",
-  });
+
   let draining = false;
   const app = createApp({
     webOrigin,

@@ -2,6 +2,7 @@ import { performance } from "node:perf_hooks";
 import { setTimeout as sleep } from "node:timers/promises";
 import { isDatabaseRetryable, RETRY_POLICIES, retryDelay, TIMEOUTS } from "@off-r39x/reliability";
 import type { Pool, PoolClient } from "pg";
+import { type DatabaseLogger, databaseLogger } from "./observability.ts";
 
 export type TransactionResult<T> = { status: "committed"; value: T } | { status: "commit_unknown" };
 export class TransactionDeadlineError extends Error {
@@ -34,7 +35,11 @@ function commitAcknowledgementUnknown(error: unknown): boolean {
 export async function transaction<T>(
   pool: Pool,
   operation: (client: PoolClient) => Promise<T>,
+  observation: { logger?: DatabaseLogger; queryName?: string } = {},
 ): Promise<TransactionResult<T>> {
+  const logger = observation.logger ?? databaseLogger(pool);
+  const queryName = observation.queryName ?? "transaction.database_work";
+  if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(queryName)) throw new Error("Invalid query name");
   const start = performance.now();
   let deadlineAt = start + TIMEOUTS.transactionMs;
   for (
@@ -59,7 +64,17 @@ export async function transaction<T>(
         }, remaining);
       });
       const work = async (): Promise<TransactionResult<T>> => {
+        const acquiring = performance.now();
         const acquired = await pool.connect();
+        logger?.log({
+          event_name: "db.pool.acquire.completed",
+          level: "INFO",
+          result: "SUCCESS",
+          is_retry: attempt > 1,
+          attempt_number: attempt,
+          query_name: queryName,
+          duration_ms: Math.floor(performance.now() - acquiring),
+        });
         if (discard) {
           acquired.release(true);
           throw new TransactionDeadlineError();
@@ -90,7 +105,18 @@ export async function transaction<T>(
         await acquired.query("COMMIT");
         return { status: "committed", value };
       };
-      return await Promise.race([work(), deadline]);
+      const result = await Promise.race([work(), deadline]);
+      logger?.log({
+        event_name: "db.transaction.completed",
+        level: "INFO",
+        result: "SUCCESS",
+        failure_class: "SUCCESS",
+        is_retry: attempt > 1,
+        attempt_number: attempt,
+        query_name: queryName,
+        duration_ms: Math.floor(performance.now() - start),
+      });
+      return result;
     } catch (error) {
       const code = sqlState(error);
       if (
@@ -100,8 +126,37 @@ export async function transaction<T>(
         commitAcknowledgementUnknown(error)
       ) {
         discard = true;
+        logger?.log({
+          event_name: "reliability.unknown_result.opened",
+          level: "ERROR",
+          result: "PENDING",
+          failure_class: "UNKNOWN_RESULT",
+          provider: "NEON_DB",
+          is_retry: attempt > 1,
+          attempt_number: attempt,
+          query_name: queryName,
+          duration_ms: Math.floor(performance.now() - start),
+        });
         return { status: "commit_unknown" };
       }
+      const unavailable =
+        !client || !code || code.startsWith("08") || ["57P01", "57P02", "57P03"].includes(code);
+      const constraint = code === "23505" || code === "23P01";
+      logger?.log({
+        event_name: unavailable
+          ? "db.availability.failed"
+          : constraint
+            ? "db.constraint_loser.completed"
+            : "db.transaction.completed",
+        level: constraint ? "INFO" : "ERROR",
+        result: constraint ? "REJECTED" : "FAILED",
+        failure_class: constraint ? "CONFLICT_LOSER" : "TEMPORARY_FAILURE",
+        is_retry: attempt > 1,
+        attempt_number: attempt,
+        query_name: queryName,
+        ...(code && /^[0-9A-Z]{5}$/.test(code) ? { sqlstate: code } : {}),
+        duration_ms: Math.floor(performance.now() - start),
+      });
       if (client && !discard) {
         try {
           await client.query("ROLLBACK");
@@ -120,6 +175,16 @@ export async function transaction<T>(
       detachConnectionListeners();
       client?.release();
       client = undefined;
+      logger?.log({
+        event_name: "db.transaction.retry_scheduled",
+        level: "WARN",
+        result: "PENDING",
+        is_retry: true,
+        attempt_number: attempt + 1,
+        query_name: queryName,
+        sqlstate: code as "40001" | "40P01",
+        failure_class: "TEMPORARY_FAILURE",
+      });
       await sleep(delay);
     } finally {
       if (timer) clearTimeout(timer);

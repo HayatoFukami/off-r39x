@@ -14,18 +14,20 @@ export function bootstrapReconciliationWorker(env: Readonly<Record<string, strin
   const migrationSetHash = getBuildMigrationSetHash();
   if (config.service !== "reconciliation-worker") throw new Error("Worker configuration mismatch");
   // Translate validated verify-full URL syntax into DB factory's explicit TLS contract.
+  const logger = createLogger({
+    service: "RECONCILIATION_WORKER",
+    environment: config.environment,
+    actor_type: "SCHEDULED_RECONCILIATION",
+  });
   const databaseUrl = new URL(config.database.connectionString);
   databaseUrl.searchParams.delete("sslmode");
   const database = createDatabase({
     connectionString: databaseUrl.toString(),
     environment: config.environment,
     service: "reconciliation-worker",
+    logger,
   });
-  const logger = createLogger({
-    service: "RECONCILIATION_WORKER",
-    environment: config.environment,
-    actor_type: "SCHEDULED_RECONCILIATION",
-  });
+
   const failure = () =>
     logger.log({
       event_name: "security.fail_closed.triggered",

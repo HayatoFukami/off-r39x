@@ -5,6 +5,13 @@ export const EVENT_NAMES = [
   "auth.verification.completed",
   "authorization.decision.completed",
   "db.transaction.completed",
+  "db.pool.acquire.completed",
+  "db.statement.completed",
+  "db.constraint_loser.completed",
+  "db.availability.failed",
+  "auth.email_verified_resolution.completed",
+  "auth.business_profile_resolution.completed",
+  "authorization.role_resolution.completed",
   "db.transaction.retry_scheduled",
   "payment.checkout.provider_call",
   "payment.confirmation.completed",
@@ -100,6 +107,12 @@ const event = z
     consistency_review_ref: uuid,
     recovery_execution_id: uuid,
     query_name: optionalSafe,
+    sqlstate: z
+      .string()
+      .regex(/^[0-9A-Z]{5}$/)
+      .optional(),
+    actor_type: context.shape.actor_type.optional(),
+    actor_ref: optionalSafe,
     http_method: z
       .enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"])
       .nullable()

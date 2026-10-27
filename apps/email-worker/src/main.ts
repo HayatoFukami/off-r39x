@@ -10,6 +10,11 @@ import { startWorkerHost } from "./bootstrap/host.ts";
 export function bootstrapEmailWorker(env: Readonly<Record<string, string | undefined>>) {
   const config = parseServerConfig("email-worker", env);
   const migrationSetHash = getBuildMigrationSetHash();
+  const logger = createLogger({
+    service: "EMAIL_WORKER",
+    environment: config.environment,
+    actor_type: "SYSTEM_WORKER",
+  });
   // Config verifies sslmode=verify-full; DB factory supplies equivalent explicit TLS
   // and deliberately rejects URL TLS overrides. Preserve all other validation.
   const databaseUrl = new URL(config.database.connectionString);
@@ -18,12 +23,9 @@ export function bootstrapEmailWorker(env: Readonly<Record<string, string | undef
     connectionString: databaseUrl.toString(),
     environment: config.environment,
     service: "email-worker",
+    logger,
   });
-  const logger = createLogger({
-    service: "EMAIL_WORKER",
-    environment: config.environment,
-    actor_type: "SYSTEM_WORKER",
-  });
+
   const failure = () =>
     logger.log({
       event_name: "security.fail_closed.triggered",

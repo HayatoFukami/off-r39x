@@ -14,7 +14,8 @@
   "dependencies": {
     "@off-r39x/reliability": "workspace:*",
     "drizzle-orm": "^0.45.1",
-    "pg": "^8.16.3"
+    "pg": "^8.16.3",
+    "@off-r39x/observability": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24",
