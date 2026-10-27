@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useId } from "react";
 import type { ApiPort } from "../../api-client/port";
 import type { Ref } from "../../api-client/types";
@@ -11,6 +10,7 @@ import { SectionHeading } from "../../presentation/components/section-heading";
 import { StatusBadge } from "../../presentation/components/status-badge";
 import { Button } from "../../presentation/components/ui/button";
 import { copy } from "../../presentation/copy/ja";
+import { Link } from "../../routing/link";
 import { ReceiptLink } from "./receipt-link";
 import { buildReservationDetailModel } from "./reservation-model";
 import { useRead } from "./use-read";

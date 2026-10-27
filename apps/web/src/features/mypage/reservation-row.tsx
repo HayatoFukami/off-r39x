@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { copy } from "../../presentation/copy/ja";
+import { Link } from "../../routing/link";
 import type { ReservationRow } from "./reservation-model";
 
 // One Reservation of a Mypage list (PG-MYP-001 / 008). The Reservation state and the Karaoke Ticket

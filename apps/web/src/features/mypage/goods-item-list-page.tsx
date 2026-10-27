@@ -1,11 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback } from "react";
 import type { ApiPort } from "../../api-client/port";
 import { PageState } from "../../presentation/components/page-state";
 import { StatusBadge } from "../../presentation/components/status-badge";
 import { copy } from "../../presentation/copy/ja";
+import { Link } from "../../routing/link";
 import { buildGoodsItemListModel } from "./goods-item-model";
 import { useRead } from "./use-read";
 

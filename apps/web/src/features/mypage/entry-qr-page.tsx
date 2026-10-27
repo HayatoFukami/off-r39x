@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback } from "react";
 import type { ApiPort } from "../../api-client/port";
 import type { Ref } from "../../api-client/types";
@@ -9,6 +8,7 @@ import { AccessDeniedView } from "../../presentation/components/access-denied-vi
 import { PageState } from "../../presentation/components/page-state";
 import { QrPlaceholder } from "../../presentation/components/qr-placeholder";
 import { copy } from "../../presentation/copy/ja";
+import { Link } from "../../routing/link";
 import { buildEntryQrModel } from "./qr-model";
 import { useRead } from "./use-read";
 
