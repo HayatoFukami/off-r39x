@@ -14374,7 +14374,8 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "route-table.tsx has the 31 absolute paths once each plus the catch-all, no other path literal, two errorElements (root and pathless)",
-        "purchase route is under SelfLayout, the 12 Mypage routes under MypageLayout, the 3 dev routes under DevLayout; the catch-all renders NotFoundView outside SelfLayout"
+        "purchase route is under SelfLayout, the 12 Mypage routes under MypageLayout, the 3 dev routes under DevLayout; the catch-all renders NotFoundView outside SelfLayout",
+        "every route with a path except the catch-all has caseSensitive: true (31 occurrences, none false, none on the catch-all or the pathless layouts), so URLs differing only in letter case fall to the catch-all"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -14948,7 +14949,8 @@
       "fault_points": [],
       "expected_http": 200,
       "expected_domain_postconditions": [
-        "unknown URLs (/no-such/deeper, /mypage/no-such, /dev/no-such) show the Not Found view with the shell for a Guest, without redirect or AuthGate; no Mypage navigation for a signed-in user"
+        "unknown URLs (/no-such/deeper, /mypage/no-such, /dev/no-such) show the Not Found view with the shell for a Guest, without redirect or AuthGate; no Mypage navigation for a signed-in user",
+        "URLs that differ from an application URL only in letter case (Guest: /GOODS, /Mypage, /MYPAGE/orders; signed in: /Mypage, /MYPAGE/entry-tickets/<valid ref>/qr) are unknown URLs: HTTP 200 SPA shell, Not Found h1, pathname kept, no login redirect for a Guest, and for a signed-in user no Mypage navigation, no Mypage h1, no Entry QR image or figure (the router matches case-sensitively like dist/_headers)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],

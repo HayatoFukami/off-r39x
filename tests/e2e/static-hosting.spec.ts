@@ -7,7 +7,7 @@ import { formatBusinessDate } from "../../apps/web/src/presentation/format/datet
 import { CONTEXT_VALUE, loginWith } from "../harness/browser/auth.ts";
 import { expectedGoodsDetail } from "../harness/browser/cart.ts";
 import { gotoHydrated, reloadHydrated } from "../harness/browser/hydration.ts";
-import { navLink, navToggle } from "../harness/browser/mypage.ts";
+import { figureOf, navLink, navToggle, qrImages } from "../harness/browser/mypage.ts";
 import { dbJson, expectedAnnouncements, fixClock } from "../harness/browser/public.ts";
 import { heading1, mainOf, openAs } from "../harness/browser/purchase.ts";
 import {
@@ -295,6 +295,44 @@ test.describe("TC-STACK-008-302 an unknown URL is the Not Found view, outside th
     await expect(heading1(page)).toHaveText(copy.notFound.title);
     await expect(page.getByRole("navigation", { name: m.nav.label })).toHaveCount(0);
   });
+
+  // F-1: the router matches case-sensitively, as the former Next routes and dist/_headers do. A URL that differs from an
+  // application URL only in letter case is an unknown URL; it must not render the page without the protected-path headers.
+  for (const [route, list] of [
+    ["/GOODS", copy.goods.list.heading],
+    ["/Mypage", m.heading],
+    ["/MYPAGE/orders", m.orders.heading],
+  ] as const) {
+    test(`${route} (letter case differs) shows Not Found for a Guest, not the page and not a login redirect`, async ({
+      page,
+    }) => {
+      await fixClock(page);
+      const response = await gotoHydrated(page, route);
+      expect(response?.status()).toBe(200);
+      await expect(heading1(page)).toHaveCount(1);
+      await expect(heading1(page)).toHaveText(copy.notFound.title);
+      await expect(heading1(page)).not.toHaveText(list);
+      await expect(mainOf(page)).toContainText(copy.notFound.description);
+      expect(new URL(page.url()).pathname).toBe(route);
+      await expect(mainOf(page)).not.toContainText(copy.auth.gate.redirecting);
+    });
+  }
+
+  for (const route of ["/Mypage", `/MYPAGE/entry-tickets/${TICKET.valid}/qr`]) {
+    test(`${route.replace(/[0-9a-f]{8}-[0-9a-f-]{27}/g, ":ref")} (letter case differs) is Not Found for a signed-in user: no Mypage navigation and no QR`, async ({
+      page,
+    }) => {
+      await open(page, route, true);
+      await expect(heading1(page)).toHaveCount(1);
+      await expect(heading1(page)).toHaveText(copy.notFound.title);
+      expect(new URL(page.url()).pathname).toBe(route);
+      await expect(page.getByRole("navigation", { name: m.nav.label })).toHaveCount(0);
+      await expect(page.getByRole("heading", { level: 1, name: m.heading })).toHaveCount(0);
+      await expect(page.getByRole("heading", { name: copy.qr.ENTRY })).toHaveCount(0);
+      await expect(qrImages(page)).toHaveCount(0);
+      await expect(figureOf(page)).toHaveCount(0);
+    });
+  }
 });
 
 test.describe("TC-STACK-008-303 a missing asset is a non-HTML 404 (SPEC-180 13.1)", () => {

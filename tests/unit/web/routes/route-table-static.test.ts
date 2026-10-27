@@ -209,6 +209,38 @@ describe("TC-STACK-008-002 route-table.tsx declares every application URL once, 
     }
   });
 
+  it("matches case-sensitively: every route with a path except the catch-all has caseSensitive: true (31 times, never false)", () => {
+    // The object literal around a `path: "/…"` property: from the nearest unmatched `{` before it to its closing `}`.
+    const literalAround = (index: number): string => {
+      let depth = 0;
+      let start = index;
+      for (; start >= 0; start -= 1) {
+        const char = table[start];
+        if (char === "}") depth += 1;
+        else if (char === "{") {
+          if (depth === 0) break;
+          depth -= 1;
+        }
+      }
+      let end = start + 1;
+      for (depth = 1; end < table.length && depth > 0; end += 1) {
+        if (table[end] === "{") depth += 1;
+        else if (table[end] === "}") depth -= 1;
+      }
+      return table.slice(start, end);
+    };
+    for (const path of ALL_PATHS) {
+      const at = table.search(pathLiteral(path));
+      expect(at, path).toBeGreaterThan(-1);
+      expect(literalAround(at), path).toMatch(/\bcaseSensitive\s*:\s*true\b/);
+    }
+    const catchAll = table.search(/\bpath\s*:\s*["']\*["']/);
+    expect(catchAll).toBeGreaterThan(-1);
+    expect(literalAround(catchAll)).not.toMatch(/\bcaseSensitive\b/);
+    expect((table.match(/\bcaseSensitive\s*:\s*true\b/g) ?? []).length).toBe(31);
+    expect(table).not.toMatch(/\bcaseSensitive\s*:\s*false\b/);
+  });
+
   it("renders NotFoundView for the catch-all", () => {
     const at = table.search(/\bpath\s*:\s*["']\*["']/);
     expect(at).toBeGreaterThan(-1);
