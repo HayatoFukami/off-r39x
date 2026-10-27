@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 import { createApp } from "../../apps/api/src/api/app.ts";
+import { createLogger } from "../../packages/observability/src/index.ts";
 
 it("TC-HTTP-AUDIT-001 returns405 and Allow for known paths,404 for unknown paths", async () => {
   const app = createApp({ webOrigin: "https://web.example.test", ready: async () => true });
@@ -32,9 +33,13 @@ it("TC-HTTP-AUDIT-001 returns405 and Allow for known paths,404 for unknown paths
 it("TC-RPC-AUDIT-001 public Hono RPC type is the mounted canonical principal route", async () => {
   const { hc } = await import("hono/client");
   const subject = "00000000-0000-4000-8000-000000000061";
+  const lines: string[] = [];
   const app = createApp({
     webOrigin: "https://web.example.test",
     ready: async () => true,
+    logger: createLogger({ service: "API", environment: "test", actor_type: "GUEST" }, (line) => {
+      lines.push(line);
+    }),
     auth: {
       verifier: { verify: async () => ({ subject }) },
       store: {
@@ -73,6 +78,19 @@ it("TC-RPC-AUDIT-001 public Hono RPC type is the mounted canonical principal rou
   expect(body.data.capabilities).not.toContain("entry_checkin.execute");
   expect(body).not.toHaveProperty("data.auth_subject");
   expect(body.meta.request_id).toBe(response.headers.get("X-Request-Id"));
+  const events = lines
+    .map((line) => JSON.parse(line))
+    .filter((e) => e.request_id === body.meta.request_id);
+  expect(events.length).toBeGreaterThan(1);
+  expect(events.every((e) => e.operation_id === "API-AUTH-001")).toBe(true);
+  expect(events.every((e) => e.actor_type === "ADMINISTRATOR")).toBe(true);
+  expect(new Set(events.map((e) => e.operation_execution_id)).size).toBe(1);
+  expect(events).toContainEqual(
+    expect.objectContaining({
+      event_name: "http.request.completed",
+      http_route: "/api/v1/self/principal",
+    }),
+  );
   expect((await app.request("/api/v1/self/principal")).status).toBe(401);
   const unavailable = createApp({
     webOrigin: "https://web.example.test",

@@ -15796,29 +15796,6 @@
       "critical": true
     },
     {
-      "test_case_id": "TC-RPC-AUDIT-001",
-      "level": "API",
-      "suite": "api",
-      "upstream_rule_ids": ["DEV-API-002", "DEV-API-003", "AR-SES-003", "SEC-AUTH-001"],
-      "system_invariant_ids": [],
-      "api_operation_ids": ["API-AUTH-001"],
-      "db_constraint_names": [],
-      "preconditions": "Typed hc<AppType> calls the same mounted API-AUTH-001 builder; middleware checks trusted identity/current roles and shared enforcement",
-      "fixture_ids": [],
-      "clock_instant": null,
-      "concurrency_seed": null,
-      "fault_points": [],
-      "expected_http": [200, 401, 503],
-      "expected_domain_postconditions": [
-        "Fail closed within the canonical boundary; no unintended business mutation"
-      ],
-      "expected_db_postconditions": [],
-      "expected_provider_postconditions": [],
-      "expected_observability": [],
-      "sensitivity_class": "synthetic",
-      "critical": true
-    },
-    {
       "test_case_id": "TC-STRIPE-AUDIT-003",
       "level": "Unit",
       "suite": "unit",
@@ -16022,6 +15999,39 @@
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
       "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RPC-AUDIT-001",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": [
+        "DEV-API-002",
+        "DEV-API-003",
+        "AR-SES-003",
+        "SEC-AUTH-001",
+        "OBS-LOG-006"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": ["API-AUTH-001"],
+      "db_constraint_names": [],
+      "preconditions": "Typed hc<AppType> uses mounted canonical principal route; current verified authority and shared enforcement; request events share canonical Operation ID/execution ID and current Actor",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [200, 401, 503],
+      "expected_domain_postconditions": [
+        "Fail closed within the canonical boundary; no unintended business mutation"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "http.request.completed",
+        "auth.verification.completed",
+        "authorization.role_resolution.completed"
+      ],
       "sensitivity_class": "synthetic",
       "critical": true
     }

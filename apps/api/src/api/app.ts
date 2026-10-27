@@ -24,6 +24,7 @@ export type ApiEnvironment = {
     principal: Principal;
     validatedJson: unknown;
     logger: ReturnType<typeof createLogger> | undefined;
+    operationExecutionId: string | undefined;
   };
 };
 export class ApiFailure extends Error {
@@ -83,6 +84,7 @@ export function createApp(dependencies: AppDependencies) {
     const started = Date.now();
     c.set("requestId", randomUUID());
     c.set("logger", dependencies.logger);
+    c.set("operationExecutionId", undefined);
     c.header("X-Request-Id", c.get("requestId"));
     c.header("Cache-Control", "no-store");
     await next();
@@ -92,17 +94,21 @@ export function createApp(dependencies: AppDependencies) {
       result: c.res.status < 400 ? "SUCCESS" : c.res.status >= 500 ? "FAILED" : "REJECTED",
       is_retry: false,
       request_id: c.get("requestId"),
+      ...operationContext(c),
+      ...actorContext(c),
       http_method: (["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].includes(
         c.req.method,
       )
         ? c.req.method
         : "GET") as "GET",
-      http_route:
-        c.req.routePath === "/internal/health/live"
-          ? "/internal/health/live"
-          : c.req.routePath === "/internal/health/ready"
-            ? "/internal/health/ready"
-            : "/",
+      http_route: [
+        "/internal/health/live",
+        "/internal/health/ready",
+        "/api/v1/self/principal",
+        ...Object.keys(AUTH_ROUTES).map((path) => `/auth/${path}`),
+      ].includes(c.req.routePath)
+        ? c.req.routePath
+        : "/",
       http_status: c.res.status,
       duration_ms: Math.max(0, Date.now() - started),
     });
@@ -127,6 +133,8 @@ export function createApp(dependencies: AppDependencies) {
         result: "FAILED",
         is_retry: false,
         request_id: c.get("requestId"),
+        ...operationContext(c),
+        ...actorContext(c),
         error_code: authErrorCodes[error.kind],
         failure_class:
           error.kind === "database" || error.kind === "unavailable"
@@ -188,6 +196,7 @@ export function createApp(dependencies: AppDependencies) {
     "/",
     createPublicRpc<ApiEnvironment>({
       guard: async (c, next) => {
+        c.set("operationExecutionId", randomUUID());
         if (!dependencies.auth || !dependencies.enforcement)
           throw new ApiFailure("TEMPORARY_UNAVAILABLE");
         try {
@@ -343,21 +352,14 @@ function securityEvent(
   event_name: LogEvent["event_name"],
   error_code?: string,
 ): void {
-  const principal = c.get("principal");
   c.get("logger")?.log({
     event_name,
     level: error_code ? "WARN" : "INFO",
     result: error_code ? "REJECTED" : "SUCCESS",
     is_retry: false,
     request_id: c.get("requestId"),
-    actor_type: principal
-      ? principal.roles.includes("ADMINISTRATOR")
-        ? "ADMINISTRATOR"
-        : principal.roles.includes("STAFF")
-          ? "STAFF"
-          : "AUTHENTICATED_USER"
-      : "GUEST",
-    ...(principal ? { actor_ref: principal.profileRef } : {}),
+    ...operationContext(c),
+    ...actorContext(c),
     ...(error_code
       ? {
           error_code,
@@ -367,4 +369,26 @@ function securityEvent(
         }
       : {}),
   });
+}
+
+function operationContext(c: import("hono").Context<ApiEnvironment>) {
+  const execution = c.get("operationExecutionId");
+  return execution ? { operation_id: "API-AUTH-001", operation_execution_id: execution } : {};
+}
+
+function actorContext(c: import("hono").Context<ApiEnvironment>): {
+  actor_type: NonNullable<LogEvent["actor_type"]>;
+  actor_ref?: string;
+} {
+  const principal = c.get("principal");
+  return principal
+    ? {
+        actor_type: principal.roles.includes("ADMINISTRATOR")
+          ? "ADMINISTRATOR"
+          : principal.roles.includes("STAFF")
+            ? "STAFF"
+            : "AUTHENTICATED_USER",
+        actor_ref: principal.profileRef,
+      }
+    : { actor_type: "GUEST" };
 }

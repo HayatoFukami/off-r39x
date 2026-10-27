@@ -3390,6 +3390,16 @@
       ],
       "test_case_ids": ["TC-STARTUP-AUDIT-001"],
       "notes": "Foundation audit repair; local synthetic evidence does not assert live-provider or release readiness"
+    },
+    {
+      "rule_id": "OBS-LOG-006",
+      "code_paths": [
+        "packages/api-contract/src/index.ts",
+        "apps/api/src/api/app.ts",
+        "apps/api/src/bootstrap/index.ts"
+      ],
+      "test_case_ids": ["TC-RPC-AUDIT-001"],
+      "notes": "Foundation audit repair; local synthetic evidence does not assert live-provider or release readiness"
     }
   ]
 }
