@@ -15,6 +15,7 @@ import { Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { TrieRouter } from "hono/router/trie-router";
 import { secureHeaders } from "hono/secure-headers";
+import { AUTH_ROUTES, type AuthProxy } from "./auth-proxy.ts";
 import { type ErrorCode, errorSchema, errorStatuses } from "./schemas/common.ts";
 
 export type ApiEnvironment = {
@@ -33,6 +34,14 @@ export class ApiFailure extends Error {
     super(code);
   }
 }
+const authErrorCodes = {
+  unauthenticated: "AUTHENTICATION_REQUIRED",
+  unavailable: "AUTH_SERVICE_TEMPORARY_FAILURE",
+  database: "DATABASE_TEMPORARY_FAILURE",
+  denied: "AUTHORIZATION_DENIED",
+  consistency: "CONSISTENCY_REVIEW_REQUIRED",
+  email: "EMAIL_VERIFICATION_REQUIRED",
+} as const satisfies Record<AuthFailure["kind"], ErrorCode>;
 export interface AppDependencies {
   webOrigin: string;
   allowedHosts?: readonly string[];
@@ -41,6 +50,7 @@ export interface AppDependencies {
   draining?: () => boolean;
   auth?: { verifier: TokenVerifier; store: PrincipalStore };
   enforcement?: SharedRateLimitGuard;
+  authProxy?: AuthProxy;
 }
 function failure(
   c: import("hono").Context<ApiEnvironment>,
@@ -117,7 +127,7 @@ export function createApp(dependencies: AppDependencies) {
         result: "FAILED",
         is_retry: false,
         request_id: c.get("requestId"),
-        error_code: error instanceof ApiFailure ? error.code : "INTERNAL_ERROR",
+        error_code: authErrorCodes[error.kind],
         failure_class:
           error.kind === "database" || error.kind === "unavailable"
             ? "TEMPORARY_FAILURE"
@@ -126,20 +136,7 @@ export function createApp(dependencies: AppDependencies) {
               : "SECURITY_FAILURE",
       });
     if (error instanceof ApiFailure) return failure(c, error.code, error.statusOverride);
-    if (error instanceof AuthFailure)
-      return failure(
-        c,
-        (
-          {
-            unauthenticated: "AUTHENTICATION_REQUIRED",
-            unavailable: "AUTH_SERVICE_TEMPORARY_FAILURE",
-            database: "DATABASE_TEMPORARY_FAILURE",
-            denied: "AUTHORIZATION_DENIED",
-            consistency: "CONSISTENCY_REVIEW_REQUIRED",
-            email: "EMAIL_VERIFICATION_REQUIRED",
-          } as const
-        )[error.kind],
-      );
+    if (error instanceof AuthFailure) return failure(c, authErrorCodes[error.kind]);
     return failure(c, "INTERNAL_ERROR");
   });
   app.use("/api/v1/*", async (c, next) => {
@@ -216,6 +213,30 @@ export function createApp(dependencies: AppDependencies) {
       requestId: (c) => c.get("requestId"),
     }),
   );
+  if (dependencies.authProxy) {
+    for (const [path, method] of Object.entries(AUTH_ROUTES)) {
+      app.on([method, "OPTIONS"], `/auth/${path}`, async (c) => {
+        if (
+          dependencies.allowedHosts &&
+          !dependencies.allowedHosts.includes(new URL(c.req.url).host)
+        )
+          return failure(c, "MALFORMED_REQUEST");
+        const proxy = dependencies.authProxy;
+        if (!proxy) throw new ApiFailure("TEMPORARY_UNAVAILABLE");
+        if (c.req.method === "OPTIONS") return proxy.handle(c.req.raw);
+        if (!dependencies.enforcement) throw new ApiFailure("TEMPORARY_UNAVAILABLE");
+        try {
+          await dependencies.enforcement.assertAvailable();
+        } catch {
+          throw new ApiFailure("TEMPORARY_UNAVAILABLE");
+        }
+        await dependencies.enforcement.middleware(c, async () => {
+          c.res = await proxy.handle(c.req.raw);
+        });
+        return c.res;
+      });
+    }
+  }
   app.get("/internal/health/live", (c) => c.json({ status: "ok" }));
   app.get("/internal/health/ready", async (c) => {
     try {
@@ -232,7 +253,7 @@ export function createApp(dependencies: AppDependencies) {
     for (const route of app.routes)
       if (route.method !== "ALL") paths.add("ALL", route.path, route.method);
     const methods = new Set(paths.match("ALL", c.req.path)[0].map(([method]) => method));
-    if (methods.has("GET")) methods.add("HEAD");
+    if (methods.has("GET") && !c.req.path.startsWith("/auth/")) methods.add("HEAD");
     if (methods.size) {
       c.header("Allow", [...methods].sort().join(", "));
       return failure(c, "MALFORMED_REQUEST", 405);

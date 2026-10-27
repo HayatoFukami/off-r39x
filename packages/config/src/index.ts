@@ -52,7 +52,12 @@ const directoryMappingSchema = z
   );
 /** Deployment assertion only; readiness must verify provider types, cardinality and grants. */
 export type DirectorySourceMapping = z.infer<typeof directoryMappingSchema>;
-const auth = z.object({ AUTH_ISSUER: https, AUTH_AUDIENCE: text, AUTH_JWKS_URL: https });
+const auth = z.object({
+  AUTH_ISSUER: https,
+  AUTH_AUDIENCE: text,
+  AUTH_JWKS_URL: https,
+  NEON_AUTH_BASE_URL: https.optional(),
+});
 const origin = https.refine(
   (value) => new URL(value).origin === value && !new URL(value).hostname.includes("*"),
 );
@@ -270,6 +275,7 @@ function parse(service: Service, env: Readonly<Record<string, string | undefined
       issuer: authInput.AUTH_ISSUER,
       audience: authInput.AUTH_AUDIENCE,
       jwksUrl: authInput.AUTH_JWKS_URL,
+      ...(authInput.NEON_AUTH_BASE_URL ? { baseUrl: authInput.NEON_AUTH_BASE_URL } : {}),
     }),
     webhooks: Object.freeze({
       stripe: webhooks.STRIPE_WEBHOOK_SECRET,

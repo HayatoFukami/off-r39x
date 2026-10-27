@@ -86,9 +86,16 @@
         "packages/auth/src/index.ts",
         "apps/api/src/api/app.ts",
         "packages/db/src/schema-contract.ts",
-        "packages/db/src/schema-contract.json"
+        "packages/db/src/schema-contract.json",
+        "apps/api/src/bootstrap/index.ts",
+        "packages/api-contract/src/index.ts"
       ],
-      "test_case_ids": ["TC-DB-FOUNDATION-004", "TC-DB-ARC-008-050", "TC-DB-AUDIT-001"],
+      "test_case_ids": [
+        "TC-DB-FOUNDATION-004",
+        "TC-DB-ARC-008-050",
+        "TC-DB-AUDIT-001",
+        "TC-AUTH-AUDIT-004"
+      ],
       "notes": "Explicit deployment-confirmed source mapping; synthetic Provider test is not Neon smoke"
     },
     {
@@ -111,8 +118,13 @@
     },
     {
       "rule_id": "INF-HLT-002",
-      "code_paths": ["packages/db/src/readiness.ts"],
-      "test_case_ids": ["TC-DB-FOUNDATION-006"],
+      "code_paths": [
+        "packages/db/src/readiness.ts",
+        "apps/api/src/bootstrap/index.ts",
+        "packages/config/src/index.ts",
+        "apps/api/src/api/app.ts"
+      ],
+      "test_case_ids": ["TC-DB-FOUNDATION-006", "TC-STARTUP-AUDIT-001"],
       "notes": "Missing deployment mapping/schema/extension/hash/grant not ready"
     },
     {
@@ -120,9 +132,12 @@
       "code_paths": [
         "packages/db/src/readiness.ts",
         "packages/db/src/schema-contract.ts",
-        "packages/db/src/schema-contract.json"
+        "packages/db/src/schema-contract.json",
+        "apps/api/src/bootstrap/index.ts",
+        "packages/config/src/index.ts",
+        "apps/api/src/api/app.ts"
       ],
-      "test_case_ids": ["TC-DB-FOUNDATION-006", "TC-DB-AUDIT-001"],
+      "test_case_ids": ["TC-DB-FOUNDATION-006", "TC-DB-AUDIT-001", "TC-STARTUP-AUDIT-001"],
       "notes": "No schema/extension fallback"
     },
     {
@@ -2886,7 +2901,12 @@
         "apps/api/src/api/app.ts",
         "apps/api/src/bootstrap/index.ts"
       ],
-      "test_case_ids": ["TC-SEC-AUTH-001-050", "TC-SEC-AUTH-005-051", "TC-RPC-AUDIT-001"],
+      "test_case_ids": [
+        "TC-SEC-AUTH-001-050",
+        "TC-SEC-AUTH-005-051",
+        "TC-RPC-AUDIT-001",
+        "TC-AUTH-AUDIT-004"
+      ],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
     },
     {
@@ -2946,9 +2966,11 @@
       "code_paths": [
         "packages/auth/src/index.ts",
         "apps/api/src/api/app.ts",
-        "packages/db/src/principals.ts"
+        "packages/db/src/principals.ts",
+        "apps/api/src/bootstrap/index.ts",
+        "packages/api-contract/src/index.ts"
       ],
-      "test_case_ids": ["TC-SEC-AZ-013-050", "TC-DB-ARC-008-050"],
+      "test_case_ids": ["TC-SEC-AZ-013-050", "TC-DB-ARC-008-050", "TC-AUTH-AUDIT-004"],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
     },
     {
@@ -3041,8 +3063,21 @@
     },
     {
       "rule_id": "SEC-API-008",
-      "code_paths": ["apps/api/src/api", "packages/api-contract/src/index.ts"],
-      "test_case_ids": ["TC-DEV-API-003-050"],
+      "code_paths": [
+        "apps/api/src/api",
+        "packages/api-contract/src/index.ts",
+        "apps/api/src/api/auth-proxy.ts",
+        "apps/api/src/api/app.ts",
+        "apps/api/src/api/middleware/json.ts",
+        "apps/api/src/bootstrap/index.ts",
+        "packages/config/src/index.ts"
+      ],
+      "test_case_ids": [
+        "TC-DEV-API-003-050",
+        "TC-AUTH-AUDIT-001",
+        "TC-AUTH-AUDIT-002",
+        "TC-AUTH-AUDIT-003"
+      ],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
     },
     {
@@ -3260,6 +3295,64 @@
         "apps/api/src/bootstrap/index.ts"
       ],
       "test_case_ids": ["TC-RPC-AUDIT-001"],
+      "notes": "Foundation audit repair; local synthetic evidence does not assert live-provider or release readiness"
+    },
+    {
+      "rule_id": "SEC-API-001",
+      "code_paths": [
+        "apps/api/src/api/auth-proxy.ts",
+        "apps/api/src/api/app.ts",
+        "apps/api/src/api/middleware/json.ts",
+        "apps/api/src/bootstrap/index.ts",
+        "packages/config/src/index.ts"
+      ],
+      "test_case_ids": ["TC-AUTH-AUDIT-001", "TC-AUTH-AUDIT-002", "TC-AUTH-AUDIT-003"],
+      "notes": "Foundation audit repair; local synthetic evidence does not assert live-provider or release readiness"
+    },
+    {
+      "rule_id": "SEC-API-003",
+      "code_paths": [
+        "apps/api/src/api/auth-proxy.ts",
+        "apps/api/src/api/app.ts",
+        "apps/api/src/api/middleware/json.ts",
+        "apps/api/src/bootstrap/index.ts",
+        "packages/config/src/index.ts"
+      ],
+      "test_case_ids": ["TC-AUTH-AUDIT-001", "TC-AUTH-AUDIT-002", "TC-AUTH-AUDIT-003"],
+      "notes": "Foundation audit repair; local synthetic evidence does not assert live-provider or release readiness"
+    },
+    {
+      "rule_id": "SEC-AUTH-009",
+      "code_paths": [
+        "apps/api/src/api/auth-proxy.ts",
+        "apps/api/src/api/app.ts",
+        "apps/api/src/api/middleware/json.ts",
+        "apps/api/src/bootstrap/index.ts",
+        "packages/config/src/index.ts"
+      ],
+      "test_case_ids": ["TC-AUTH-AUDIT-001", "TC-AUTH-AUDIT-002", "TC-AUTH-AUDIT-003"],
+      "notes": "Foundation audit repair; local synthetic evidence does not assert live-provider or release readiness"
+    },
+    {
+      "rule_id": "AR-SES-005",
+      "code_paths": [
+        "apps/api/src/api/auth-proxy.ts",
+        "apps/api/src/api/app.ts",
+        "apps/api/src/api/middleware/json.ts",
+        "apps/api/src/bootstrap/index.ts",
+        "packages/config/src/index.ts"
+      ],
+      "test_case_ids": ["TC-AUTH-AUDIT-001", "TC-AUTH-AUDIT-002", "TC-AUTH-AUDIT-003"],
+      "notes": "Foundation audit repair; local synthetic evidence does not assert live-provider or release readiness"
+    },
+    {
+      "rule_id": "SEC-ABU-002",
+      "code_paths": [
+        "apps/api/src/bootstrap/index.ts",
+        "packages/config/src/index.ts",
+        "apps/api/src/api/app.ts"
+      ],
+      "test_case_ids": ["TC-STARTUP-AUDIT-001"],
       "notes": "Foundation audit repair; local synthetic evidence does not assert live-provider or release readiness"
     }
   ]

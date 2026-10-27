@@ -4,6 +4,7 @@ import { getBuildMigrationSetHash, parseServerConfig } from "@off-r39x/config";
 import { checkReadiness, createDatabase, createPrincipalRepository } from "@off-r39x/db";
 import { createLogger } from "@off-r39x/observability";
 import { createApp, type SharedRateLimitGuard } from "../api/app.ts";
+import { createAuthProxy } from "../api/auth-proxy.ts";
 
 export function bootstrap(
   env: Readonly<Record<string, string | undefined>>,
@@ -35,6 +36,13 @@ export function bootstrap(
   const verifier = createTokenVerifier(config.auth);
   const migrationSetHash = getBuildMigrationSetHash();
   const principals = createPrincipalRepository(database.pool);
+  const authProxy = config.auth.baseUrl
+    ? createAuthProxy({
+        baseUrl: config.auth.baseUrl,
+        publicAuthOrigin: config.http.publicAuthOrigin,
+        webOrigin,
+      })
+    : undefined;
   // Protected routes fail closed until shared enforcement is configured.
 
   let draining = false;
@@ -43,6 +51,7 @@ export function bootstrap(
     allowedHosts: config.http.allowedHosts,
     logger,
     auth: { verifier, store: principals },
+    ...(authProxy ? { authProxy } : {}),
     ...(enforcement ? { enforcement } : {}),
     draining: () => draining,
     ready: async () => {
@@ -56,7 +65,7 @@ export function bootstrap(
           ? { directoryMapping: config.database.directoryMapping }
           : {}),
       });
-      if (!observed.ready || !enforcement || draining) return false;
+      if (!observed.ready || !enforcement || !authProxy || draining) return false;
       await enforcement.assertAvailable();
       return !draining;
     },

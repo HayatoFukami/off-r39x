@@ -3,7 +3,7 @@ import type { z } from "zod";
 import { type ApiEnvironment, ApiFailure } from "../app.ts";
 
 // Detect repeated decoded object keys before JSON.parse discards them.
-function rejectDuplicateKeys(raw: string): void {
+export function rejectDuplicateKeys(raw: string): void {
   const stack: Array<Set<string> | null> = [];
   for (let i = 0; i < raw.length; i++) {
     const char = raw[i];

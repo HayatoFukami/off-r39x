@@ -15872,6 +15872,157 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": true
+    },
+    {
+      "test_case_id": "TC-AUTH-AUDIT-001",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": [
+        "SEC-API-001",
+        "SEC-API-003",
+        "SEC-API-008",
+        "SEC-AUTH-009",
+        "AR-SES-005"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Limited Neon transport candidate; synthetic provider only; public allowlist, exact origin, no-store, host-only cookies, safe redirects, deadlines and mandatory enforcement",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "csrf",
+        "redirect_rejected",
+        "provider_unavailable",
+        "response_body_stalled",
+        "shared_guard_missing"
+      ],
+      "expected_http": [200, 201, 400, 403, 404, 405, 503],
+      "expected_domain_postconditions": [
+        "Fail closed within the canonical boundary; no unintended business mutation"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-AUTH-AUDIT-002",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": [
+        "SEC-API-001",
+        "SEC-API-003",
+        "SEC-API-008",
+        "SEC-AUTH-009",
+        "AR-SES-005"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Limited Neon transport candidate; synthetic provider only; public allowlist, exact origin, no-store, host-only cookies, safe redirects, deadlines and mandatory enforcement",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "csrf",
+        "redirect_rejected",
+        "provider_unavailable",
+        "response_body_stalled",
+        "shared_guard_missing"
+      ],
+      "expected_http": [200, 201, 400, 403, 404, 405, 503],
+      "expected_domain_postconditions": [
+        "Fail closed within the canonical boundary; no unintended business mutation"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-AUTH-AUDIT-003",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": [
+        "SEC-API-001",
+        "SEC-API-003",
+        "SEC-API-008",
+        "SEC-AUTH-009",
+        "AR-SES-005"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Limited Neon transport candidate; synthetic provider only; public allowlist, exact origin, no-store, host-only cookies, safe redirects, deadlines and mandatory enforcement",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "csrf",
+        "redirect_rejected",
+        "provider_unavailable",
+        "response_body_stalled",
+        "shared_guard_missing"
+      ],
+      "expected_http": [200, 201, 400, 403, 404, 405, 503],
+      "expected_domain_postconditions": [
+        "Fail closed within the canonical boundary; no unintended business mutation"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-AUTH-AUDIT-004",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": ["SEC-AUTH-001", "SEC-AZ-013", "DB-ARC-008"],
+      "system_invariant_ids": [],
+      "api_operation_ids": ["API-AUTH-001"],
+      "db_constraint_names": [],
+      "preconditions": "Real PG17 directory/current roles and signed Ed25519 JWT through canonical API-AUTH-001; role revoke, email unverified, identity disappearance, physical pool closure",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": ["directory_current_state_changed", "role_revoked", "database_closed"],
+      "expected_http": [200, 401, 403, 503],
+      "expected_domain_postconditions": [
+        "Fail closed within the canonical boundary; no unintended business mutation"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-STARTUP-AUDIT-001",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": ["REL-DB-012", "INF-HLT-002", "SEC-ABU-002"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real bootstrap/socket/TLS/PG17; harness-only build hash and CA; synthetic shared guard, not live shared rate-limit proof; no provider network in healthcheck",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": ["shared_enforcement_unavailable", "required_constraint_missing", "drain"],
+      "expected_http": [200, 503],
+      "expected_domain_postconditions": [
+        "Fail closed within the canonical boundary; no unintended business mutation"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
     }
   ]
 }

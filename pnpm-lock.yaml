@@ -139,6 +139,9 @@ importers:
       '@off-r39x/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@off-r39x/reliability':
+        specifier: workspace:*
+        version: link:../../packages/reliability
       hono:
         specifier: 4.13.14
         version: 4.13.14
