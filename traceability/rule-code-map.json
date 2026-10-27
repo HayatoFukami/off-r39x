@@ -2992,14 +2992,24 @@
     },
     {
       "rule_id": "DEV-API-003",
-      "code_paths": ["apps/api/src/api", "packages/api-contract/src/index.ts"],
-      "test_case_ids": ["TC-DEV-API-003-050"],
+      "code_paths": [
+        "apps/api/src/api",
+        "packages/api-contract/src/index.ts",
+        "apps/api/src/api/app.ts",
+        "apps/api/src/bootstrap/index.ts"
+      ],
+      "test_case_ids": ["TC-DEV-API-003-050", "TC-RPC-AUDIT-001"],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
     },
     {
       "rule_id": "DEV-API-002",
-      "code_paths": ["apps/api/src/api", "packages/api-contract/src/index.ts"],
-      "test_case_ids": ["TC-DEV-API-003-050"],
+      "code_paths": [
+        "apps/api/src/api",
+        "packages/api-contract/src/index.ts",
+        "apps/api/src/api/app.ts",
+        "apps/api/src/bootstrap/index.ts"
+      ],
+      "test_case_ids": ["TC-DEV-API-003-050", "TC-RPC-AUDIT-001"],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
     },
     {
@@ -3231,6 +3241,16 @@
       "rule_id": "SEC-API-022",
       "code_paths": ["apps/api/src/api/app.ts"],
       "test_case_ids": ["TC-HTTP-AUDIT-001"],
+      "notes": "Foundation audit repair; local synthetic evidence does not assert live-provider or release readiness"
+    },
+    {
+      "rule_id": "AR-SES-003",
+      "code_paths": [
+        "packages/api-contract/src/index.ts",
+        "apps/api/src/api/app.ts",
+        "apps/api/src/bootstrap/index.ts"
+      ],
+      "test_case_ids": ["TC-RPC-AUDIT-001"],
       "notes": "Foundation audit repair; local synthetic evidence does not assert live-provider or release readiness"
     }
   ]

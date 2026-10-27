@@ -35,14 +35,15 @@ export function bootstrap(
   const verifier = createTokenVerifier(config.auth);
   const migrationSetHash = getBuildMigrationSetHash();
   const principals = createPrincipalRepository(database.pool);
-  // No protected routes until shared rate limiting and deployment identity evidence exist.
-  // A live listener is not production readiness.
+  // Protected routes fail closed until shared enforcement is configured.
 
   let draining = false;
   const app = createApp({
     webOrigin,
     allowedHosts: config.http.allowedHosts,
     logger,
+    auth: { verifier, store: principals },
+    ...(enforcement ? { enforcement } : {}),
     draining: () => draining,
     ready: async () => {
       const observed = await checkReadiness(database.pool, {

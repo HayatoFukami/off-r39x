@@ -3,6 +3,7 @@ import { createPublicRpc } from "@off-r39x/api-contract";
 import {
   AuthFailure,
   type Capability,
+  capabilities,
   hasCapability,
   type Principal,
   type PrincipalStore,
@@ -38,6 +39,8 @@ export interface AppDependencies {
   ready: () => Promise<boolean>;
   logger?: ReturnType<typeof createLogger>;
   draining?: () => boolean;
+  auth?: { verifier: TokenVerifier; store: PrincipalStore };
+  enforcement?: SharedRateLimitGuard;
 }
 function failure(
   c: import("hono").Context<ApiEnvironment>,
@@ -184,7 +187,35 @@ export function createApp(dependencies: AppDependencies) {
     "/api/v1/*",
     bodyLimit({ maxSize: 65536, onError: (c) => failure(c, "MALFORMED_REQUEST", 413) }),
   );
-  app.route("/", createPublicRpc());
+  app.route(
+    "/",
+    createPublicRpc<ApiEnvironment>({
+      guard: async (c, next) => {
+        if (!dependencies.auth || !dependencies.enforcement)
+          throw new ApiFailure("TEMPORARY_UNAVAILABLE");
+        try {
+          await dependencies.enforcement.assertAvailable();
+        } catch {
+          throw new ApiFailure("TEMPORARY_UNAVAILABLE");
+        }
+        await requirePrincipal(dependencies.auth.verifier, dependencies.auth.store)(c, async () => {
+          await requireVerifiedEmail()(c, async () => {
+            await dependencies.enforcement?.middleware(c, next);
+          });
+        });
+      },
+      principal: (c) => {
+        const principal = c.get("principal");
+        return {
+          profile_ref: principal.profileRef,
+          capabilities: capabilities.filter((capability) => hasCapability(principal, capability)),
+          has_staff_role: principal.roles.includes("STAFF"),
+          has_administrator_role: principal.roles.includes("ADMINISTRATOR"),
+        };
+      },
+      requestId: (c) => c.get("requestId"),
+    }),
+  );
   app.get("/internal/health/live", (c) => c.json({ status: "ok" }));
   app.get("/internal/health/ready", async (c) => {
     try {
