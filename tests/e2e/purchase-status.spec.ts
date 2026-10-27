@@ -681,7 +681,14 @@ test.describe("TC-PG-XFN-001-670 PENDING, SENT, NONE and an unavailable summary 
       await expect(mainOf(page)).not.toContainText(copy.notification.ATTENTION_REQUIRED.label);
       await expect(mainOf(page)).not.toContainText(DELIVERY_CLAIMS);
       await expect(alertsOf(page)).toHaveCount(0);
-      await expect(mainOf(page).getByRole("button")).toHaveCount(0);
+      // The Mypage section-nav toggle (mobile only) is the one button the layout adds to main; no other button
+      // may exist, so there is no notification resend or retry action.
+      const mypageMenuToggle = mainOf(page).getByRole("button", {
+        name: copy.mypage.nav.toggle,
+        exact: true,
+      });
+      await expect(mainOf(page).getByRole("button")).toHaveCount(await mypageMenuToggle.count());
+      await expect(mainOf(page)).not.toContainText(/再送|再試行/);
       expect((await orderByRef(page, ORDER.confirmedEntry))?.state).toBe("CONFIRMED");
     });
   }
