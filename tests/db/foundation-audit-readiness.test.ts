@@ -60,6 +60,20 @@ it("TC-DB-AUDIT-001 detects missing and altered release schema, constraints and 
       }
       expect((await checkReadiness(pool, expected)).ready, injection).toBe(true);
     }
+    // Provider-owned table names may be SQL keywords (e.g. neon_auth."user").
+    // Do not guess quoting from an ASCII identifier regex.
+    await pool.query("BEGIN");
+    try {
+      await pool.query('ALTER TABLE synthetic_provider.identities RENAME TO "user"');
+      expect(
+        await checkReadiness(pool, {
+          ...expected,
+          directoryMapping: { ...expected.directoryMapping, table: "user" },
+        }),
+      ).toEqual({ ready: true, failures: [] });
+    } finally {
+      await pool.query("ROLLBACK");
+    }
     // Readiness must inspect catalog metadata without granting Recon access to
     // the auth Directory's rows. Exercise both least-privilege worker identities.
     const ca = await readFile(process.env.TEST_DATABASE_CA as string, "utf8");

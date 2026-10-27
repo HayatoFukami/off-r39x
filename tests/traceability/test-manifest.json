@@ -15828,7 +15828,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "Independent real PG17 database; thirteen reversible catalog/directory DDL faults with unchanged journal; API and least-privilege Email/Recon database identities",
+      "preconditions": "Independent real PG17 database; thirteen reversible catalog/directory DDL faults with unchanged journal; API and least-privilege Email/Recon database identities; reserved-keyword Provider table name uses PostgreSQL identifier quoting",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -15849,7 +15849,8 @@
         "Fail closed within the canonical boundary; no unintended business mutation"
       ],
       "expected_db_postconditions": [
-        "Required metadata remains inspectable by Recon without granting Directory row access"
+        "Required metadata remains inspectable by Recon without granting Directory row access",
+        "Valid quoted Provider identifiers match the direct view projection"
       ],
       "expected_provider_postconditions": [],
       "expected_observability": [],

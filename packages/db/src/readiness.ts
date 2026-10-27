@@ -158,11 +158,21 @@ export async function checkReadiness(
       ).rows[0].definition as string;
       // Accept only a direct projection, never a filtered join, stale literal or
       // transformed verified flag that happens to retain the same dependencies.
-      const quoteIdent = (value: string) =>
-        /^[a-z_][a-z0-9_]*$/.test(value) ? value : `"${value.replaceAll('"', '""')}"`;
-      const projectionColumn = (source: string, target: string) =>
-        `${quoteIdent(source)}${source === target ? "" : ` AS ${target}`}`;
-      const expectedProjection = `SELECT ${projectionColumn(mapping.subjectColumn, "auth_subject")}, ${projectionColumn(mapping.emailColumn, "email")}, ${projectionColumn(mapping.verifiedColumn, "email_verified")} FROM ${quoteIdent(mapping.schema)}.${quoteIdent(mapping.table)};`;
+      const quoted = (
+        await client.query(
+          "SELECT quote_ident($1) AS schema_name, quote_ident($2) AS table_name, quote_ident($3) AS subject_name, quote_ident($4) AS email_name, quote_ident($5) AS verified_name",
+          [
+            mapping.schema,
+            mapping.table,
+            mapping.subjectColumn,
+            mapping.emailColumn,
+            mapping.verifiedColumn,
+          ],
+        )
+      ).rows[0];
+      const projectionColumn = (source: string, quotedSource: string, target: string) =>
+        `${quotedSource}${source === target ? "" : ` AS ${target}`}`;
+      const expectedProjection = `SELECT ${projectionColumn(mapping.subjectColumn, quoted.subject_name, "auth_subject")}, ${projectionColumn(mapping.emailColumn, quoted.email_name, "email")}, ${projectionColumn(mapping.verifiedColumn, quoted.verified_name, "email_verified")} FROM ${quoted.schema_name}.${quoted.table_name};`;
       fail("directory_projection", projection.replace(/\s+/g, " ").trim() === expectedProjection);
       const sourceColumns = (
         await client.query(
