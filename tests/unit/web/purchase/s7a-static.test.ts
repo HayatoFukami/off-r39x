@@ -128,9 +128,20 @@ describe("TC-DEV-WEB-001-603 the pure modules are pure (DEV-WEB-001, DEV-TS)", (
     const code = stripComments(read("src/features/purchase/purchase-status-model.ts"));
     expect(code).toMatch(/presentOrderState/);
     expect(code).toMatch(/presentPurpose/);
-    expect(code).toMatch(/presentNotification/);
+    expect(code).toMatch(/presentNotificationSummary/);
     expect(code).toMatch(/orderActionLabel/);
     expect(code).toMatch(/safeExternalHref/);
+  });
+
+  it("the status model and the notification mapping never take an internal Notification State (SPEC-050 16.2, EML-NTF-003)", () => {
+    const model = stripComments(read("src/features/purchase/purchase-status-model.ts"));
+    expect(model).toMatch(/notificationSummary/);
+    expect(model).toMatch(/ATTENTION_REQUIRED/);
+    expect(model).not.toMatch(/detail\.notice/);
+    expect(model).not.toMatch(/FAILED_RETRYABLE|email_delayed/);
+    const mapping = stripComments(read("src/presentation/state-mapping/notification.ts"));
+    expect(mapping).toMatch(/NotificationSummaryStatus/);
+    expect(mapping).not.toMatch(/NotificationState|FAILED_RETRYABLE/);
   });
 
   it("the Cart purchase flow and the status model reuse the S6 Continuation helpers and S1 mappings", () => {

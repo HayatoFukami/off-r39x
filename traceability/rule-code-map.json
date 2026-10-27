@@ -241,6 +241,7 @@
         "TC-PG-XFN-001-625",
         "TC-PG-XFN-001-626",
         "TC-PG-XFN-001-627",
+        "TC-PG-XFN-001-628",
         "TC-PG-XFN-001-631",
         "TC-PG-XFN-001-632",
         "TC-PG-XFN-001-641",
@@ -255,6 +256,7 @@
         "TC-PG-XFN-001-666",
         "TC-PG-XFN-001-667",
         "TC-PG-XFN-001-668",
+        "TC-PG-XFN-001-670",
         "TC-PG-XFN-001-671",
         "TC-PG-XFN-001-672",
         "TC-PG-XFN-001-673",
@@ -1613,6 +1615,26 @@
       "notes": "implementation mapping only: SPEC-030 9.2 display name rule in the UI pre-check and the UI mock test double; not API/DB coverage (TC-API-007-001 not executed)"
     },
     {
+      "rule_id": "EML-NTF-003",
+      "code_paths": [
+        "apps/web/src/api-client/types.ts",
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/mock/backend/scenario.ts",
+        "apps/web/src/presentation/state-mapping/notification.ts",
+        "apps/web/src/features/purchase/purchase-status-model.ts"
+      ],
+      "test_case_ids": [
+        "TC-PG-XFN-001-002",
+        "TC-PG-XFN-001-104",
+        "TC-PG-XFN-001-625",
+        "TC-PG-XFN-001-628",
+        "TC-PG-XFN-001-667",
+        "TC-PG-XFN-001-670",
+        "TC-PG-MYP-004-704"
+      ],
+      "notes": "implementation mapping only: owner notification summary projection in the UI mock and its presentation; not API/DB coverage (TC-API-008-001 not executed)"
+    },
+    {
       "rule_id": "PG-MYP-001",
       "code_paths": [
         "apps/web/src/mock/backend/mock-api.ts",
@@ -2601,9 +2623,15 @@
       "code_paths": [
         "apps/web/src/features/mypage/overview-model.ts",
         "apps/web/src/features/mypage/goods-item-model.ts",
-        "apps/web/src/features/mypage/order-detail-model.ts"
+        "apps/web/src/features/mypage/order-detail-model.ts",
+        "apps/web/src/features/purchase/purchase-status-model.ts"
       ],
-      "test_case_ids": ["TC-PG-MYP-001-704", "TC-PG-MYP-004-704", "TC-PG-MYP-012-703"],
+      "test_case_ids": [
+        "TC-PG-MYP-001-704",
+        "TC-PG-MYP-004-704",
+        "TC-PG-MYP-012-703",
+        "TC-PG-XFN-001-670"
+      ],
       "notes": "S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {

@@ -46,7 +46,7 @@ const CONTROLS: readonly Control[] = [
     "expire",
     "cancel",
   ),
-  select("notification", "sent", "failed_retryable"),
+  select("notification", "sent", "pending", "failed_retryable", "canceled", "summary_unavailable"),
   select("auth.session", "ok", "unavailable"),
   select("auth.login", "ok", "credential_failure", "unavailable"),
   select("auth.signup", "confirmation_required", "signed_in", "rejected", "unavailable"),

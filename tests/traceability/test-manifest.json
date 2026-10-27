@@ -529,19 +529,26 @@
       "test_case_id": "TC-PG-XFN-001-002",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-XFN-001", "PG-MYP-004", "TST-UNT-004"],
+      "upstream_rule_ids": [
+        "PG-XFN-001",
+        "PG-MYP-004",
+        "EML-NTF-003",
+        "SPEC-050-16.2",
+        "SPEC-050-16.7",
+        "TST-UNT-004"
+      ],
       "system_invariant_ids": ["INV-010-07"],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "Pure function (node environment, no DOM); contract tests/contracts/s1-presentation.md",
+      "preconditions": "Pure function (node environment, no DOM); input is the API-ORD-003 notification_summary status, never an internal Notification State; contract tests/contracts/s1-presentation.md",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "FAILED_RETRYABLE keeps the success display with the fixed 16.7 notice, non-blocking, no action",
-        "CANCELED notification is not shown; unknown state throws"
+        "ATTENTION_REQUIRED keeps the success display with the fixed 16.7 notice, non-blocking, no action",
+        "PENDING, SENT and NONE show nothing; the dictionary holds only ATTENTION_REQUIRED; no presenter takes an internal Notification State; an unknown status throws"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -1422,7 +1429,7 @@
       "test_case_id": "TC-DEV-WEB-010-103",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["DEV-WEB-010", "DEV-GEN-003", "TST-UNT-004"],
+      "upstream_rule_ids": ["DEV-WEB-010", "DEV-GEN-003", "API-ORD-003", "TST-UNT-004"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -1435,7 +1442,8 @@
       "expected_domain_postconditions": [
         "every method names an Operation ID or UCR-110-001",
         "ports without an Operation ID are marked and no new Operation ID is invented",
-        "the Profile ports cite API-AUTH-002 / API-AUTH-004 and no longer cite the superseded UCR-100-001"
+        "the Profile ports cite API-AUTH-002 / API-AUTH-004 and no longer cite the superseded UCR-100-001",
+        "getOrder cites API-ORD-003 (notification_summary) without UCR-110-001 or Operation ID なし"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -1458,7 +1466,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "every switch has its documented default; schema is strict at every level"
+        "every switch has its documented default; schema is strict at every level; notification accepts exactly sent / pending / failed_retryable / canceled / summary_unavailable (the simulated internal state), rejects the summary statuses, and round-trips through storage"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -2111,7 +2119,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "Snapshot totals exact; entitlements only for CONFIRMED; receipt URL rules"
+        "Snapshot totals exact; entitlements only for CONFIRMED; receipt URL rules; notificationSummary is NONE for every not CONFIRMED Order (default scenario) and notice does not exist"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -2428,18 +2436,26 @@
       "test_case_id": "TC-PG-XFN-001-104",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-XFN-001", "SPEC-050-16.7", "SPEC-050-20.5", "TST-UNT-004"],
+      "upstream_rule_ids": [
+        "PG-XFN-001",
+        "EML-NTF-003",
+        "API-ORD-003",
+        "SPEC-050-16.2",
+        "SPEC-050-16.7",
+        "SPEC-050-20.5",
+        "TST-UNT-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "notification=failed_retryable on a CONFIRMED Order; contract tests/contracts/s2-mock-backend.md; UI mock test double (not API/DB/Provider coverage)",
+      "preconditions": "notification scenario (sent / pending / failed_retryable / canceled / summary_unavailable) on CONFIRMED and not CONFIRMED Orders; contract tests/contracts/s2-mock-backend.md; UI mock test double (not API/DB/Provider coverage)",
       "fixture_ids": ["MOCK-SEED-DEMO"],
       "clock_instant": "2027-03-01T03:00:00Z",
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "notice email_delayed while CONFIRMED and all entitlements remain; no notice otherwise"
+        "notificationSummary is ATTENTION_REQUIRED / PENDING / SENT / NONE / null for failed_retryable / pending / sent / canceled / summary_unavailable on a CONFIRMED Order, which stays CONFIRMED with all entitlements and an ok read; a not CONFIRMED Order is NONE (null for summary_unavailable); seeded CONFIRMED Orders get it at read time without a DB change; the notice property no longer exists"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -3735,7 +3751,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "every scenario switch has a labelled control with exactly the schema values and is persisted immediately to r39x.mock.scenario.v1; a change survives reload and drives the footer sponsor area; invalid latencyLongMs is not persisted"
+        "every scenario switch (including the five notification values) has a labelled control with exactly the schema values and is persisted immediately to r39x.mock.scenario.v1; a change survives reload and drives the footer sponsor area; invalid latencyLongMs is not persisted"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -8588,18 +8604,24 @@
       "test_case_id": "TC-PG-XFN-001-625",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-XFN-001", "SPEC-050-16.7"],
+      "upstream_rule_ids": [
+        "PG-XFN-001",
+        "EML-NTF-003",
+        "API-ORD-003",
+        "SPEC-050-16.2",
+        "SPEC-050-16.7"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "buildPurchaseStatusModel with email_delayed notice on every state",
+      "preconditions": "buildPurchaseStatusModel with notificationSummary ATTENTION_REQUIRED on every state",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "non-blocking notice only on CONFIRMED; no Business retry action"
+        "non-blocking notice only on a CONFIRMED Order whose notificationSummary is ATTENTION_REQUIRED; no notification retry or resend action on any state"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -8646,6 +8668,37 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "a changed state announces the new label; an equal state says not changed"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-XFN-001-628",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "PG-XFN-001",
+        "EML-NTF-003",
+        "API-ORD-003",
+        "SPEC-050-16.2",
+        "SPEC-050-16.7",
+        "INV-010-06",
+        "TST-UNT-004"
+      ],
+      "system_invariant_ids": ["INV-010-06"],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "buildPurchaseStatusModel with a CONFIRMED Order and notificationSummary null / NONE / PENDING / SENT / ATTENTION_REQUIRED; contract tests/contracts/s7a-purchase.md; UI mock test double (not API/DB/Provider coverage)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "null, NONE and PENDING render exactly like SENT with no notice; ATTENTION_REQUIRED changes only the notice; state, tone, entitlements, actions and Receipt are identical (an unavailable summary is not an Order failure)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -8818,7 +8871,7 @@
       "test_case_id": "TC-DEV-WEB-001-603",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["DEV-WEB-001", "DEV-TS-001"],
+      "upstream_rule_ids": ["DEV-WEB-001", "DEV-TS-001", "EML-NTF-003", "SPEC-050-16.2"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -8829,7 +8882,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "no React, Next, storage, clock, random or mock backend in the pure modules; shared presentations reused"
+        "no React, Next, storage, clock, random or mock backend in the pure modules; shared presentations reused; the status model and the notification mapping never take an internal Notification State"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -9330,7 +9383,14 @@
       "test_case_id": "TC-PG-XFN-001-667",
       "level": "E2E",
       "suite": "e2e-ui-mock",
-      "upstream_rule_ids": ["PG-XFN-001", "SPEC-050-16.7", "SPEC-050-20.5", "SPEC-050-31-19"],
+      "upstream_rule_ids": [
+        "PG-XFN-001",
+        "EML-NTF-003",
+        "SPEC-050-16.2",
+        "SPEC-050-16.7",
+        "SPEC-050-20.5",
+        "SPEC-050-31-19"
+      ],
       "system_invariant_ids": ["INV-010-07"],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -9341,7 +9401,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "CONFIRMED and the rights are kept; non-blocking notice; no alert and no Business retry button"
+        "CONFIRMED and the rights are kept; the ATTENTION_REQUIRED notice (copy.notification.ATTENTION_REQUIRED) is non-blocking; no alert and no Business retry button"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -9396,6 +9456,38 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "slow reads: one read per mount and per press, the pending state and the live message end with every read and the last read decides; a read abandoned by leaving the page is not shown and throws nothing; a retry after an unavailable read is one more read with a loading state; no Order is created"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-XFN-001-670",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-XFN-001",
+        "PG-MYP-004",
+        "EML-NTF-003",
+        "SPEC-050-16.2",
+        "SPEC-050-16.7",
+        "INV-010-06",
+        "TST-E2E-003",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": ["INV-010-06"],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock mode (desktop and mobile Chromium); contract tests/contracts/s7a-purchase.md; notification scenario sent / pending / canceled / summary_unavailable on a CONFIRMED Order; DB postconditions are the mock DB; UI mock test double (not API/DB/Provider coverage)",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Purchase Status and the Mypage Order detail keep the success state and the rights with no notice, no alert, no notification action and no delivery claim; the mock DB Order stays CONFIRMED"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -12188,6 +12280,7 @@
       "suite": "e2e-ui-mock",
       "upstream_rule_ids": [
         "PG-MYP-004",
+        "EML-NTF-003",
         "SPEC-050-16.7",
         "SPEC-050-31-19",
         "INV-010-06",

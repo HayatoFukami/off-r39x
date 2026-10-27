@@ -44,6 +44,7 @@ import {
 } from "../harness/browser/purchase.ts";
 import { KEYS } from "../harness/browser/shell.ts";
 import { GOODS, NOW_ISO, OFFERING, ORDER, RESERVATION } from "../harness/mock-seed.ts";
+import { NOTIFICATION_SCENARIOS } from "../harness/notification-summary.ts";
 
 // UI mock suite (TST-E2E-004: auxiliary, not G8). Contract: tests/contracts/s7a-purchase.md section 6.
 // SPEC-050 16 (PG-XFN-001), 20.1, 21, 22, 25, 31 items 7 / 8 / 9 / 10 / 11 / 19 / 27, SPEC-070 PAY-BRW-001 .. 003,
@@ -607,7 +608,7 @@ test.describe("TC-PG-XFN-001-666 a CONFIRMED Order shows the rights of its Purpo
   });
 });
 
-test.describe("TC-PG-XFN-001-667 an Email failure is a non-blocking notice and never undoes the purchase (E2E 19, SPEC-050 16.7, 20.5)", () => {
+test.describe("TC-PG-XFN-001-667 an Email failure is a non-blocking notice and never undoes the purchase (E2E 19, SPEC-050 16.2 / 16.7, 20.5, EML-NTF-003)", () => {
   test("a CONFIRMED Order with a delayed Email keeps the success state and the rights and shows the contracted notice", async ({
     page,
   }) => {
@@ -615,8 +616,8 @@ test.describe("TC-PG-XFN-001-667 an Email failure is a non-blocking notice and n
       scenario: { notification: "failed_retryable" },
     });
     await expect(outcomeRegion(page)).toContainText(label.CONFIRMED);
-    await expect(outcomeRegion(page)).toContainText(copy.notification.FAILED_RETRYABLE.message);
-    await expect(outcomeRegion(page)).toContainText(copy.notification.FAILED_RETRYABLE.label);
+    await expect(outcomeRegion(page)).toContainText(copy.notification.ATTENTION_REQUIRED.message);
+    await expect(outcomeRegion(page)).toContainText(copy.notification.ATTENTION_REQUIRED.label);
     await expect(entitlementsRegion(page).getByRole("link")).toHaveCount(4);
     // Non-blocking: no alert, no button (no Business retry), the state is not shown as a failure.
     await expect(alertsOf(page)).toHaveCount(0);
@@ -628,20 +629,62 @@ test.describe("TC-PG-XFN-001-667 an Email failure is a non-blocking notice and n
   test("without a delayed Email there is no notice", async ({ page }) => {
     await openAs(page, `/purchase/orders/${ORDER.confirmedEntry}`);
     await expect(outcomeRegion(page)).toContainText(label.CONFIRMED);
-    await expect(mainOf(page)).not.toContainText(copy.notification.FAILED_RETRYABLE.message);
+    await expect(mainOf(page)).not.toContainText(copy.notification.ATTENTION_REQUIRED.message);
   });
 
   test("the notice appears when the recheck confirms the Order, together with the rights", async ({
     page,
   }) => {
     await viaCartToStatus(page, { notification: "failed_retryable" });
-    await expect(mainOf(page)).not.toContainText(copy.notification.FAILED_RETRYABLE.message);
+    await expect(mainOf(page)).not.toContainText(copy.notification.ATTENTION_REQUIRED.message);
     await actionButton(page, act.recheck_status).click();
     await expect(outcomeRegion(page)).toContainText(label.CONFIRMED);
-    await expect(outcomeRegion(page)).toContainText(copy.notification.FAILED_RETRYABLE.message);
+    await expect(outcomeRegion(page)).toContainText(copy.notification.ATTENTION_REQUIRED.message);
     await expect(entitlementsRegion(page)).toBeVisible();
     await expect(alertsOf(page)).toHaveCount(0);
   });
+});
+
+// The simulated internal state maps to notification_summary NONE / PENDING / SENT / null, none of which is shown
+// (SPEC-050 16.7). Only ATTENTION_REQUIRED (scenario failed_retryable) shows the notice.
+const QUIET_NOTIFICATION_SCENARIOS = NOTIFICATION_SCENARIOS.filter((v) => v !== "failed_retryable");
+const DELIVERY_CLAIMS = /届きました|配信されました|送信しました|送信済み|メールが届/;
+
+test.describe("TC-PG-XFN-001-670 PENDING, SENT, NONE and an unavailable summary show no notice and leave the Order untouched (E2E 19, SPEC-050 16.2 / 16.7, INV-010-06, EML-NTF-003)", () => {
+  for (const notification of QUIET_NOTIFICATION_SCENARIOS) {
+    test(`scenario ${notification}: Purchase Status keeps the success state and the rights, with no notice, alert or notification action`, async ({
+      page,
+    }) => {
+      await openAs(page, `/purchase/orders/${ORDER.confirmedEntry}`, {
+        scenario: { notification },
+      });
+      await expect(heading1(page)).toHaveText(copy.purchase.heading);
+      await expect(outcomeRegion(page)).toContainText(label.CONFIRMED);
+      await expect(entitlementsRegion(page).getByRole("link")).toHaveCount(4);
+      await expect(mainOf(page)).not.toContainText(copy.notification.ATTENTION_REQUIRED.message);
+      await expect(mainOf(page)).not.toContainText(copy.notification.ATTENTION_REQUIRED.label);
+      await expect(mainOf(page)).not.toContainText(DELIVERY_CLAIMS);
+      await expect(alertsOf(page)).toHaveCount(0);
+      await expect(mainOf(page).getByRole("button")).toHaveCount(0);
+      await expect(mainOf(page)).not.toContainText(/再送|再試行/);
+      expect((await orderByRef(page, ORDER.confirmedEntry))?.state).toBe("CONFIRMED");
+    });
+
+    test(`scenario ${notification}: Mypage Order detail shows the same, and the Order read is not turned into a failure`, async ({
+      page,
+    }) => {
+      await openAs(page, `/mypage/orders/${ORDER.confirmedEntry}`, { scenario: { notification } });
+      await expect(outcomeRegion(page)).toContainText(label.CONFIRMED);
+      await expect(entitlementsRegion(page)).toBeVisible();
+      expect((await entitlementHrefs(page)).length).toBeGreaterThan(0);
+      await expect(mainOf(page)).not.toContainText(copy.notification.ATTENTION_REQUIRED.message);
+      await expect(mainOf(page)).not.toContainText(copy.notification.ATTENTION_REQUIRED.label);
+      await expect(mainOf(page)).not.toContainText(DELIVERY_CLAIMS);
+      await expect(alertsOf(page)).toHaveCount(0);
+      await expect(mainOf(page).getByRole("button")).toHaveCount(0);
+      expect((await orderByRef(page, ORDER.confirmedEntry))?.state).toBe("CONFIRMED");
+    });
+  }
 });
 
 test.describe("TC-PG-XFN-001-668 a failed read is not an empty or denied page, and a failed recheck keeps what was shown (SPEC-050 9.3, 21, 26.2)", () => {

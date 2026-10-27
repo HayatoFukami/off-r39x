@@ -306,6 +306,15 @@ describe("TC-DEV-WEB-010-103 port doc comments name the Operation ID or the UCR 
     expect(lines.join("\n")).not.toContain("UCR-100-001");
   });
 
+  it("cites API-ORD-003 for getOrder as the owner projection of SPEC-120 7.2 without the UCR or Operation ID なし wording (SPEC-050 16.2)", () => {
+    const lines = portSource();
+    const annotation = window(lines, "getOrder");
+    expect(annotation).toContain("API-ORD-003");
+    expect(annotation).toContain("notification_summary");
+    expect(annotation).not.toContain("UCR-110-001");
+    expect(annotation).not.toMatch(/Operation ID\s*(なし|none|missing)/i);
+  });
+
   it("does not invent new Operation IDs", () => {
     const ids = new Set(
       read(join(webDir, "src/api-client/port.ts")).match(/API-[A-Z]+(?:-[A-Z]+)*-\d{3}/g) ?? [],

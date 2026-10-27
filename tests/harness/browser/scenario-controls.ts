@@ -46,7 +46,11 @@ export const SCENARIO_CONTROLS: readonly ScenarioControl[] = [
       "cancel",
     ],
   },
-  { path: "notification", kind: "select", values: ["sent", "failed_retryable"] },
+  {
+    path: "notification",
+    kind: "select",
+    values: ["sent", "pending", "failed_retryable", "canceled", "summary_unavailable"],
+  },
   { path: "auth.session", kind: "select", values: ["ok", "unavailable"] },
   { path: "auth.login", kind: "select", values: ["ok", "credential_failure", "unavailable"] },
   {

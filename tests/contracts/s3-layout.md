@@ -418,7 +418,7 @@ seed の `imageUrl`（`/mock/sponsors/<key>.svg`）が指す文字だけの plac
 | `karaokeHold` | `ok` `conflict` `limit` `expire_before_checkout` |
 | `karaokeSales` | `ON_SALE` `BEFORE_SALES` `SALES_ENDED` `SUSPENDED` |
 | `paymentOutcome` | `confirm_after_recheck` `confirm` `remain_awaiting` `payment_failed` `review_required` `expire` `cancel` |
-| `notification` | `sent` `failed_retryable` |
+| `notification` | `sent` `pending` `failed_retryable` `canceled` `summary_unavailable` |
 | `auth.session` | `ok` `unavailable` |
 | `auth.login` | `ok` `credential_failure` `unavailable` |
 | `auth.signup` | `confirmation_required` `signed_in` `rejected` `unavailable` |

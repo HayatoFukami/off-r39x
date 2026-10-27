@@ -22,7 +22,7 @@
 | `apps/web/src/presentation/state-mapping/entry-ticket.ts` | `EntryTicketPresentation`, `presentEntryTicket` |
 | `apps/web/src/presentation/state-mapping/karaoke.ts` | `SlotPresentation`, `HoldPresentation`, `ReservationTicketPresentation`, `presentSlot`, `presentHold`, `presentReservationTicket` |
 | `apps/web/src/presentation/state-mapping/goods.ts` | `GoodsItemPresentation`, `presentGoodsItem` |
-| `apps/web/src/presentation/state-mapping/notification.ts` | `NotificationPresentation`, `presentNotification` |
+| `apps/web/src/presentation/state-mapping/notification.ts` | `NotificationPresentation`, `presentNotificationSummary` |
 | `apps/web/src/presentation/state-mapping/availability.ts` | `AvailabilityInput`, `AvailabilityPresentation`, `CartRejectionReason`, `RejectionPresentation`, `presentAvailability`, `presentRejectionReason` |
 
 relative import は拡張子なしでも `.ts` 付きでもよい（Vitest と `tests` の `tsc` の両方で解決できること）。`Tone` は `order.ts` で定義し、他の state-mapping は `import type { Tone } from "./order"` する。
@@ -382,10 +382,10 @@ export function presentGoodsItem(item: GoodsItemState, handoff: GoodsHandoffStat
 
 ## 10. Notification `apps/web/src/presentation/state-mapping/notification.ts`
 
-SPEC-050 §16.7, §20.5。
+SPEC-050 §16.2 / §16.7、`API-ORD-003.notification_summary`、SPEC-120 §7.2（`EML-NTF-003`）。UI は**内部 Notification State を直接受け取らない**（§16.2）。入力は所有者向けの射影である summary status だけ。
 
 ```ts
-import type { NotificationState } from "@off-r39x/domain";
+import type { NotificationSummaryStatus } from "../../api-client/types"; // "NONE" | "PENDING" | "SENT" | "ATTENTION_REQUIRED"
 import type { Tone } from "./order";
 
 export type NotificationPresentation = {
@@ -397,19 +397,23 @@ export type NotificationPresentation = {
   readonly actions: readonly []; // 常に空。Business Transaction の再実行 Button を出さない
 };
 
-/** `CANCELED`（通知不要化）は表示しないので null。 */
-export function presentNotification(state: NotificationState): NotificationPresentation | null;
+/** `ATTENTION_REQUIRED` だけを表示する。`PENDING` / `SENT` / `NONE` は何も表示しないので null。 */
+export function presentNotificationSummary(status: NotificationSummaryStatus): NotificationPresentation | null;
 ```
 
-| state | 戻り値 |
+| status | 戻り値 |
 |---|---|
-| `PENDING` | label は自由で `確認Email` を含む。message は自由で非空 |
-| `SENT` | label は自由で `Email` を含む。補助情報。message は自由で非空 |
-| `FAILED_RETRYABLE` | message は固定 `購入は確定済みです。確認Emailの送信に失敗または遅延しています。購入内容はこの画面とMypageで確認できます`（§16.7）。tone は `failure` 以外。message に `再試行` / `再送` / `もう一度購入` / `やり直` を含まない |
-| `CANCELED` | `null` |
+| `ATTENTION_REQUIRED` | message は固定 `購入は確定済みです。確認Emailの送信に失敗または遅延しています。購入内容はこの画面とMypageで確認できます`（§16.7）。label は `copy.notification.ATTENTION_REQUIRED.label`。tone は `failure` 以外。message に `再試行` / `再送` / `もう一度購入` / `やり直` を含まない |
+| `PENDING` | `null` |
+| `SENT` | `null` |
+| `NONE` | `null` |
 
-- `PENDING` / `SENT` / `FAILED_RETRYABLE` の 3 つの label は互いに異なる。
+- 戻り値の label / message は辞書（`copy.notification.ATTENTION_REQUIRED`）の文字列そのもの。tone は 5 種のいずれか。
+- `copy.notification` が持つ key は `ATTENTION_REQUIRED` だけ（表示しない status の文言を置かない）。
 - `actions` は常に空配列、`blocking` は常に `false`、`keepsPurchaseSuccess` は常に `true`。
+- 未知の値（`FAILED_RETRYABLE` のような内部 State を含む）は `assertNever` で `Unexpected value` を throw する（fail closed）。
+- `presentNotification(NotificationState)` は export しない。`@off-r39x/domain` の `NotificationState` を import しない（summary status は DTO であり Domain State ではない。`EML-NTF-003`）。
+- `null`（取得障害）は presenter の入力にしない。呼び出し側（`buildPurchaseStatusModel`）が「summary が null または `ATTENTION_REQUIRED` 以外」を「表示なし」として扱う。
 
 ## 11. 販売可否 `apps/web/src/presentation/state-mapping/availability.ts`
 

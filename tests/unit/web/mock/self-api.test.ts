@@ -23,6 +23,7 @@ import {
   SLOT,
   TICKET,
 } from "../../../harness/mock-seed.ts";
+import { hasLegacyNotice } from "../../../harness/notification-summary.ts";
 
 const nowMs = Date.parse(NOW_ISO);
 const EMPTY_ENTITLEMENTS = { entryTicketRefs: [], reservationRef: null, goodsItems: [] };
@@ -171,7 +172,8 @@ describe("TC-PG-MYP-004-101 order detail: Snapshot items, totals, entitlements a
       const detail = okData(await backend.api.self.getOrder(ref));
       expect(detail.entitlements, String(ref)).toEqual(EMPTY_ENTITLEMENTS);
       expect(detail.receiptUrl).toBeNull();
-      expect(detail.notice).toBeNull();
+      expect(detail.notificationSummary, String(ref)).toEqual({ status: "NONE" });
+      expect(hasLegacyNotice(detail)).toBe(false);
     }
     const entry = okData(await backend.api.self.getOrder(ORDER.confirmedEntry));
     expect([...entry.entitlements.entryTicketRefs].sort()).toEqual(

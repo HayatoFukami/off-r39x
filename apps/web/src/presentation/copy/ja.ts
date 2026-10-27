@@ -388,15 +388,7 @@ export const copy = {
     perAccountLimit: (limit: number): string => `1アカウントあたりの購入上限は${limit}枚です`,
   },
   notification: {
-    PENDING: {
-      label: "確認Emailを送信中",
-      message: "確認Emailを準備しています。購入内容には影響しません。",
-    },
-    SENT: {
-      label: "確認Emailを送信済み",
-      message: "確認Emailを送信しました。",
-    },
-    FAILED_RETRYABLE: {
+    ATTENTION_REQUIRED: {
       label: "確認Emailの送信に失敗または遅延",
       message:
         "購入は確定済みです。確認Emailの送信に失敗または遅延しています。購入内容はこの画面とMypageで確認できます",

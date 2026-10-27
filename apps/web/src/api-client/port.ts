@@ -83,7 +83,7 @@ export interface SelfApi {
   updateProfile(i: { displayName: string }): Promise<ProfileUpdate>;
   /** API-ORD-001 */
   listOrders(): Promise<Read<readonly OrderSummary[]>>;
-  /** API-ORD-003 (ENTRY_GOODS_PURCHASE purpose and notice: Operation ID なし, UCR-110-001) */
+  /** API-ORD-003 (notification_summary is the owner projection of SPEC-120 7.2; null when only the summary is unavailable) */
   getOrder(r: Ref<"order">): Promise<Read<OrderDetail>>;
   /** API-TKT-001 */
   listEntryTickets(): Promise<Read<readonly EntryTicketSummary[]>>;

@@ -124,7 +124,7 @@ export type OrderDetail = OrderSummary & {
   items: readonly OrderItem[];          // 購入時 Snapshot
   entitlements: OrderEntitlements;      // 常に存在。CONFIRMED 以外は {entryTicketRefs:[], reservationRef:null, goodsItems:[]}
   receiptUrl: string | null;
-  notice: { kind: "email_delayed" } | null;
+  notificationSummary: { status: NotificationSummaryStatus } | null;   // API-ORD-003 notification_summary。null = summary だけ取得不能
 };
 export type EntryTicketSummary = { ticketRef: Ref<"ticket">; offeringName: string; state: EntryTicketState; orderRef: Ref<"order"> };
 export type EntryTicketDetail = EntryTicketSummary & { issuedAt: UtcInstant };
@@ -173,7 +173,7 @@ export interface SelfApi {   // 他者所有でも不存在でも同じ not_foun
   getProfile(): Promise<Read<Profile>>;                                       // API-AUTH-002
   updateProfile(i: { displayName: string }): Promise<ProfileUpdate>;          // API-AUTH-004（SPEC-030 §9.2: trim、空は null、1〜80 code points、内部 Cc 拒否）
   listOrders(): Promise<Read<readonly OrderSummary[]>>;                       // API-ORD-001
-  getOrder(r: Ref<"order">): Promise<Read<OrderDetail>>;                      // API-ORD-003（purpose の ENTRY_GOODS_PURCHASE と notice は UCR-110-001）
+  getOrder(r: Ref<"order">): Promise<Read<OrderDetail>>;                      // API-ORD-003（notification_summary は SPEC-120 7.2 の所有者向け射影。summary だけの取得障害は null）
   listEntryTickets(): Promise<Read<readonly EntryTicketSummary[]>>;           // API-TKT-001
   getEntryTicket(r: Ref<"ticket">): Promise<Read<EntryTicketDetail>>;         // API-TKT-002
   getEntryQr(r: Ref<"ticket">): Promise<Read<QrPresentation>>;                // API-TKT-003
@@ -186,7 +186,7 @@ export interface SelfApi {   // 他者所有でも不存在でも同じ not_foun
 export interface ApiPort { readonly public: PublicApi; readonly purchase: PurchaseApi; readonly self: SelfApi }
 ```
 
-各 method の doc comment に対応する Operation ID を書く。Operation ID が無いもの（`startCartPurchase`、`listSponsorLogos`、`listEntryOfferings` の閲覧者別 Purchase Limit 可否、`getOrder` の `notice` と `ENTRY_GOODS_PURCHASE`、`resolveCartLines` の複合）には `UCR-110-001` と「Operation ID なし」を明記する。新しい Operation ID を発明しない。
+各 method の doc comment に対応する Operation ID を書く。Operation ID が無いもの（`startCartPurchase`、`listSponsorLogos`、`listEntryOfferings` の閲覧者別 Purchase Limit 可否、`resolveCartLines` の複合）には `UCR-110-001` と「Operation ID なし」を明記する。`getOrder` は `API-ORD-003`（`notification_summary` を含む）として正本化されたので、`UCR-110-001` / 「Operation ID なし」を書かない。新しい Operation ID を発明しない。
 
 `apps/web/src/api-client/cart-line-key.ts`:
 
@@ -246,7 +246,7 @@ type Scenario = {
   karaokeHold: "ok" | "conflict" | "limit" | "expire_before_checkout";
   karaokeSales: "ON_SALE" | "BEFORE_SALES" | "SALES_ENDED" | "SUSPENDED";   // PG-KRK-001 の販売状態を再現するための追加 switch
   paymentOutcome: "confirm_after_recheck" | "confirm" | "remain_awaiting" | "payment_failed" | "review_required" | "expire" | "cancel";
-  notification: "sent" | "failed_retryable";
+  notification: "sent" | "pending" | "failed_retryable" | "canceled" | "summary_unavailable";   // 模擬バックエンド内の確認通知の内部状態。UI へは notification_summary に射影して返す
   auth: {
     session: "ok" | "unavailable";
     login: "ok" | "credential_failure" | "unavailable";
@@ -518,7 +518,17 @@ webhook 待ち（`startCheckout` が `redirect` を返した Order）で、state
 - Order の state 以外の read（`listOrders`、他の `self.*` Read）は遷移を起こさない。`getOrder` / `listOrders` / 他の read は**新しい Order を作らない**（PAY-BRW-002）。
 - Order が `PREPARED` / `AWAITING_PAYMENT` / `REVIEW_REQUIRED` の goods item は `PENDING_PAYMENT`（handoff `PENDING`）、`PAYMENT_FAILED` / `CANCELED` / `EXPIRED` の goods item は `CANCELED`（handoff `VOID`）、`CONFIRMED` は記録された値（`FULFILLABLE` + `PENDING` / `COMPLETED`）として返す。
 - `OrderDetail.entitlements`: `CONFIRMED` のときだけ、その Order の Ticket refs / reservationRef / goodsItems（itemState と handoffState）を返す。それ以外の state は常に `{ entryTicketRefs: [], reservationRef: null, goodsItems: [] }`（複合 Order でも片方だけ返さない。BR-ORD-015、INV-010-07）。
-- `OrderDetail.notice`: state が `CONFIRMED` かつ scenario `notification === "failed_retryable"` のとき `{ kind: "email_delayed" }`、それ以外は `null`。state と entitlements は影響を受けない。
+- `OrderDetail.notificationSummary`（`API-ORD-003`、SPEC-120 §7.2 `EML-NTF-003` の射影。`notice` は存在しない。summary status は `types.ts` の DTO 型 `NotificationSummaryStatus = "NONE" | "PENDING" | "SENT" | "ATTENTION_REQUIRED"` で、Domain State ではない）:
+
+  | scenario `notification` | `CONFIRMED` の Order | 非 `CONFIRMED` の Order |
+  |---|---|---|
+  | `failed_retryable` | `{ status: "ATTENTION_REQUIRED" }` | `{ status: "NONE" }` |
+  | `pending` | `{ status: "PENDING" }` | `{ status: "NONE" }` |
+  | `sent`（既定） | `{ status: "SENT" }` | `{ status: "NONE" }` |
+  | `canceled` | `{ status: "NONE" }`（CANCELED は集約対象外） | `{ status: "NONE" }` |
+  | `summary_unavailable` | `null` | `null` |
+
+  `summary_unavailable` でも `getOrder` は `ok` を返し、state・entitlements・receiptUrl は通常どおり（部分障害を Order の失敗にしない）。state と entitlements は scenario の影響を受けない。read は DB を書き換えない。
 - `listOrders`: 本人の Order だけを `createdAt` 降順（非増加）で返す。guest / 未確認は §10。`getOrder`: 本人の Order 以外は `not_found`。
 
 ## 12. Self Read の意味論
@@ -586,7 +596,7 @@ export function createMockAuth(deps: MockAuthDeps): AuthPort;
 3. `AuthPort.signUp` / `completePasswordReset` に validation 失敗が無い → `signUp` は `rejected`、`completePasswordReset` の password policy 違反は reject（programmer error）。
 4. `confirm_after_recheck` の「初回 read」は `getOrder` の呼び出し回数で数える（時間経過ではない）。React の StrictMode 等で `getOrder` が二重に呼ばれると 1 回で確定して見えるため、S7a の container は mount ごとに 1 回だけ読むこと。
 5. `karaokeSales` を scenario に追加した（PG-KRK-001 の販売前 / 終了 / 停止、`not_on_sale` を再現するため）。設計書 §8 の一覧外の追加 switch。
-6. Purchase Limit の閲覧者別可否・`notice`・`ENTRY_GOODS_PURCHASE` の port は Operation ID が無い（UCR-110-001）。
+6. Purchase Limit の閲覧者別可否・`ENTRY_GOODS_PURCHASE` の port は Operation ID が無い（UCR-110-001）。`getOrder` の通知は `API-ORD-003.notification_summary` として正本化された（旧 `notice` は廃止）。
 7. `KaraokeSales` には `usage` / 整備時間の数値を持たせない（Hold TTL との混同を避け、時間帯は slot の `usageStart` / `usageEnd` から導く）。
 8. 同じ Goods / Entry Offering の重複 line（Cart 契約で許容）は、入力順に draft へ割り当てて判定する（`taken`）。1 件でも不成立なら全体を破棄する（All-or-Nothing、BR-ORD-014 / BR-ORD-017）。Order 明細は line ごとに 1 件のまま集計しない。
 9. Checkout の idempotency replay は user + key のみで判定する（`orderRef` を含めない）。SPEC-110 §18 の `409 IDEMPOTENCY_KEY_REUSED` との差は mock の意図的な単純化で、実 API の検証根拠にしない。

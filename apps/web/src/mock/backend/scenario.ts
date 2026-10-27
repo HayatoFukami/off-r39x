@@ -28,7 +28,7 @@ export const scenarioSchema = z.strictObject({
     "expire",
     "cancel",
   ]),
-  notification: z.enum(["sent", "failed_retryable"]),
+  notification: z.enum(["sent", "pending", "failed_retryable", "canceled", "summary_unavailable"]),
   auth: z.strictObject({
     session: z.enum(["ok", "unavailable"]),
     login: z.enum(["ok", "credential_failure", "unavailable"]),

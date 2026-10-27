@@ -12,6 +12,7 @@ import type {
   EventInfo,
   GoodsItemDetail,
   GoodsItemSummary,
+  NotificationSummaryStatus,
   OrderDetail,
   OrderItem,
   OrderSummary,
@@ -167,9 +168,33 @@ function orderDetail(state: DbState, order: OrderRow, scenario: Scenario): Order
         }
       : { entryTicketRefs: [], reservationRef: null, goodsItems: [] },
     receiptUrl: order.receiptUrl,
-    notice:
-      confirmed && scenario.notification === "failed_retryable" ? { kind: "email_delayed" } : null,
+    notificationSummary: notificationSummary(order, scenario),
   };
+}
+
+/**
+ * The owner projection of the simulated confirmation-notification state (SPEC-120 7.2 EML-NTF-003;
+ * the mock is not the contract, DEV-WEB-010). It is derived on read and never written to the DB.
+ * `summary_unavailable` models a summary-only failure: the Order itself is still returned.
+ */
+function notificationSummary(
+  order: OrderRow,
+  scenario: Scenario,
+): { status: NotificationSummaryStatus } | null {
+  switch (scenario.notification) {
+    case "summary_unavailable":
+      return null;
+    case "canceled":
+      return { status: "NONE" };
+    case "failed_retryable":
+      return { status: order.state === "CONFIRMED" ? "ATTENTION_REQUIRED" : "NONE" };
+    case "pending":
+      return { status: order.state === "CONFIRMED" ? "PENDING" : "NONE" };
+    case "sent":
+      return { status: order.state === "CONFIRMED" ? "SENT" : "NONE" };
+    default:
+      return assertNever(scenario.notification);
+  }
 }
 
 /** Deterministic, token-free value derived from a ref. Carries no QR material (SEC-QR-012/013). */
