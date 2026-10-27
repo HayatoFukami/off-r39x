@@ -1,0 +1,24 @@
+{
+  "name": "@off-r39x/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "migrate": "node src/migrate-cli.ts"
+  },
+  "dependencies": {
+    "@off-r39x/reliability": "workspace:*",
+    "drizzle-orm": "^0.45.1",
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "@types/pg": "^8.15.6",
+    "typescript": "^5"
+  }
+}
