@@ -1772,6 +1772,7 @@
       "expected_domain_postconditions": [
         "same key and same content (in any line order): the same orderRef, no second Order, no second allocation, no new id, stored state unchanged",
         "same key with different content (quantity, added line, other item): the promise rejects and nothing is created",
+        "a replay whose recorded Order cannot be found is refused: the promise rejects, stored state and ids are unchanged",
         "key is user-scoped; rejections are not memoized"
       ],
       "expected_db_postconditions": [],

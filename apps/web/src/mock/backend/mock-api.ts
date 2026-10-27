@@ -840,7 +840,8 @@ export function createMockApi(deps: MockApiDeps): ApiPort {
       );
       if (replay !== undefined && replay.kind === "cart") {
         const order = state.orders.find((x) => x.ref === replay.orderRef);
-        if (order !== undefined && !sameQuantities(lines, order.items)) {
+        // Fail closed: the content can only be confirmed against the recorded Order.
+        if (order === undefined || !sameQuantities(lines, order.items)) {
           throw new Error("idempotency key reused with a different request");
         }
         return { kind: "created", orderRef: asRef<"order">(replay.orderRef) };

@@ -451,6 +451,24 @@ describe("TC-PG-CRT-001-103 idempotencyKey replay returns the same Order and a c
     expect(okData(await backend.api.self.listOrders()).length).toBe(1);
   });
 
+  it("refuses a replay whose recorded Order can no longer be found, and creates nothing", async () => {
+    const backend = await freshBackend();
+    const lines = [entry(OFFERING.regular, 2)];
+    const first = await backend.api.purchase.startCartPurchase(lines, { idempotencyKey: "k-gone" });
+    if (first.kind !== "created") throw new Error(`expected created but got ${first.kind}`);
+    // The idempotency record stays, the Order it points to disappears.
+    editDb(backend, (state) => {
+      state.orders = state.orders.filter((o) => o.ref !== first.orderRef);
+    });
+    const fingerprint = dbFingerprint(backend);
+    const ids = backend.ids.count();
+    await expect(
+      backend.api.purchase.startCartPurchase(lines, { idempotencyKey: "k-gone" }),
+    ).rejects.toThrow();
+    expect(dbFingerprint(backend)).toBe(fingerprint);
+    expect(backend.ids.count()).toBe(ids);
+  });
+
   it("creates a second Order for a different key", async () => {
     const backend = await freshBackend();
     const a = await backend.api.purchase.startCartPurchase([entry(OFFERING.regular, 1)], {

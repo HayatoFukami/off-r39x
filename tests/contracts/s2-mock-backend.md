@@ -58,8 +58,7 @@ export type CartLineResolution = { lineKey: string } & (
   | { status: "unavailable" }
 );
 
-// API-PUR-CART-001: All-or-Nothing。created は送った全 line が 1 つの Order に入ったことを表し（部分的な成立を表す
-// 部分的な成立を表す field は無い）、rejected は不成立と確認できた Item だけを入力順に返す（reasons は 1 件以上、正本の順、重複なし）。
+// API-PUR-CART-001: All-or-Nothing。created は送った全 line が 1 つの Order に入ったことを表し（部分的な成立を表す field は無い）、rejected は不成立と確認できた Item だけを入力順に返す（reasons は 1 件以上、正本の順、重複なし）。
 // lineKey は cartLineKey の値（API の { kind, target_ref } を UI 側で写したもの）。
 export type CartPurchaseStart =
   | { kind: "created"; orderRef: Ref<"order"> }
@@ -484,7 +483,7 @@ session は `SESSION_STORAGE_KEY` から読む。
 1. latency → session 判定（§10）。
 2. `scenario.cart.purchaseStart === "unavailable"` → `{ kind: "unavailable" }`（状態を変えない）。
 3. 入力検証（API-PUR-CART-001 の Body。400 `VALIDATION_FAILED` 相当）: 次のいずれかに当たれば **Promise を reject**（`RangeError`）し、DB は変えず `idGenerator` も呼ばない。`lines` が空、51 件以上、quantity が `Number.isSafeInteger` で 1〜2147483647 の範囲外、`cartLineKey` が同じ line の重複。50 件ちょうどと quantity 2147483647 は有効な入力で、業務結果（`created` / `rejected`）として評価する。UI は `canProceed` と Cart store の合算（重複なし）、試行ごとの新しい `idempotencyKey` でこれらを防ぐ。
-4. replay（FR-XFN-012、409 `IDEMPOTENCY_KEY_REUSED` 相当）: 同じ session の user・同じ `idempotencyKey` で以前に `created` を返していれば、送られた lines（`cartLineKey` ごとの数量。**line の順序は問わない**）を、記録した Order の明細（`ENTRY_TICKET.offeringRef` / `GOODS.goodsRef` ごとの数量の合計）と比べる。**一致すれば**同じ `{ kind: "created", orderRef }` を返し、新しい Order を作らず、`idGenerator` も呼ばず、DB を変えない。**違えば**（数量の違い、line の追加、別の Item）Promise を reject し（`Error`、メッセージに `idempotency key reused`）、何も作らない。`rejected` は記録しない（状態が変われば再評価する）。
+4. replay（FR-XFN-012、409 `IDEMPOTENCY_KEY_REUSED` 相当）: 同じ session の user・同じ `idempotencyKey` で以前に `created` を返していれば、送られた lines（`cartLineKey` ごとの数量。**line の順序は問わない**）を、記録した Order の明細（`ENTRY_TICKET.offeringRef` / `GOODS.goodsRef` ごとの数量の合計）と比べる。**一致すれば**同じ `{ kind: "created", orderRef }` を返し、新しい Order を作らず、`idGenerator` も呼ばず、DB を変えない。**違えば**（数量の違い、line の追加、別の Item）Promise を reject し（`Error`、メッセージに `idempotency key reused`）、何も作らない。記録した Order が DB から見つからない replay も同様に reject し、何も作らない（Order を作り直さない）。`rejected` は記録しない（状態が変われば再評価する）。
 5. 各 line を**互いに独立に**評価する（重複 line は 3 で排除済みなので、逐次の割り当てはない）。評価は `evaluatePurchaseConditions`（`apps/web/src/mock/backend/purchase-conditions.ts`。API-PUR-ELG-001 の reasons を返す純粋関数。時刻は引数で受け取る）で行い、requested = line の数量、Entry の `used` = 閲覧者の既存 Order の使用数（§8.6）、Goods は上限なし（`perAccountLimit: null`、`used: 0`）とする。理由は次の順に積む（重複なし。SPEC-110 の列挙順と同じ）:
    1. 非公開または存在しない ref → `["NOT_PUBLIC_OR_NOT_FOUND"]` **だけ**（他の理由を付けない。非公開と不存在は区別できない）。
    2. `now < startsAt` → `SALES_NOT_STARTED`、`now >= endsAt` → `SALES_CLOSED`（半開区間）、`control = SUSPENDED` → `SALES_STOPPED`。
