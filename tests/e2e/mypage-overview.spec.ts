@@ -224,7 +224,7 @@ test.describe("TC-PG-MYP-001-704 Email failure does not change what the Overview
     await expect(region(page, overview().goodsHeading)).toContainText(overview().goodsSummary(1));
     await expect(rowsIn(region(page, overview().pendingHeading))).toHaveCount(3);
     await expect(alertsOf(page)).toHaveCount(0);
-    await expect(mainOf(page)).not.toContainText(copy.notification.FAILED_RETRYABLE.message);
+    await expect(mainOf(page)).not.toContainText(copy.notification.ATTENTION_REQUIRED.message);
   });
 });
 

@@ -35,8 +35,8 @@ function toExternalHref(linkUrl: string | null): string | null {
   return linkUrl !== null && isPlainHttps(linkUrl) ? linkUrl : null;
 }
 
-function toImageSrc(imageUrl: string | null): string | null {
-  if (imageUrl === null || imageUrl === "") return null;
+function toImageSrc(imageUrl: string): string | null {
+  if (imageUrl === "") return null;
   if (imageUrl.startsWith("/")) {
     return imageUrl.startsWith("//") || imageUrl.startsWith("/\\") ? null : imageUrl;
   }

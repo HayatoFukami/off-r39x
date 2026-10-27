@@ -529,19 +529,26 @@
       "test_case_id": "TC-PG-XFN-001-002",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-XFN-001", "PG-MYP-004", "TST-UNT-004"],
+      "upstream_rule_ids": [
+        "PG-XFN-001",
+        "PG-MYP-004",
+        "EML-NTF-003",
+        "SPEC-050-16.2",
+        "SPEC-050-16.7",
+        "TST-UNT-004"
+      ],
       "system_invariant_ids": ["INV-010-07"],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "Pure function (node environment, no DOM); contract tests/contracts/s1-presentation.md",
+      "preconditions": "Pure function (node environment, no DOM); input is the API-ORD-003 notification_summary status, never an internal Notification State; contract tests/contracts/s1-presentation.md",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "FAILED_RETRYABLE keeps the success display with the fixed 16.7 notice, non-blocking, no action",
-        "CANCELED notification is not shown; unknown state throws"
+        "ATTENTION_REQUIRED keeps the success display with the fixed 16.7 notice, non-blocking, no action",
+        "PENDING, SENT and NONE show nothing; the dictionary holds only ATTENTION_REQUIRED; no presenter takes an internal Notification State; an unknown status throws"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -1141,7 +1148,7 @@
       "test_case_id": "TC-BR-EVT-005-101",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["BR-EVT-005", "PG-PUB-001", "TST-UNT-004"],
+      "upstream_rule_ids": ["BR-EVT-005", "API-PUB-012", "PG-PUB-001", "TST-UNT-004"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -1153,7 +1160,56 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "only PUBLISHED logos in display order",
-        "none is ok-empty, fail is unavailable, image_broken keeps names with a broken image URL"
+        "none is ok-empty, fail is unavailable, image_broken keeps names with a broken image URL",
+        "every image URL is a non-null string (API-PUB-012 image_url is required)"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-BR-EVT-005-102",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["BR-EVT-005", "API-PUB-012", "TST-UNT-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock DB rewritten through the injected storage so that PUBLISHED logos share a display order and the stored order differs from the ref order; contract tests/contracts/s2-mock-backend.md; UI mock test double (not API/DB/Provider coverage)",
+      "fixture_ids": ["MOCK-SEED-PUBLIC"],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "logos with an equal display order are returned by ref ascending whatever the stored order is (sort_order ASC, public_ref ASC)",
+        "a lower display order still comes first; DRAFT and ARCHIVED logos are never returned even when they tie"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-BR-EVT-005-103",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["BR-EVT-005", "SEC-WEB-026", "TST-UNT-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Scenario sponsorLogos = image_disallowed_origin; contract tests/contracts/s2-mock-backend.md; UI mock test double (not API/DB/Provider coverage)",
+      "fixture_ids": ["MOCK-SEED-PUBLIC"],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "the same 3 logos in the same order with the same link URLs as published",
+        "every image URL is an https URL without credentials on the reserved-TLD origin https://sponsor-images.invalid"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -1422,7 +1478,13 @@
       "test_case_id": "TC-DEV-WEB-010-103",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["DEV-WEB-010", "DEV-GEN-003", "TST-UNT-004"],
+      "upstream_rule_ids": [
+        "DEV-WEB-010",
+        "DEV-GEN-003",
+        "API-ORD-003",
+        "API-PUB-012",
+        "TST-UNT-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -1434,7 +1496,10 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "every method names an Operation ID or UCR-110-001",
-        "ports without an Operation ID are marked and no new Operation ID is invented"
+        "ports without an Operation ID are marked and no new Operation ID is invented",
+        "the Profile ports cite API-AUTH-002 / API-AUTH-004 and no longer cite the superseded UCR-100-001",
+        "getOrder cites API-ORD-003 (notification_summary) without UCR-110-001 or Operation ID なし",
+        "listSponsorLogos cites API-PUB-012 (PUBLISHED only, public_ref ASC tie-break) without UCR-110-001 or Operation ID なし; only startCartPurchase stays marked UCR-110-001"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -1457,7 +1522,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "every switch has its documented default; schema is strict at every level"
+        "every switch has its documented default; schema is strict at every level; notification accepts exactly sent / pending / failed_retryable / canceled / summary_unavailable (the simulated internal state), rejects the summary statuses, and round-trips through storage; sponsorLogos accepts image_disallowed_origin"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -1978,7 +2043,14 @@
       "test_case_id": "TC-PG-MYP-002-101",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-MYP-002", "UCR-100-001", "TST-UNT-004"],
+      "upstream_rule_ids": [
+        "PG-MYP-002",
+        "FR-AUTH-011",
+        "API-AUTH-002",
+        "API-AUTH-004",
+        "SPEC-030-9.2",
+        "TST-UNT-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -1989,7 +2061,82 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "blank names rejected; saved as given; other users unaffected"
+        "blank names (empty, spaces, ideographic space, tab, line break) are saved as null (unset) and the email is never used instead; a name is saved trimmed; other users unaffected; guest and unverified are unavailable"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-FR-AUTH-011-001",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["FR-AUTH-011", "API-AUTH-004", "SPEC-030-9.2", "TST-UNT-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Pure module apps/web/src/api-client/display-name-policy.ts (no mock, no React); contract tests/contracts/s2-mock-backend.md and s8-mypage.md section 3.8; UI pre-check and UI mock rule (not API/DB coverage; TC-API-007-001 not executed)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "blank input becomes null; the value is trimmed; 80 code points pass and 81 fail (emoji and combining marks counted as code points); an internal Cc is rejected as control_character before the length is judged; Cf is accepted; the input is not changed and not Unicode-normalized"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-MYP-002-102",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "PG-MYP-002",
+        "FR-AUTH-011",
+        "API-AUTH-004",
+        "SPEC-030-9.2",
+        "TST-UNT-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Profile update boundary; contract tests/contracts/s2-mock-backend.md; UI mock test double (not API/DB/Provider coverage)",
+      "fixture_ids": ["MOCK-SEED-DEMO"],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "80 code points (including emoji and combining marks) are saved trimmed; 81 code points and an internal Cc return validation_failed with the mock DB and the name unchanged"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-MYP-002-103",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-MYP-002", "SPEC-030-9.2", "FR-AUTH-011", "TST-UNT-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Sign-up in the mock auth for both signup scenarios; contract tests/contracts/s2-mock-backend.md; UI mock test double (not API/DB/Provider coverage)",
+      "fixture_ids": ["MOCK-SEED-DEMO"],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "a newly registered user (confirmation_required and signed_in) is stored with displayName null; getProfile returns null and nothing derived from the email; seed users unchanged"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -2035,7 +2182,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "Snapshot totals exact; entitlements only for CONFIRMED; receipt URL rules"
+        "Snapshot totals exact; entitlements only for CONFIRMED; receipt URL rules; notificationSummary is NONE for every not CONFIRMED Order (default scenario) and notice does not exist"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -2352,18 +2499,26 @@
       "test_case_id": "TC-PG-XFN-001-104",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-XFN-001", "SPEC-050-16.7", "SPEC-050-20.5", "TST-UNT-004"],
+      "upstream_rule_ids": [
+        "PG-XFN-001",
+        "EML-NTF-003",
+        "API-ORD-003",
+        "SPEC-050-16.2",
+        "SPEC-050-16.7",
+        "SPEC-050-20.5",
+        "TST-UNT-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "notification=failed_retryable on a CONFIRMED Order; contract tests/contracts/s2-mock-backend.md; UI mock test double (not API/DB/Provider coverage)",
+      "preconditions": "notification scenario (sent / pending / failed_retryable / canceled / summary_unavailable) on CONFIRMED and not CONFIRMED Orders; contract tests/contracts/s2-mock-backend.md; UI mock test double (not API/DB/Provider coverage)",
       "fixture_ids": ["MOCK-SEED-DEMO"],
       "clock_instant": "2027-03-01T03:00:00Z",
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "notice email_delayed while CONFIRMED and all entitlements remain; no notice otherwise"
+        "notificationSummary is ATTENTION_REQUIRED / PENDING / SENT / NONE / null for failed_retryable / pending / sent / canceled / summary_unavailable on a CONFIRMED Order, which stays CONFIRMED with all entitlements and an ok read; a not CONFIRMED Order is NONE (null for summary_unavailable); seeded CONFIRMED Orders get it at read time without a DB change; the notice property no longer exists"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -2672,7 +2827,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "only https links without credentials and same-origin / https images are accepted; others fall back to null"
+        "only https links without credentials and same-origin / https images are accepted; others (http, javascript:, data:, protocol-relative, credentials, unparsable) fall back to null; the image URL input is a non-null string"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -2719,6 +2874,37 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "sponsor placeholder SVGs are text-only and the broken-image target does not exist"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-PUB-001-232",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "PG-PUB-001",
+        "SPEC-050-8.5",
+        "SEC-WEB-026",
+        "API-PUB-012",
+        "TST-UNT-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Static scan of the Sponsor Logo view and the api-client types (the unit environment has no DOM); UI mock test double (not API/DB coverage); S3 contract tests/contracts/s3-layout.md",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "every img of the Sponsor Logo view sets referrerPolicy no-referrer",
+        "the external link keeps target _blank and rel noopener noreferrer and nothing is proxied",
+        "SponsorLogo.imageUrl and toImageSrc take a required string"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -3323,6 +3509,7 @@
       "upstream_rule_ids": [
         "PG-PUB-001",
         "BR-EVT-005",
+        "SEC-WEB-026",
         "SPEC-050-8.5",
         "SPEC-050-31-29",
         "TST-E2E-003",
@@ -3339,7 +3526,8 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "published scenario shows only PUBLISHED sponsors in display order with alt names, loaded images, rel noopener noreferrer and an external indication"
+        "published scenario shows only PUBLISHED sponsors in display order with alt names, loaded images, rel noopener noreferrer and an external indication",
+        "every sponsor img carries referrerpolicy no-referrer"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -3430,6 +3618,39 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "image_broken scenario shows each sponsor display name as text in order and leaves no broken image"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-PUB-001-406",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-PUB-001",
+        "BR-EVT-005",
+        "SEC-WEB-026",
+        "SPEC-050-8.5",
+        "TST-E2E-003",
+        "TST-E2E-004",
+        "DEV-WEB-010"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied, img-src is 'self' data: blob: only because the E2E build sets no SPONSOR_IMAGE_ALLOWED_ORIGINS); desktop-chromium and mobile-chromium; timezone UTC; state preseeded via localStorage; UI mock test double (not API/DB/Provider coverage; no Provider origin check)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "the page response Content-Security-Policy img-src lists exactly 'self' data: blob: and not the sponsor image origin",
+        "image_disallowed_origin scenario shows the 3 sponsors as display name text in order with no img left in the region and the external links keeping name, href and rel noopener noreferrer",
+        "the browser reports one img-src securitypolicyviolation per blocked logo and no other directive; the disallowed origin never answers (0 responses); no pageerror"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -3659,7 +3880,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "every scenario switch has a labelled control with exactly the schema values and is persisted immediately to r39x.mock.scenario.v1; a change survives reload and drives the footer sponsor area; invalid latencyLongMs is not persisted"
+        "every scenario switch (including the five notification values) has a labelled control with exactly the schema values and is persisted immediately to r39x.mock.scenario.v1; a change survives reload and drives the footer sponsor area; invalid latencyLongMs is not persisted"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -3874,7 +4095,8 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "SPEC-050 fixed wording is present: loading / empty / unavailable, 13.2 literals, section names, page titles",
-        "no invented numbers in the Karaoke guide copy; sale status descriptions never claim a cancellation"
+        "no invented numbers in the Karaoke guide copy; sale status descriptions never claim a cancellation",
+        "no copy leaf contains 未設定 except mypage.profile.unset, displayNameHint and status.cleared (exempt by key position, not by value) and exactly those three do"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -8512,18 +8734,24 @@
       "test_case_id": "TC-PG-XFN-001-625",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-XFN-001", "SPEC-050-16.7"],
+      "upstream_rule_ids": [
+        "PG-XFN-001",
+        "EML-NTF-003",
+        "API-ORD-003",
+        "SPEC-050-16.2",
+        "SPEC-050-16.7"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "buildPurchaseStatusModel with email_delayed notice on every state",
+      "preconditions": "buildPurchaseStatusModel with notificationSummary ATTENTION_REQUIRED on every state",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "non-blocking notice only on CONFIRMED; no Business retry action"
+        "non-blocking notice only on a CONFIRMED Order whose notificationSummary is ATTENTION_REQUIRED; no notification retry or resend action on any state"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -8570,6 +8798,37 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "a changed state announces the new label; an equal state says not changed"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-XFN-001-628",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "PG-XFN-001",
+        "EML-NTF-003",
+        "API-ORD-003",
+        "SPEC-050-16.2",
+        "SPEC-050-16.7",
+        "INV-010-06",
+        "TST-UNT-004"
+      ],
+      "system_invariant_ids": ["INV-010-06"],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "buildPurchaseStatusModel with a CONFIRMED Order and notificationSummary null / NONE / PENDING / SENT / ATTENTION_REQUIRED; contract tests/contracts/s7a-purchase.md; UI mock test double (not API/DB/Provider coverage)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "null, NONE and PENDING render exactly like SENT with no notice; ATTENTION_REQUIRED changes only the notice; state, tone, entitlements, actions and Receipt are identical (an unavailable summary is not an Order failure)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -8742,7 +9001,7 @@
       "test_case_id": "TC-DEV-WEB-001-603",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["DEV-WEB-001", "DEV-TS-001"],
+      "upstream_rule_ids": ["DEV-WEB-001", "DEV-TS-001", "EML-NTF-003", "SPEC-050-16.2"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -8753,7 +9012,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "no React, Next, storage, clock, random or mock backend in the pure modules; shared presentations reused"
+        "no React, Next, storage, clock, random or mock backend in the pure modules; shared presentations reused; the status model and the notification mapping never take an internal Notification State"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -9254,7 +9513,14 @@
       "test_case_id": "TC-PG-XFN-001-667",
       "level": "E2E",
       "suite": "e2e-ui-mock",
-      "upstream_rule_ids": ["PG-XFN-001", "SPEC-050-16.7", "SPEC-050-20.5", "SPEC-050-31-19"],
+      "upstream_rule_ids": [
+        "PG-XFN-001",
+        "EML-NTF-003",
+        "SPEC-050-16.2",
+        "SPEC-050-16.7",
+        "SPEC-050-20.5",
+        "SPEC-050-31-19"
+      ],
       "system_invariant_ids": ["INV-010-07"],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -9265,7 +9531,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "CONFIRMED and the rights are kept; non-blocking notice; no alert and no Business retry button"
+        "CONFIRMED and the rights are kept; the ATTENTION_REQUIRED notice (copy.notification.ATTENTION_REQUIRED) is non-blocking; no alert and no Business retry button"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -9320,6 +9586,38 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "slow reads: one read per mount and per press, the pending state and the live message end with every read and the last read decides; a read abandoned by leaving the page is not shown and throws nothing; a retry after an unavailable read is one more read with a loading state; no Order is created"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-XFN-001-670",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-XFN-001",
+        "PG-MYP-004",
+        "EML-NTF-003",
+        "SPEC-050-16.2",
+        "SPEC-050-16.7",
+        "INV-010-06",
+        "TST-E2E-003",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": ["INV-010-06"],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock mode (desktop and mobile Chromium); contract tests/contracts/s7a-purchase.md; notification scenario sent / pending / canceled / summary_unavailable on a CONFIRMED Order; DB postconditions are the mock DB; UI mock test double (not API/DB/Provider coverage)",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Purchase Status and the Mypage Order detail keep the success state and the rights with no notice, no alert, no notification action and no delivery claim; the mock DB Order stays CONFIRMED"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -10181,7 +10479,7 @@
       "test_case_id": "TC-PG-MYP-002-601",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-MYP-002", "SPEC-050-25", "TST-UNT-004"],
+      "upstream_rule_ids": ["PG-MYP-002", "SPEC-050-25", "SPEC-030-9.2", "TST-UNT-004"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -10192,7 +10490,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "Profile status and error messages never contain one another or the save action"
+        "Profile wording is literal (cleared status, tooLong / controlCharacter / invalid errors, unset wording, hint); no required-name error remains; statuses, errors and the save action never contain one another"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -11019,7 +11317,7 @@
       "test_case_id": "TC-PG-MYP-002-621",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-MYP-002", "SPEC-050-18.2", "TST-UNT-004"],
+      "upstream_rule_ids": ["PG-MYP-002", "SPEC-050-18.2", "SPEC-030-9.2", "TST-UNT-004"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -11030,7 +11328,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "Profile model never falls back to another Profile; failed read is unavailable"
+        "Profile model never falls back to another Profile; failed read is unavailable; an unset display name stays null (not a string)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -11042,7 +11340,13 @@
       "test_case_id": "TC-PG-MYP-002-622",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-MYP-002", "UCR-100-001", "DEV-WEB-009", "TST-UNT-004"],
+      "upstream_rule_ids": [
+        "PG-MYP-002",
+        "API-AUTH-004",
+        "SPEC-030-9.2",
+        "DEV-WEB-009",
+        "TST-UNT-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -11053,7 +11357,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "save result becomes saved / invalid / failed; blank rejected by the server without a DB change"
+        "save result becomes saved / invalid / failed; a server validation failure maps to error.invalid; a saved null stays null; a rejected name leaves the DB unchanged and a blank name clears to null"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -11076,7 +11380,36 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "after a save the input takes the server value only if it still equals the submitted value; a value typed meanwhile (including an emptied field) is kept"
+        "after a save the input takes the server value (an empty string for a cleared name) only if it still equals the submitted value; a value typed meanwhile (including an emptied field) is kept"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-MYP-002-624",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "PG-MYP-002",
+        "FR-AUTH-011",
+        "SPEC-050-18.2",
+        "SPEC-030-9.2",
+        "TST-UNT-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "contract tests/contracts/s8-mypage.md section 3.8; pure model",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "checkDisplayNameInput: empty, blank and 80 code points are ok; 81 code points give error.tooLong; an internal Cc gives error.controlCharacter (Cc wins when both apply); the input is never trimmed or changed"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -11169,6 +11502,29 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "latest / unconfirmed / upcoming selection rules without reading a clock"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-MYP-001-625",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-MYP-001", "SPEC-050-18.1", "SPEC-030-9.2", "TST-UNT-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "contract tests/contracts/s8-mypage.md; UI mock test double with the seed (not API/DB/Provider coverage)",
+      "fixture_ids": ["MOCK-SEED-DEMO"],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "an unset (null) display name is shown as 未設定 and never as the email; the other Overview areas are unchanged"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -11523,7 +11879,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "a disabled QR action is described by its reason; a Profile error takes focus and is tied to its field"
+        "a disabled QR action is described by its reason; a Profile error (81 characters) takes focus and is tied to its field"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -11699,7 +12055,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "email as plain text, one editable field, Password pointer, no ref input"
+        "email as plain text, one editable field, Password pointer, no ref input; placeholder 未設定, hint as the field description, no maxlength attribute"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -11742,8 +12098,10 @@
       "suite": "e2e-ui-mock",
       "upstream_rule_ids": [
         "PG-MYP-002",
+        "FR-AUTH-011",
         "SPEC-050-25",
         "SPEC-050-31-22",
+        "SPEC-030-9.2",
         "TST-E2E-003",
         "TST-E2E-004"
       ],
@@ -11757,7 +12115,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "a blank name: alert with focus, aria-invalid, description and a link to the field; DB unchanged"
+        "an 81-character or control-character name: alert with focus, aria-invalid, description and a link to the field; DB unchanged; a blank field is saved as unset, not rejected"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -11817,6 +12175,68 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "the Profile route takes no reference; a query naming another user changes nothing"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-MYP-002-706",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-MYP-002",
+        "FR-AUTH-011",
+        "PG-MYP-001",
+        "SPEC-050-18.2",
+        "SPEC-050-18.1",
+        "SPEC-030-9.2",
+        "TST-E2E-003",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock mode (desktop and mobile Chromium); contract tests/contracts/s8-mypage.md; DB postconditions are the mock DB",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "an empty or blank name is saved as unset: cleared status, no alert, mock DB displayName null, empty input with the placeholder 未設定 after a reload, Overview shows 未設定 and not the email local part; other users unchanged"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-MYP-002-707",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-MYP-002",
+        "FR-AUTH-011",
+        "SPEC-050-18.2",
+        "SPEC-030-9.2",
+        "TST-E2E-003",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock mode (desktop and mobile Chromium); contract tests/contracts/s8-mypage.md; DB postconditions are the mock DB",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "a name with surrounding spaces is stored trimmed; 80 emoji and 80 combining-mark code points are saved; 81 is rejected with error.tooLong and the DB unchanged"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -11999,6 +12419,7 @@
       "suite": "e2e-ui-mock",
       "upstream_rule_ids": [
         "PG-MYP-004",
+        "EML-NTF-003",
         "SPEC-050-16.7",
         "SPEC-050-31-19",
         "INV-010-06",

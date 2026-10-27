@@ -388,15 +388,7 @@ export const copy = {
     perAccountLimit: (limit: number): string => `1アカウントあたりの購入上限は${limit}枚です`,
   },
   notification: {
-    PENDING: {
-      label: "確認Emailを送信中",
-      message: "確認Emailを準備しています。購入内容には影響しません。",
-    },
-    SENT: {
-      label: "確認Emailを送信済み",
-      message: "確認Emailを送信しました。",
-    },
-    FAILED_RETRYABLE: {
+    ATTENTION_REQUIRED: {
       label: "確認Emailの送信に失敗または遅延",
       message:
         "購入は確定済みです。確認Emailの送信に失敗または遅延しています。購入内容はこの画面とMypageで確認できます",
@@ -613,9 +605,14 @@ export const copy = {
         dirty: "未保存の変更があります",
         saving: "保存しています",
         saved: "表示名を保存しました",
+        cleared: "表示名を未設定にしました",
       },
+      displayNameHint: "任意です。80文字以内で入力してください。空欄で保存すると未設定になります",
+      unset: "未設定",
       error: {
-        required: "表示名を入力してください",
+        tooLong: "表示名は80文字以内で入力してください",
+        controlCharacter: "表示名に改行やタブなどの制御文字は使えません",
+        invalid: "表示名は80文字以内で、改行やタブなどの制御文字を含めずに入力してください",
         unavailable: "表示名を保存できませんでした。時間をおいて、もう一度お試しください",
       },
       passwordNote: "パスワードの変更は、パスワード再設定の手続きで行います",

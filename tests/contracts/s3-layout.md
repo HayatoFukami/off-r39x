@@ -211,7 +211,7 @@ export function buildSponsorAreaModel(input: SponsorAreaInput): SponsorAreaModel
 - `{ kind: "ok", data }` で `data.length >= 1` のときだけ `visible`。`data` が空、`not_found` / `unavailable` / `auth_required` / `email_unverified`、`loading` はすべて **`{ kind: "hidden" }`（他の field を持たない）**。0 件を示す文言・理由などを model に持たない（SPEC-050 §8.5）。
 - `items` は **`data` の順序のまま**（再ソートしない。表示順の権威は port）。入力を変更しない。
 - `externalHref`: `linkUrl` が `https:` で parse でき、userinfo（username / password）が無いときだけ元の文字列を返す。`http:`、`javascript:`、`data:`、相対 path、parse 不能、`null` は `null`。
-- `imageSrc`: `imageUrl` が `/` で始まる相対 path（`//` と `/\` で始まるものを除く）か、`https:` の URL（userinfo なし）のとき元の文字列。`null`、`http:`、`javascript:`、`data:`、`//host/...`、空文字、parse 不能は `null`。
+- `imageSrc`: `imageUrl`（**非 null の `string`**。`API-PUB-012` の `image_url` は必須で、`SponsorLogo.imageUrl: string`）が `/` で始まる相対 path（`//` と `/\` で始まるものを除く）か、`https:` の URL（userinfo なし）のとき元の文字列。`http:`、`javascript:`、`data:`、`//host/...`、空文字、userinfo 付き、parse 不能は `null`。相対 path を許すのは UI mock の同一 origin 素材（`/mock/sponsors/*.svg`）のためであり、`API-PUB-012` は https の URL だけを返す（仕様の文言との差は PR の説明に記録する）。この許可は `apps/web/src/presentation/layout/sponsor-area-model.ts` の `toImageSrc` にあるため、mock に限らず本番経路でも通る（実 API が https だけを返す前提）。実 api-client の導入時に見直す。許可 origin の判定は CSP（`SPONSOR_IMAGE_ALLOWED_ORIGINS` 由来の `img-src`）が担い、UI は origin の一覧を持たない。
 - `name` と `sponsorRef` は入力のまま。
 
 ## 3. Factory / Provider
@@ -376,7 +376,7 @@ export function SessionProvider(props: { children: ReactNode; port?: AuthPort })
 
 ### 7.2 各 Logo
 
-- `imageSrc !== null`: `<img src={imageSrc} alt={name}>`（`alt` = 表示名称、`loading` は任意）。`onError` で画像を取り除き、**名称 `name` を text で表示**する（壊れた画像アイコンを残さない）。`imageSrc === null` のときも最初から名称 text。
+- `imageSrc !== null`: `<img src={imageSrc} alt={name} referrerpolicy="no-referrer">`（`alt` = 表示名称、`loading` は任意。**`referrerpolicy="no-referrer"` は必須**。SPEC-050 §8.5、`SEC-WEB-026`。Server-side proxy にしない）。`onError`（CSP で拒否された画像でも発火する）で画像を取り除き、**名称 `name` を text で表示**する（壊れた画像アイコンを残さない）。`imageSrc === null` のときも最初から名称 text。
 - `externalHref !== null`: `<a href={externalHref} rel="noopener noreferrer">`（`target="_blank"` は任意）で、accessible name は `{name}{copy.layout.sponsors.externalSuffix}`（例 `Sponsor Alpha（外部サイト）`。画像の `alt` + visually hidden の `（外部サイト）` でよい。間に空白があってもよい）。外部へ遷移する Link であることが利用者に分かること（SPEC-050 §8.5）。
 - `externalHref === null`: Link にしない（画像 + `alt`、または名称 text のみ）。
 
@@ -388,6 +388,7 @@ export function SessionProvider(props: { children: ReactNode; port?: AuthPort })
 | `none` | `ok` + `[]` | 領域なし |
 | `fail` | `unavailable` | 領域なし。「協賛なし」等の text なし。Header・nav・本文は操作可能 |
 | `image_broken` | `imageUrl` が `/mock/sponsors/__broken__.svg`（404） | 3 件が名称 text（`Sponsor Alpha` など）で表示される |
+| `image_disallowed_origin` | `published` と同じ 3 件・同順・同 `linkUrl`。`imageUrl` が `https://sponsor-images.invalid/<ref>.svg`（予約 TLD。E2E の CSP `img-src` は `'self' data: blob:` のみで、この origin を含まない） | ブラウザが `img-src` 違反（`securitypolicyviolation`、画像 1 件につき 1 回）を報告し、画像は読み込まれず（この origin への応答 0）、3 件が名称 text で順序どおり表示される。region 内に `<img>` を残さない。外部 Link 2 件の accessible name・href・`rel` は維持。CSP 違反の console 出力は想定内（`pageerror` だけを 0 とする）。CSP で拒否された画像を「読み込み成功」と偽装しない（`SEC-WEB-026`） |
 
 ### 7.4 `public/mock/sponsors/{alpha,bravo,charlie}.svg`
 
@@ -411,14 +412,14 @@ seed の `imageUrl`（`/mock/sponsors/<key>.svg`）が指す文字だけの plac
 | `publicFetch` | `ok` `fail` `empty` |
 | `latency` | `none` `long` |
 | `latencyLongMs` | 整数 1..60000（number input） |
-| `sponsorLogos` | `published` `none` `fail` `image_broken` |
+| `sponsorLogos` | `published` `none` `fail` `image_broken` `image_disallowed_origin` |
 | `cart.state` | `ok` `fail` `partial` |
 | `cart.purchaseStart` | `ok` `reject_one` `limit` `unavailable` |
 | `checkout` | `ok` `start_failed` `opportunity_expired` |
 | `karaokeHold` | `ok` `conflict` `limit` `expire_before_checkout` |
 | `karaokeSales` | `ON_SALE` `BEFORE_SALES` `SALES_ENDED` `SUSPENDED` |
 | `paymentOutcome` | `confirm_after_recheck` `confirm` `remain_awaiting` `payment_failed` `review_required` `expire` `cancel` |
-| `notification` | `sent` `failed_retryable` |
+| `notification` | `sent` `pending` `failed_retryable` `canceled` `summary_unavailable` |
 | `auth.session` | `ok` `unavailable` |
 | `auth.login` | `ok` `credential_failure` `unavailable` |
 | `auth.signup` | `confirmation_required` `signed_in` `rejected` `unavailable` |
@@ -480,7 +481,7 @@ CSS・source のどこにも外部 origin（`http://`、`https://`、`//host`）
 | `tests/unit/web/layout/dev-area.test.ts` | §2.3 |
 | `tests/unit/web/layout/browser-storage.test.ts` | §2.4 |
 | `tests/unit/web/layout/layout-copy.test.ts` | §1 |
-| `tests/unit/web/layout/shell-static.test.ts` | §0, §4.1, §6, §7.4, §8, §9, SEC-WEB-004 / 012 の静的検査 |
+| `tests/unit/web/layout/shell-static.test.ts` | §0, §2.6, §4.1, §6, §7.2, §7.4, §8, §9, SEC-WEB-004 / 012 / 026 の静的検査（SEC-WEB-026 は TC-PG-PUB-001-232） |
 | `tests/unit/web/layout/scenario-controls.test.ts` | §8.2 の表と S2 `scenarioSchema` の一致 |
 | `tests/unit/web/ports/factories.test.ts` | §3.1 |
 | `tests/unit/web/routes/route-table-static.test.ts` | §13（TC-STACK-008-001〜004） |

@@ -16,7 +16,7 @@ import {
   formatJstTimeRange,
 } from "../../presentation/format/datetime";
 import { formatMoney } from "../../presentation/format/money";
-import { presentNotification } from "../../presentation/state-mapping/notification";
+import { presentNotificationSummary } from "../../presentation/state-mapping/notification";
 import {
   orderActionLabel,
   presentOrderState,
@@ -217,7 +217,10 @@ export function buildPurchaseStatusModel(input: Loadable<OrderDetail>): Purchase
       const presented = presentOrderState(detail.state);
       const entitlements = buildEntitlements(detail);
       const confirmed = detail.state === "CONFIRMED";
-      const notification = presentNotification("FAILED_RETRYABLE");
+      const notification =
+        confirmed && detail.notificationSummary?.status === "ATTENTION_REQUIRED"
+          ? presentNotificationSummary("ATTENTION_REQUIRED")
+          : null;
       return {
         kind: "ready",
         orderRef: detail.orderRef,
@@ -232,9 +235,9 @@ export function buildPurchaseStatusModel(input: Loadable<OrderDetail>): Purchase
         actions: buildActions(detail, entitlements !== null),
         entitlements,
         notice:
-          confirmed && detail.notice?.kind === "email_delayed" && notification !== null
-            ? { label: notification.label, message: notification.message }
-            : null,
+          notification === null
+            ? null
+            : { label: notification.label, message: notification.message },
         receiptHref: confirmed ? safeExternalHref(detail.receiptUrl) : null,
       };
     }

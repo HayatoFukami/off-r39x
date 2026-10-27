@@ -18,6 +18,7 @@ import { copy } from "../../../../apps/web/src/presentation/copy/ja.ts";
 import { formatJstDateTime } from "../../../../apps/web/src/presentation/format/datetime.ts";
 import { presentOrderState } from "../../../../apps/web/src/presentation/state-mapping/order.ts";
 import { presentPurpose } from "../../../../apps/web/src/presentation/state-mapping/purpose.ts";
+import { type NotificationSummary, withSummary } from "../../../harness/notification-summary.ts";
 
 // Contract: tests/contracts/s7a-purchase.md section 3.3 (SPEC-050 16.2 / 16.4 / 16.5 / 16.7, 20.1,
 // BR-ORD-015, INV-010-07 / 08, PAY-BRW-001). Synthetic data only.
@@ -69,18 +70,21 @@ const RESERVATION = "4e000000-0000-4000-8000-000000000001" as Ref<"reservation">
 
 function detail(
   over: Partial<OrderDetail> & { state: OrderState; purpose: OrderPurpose },
+  summary: NotificationSummary = { status: "NONE" },
 ): OrderDetail {
-  return {
-    orderRef: ORDER,
-    createdAt: T0,
-    total: jpy("17000"),
-    summary: "summary",
-    items: [entryItem, goodsItem],
-    entitlements: NONE,
-    receiptUrl: null,
-    notice: null,
-    ...over,
-  };
+  return withSummary(
+    {
+      orderRef: ORDER,
+      createdAt: T0,
+      total: jpy("17000"),
+      summary: "summary",
+      items: [entryItem, goodsItem],
+      entitlements: NONE,
+      receiptUrl: null,
+      ...over,
+    } as OrderDetail,
+    summary,
+  );
 }
 const ok = (data: OrderDetail): Read<OrderDetail> => ({ kind: "ok", data });
 function ready(model: PurchaseStatusModel) {
@@ -429,25 +433,27 @@ describe("TC-PG-XFN-001-624 the actions follow the Order state and never offer a
   });
 });
 
-describe("TC-PG-XFN-001-625 the Email notice is non-blocking and only for a CONFIRMED Order (SPEC-050 16.7, 20.5)", () => {
-  const delayed = { kind: "email_delayed" } as const;
+describe("TC-PG-XFN-001-625 the Email notice is non-blocking and only for a CONFIRMED Order with ATTENTION_REQUIRED (SPEC-050 16.2 / 16.7, API-ORD-003, EML-NTF-003)", () => {
+  const attention: NotificationSummary = { status: "ATTENTION_REQUIRED" };
 
   it("shows the contracted notice on a CONFIRMED Order and keeps the state and the entitlements", () => {
     const model = ready(
       buildPurchaseStatusModel(
         ok(
-          detail({
-            state: "CONFIRMED",
-            purpose: "ENTRY_GOODS_PURCHASE",
-            entitlements: FULL_COMPOSITE,
-            notice: delayed,
-          }),
+          detail(
+            {
+              state: "CONFIRMED",
+              purpose: "ENTRY_GOODS_PURCHASE",
+              entitlements: FULL_COMPOSITE,
+            },
+            attention,
+          ),
         ),
       ),
     );
     expect(model.notice).toEqual({
-      label: copy.notification.FAILED_RETRYABLE.label,
-      message: copy.notification.FAILED_RETRYABLE.message,
+      label: copy.notification.ATTENTION_REQUIRED.label,
+      message: copy.notification.ATTENTION_REQUIRED.message,
     });
     expect(model.stateLabel).toBe(copy.order.state.CONFIRMED);
     expect(model.entitlements).not.toBeNull();
@@ -455,7 +461,7 @@ describe("TC-PG-XFN-001-625 the Email notice is non-blocking and only for a CONF
     expect(model.actions.every((a) => a.kind === "link")).toBe(true);
   });
 
-  it("shows no notice without a notice field, and none on a state that is not CONFIRMED", () => {
+  it("shows no notice for a CONFIRMED Order without ATTENTION_REQUIRED, and none on a state that is not CONFIRMED", () => {
     expect(
       ready(buildPurchaseStatusModel(ok(detail({ state: "CONFIRMED", purpose: "GOODS_PURCHASE" }))))
         .notice,
@@ -463,14 +469,65 @@ describe("TC-PG-XFN-001-625 the Email notice is non-blocking and only for a CONF
     for (const state of ORDER_STATES) {
       if (state === "CONFIRMED") continue;
       expect(
-        ready(
-          buildPurchaseStatusModel(
-            ok(detail({ state, purpose: "GOODS_PURCHASE", notice: delayed })),
-          ),
-        ).notice,
+        ready(buildPurchaseStatusModel(ok(detail({ state, purpose: "GOODS_PURCHASE" }, attention))))
+          .notice,
         state,
       ).toBeNull();
     }
+  });
+
+  it("adds no notification retry / resend action to a non-CONFIRMED Order either", () => {
+    const base = ready(
+      buildPurchaseStatusModel(
+        ok(detail({ state: "AWAITING_PAYMENT", purpose: "GOODS_PURCHASE" }, { status: "NONE" })),
+      ),
+    );
+    const withAttention = ready(
+      buildPurchaseStatusModel(
+        ok(detail({ state: "AWAITING_PAYMENT", purpose: "GOODS_PURCHASE" }, attention)),
+      ),
+    );
+    expect(withAttention.actions).toEqual(base.actions);
+  });
+});
+
+describe("TC-PG-XFN-001-628 a missing or non-alarming notification summary never changes the Order display (SPEC-050 16.2 / 16.7, INV-010-06, EML-NTF-003)", () => {
+  const confirmed = (summary: NotificationSummary) =>
+    ready(
+      buildPurchaseStatusModel(
+        ok(
+          detail(
+            {
+              state: "CONFIRMED",
+              purpose: "ENTRY_GOODS_PURCHASE",
+              entitlements: FULL_COMPOSITE,
+              receiptUrl: "https://receipts.example.com/r/1",
+            },
+            summary,
+          ),
+        ),
+      ),
+    );
+
+  it("renders null (summary unavailable), NONE and PENDING exactly like SENT, with no notice", () => {
+    const baseline = confirmed({ status: "SENT" });
+    expect(baseline.notice).toBeNull();
+    expect(baseline.entitlements).not.toBeNull();
+    expect(baseline.receiptHref).toBe("https://receipts.example.com/r/1");
+    for (const summary of [null, { status: "NONE" }, { status: "PENDING" }] as const) {
+      const model = confirmed(summary);
+      expect(model.notice, JSON.stringify(summary)).toBeNull();
+      expect(model, JSON.stringify(summary)).toEqual(baseline);
+    }
+  });
+
+  it("changes only the notice for ATTENTION_REQUIRED: state, tone, entitlements, actions and Receipt stay the same", () => {
+    const baseline = confirmed({ status: "SENT" });
+    const attention = confirmed({ status: "ATTENTION_REQUIRED" });
+    expect(attention.notice).not.toBeNull();
+    expect({ ...attention, notice: null }).toEqual(baseline);
+    expect(attention.stateKey).toBe("CONFIRMED");
+    expect(attention.tone).toBe(baseline.tone);
   });
 });
 

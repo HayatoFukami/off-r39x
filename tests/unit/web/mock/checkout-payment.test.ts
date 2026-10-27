@@ -10,6 +10,7 @@ import {
   okData,
 } from "../../../harness/mock-backend.ts";
 import { EMAIL, GOODS, OFFERING, ORDER } from "../../../harness/mock-seed.ts";
+import { hasLegacyNotice, notificationScenario } from "../../../harness/notification-summary.ts";
 
 const entry = (offeringRef: Ref<"offering">, quantity: number): CartLine => ({
   kind: "ENTRY_TICKET",
@@ -412,7 +413,7 @@ describe("TC-BR-ORD-015-101 composite Order confirmation yields both Entry ticke
   });
 });
 
-describe("TC-PG-XFN-001-104 Email failure is a non-blocking notice on a confirmed Order (SPEC-050 16.7, 20.5)", () => {
+describe("TC-PG-XFN-001-104 the notification summary is the owner projection of the confirmation notification (SPEC-050 16.7, API-ORD-003, EML-NTF-003, INV-010-06)", () => {
   async function confirmed(
     patch: ScenarioPatch,
   ): Promise<{ backend: Backend; orderRef: Ref<"order"> }> {
@@ -422,39 +423,67 @@ describe("TC-PG-XFN-001-104 Email failure is a non-blocking notice on a confirme
     return { backend, orderRef };
   }
 
-  it("returns notice email_delayed while keeping CONFIRMED and all entitlements", async () => {
-    const { backend, orderRef } = await confirmed({ notification: "failed_retryable" });
-    const detail = okData(await backend.api.self.getOrder(orderRef));
-    expect(detail.state).toBe("CONFIRMED");
-    expect(detail.notice).toEqual({ kind: "email_delayed" });
-    expect(detail.entitlements.entryTicketRefs.length).toBe(2);
-    expect(detail.entitlements.goodsItems.length).toBe(1);
-  });
+  const PROJECTION = [
+    ["failed_retryable", { status: "ATTENTION_REQUIRED" }],
+    ["pending", { status: "PENDING" }],
+    ["sent", { status: "SENT" }],
+    ["canceled", { status: "NONE" }],
+    ["summary_unavailable", null],
+  ] as const;
 
-  it("returns no notice when the notification was sent", async () => {
-    const { backend, orderRef } = await confirmed({ notification: "sent" });
-    expect(okData(await backend.api.self.getOrder(orderRef)).notice).toBeNull();
-  });
+  it.each(PROJECTION)(
+    "scenario %s projects to %j on a CONFIRMED Order and never changes the Order or its rights",
+    async (scenario, expected) => {
+      const { backend, orderRef } = await confirmed(notificationScenario(scenario));
+      const read = await backend.api.self.getOrder(orderRef);
+      expect(read.kind).toBe("ok");
+      const detail = okData(read);
+      expect(detail.notificationSummary).toEqual(expected);
+      expect(detail.state).toBe("CONFIRMED");
+      expect(detail.entitlements.entryTicketRefs.length).toBe(2);
+      expect(detail.entitlements.goodsItems.length).toBe(1);
+      expect(hasLegacyNotice(detail)).toBe(false);
+    },
+  );
 
-  it("returns no notice for an Order that is not CONFIRMED", async () => {
+  it("is NONE for an Order that is not CONFIRMED yet, whatever the simulated notification state (EML-NTF-003)", async () => {
     const backend = await freshBackend({
       paymentOutcome: "remain_awaiting",
-      notification: "failed_retryable",
+      ...notificationScenario("failed_retryable"),
     });
     const orderRef = await prepare(backend, COMPOSITE);
     await backend.api.purchase.startCheckout(orderRef, { idempotencyKey: "c-1" });
     const detail = okData(await backend.api.self.getOrder(orderRef));
     expect(detail.state).toBe("AWAITING_PAYMENT");
-    expect(detail.notice).toBeNull();
+    expect(detail.notificationSummary).toEqual({ status: "NONE" });
+    expect(hasLegacyNotice(detail)).toBe(false);
+  });
+
+  it("returns null for a not CONFIRMED Order when only the summary is unavailable, and the read stays ok", async () => {
+    const backend = await freshBackend({
+      paymentOutcome: "remain_awaiting",
+      ...notificationScenario("summary_unavailable"),
+    });
+    const orderRef = await prepare(backend, COMPOSITE);
+    await backend.api.purchase.startCheckout(orderRef, { idempotencyKey: "c-1" });
+    const read = await backend.api.self.getOrder(orderRef);
+    expect(read.kind).toBe("ok");
+    const detail = okData(read);
+    expect(detail.state).toBe("AWAITING_PAYMENT");
+    expect(detail.notificationSummary).toBeNull();
   });
 
   it("applies to seeded CONFIRMED Orders at read time and never changes their state", async () => {
     const backend = createBackend();
     await backend.signInAs(EMAIL.demo);
-    backend.setScenario({ notification: "failed_retryable" });
+    backend.setScenario(notificationScenario("failed_retryable"));
+    const before = dbFingerprint(backend);
     const detail = okData(await backend.api.self.getOrder(ORDER.confirmedGoods));
     expect(detail.state).toBe("CONFIRMED");
-    expect(detail.notice).toEqual({ kind: "email_delayed" });
-    expect(okData(await backend.api.self.getOrder(ORDER.prepared)).notice).toBeNull();
+    expect(detail.notificationSummary).toEqual({ status: "ATTENTION_REQUIRED" });
+    expect(okData(await backend.api.self.getOrder(ORDER.prepared)).notificationSummary).toEqual({
+      status: "NONE",
+    });
+    expect(dbFingerprint(backend)).toBe(before);
   });
 });

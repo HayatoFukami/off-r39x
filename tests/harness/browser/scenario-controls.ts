@@ -14,7 +14,7 @@ export const SCENARIO_CONTROLS: readonly ScenarioControl[] = [
   {
     path: "sponsorLogos",
     kind: "select",
-    values: ["published", "none", "fail", "image_broken"],
+    values: ["published", "none", "fail", "image_broken", "image_disallowed_origin"],
   },
   { path: "cart.state", kind: "select", values: ["ok", "fail", "partial"] },
   {
@@ -46,7 +46,11 @@ export const SCENARIO_CONTROLS: readonly ScenarioControl[] = [
       "cancel",
     ],
   },
-  { path: "notification", kind: "select", values: ["sent", "failed_retryable"] },
+  {
+    path: "notification",
+    kind: "select",
+    values: ["sent", "pending", "failed_retryable", "canceled", "summary_unavailable"],
+  },
   { path: "auth.session", kind: "select", values: ["ok", "unavailable"] },
   { path: "auth.login", kind: "select", values: ["ok", "credential_failure", "unavailable"] },
   {

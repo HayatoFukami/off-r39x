@@ -42,7 +42,7 @@ export interface PublicApi {
   listAnnouncements(q?: { limit?: number }): Promise<Read<readonly AnnouncementSummary[]>>;
   /** API-PUB-004 */
   getAnnouncement(ref: Ref<"announcement">): Promise<Read<Announcement>>;
-  /** Operation ID なし (UCR-110-001) */
+  /** API-PUB-012 (PUBLISHED only, sort_order ASC then public_ref ASC) */
   listSponsorLogos(): Promise<Read<readonly SponsorLogo[]>>;
   /** API-PUB-005 plus the viewer-specific Purchase Limit result: Operation ID なし (UCR-110-001) */
   listEntryOfferings(): Promise<Read<readonly EntryOffering[]>>;
@@ -77,13 +77,13 @@ export interface PurchaseApi {
 
 /** Another user's ref and a nonexistent ref are answered identically with not_found (SPEC-110 section 22). */
 export interface SelfApi {
-  /** API-AUTH-002 */
+  /** API-AUTH-002 (display_name is null when unset; the Account email is the authenticated Identity's, SPEC-050 18.2) */
   getProfile(): Promise<Read<Profile>>;
-  /** API-AUTH-004 (maximum length is not defined until UCR-100-001 is reflected) */
+  /** API-AUTH-004 (SPEC-030 9.2: trimmed, blank clears to null, 1..80 code points, no Cc) */
   updateProfile(i: { displayName: string }): Promise<ProfileUpdate>;
   /** API-ORD-001 */
   listOrders(): Promise<Read<readonly OrderSummary[]>>;
-  /** API-ORD-003 (ENTRY_GOODS_PURCHASE purpose and notice: Operation ID なし, UCR-110-001) */
+  /** API-ORD-003 (notification_summary is the owner projection of SPEC-120 7.2; null when only the summary is unavailable) */
   getOrder(r: Ref<"order">): Promise<Read<OrderDetail>>;
   /** API-TKT-001 */
   listEntryTickets(): Promise<Read<readonly EntryTicketSummary[]>>;

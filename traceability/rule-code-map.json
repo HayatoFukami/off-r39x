@@ -241,6 +241,7 @@
         "TC-PG-XFN-001-625",
         "TC-PG-XFN-001-626",
         "TC-PG-XFN-001-627",
+        "TC-PG-XFN-001-628",
         "TC-PG-XFN-001-631",
         "TC-PG-XFN-001-632",
         "TC-PG-XFN-001-641",
@@ -255,6 +256,7 @@
         "TC-PG-XFN-001-666",
         "TC-PG-XFN-001-667",
         "TC-PG-XFN-001-668",
+        "TC-PG-XFN-001-670",
         "TC-PG-XFN-001-671",
         "TC-PG-XFN-001-672",
         "TC-PG-XFN-001-673",
@@ -1361,7 +1363,14 @@
         "apps/web/src/presentation/layout/sponsor-logos.tsx",
         "apps/web/src/features/shell/site-footer.tsx"
       ],
-      "test_case_ids": ["TC-BR-EVT-005-101", "TC-PG-PUB-001-212", "TC-PG-PUB-001-402"],
+      "test_case_ids": [
+        "TC-BR-EVT-005-101",
+        "TC-BR-EVT-005-102",
+        "TC-BR-EVT-005-103",
+        "TC-PG-PUB-001-212",
+        "TC-PG-PUB-001-402",
+        "TC-PG-PUB-001-406"
+      ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
@@ -1590,6 +1599,49 @@
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
+      "rule_id": "FR-AUTH-011",
+      "code_paths": [
+        "apps/web/src/api-client/display-name-policy.ts",
+        "apps/web/src/features/mypage/profile-model.ts",
+        "apps/web/src/features/mypage/profile-page.tsx",
+        "apps/web/src/features/mypage/overview-model.ts",
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/mock/backend/mock-auth.ts",
+        "apps/web/src/mock/backend/db.ts"
+      ],
+      "test_case_ids": [
+        "TC-FR-AUTH-011-001",
+        "TC-PG-MYP-002-101",
+        "TC-PG-MYP-002-102",
+        "TC-PG-MYP-002-103",
+        "TC-PG-MYP-002-624",
+        "TC-PG-MYP-002-703",
+        "TC-PG-MYP-002-706",
+        "TC-PG-MYP-002-707"
+      ],
+      "notes": "implementation mapping only: SPEC-030 9.2 display name rule in the UI pre-check and the UI mock test double; not API/DB coverage (TC-API-007-001 not executed)"
+    },
+    {
+      "rule_id": "EML-NTF-003",
+      "code_paths": [
+        "apps/web/src/api-client/types.ts",
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/mock/backend/scenario.ts",
+        "apps/web/src/presentation/state-mapping/notification.ts",
+        "apps/web/src/features/purchase/purchase-status-model.ts"
+      ],
+      "test_case_ids": [
+        "TC-PG-XFN-001-002",
+        "TC-PG-XFN-001-104",
+        "TC-PG-XFN-001-625",
+        "TC-PG-XFN-001-628",
+        "TC-PG-XFN-001-667",
+        "TC-PG-XFN-001-670",
+        "TC-PG-MYP-004-704"
+      ],
+      "notes": "implementation mapping only: owner notification summary projection in the UI mock and its presentation; not API/DB coverage (TC-API-008-001 not executed)"
+    },
+    {
       "rule_id": "PG-MYP-001",
       "code_paths": [
         "apps/web/src/mock/backend/mock-api.ts",
@@ -1633,7 +1685,8 @@
         "TC-SEC-WEB-009-721",
         "TC-DEV-WEB-009-601",
         "TC-PG-MYP-001-734",
-        "TC-DEV-WEB-001-805"
+        "TC-DEV-WEB-001-805",
+        "TC-PG-MYP-001-625"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
@@ -1641,6 +1694,7 @@
       "rule_id": "PG-MYP-002",
       "code_paths": [
         "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/api-client/display-name-policy.ts",
         "apps/web/src/features/mypage/profile-model.ts",
         "apps/web/src/features/mypage/profile-page.tsx",
         "apps/web/src/routes/self/mypage-profile.tsx"
@@ -1656,7 +1710,12 @@
         "TC-PG-MYP-002-703",
         "TC-PG-MYP-002-704",
         "TC-PG-MYP-002-705",
-        "TC-PG-MYP-002-623"
+        "TC-PG-MYP-002-623",
+        "TC-PG-MYP-002-102",
+        "TC-PG-MYP-002-103",
+        "TC-PG-MYP-002-624",
+        "TC-PG-MYP-002-706",
+        "TC-PG-MYP-002-707"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
@@ -2571,9 +2630,15 @@
       "code_paths": [
         "apps/web/src/features/mypage/overview-model.ts",
         "apps/web/src/features/mypage/goods-item-model.ts",
-        "apps/web/src/features/mypage/order-detail-model.ts"
+        "apps/web/src/features/mypage/order-detail-model.ts",
+        "apps/web/src/features/purchase/purchase-status-model.ts"
       ],
-      "test_case_ids": ["TC-PG-MYP-001-704", "TC-PG-MYP-004-704", "TC-PG-MYP-012-703"],
+      "test_case_ids": [
+        "TC-PG-MYP-001-704",
+        "TC-PG-MYP-004-704",
+        "TC-PG-MYP-012-703",
+        "TC-PG-XFN-001-670"
+      ],
       "notes": "S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
@@ -2648,9 +2713,19 @@
     },
     {
       "rule_id": "SEC-WEB-026",
-      "code_paths": ["scripts/generate-web-headers.mts"],
-      "test_case_ids": ["TC-STACK-008-203", "TC-STACK-008-204"],
-      "notes": "implementation mapping only: Sponsor image origin validation for img-src; not API URL validation"
+      "code_paths": [
+        "scripts/generate-web-headers.mts",
+        "apps/web/src/presentation/layout/sponsor-logos.tsx",
+        "apps/web/src/presentation/layout/sponsor-area-model.ts"
+      ],
+      "test_case_ids": [
+        "TC-STACK-008-203",
+        "TC-STACK-008-204",
+        "TC-PG-PUB-001-402",
+        "TC-PG-PUB-001-406",
+        "TC-PG-PUB-001-232"
+      ],
+      "notes": "implementation mapping only: Sponsor image origin validation for img-src, no-referrer images and the name fallback for a CSP-blocked image; not API URL validation"
     }
   ]
 }

@@ -2,6 +2,7 @@ import type { OrderState } from "@off-r39x/domain";
 import { describe, expect, it } from "vitest";
 import type { CartLine, Ref } from "../../../../apps/web/src/api-client/types.ts";
 import { multiplyMoney, sumMoney } from "../../../../apps/web/src/presentation/format/money.ts";
+import { combining, emojis } from "../../../harness/display-name.ts";
 import {
   type Backend,
   createBackend,
@@ -22,10 +23,18 @@ import {
   SLOT,
   TICKET,
 } from "../../../harness/mock-seed.ts";
+import { hasLegacyNotice } from "../../../harness/notification-summary.ts";
 
 const nowMs = Date.parse(NOW_ISO);
 const EMPTY_ENTITLEMENTS = { entryTicketRefs: [], reservationRef: null, goodsItems: [] };
 const UNKNOWN = "88888888-8888-4888-8888-888888888888";
+
+/** The display name held by the mock DB for one user (null = unset). */
+function storedName(backend: Backend, email: string): string | null | undefined {
+  const loaded = backend.db.load();
+  if (loaded.kind !== "ready") throw new Error("expected a ready DB");
+  return loaded.state.users.find((u) => u.email === email)?.displayName;
+}
 
 async function demo(): Promise<Backend> {
   const backend = createBackend();
@@ -163,7 +172,8 @@ describe("TC-PG-MYP-004-101 order detail: Snapshot items, totals, entitlements a
       const detail = okData(await backend.api.self.getOrder(ref));
       expect(detail.entitlements, String(ref)).toEqual(EMPTY_ENTITLEMENTS);
       expect(detail.receiptUrl).toBeNull();
-      expect(detail.notice).toBeNull();
+      expect(detail.notificationSummary, String(ref)).toEqual({ status: "NONE" });
+      expect(hasLegacyNotice(detail)).toBe(false);
     }
     const entry = okData(await backend.api.self.getOrder(ORDER.confirmedEntry));
     expect([...entry.entitlements.entryTicketRefs].sort()).toEqual(
@@ -575,7 +585,7 @@ describe("TC-PG-MYP-011-101 goods items list and detail (18.11, 18.12, 20.4)", (
   });
 });
 
-describe("TC-PG-MYP-002-101 profile read and update (18.2, API-AUTH-002/004, UCR-100-001)", () => {
+describe("TC-PG-MYP-002-101 profile read and update (18.2, API-AUTH-002/004, SPEC-030 9.2)", () => {
   it("returns the signed-in user's email and display name", async () => {
     const backend = await demo();
     expect(okData(await backend.api.self.getProfile())).toEqual({
@@ -585,28 +595,32 @@ describe("TC-PG-MYP-002-101 profile read and update (18.2, API-AUTH-002/004, UCR
   });
 
   it.each(["", " ", "   ", "\t", "\n", "　", " 　\t\n "])(
-    "rejects the blank display name %j without saving",
+    "clears the display name to null for the blank input %j (unset, never replaced by the email)",
     async (blank) => {
       const backend = await demo();
-      const before = dbFingerprint(backend);
-      expect(await backend.api.self.updateProfile({ displayName: blank })).toEqual({
-        kind: "validation_failed",
-        field: "displayName",
+      const result = await backend.api.self.updateProfile({ displayName: blank });
+      expect(result).toEqual({
+        kind: "saved",
+        profile: { email: EMAIL.demo, displayName: null },
       });
-      expect(dbFingerprint(backend)).toBe(before);
-      expect(okData(await backend.api.self.getProfile()).displayName).toBe("デモ太郎");
+      expect(storedName(backend, EMAIL.demo)).toBeNull();
+      expect(okData(await backend.api.self.getProfile())).toEqual({
+        email: EMAIL.demo,
+        displayName: null,
+      });
+      expect(storedName(backend, EMAIL.other)).toBe("他の人");
     },
   );
 
-  it("saves the value exactly as given (no trim, no maximum length) and reflects it on the next read", async () => {
+  it("trims the value before saving and reflects the trimmed value on the next read", async () => {
     const backend = await demo();
-    const name = `  ${"あ".repeat(300)}  `;
-    const result = await backend.api.self.updateProfile({ displayName: name });
+    const result = await backend.api.self.updateProfile({ displayName: "  変更後  " });
     expect(result).toEqual({
       kind: "saved",
-      profile: { email: EMAIL.demo, displayName: name },
+      profile: { email: EMAIL.demo, displayName: "変更後" },
     });
-    expect(okData(await backend.api.self.getProfile()).displayName).toBe(name);
+    expect(storedName(backend, EMAIL.demo)).toBe("変更後");
+    expect(okData(await backend.api.self.getProfile()).displayName).toBe("変更後");
   });
 
   it("does not alter another user's profile", async () => {
@@ -628,6 +642,50 @@ describe("TC-PG-MYP-002-101 profile read and update (18.2, API-AUTH-002/004, UCR
       kind: "unavailable",
     });
   });
+});
+
+describe("TC-PG-MYP-002-102 the mock rejects a name over 80 code points or with a control character without saving (18.2, API-AUTH-004, SPEC-030 9.2)", () => {
+  it.each([
+    ["80 ASCII characters", "a".repeat(80)],
+    ["80 emoji (160 UTF-16 code units)", emojis(80)],
+    ["80 code points with combining marks", combining(80)],
+    ["80 code points surrounded by spaces", `　${"a".repeat(80)} `],
+  ])("saves %s", async (_label, name) => {
+    const backend = await demo();
+    const result = await backend.api.self.updateProfile({ displayName: name });
+    const expected = name.trim();
+    expect(result).toEqual({
+      kind: "saved",
+      profile: { email: EMAIL.demo, displayName: expected },
+    });
+    expect(storedName(backend, EMAIL.demo)).toBe(expected);
+    expect(okData(await backend.api.self.getProfile()).displayName).toBe(expected);
+  });
+
+  it.each([
+    ["81 ASCII characters", "a".repeat(81)],
+    ["81 emoji", emojis(81)],
+    ["81 code points with combining marks", `${combining(80)}か`],
+    ["a tab inside", "名\t前"],
+    ["a NUL inside", "名\u0000前"],
+    ["a NUL at the start", "\u0000名前"],
+    ["DEL at the end", "名前\u007F"],
+    ["NEL (U+0085) at the end", "名前\u0085"],
+    ["a line feed inside", "名\n前"],
+  ])(
+    "rejects %s with validation_failed, leaves the DB and the name unchanged",
+    async (_label, name) => {
+      const backend = await demo();
+      const before = dbFingerprint(backend);
+      expect(await backend.api.self.updateProfile({ displayName: name })).toEqual({
+        kind: "validation_failed",
+        field: "displayName",
+      });
+      expect(dbFingerprint(backend)).toBe(before);
+      expect(okData(await backend.api.self.getProfile()).displayName).toBe("デモ太郎");
+      expect(storedName(backend, EMAIL.other)).toBe("他の人");
+    },
+  );
 });
 
 describe("TC-DEV-WEB-010-101 latency applies once per ApiPort call; corrupted scenario is unavailable", () => {

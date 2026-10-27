@@ -1,7 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import { copy } from "../../apps/web/src/presentation/copy/ja.ts";
 import { readDbRaw, writeStorage } from "../harness/browser/cart.ts";
-import { gotoHydrated } from "../harness/browser/hydration.ts";
+import { gotoHydrated, reloadHydrated } from "../harness/browser/hydration.ts";
 import {
   DEMO_NAME,
   describedBy,
@@ -23,17 +23,19 @@ import {
   setScenario,
 } from "../harness/browser/purchase.ts";
 import { KEYS } from "../harness/browser/shell.ts";
+import { combining, emojis } from "../harness/display-name.ts";
 import { EMAIL } from "../harness/mock-seed.ts";
 
 // UI mock suite (TST-E2E-004: auxiliary, not G8). Contract: tests/contracts/s8-mypage.md section 4.4.
-// SPEC-050 18.2 (PG-MYP-002), 25, 31 items 14 / 22, UCR-100-001, SEC-AUTH-018. Expected DB postconditions are the mock DB.
+// SPEC-050 18.2 (PG-MYP-002), 25, 31 items 14 / 22, SPEC-030 9.2 / API-AUTH-004, SEC-AUTH-018. Expected DB postconditions are the mock DB.
 
 const profile = () => copy.mypage.profile;
 const nameField = (page: Page) =>
   mainOf(page).getByLabel(profile().displayNameLabel, { exact: true });
 const saveButton = (page: Page) => mainButton(page, profile().save);
 const statusOf = (page: Page) => mainOf(page).locator('[role="status"]');
-const nameOf = async (page: Page, email: string): Promise<string | undefined> =>
+/** The stored display name of a user: null = unset, undefined = no such user. */
+const nameOf = async (page: Page, email: string): Promise<string | null | undefined> =>
   (await readState(page)).users.find((u) => u.email === email)?.displayName;
 
 test.describe("TC-PG-MYP-002-701 the Profile shows the account email as text and one editable field (SPEC-050 18.2)", () => {
@@ -62,6 +64,22 @@ test.describe("TC-PG-MYP-002-701 the Profile shows the account email as text and
     await expect(statusOf(page)).toHaveText("");
     await expect(alertsOf(page)).toHaveCount(0);
     expect(await mainOf(page).innerText()).not.toContain(profile().status.saved);
+  });
+
+  test("shows 未設定 as the placeholder and the optional / 80 code points hint as the field description, without a maxlength", async ({
+    page,
+  }) => {
+    await openAs(page, PATH.profile);
+    await expect(nameField(page)).toHaveValue(DEMO_NAME);
+    await expect(nameField(page)).toHaveAttribute("placeholder", "未設定");
+    await expect(nameField(page)).toHaveAttribute("placeholder", profile().unset);
+    expect(await describedBy(nameField(page))).toContain(profile().displayNameHint);
+    await expect(mainOf(page)).toContainText(profile().displayNameHint);
+    // maxlength counts UTF-16 code units and would reject 80 emoji (SPEC-030 9.2 counts code points).
+    expect(await nameField(page).getAttribute("maxlength")).toBeNull();
+    // No error is claimed before anything is submitted.
+    await expect(nameField(page)).not.toHaveAttribute("aria-invalid", "true");
+    expect(await describedBy(nameField(page))).not.toContain(profile().error.tooLong);
   });
 });
 
@@ -181,20 +199,24 @@ test.describe("TC-PG-MYP-002-702 saving the display name changes only this user'
   });
 });
 
-test.describe("TC-PG-MYP-002-703 a rejected name is reported by an error summary that takes focus and is tied to the field (E2E 22, SPEC-050 25)", () => {
-  test("a blank name: alert with focus, aria-invalid, description, a link to the field, and no DB change", async ({
+test.describe("TC-PG-MYP-002-703 a rejected name is reported by an error summary that takes focus and is tied to the field (E2E 22, SPEC-050 25, SPEC-030 9.2)", () => {
+  test("an 81-character name: alert with focus, aria-invalid, description, a link to the field, and no DB change", async ({
     page,
   }) => {
     await openAs(page, PATH.profile);
     const before = await readDbRaw(page);
-    await nameField(page).fill("   ");
+    await nameField(page).fill("あ".repeat(81));
     await saveButton(page).click();
     await expect(alertsOf(page)).toHaveCount(1);
-    await expect(alertsOf(page)).toContainText(profile().error.required);
+    await expect(alertsOf(page)).toContainText(profile().error.tooLong);
+    await expect(alertsOf(page)).not.toContainText(profile().error.controlCharacter);
     await expect(alertsOf(page)).toBeFocused();
     await expect(nameField(page)).toHaveAttribute("aria-invalid", "true");
-    expect(await describedBy(nameField(page))).toContain(profile().error.required);
+    const described = await describedBy(nameField(page));
+    expect(described).toContain(profile().error.tooLong);
+    expect(described).toContain(profile().displayNameHint);
     await expect(statusOf(page)).not.toContainText(profile().status.saved);
+    await expect(statusOf(page)).not.toContainText(profile().status.cleared);
     expect(await readDbRaw(page)).toBe(before);
     expect(await nameOf(page, EMAIL.demo)).toBe(DEMO_NAME);
 
@@ -211,14 +233,154 @@ test.describe("TC-PG-MYP-002-703 a rejected name is reported by an error summary
     expect(await nameOf(page, EMAIL.demo)).toBe("直した名前");
   });
 
-  test("an empty field is rejected the same way (the server decides what a blank name is)", async ({
+  test("a name with a control character inside: the control-character message, the field is tied to it, and no DB change", async ({
+    page,
+  }) => {
+    await openAs(page, PATH.profile);
+    const before = await readDbRaw(page);
+    await nameField(page).fill("名\u0009前");
+    await saveButton(page).click();
+    await expect(alertsOf(page)).toHaveCount(1);
+    await expect(alertsOf(page)).toContainText(profile().error.controlCharacter);
+    await expect(alertsOf(page)).not.toContainText(profile().error.tooLong);
+    await expect(alertsOf(page)).toBeFocused();
+    await expect(nameField(page)).toHaveAttribute("aria-invalid", "true");
+    expect(await describedBy(nameField(page))).toContain(profile().error.controlCharacter);
+    await expect(statusOf(page)).not.toContainText(profile().status.saved);
+    expect(await readDbRaw(page)).toBe(before);
+    expect(await nameOf(page, EMAIL.demo)).toBe(DEMO_NAME);
+
+    // Editing the field takes the error away; the corrected name is saved.
+    await nameField(page).fill("名前");
+    await expect(alertsOf(page)).toHaveCount(0);
+    await expect(nameField(page)).not.toHaveAttribute("aria-invalid", "true");
+    await saveButton(page).click();
+    await expect(statusOf(page)).toHaveText(profile().status.saved);
+    expect(await nameOf(page, EMAIL.demo)).toBe("名前");
+  });
+
+  test("a blank field is not an error: it is saved as unset (the UI does not require a name)", async ({
     page,
   }) => {
     await openAs(page, PATH.profile);
     await nameField(page).fill("");
     await saveButton(page).click();
-    await expect(alertsOf(page)).toContainText(profile().error.required);
-    expect(await nameOf(page, EMAIL.demo)).toBe(DEMO_NAME);
+    await expect(statusOf(page)).toHaveText(profile().status.cleared);
+    await expect(alertsOf(page)).toHaveCount(0);
+    await expect(nameField(page)).not.toHaveAttribute("aria-invalid", "true");
+    expect(await nameOf(page, EMAIL.demo)).toBeNull();
+  });
+});
+
+test.describe("TC-PG-MYP-002-706 an empty or blank name is saved as unset and shown as 未設定, never as the email (SPEC-050 18.2 / 18.1, SPEC-030 9.2)", () => {
+  test("saving an empty field: cleared status, no alert, DB null, empty input with the placeholder, survives a reload; Overview shows 未設定", async ({
+    page,
+  }) => {
+    await openAs(page, PATH.profile);
+    await nameField(page).fill("");
+    await expect(statusOf(page)).toHaveText(profile().status.dirty);
+    await saveButton(page).click();
+    await expect(statusOf(page)).toHaveText(profile().status.cleared);
+    await expect(alertsOf(page)).toHaveCount(0);
+    await expect(nameField(page)).toHaveValue("");
+    await expect(nameField(page)).toHaveAttribute("placeholder", profile().unset);
+    expect(await nameOf(page, EMAIL.demo)).toBeNull();
+    expect(await nameOf(page, EMAIL.other)).toBe(OTHER_NAME);
+    expect(await nameOf(page, EMAIL.fresh)).toBe(
+      seedState().users.find((u) => u.email === EMAIL.fresh)?.displayName,
+    );
+
+    await reloadHydrated(page);
+    await expect(nameField(page)).toHaveValue("");
+    await expect(nameField(page)).toHaveAttribute("placeholder", "未設定");
+    await expect(statusOf(page)).toHaveText("");
+    // The email stays the Account email; it is never put into the name field.
+    await expect(mainOf(page)).toContainText(EMAIL.demo);
+
+    await gotoHydrated(page, PATH.overview);
+    const account = region(page, copy.mypage.overview.profileHeading);
+    await expect(
+      account.locator("p").filter({ hasText: copy.mypage.overview.displayNameLabel }),
+    ).toHaveText(`${copy.mypage.overview.displayNameLabel} 未設定`);
+    await expect(account).toContainText(EMAIL.demo);
+    await expect(account).not.toContainText(DEMO_NAME);
+    expect(await nameOf(page, EMAIL.demo)).toBeNull();
+  });
+
+  test("saving only blank characters (an ideographic space and a space) is the same: unset", async ({
+    page,
+  }) => {
+    await openAs(page, PATH.profile);
+    await nameField(page).fill("　 ");
+    await saveButton(page).click();
+    await expect(statusOf(page)).toHaveText(profile().status.cleared);
+    await expect(alertsOf(page)).toHaveCount(0);
+    await expect(nameField(page)).toHaveValue("");
+    expect(await nameOf(page, EMAIL.demo)).toBeNull();
+    expect(await nameOf(page, EMAIL.other)).toBe(OTHER_NAME);
+  });
+
+  test("a name can be set again after it was cleared, and the saved status is not the cleared one", async ({
+    page,
+  }) => {
+    await openAs(page, PATH.profile);
+    await nameField(page).fill("");
+    await saveButton(page).click();
+    await expect(statusOf(page)).toHaveText(profile().status.cleared);
+    await nameField(page).fill("戻した名前");
+    await expect(statusOf(page)).toHaveText(profile().status.dirty);
+    await saveButton(page).click();
+    await expect(statusOf(page)).toHaveText(profile().status.saved);
+    expect(await nameOf(page, EMAIL.demo)).toBe("戻した名前");
+  });
+});
+
+test.describe("TC-PG-MYP-002-707 the name is trimmed by the server and the 80 limit is counted in code points (SPEC-050 18.2, SPEC-030 9.2)", () => {
+  test("a name with surrounding spaces is stored trimmed and the input takes the stored value", async ({
+    page,
+  }) => {
+    await openAs(page, PATH.profile);
+    await nameField(page).fill("  名前  ");
+    await saveButton(page).click();
+    await expect(statusOf(page)).toHaveText(profile().status.saved);
+    await expect(alertsOf(page)).toHaveCount(0);
+    await expect(nameField(page)).toHaveValue("名前");
+    expect(await nameOf(page, EMAIL.demo)).toBe("名前");
+  });
+
+  test("80 emoji (160 UTF-16 code units) are saved and 81 are rejected with the too-long message, leaving the DB unchanged", async ({
+    page,
+  }) => {
+    await openAs(page, PATH.profile);
+    await nameField(page).fill(emojis(80));
+    await saveButton(page).click();
+    await expect(statusOf(page)).toHaveText(profile().status.saved);
+    await expect(alertsOf(page)).toHaveCount(0);
+    expect(await nameOf(page, EMAIL.demo)).toBe(emojis(80));
+
+    const before = await readDbRaw(page);
+    await nameField(page).fill(emojis(81));
+    await saveButton(page).click();
+    await expect(alertsOf(page)).toHaveCount(1);
+    await expect(alertsOf(page)).toContainText(profile().error.tooLong);
+    await expect(nameField(page)).toHaveAttribute("aria-invalid", "true");
+    expect(await readDbRaw(page)).toBe(before);
+    expect(await nameOf(page, EMAIL.demo)).toBe(emojis(80));
+  });
+
+  test("a name of 80 code points built with combining marks is saved and one more code point is rejected", async ({
+    page,
+  }) => {
+    await openAs(page, PATH.profile);
+    await nameField(page).fill(combining(80));
+    await saveButton(page).click();
+    await expect(statusOf(page)).toHaveText(profile().status.saved);
+    expect(await nameOf(page, EMAIL.demo)).toBe(combining(80));
+
+    await nameField(page).fill(`${combining(80)}か`);
+    await saveButton(page).click();
+    await expect(alertsOf(page)).toContainText(profile().error.tooLong);
+    expect(await nameOf(page, EMAIL.demo)).toBe(combining(80));
   });
 });
 

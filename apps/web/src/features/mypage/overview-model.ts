@@ -65,7 +65,8 @@ function buildProfile(input: Loadable<Profile>): MypageOverviewModel["profile"] 
   if (model.kind !== "ready") return model;
   return {
     kind: "ready",
-    displayName: model.displayName,
+    // Text for display: an unset name is shown as 未設定, never replaced by the email (SPEC-050 18.2).
+    displayName: model.displayName ?? copy.mypage.profile.unset,
     email: model.email,
     href: MYPAGE_PATHS.profile,
   };

@@ -87,7 +87,7 @@ export type EventInfo = {
 export type FaqItem = { id: string; question: string; answer: string };
 export type AnnouncementSummary = { announcementRef: Ref<"announcement">; title: string; publishedAt: UtcInstant; excerpt: string };
 export type Announcement = AnnouncementSummary & { body: string };   // body はサニタイズ・エスケープせず原文のまま
-export type SponsorLogo = { sponsorRef: Ref<"sponsor">; name: string; imageUrl: string | null; linkUrl: string | null };
+export type SponsorLogo = { sponsorRef: Ref<"sponsor">; name: string; imageUrl: string; linkUrl: string | null }; // imageUrl は必須（API-PUB-012 image_url）
 export type EntryOffering = {
   offeringRef: Ref<"offering">; name: string; description: string; unitPrice: Money;
   salesPeriod: SalesPeriod; availability: SaleAvailability; perAccountLimit: number | null;
@@ -109,7 +109,7 @@ export type GoodsDetail = {
   goodsRef: Ref<"goods">; name: string; description: string; unitPrice: Money;
   salesPeriod: SalesPeriod; availability: SaleAvailability; venuePickupOnly: true;
 };
-export type Profile = { email: string; displayName: string };
+export type Profile = { email: string; displayName: string | null };   // null = 未設定（API-AUTH-002 の display_name）。email で補完しない
 export type OrderItem =
   | { kind: "ENTRY_TICKET"; offeringRef: Ref<"offering">; name: string; quantity: number; unitPrice: Money; subtotal: Money }
   | { kind: "GOODS"; goodsRef: Ref<"goods">; name: string; quantity: number; unitPrice: Money; subtotal: Money }
@@ -124,7 +124,7 @@ export type OrderDetail = OrderSummary & {
   items: readonly OrderItem[];          // 購入時 Snapshot
   entitlements: OrderEntitlements;      // 常に存在。CONFIRMED 以外は {entryTicketRefs:[], reservationRef:null, goodsItems:[]}
   receiptUrl: string | null;
-  notice: { kind: "email_delayed" } | null;
+  notificationSummary: { status: NotificationSummaryStatus } | null;   // API-ORD-003 notification_summary。null = summary だけ取得不能
 };
 export type EntryTicketSummary = { ticketRef: Ref<"ticket">; offeringName: string; state: EntryTicketState; orderRef: Ref<"order"> };
 export type EntryTicketDetail = EntryTicketSummary & { issuedAt: UtcInstant };
@@ -155,7 +155,7 @@ export interface PublicApi {
   listFaqs(): Promise<Read<readonly FaqItem[]>>;                                         // API-PUB-002
   listAnnouncements(q?: { limit?: number }): Promise<Read<readonly AnnouncementSummary[]>>; // API-PUB-003
   getAnnouncement(ref: Ref<"announcement">): Promise<Read<Announcement>>;                // API-PUB-004
-  listSponsorLogos(): Promise<Read<readonly SponsorLogo[]>>;                             // Operation ID なし（UCR-110-001）
+  listSponsorLogos(): Promise<Read<readonly SponsorLogo[]>>;                             // API-PUB-012（PUBLISHED のみ、sort_order ASC, public_ref ASC）
   listEntryOfferings(): Promise<Read<readonly EntryOffering[]>>;                         // API-PUB-005 + 閲覧者別 Purchase Limit 可否（Operation ID なし, UCR-110-001）
   getKaraokeSales(): Promise<Read<KaraokeSales>>;                                        // API-PUB-006
   getKaraokeDay(date: BusinessDateJst): Promise<Read<KaraokeDay>>;                       // API-PUB-007 + API-PUB-008
@@ -171,9 +171,9 @@ export interface PurchaseApi {
 }
 export interface SelfApi {   // 他者所有でも不存在でも同じ not_found（SPEC-110 §22）
   getProfile(): Promise<Read<Profile>>;                                       // API-AUTH-002
-  updateProfile(i: { displayName: string }): Promise<ProfileUpdate>;          // API-AUTH-004（最大文字数は UCR-100-001 待ちで定めない）
+  updateProfile(i: { displayName: string }): Promise<ProfileUpdate>;          // API-AUTH-004（SPEC-030 §9.2: trim、空は null、1〜80 code points、内部 Cc 拒否）
   listOrders(): Promise<Read<readonly OrderSummary[]>>;                       // API-ORD-001
-  getOrder(r: Ref<"order">): Promise<Read<OrderDetail>>;                      // API-ORD-003（purpose の ENTRY_GOODS_PURCHASE と notice は UCR-110-001）
+  getOrder(r: Ref<"order">): Promise<Read<OrderDetail>>;                      // API-ORD-003（notification_summary は SPEC-120 7.2 の所有者向け射影。summary だけの取得障害は null）
   listEntryTickets(): Promise<Read<readonly EntryTicketSummary[]>>;           // API-TKT-001
   getEntryTicket(r: Ref<"ticket">): Promise<Read<EntryTicketDetail>>;         // API-TKT-002
   getEntryQr(r: Ref<"ticket">): Promise<Read<QrPresentation>>;                // API-TKT-003
@@ -186,7 +186,7 @@ export interface SelfApi {   // 他者所有でも不存在でも同じ not_foun
 export interface ApiPort { readonly public: PublicApi; readonly purchase: PurchaseApi; readonly self: SelfApi }
 ```
 
-各 method の doc comment に対応する Operation ID を書く。Operation ID が無いもの（`startCartPurchase`、`listSponsorLogos`、`listEntryOfferings` の閲覧者別 Purchase Limit 可否、`getOrder` の `notice` と `ENTRY_GOODS_PURCHASE`、`resolveCartLines` の複合）には `UCR-110-001` と「Operation ID なし」を明記する。新しい Operation ID を発明しない。
+各 method の doc comment に対応する Operation ID を書く。Operation ID が無いもの（`startCartPurchase`、`listEntryOfferings` の閲覧者別 Purchase Limit 可否、`resolveCartLines` の複合）には `UCR-110-001` と「Operation ID なし」を明記する。`listSponsorLogos` は `API-PUB-012`（`image_url` 必須、`sort_order ASC, public_ref ASC`）として正本化されたので `UCR-110-001` / 「Operation ID なし」を書かない。`getOrder` は `API-ORD-003`（`notification_summary` を含む）として正本化されたので、`UCR-110-001` / 「Operation ID なし」を書かない。新しい Operation ID を発明しない。
 
 `apps/web/src/api-client/cart-line-key.ts`:
 
@@ -240,13 +240,13 @@ type Scenario = {
   publicFetch: "ok" | "fail" | "empty";
   latency: "none" | "long";
   latencyLongMs: number;                                  // 整数 1..60000
-  sponsorLogos: "published" | "none" | "fail" | "image_broken";
+  sponsorLogos: "published" | "none" | "fail" | "image_broken" | "image_disallowed_origin";
   cart: { state: "ok" | "fail" | "partial"; purchaseStart: "ok" | "reject_one" | "limit" | "unavailable" };
   checkout: "ok" | "start_failed" | "opportunity_expired";
   karaokeHold: "ok" | "conflict" | "limit" | "expire_before_checkout";
   karaokeSales: "ON_SALE" | "BEFORE_SALES" | "SALES_ENDED" | "SUSPENDED";   // PG-KRK-001 の販売状態を再現するための追加 switch
   paymentOutcome: "confirm_after_recheck" | "confirm" | "remain_awaiting" | "payment_failed" | "review_required" | "expire" | "cancel";
-  notification: "sent" | "failed_retryable";
+  notification: "sent" | "pending" | "failed_retryable" | "canceled" | "summary_unavailable";   // 模擬バックエンド内の確認通知の内部状態。UI へは notification_summary に射影して返す
   auth: {
     session: "ok" | "unavailable";
     login: "ok" | "credential_failure" | "unavailable";
@@ -413,7 +413,7 @@ export function buildSeed(now: UtcInstant): DbState;
 - Announcement（ref = `ab000000-0000-4000-8000-0000000000NN`）: 01 `latest`（PUBLISHED、publishedAt = now-1d）、02 `script`（PUBLISHED、now-2d。`body` に文字列 `<script>alert("mock")</script>` を**そのまま**含む）、03 `older`（PUBLISHED、now-10d）、04 `draft`（DRAFT、title は `"[draft] 非公開のお知らせ"`）、05 `archived`（ARCHIVED、title は `"[archived] 掲載終了のお知らせ"`）。`listAnnouncements` は PUBLISHED の 3 件を `publishedAt` 降順（01, 02, 03）で返す。
 - FAQ: PUBLISHED 3 件 + DRAFT 1 件（question は `"[draft] 非公開のFAQ"`）。`listFaqs` は PUBLISHED の 3 件だけ返す。
 - Event: `name` は非空。`eventFields: "complete"` では全 field 非 null、`overview`・`startsAt`・`endsAt`・`venueName`・`venueGuide`・`accessInfo`・`notices` はそれぞれ非空 / 非 null（`notices` は 1 件以上）。`"missing_optional"` では `name` 以外の全 field が `null`。
-- Sponsor Logo（ref = `5b000000-0000-4000-8000-0000000000NN`）: 01 `Sponsor Alpha`（PUBLISHED、displayOrder 10、`linkUrl` = `https://sponsor-alpha.example.com/`）、02 `Sponsor Bravo`（PUBLISHED、20、`linkUrl` = null）、03 `Sponsor Charlie`（PUBLISHED、30、`linkUrl` = `https://sponsor-charlie.example.com/`）、04 DRAFT（name = `"[draft] 協賛ドラフト"`）、05 ARCHIVED（name = `"[archived] 協賛アーカイブ"`）。**seed の配列の並びは Charlie, Alpha, Bravo, draft, archived とし、`displayOrder` でソートして返すことを確かめられるようにする**。`imageUrl` は `/mock/sponsors/<key>.svg` 形式の相対 path。`image_broken` では全 Logo の `imageUrl` を `/mock/sponsors/__broken__.svg` にする。
+- Sponsor Logo（ref = `5b000000-0000-4000-8000-0000000000NN`）: 01 `Sponsor Alpha`（PUBLISHED、displayOrder 10、`linkUrl` = `https://sponsor-alpha.example.com/`）、02 `Sponsor Bravo`（PUBLISHED、20、`linkUrl` = null）、03 `Sponsor Charlie`（PUBLISHED、30、`linkUrl` = `https://sponsor-charlie.example.com/`）、04 DRAFT（name = `"[draft] 協賛ドラフト"`）、05 ARCHIVED（name = `"[archived] 協賛アーカイブ"`）。**seed の配列の並びは Charlie, Alpha, Bravo, draft, archived とし、`displayOrder` でソートして返すことを確かめられるようにする**。`imageUrl` は `/mock/sponsors/<key>.svg` 形式の相対 path。`image_broken` では全 Logo の `imageUrl` を `/mock/sponsors/__broken__.svg` にする。`image_disallowed_origin` では全 Logo の `imageUrl` を `https://sponsor-images.invalid/<ref>.svg`（`<ref>` = その Logo の `sponsorRef`。`.invalid` は予約 TLD で、E2E の CSP `img-src` に含まれない origin）にする。相対 path の seed は UI mock の同一 origin 素材であり、`API-PUB-012` は https の URL だけを返す（差は PR の説明に記録する）。
 
 ### 8.6 Order（ref = `0d000000-0000-4000-8000-0000000000NN`。`createdAt` は now から過去へ）
 
@@ -518,7 +518,17 @@ webhook 待ち（`startCheckout` が `redirect` を返した Order）で、state
 - Order の state 以外の read（`listOrders`、他の `self.*` Read）は遷移を起こさない。`getOrder` / `listOrders` / 他の read は**新しい Order を作らない**（PAY-BRW-002）。
 - Order が `PREPARED` / `AWAITING_PAYMENT` / `REVIEW_REQUIRED` の goods item は `PENDING_PAYMENT`（handoff `PENDING`）、`PAYMENT_FAILED` / `CANCELED` / `EXPIRED` の goods item は `CANCELED`（handoff `VOID`）、`CONFIRMED` は記録された値（`FULFILLABLE` + `PENDING` / `COMPLETED`）として返す。
 - `OrderDetail.entitlements`: `CONFIRMED` のときだけ、その Order の Ticket refs / reservationRef / goodsItems（itemState と handoffState）を返す。それ以外の state は常に `{ entryTicketRefs: [], reservationRef: null, goodsItems: [] }`（複合 Order でも片方だけ返さない。BR-ORD-015、INV-010-07）。
-- `OrderDetail.notice`: state が `CONFIRMED` かつ scenario `notification === "failed_retryable"` のとき `{ kind: "email_delayed" }`、それ以外は `null`。state と entitlements は影響を受けない。
+- `OrderDetail.notificationSummary`（`API-ORD-003`、SPEC-120 §7.2 `EML-NTF-003` の射影。`notice` は存在しない。summary status は `types.ts` の DTO 型 `NotificationSummaryStatus = "NONE" | "PENDING" | "SENT" | "ATTENTION_REQUIRED"` で、Domain State ではない）:
+
+  | scenario `notification` | `CONFIRMED` の Order | 非 `CONFIRMED` の Order |
+  |---|---|---|
+  | `failed_retryable` | `{ status: "ATTENTION_REQUIRED" }` | `{ status: "NONE" }` |
+  | `pending` | `{ status: "PENDING" }` | `{ status: "NONE" }` |
+  | `sent`（既定） | `{ status: "SENT" }` | `{ status: "NONE" }` |
+  | `canceled` | `{ status: "NONE" }`（CANCELED は集約対象外） | `{ status: "NONE" }` |
+  | `summary_unavailable` | `null` | `null` |
+
+  `summary_unavailable` でも `getOrder` は `ok` を返し、state・entitlements・receiptUrl は通常どおり（部分障害を Order の失敗にしない）。state と entitlements は scenario の影響を受けない。read は DB を書き換えない。
 - `listOrders`: 本人の Order だけを `createdAt` 降順（非増加）で返す。guest / 未確認は §10。`getOrder`: 本人の Order 以外は `not_found`。
 
 ## 12. Self Read の意味論
@@ -526,14 +536,14 @@ webhook 待ち（`startCheckout` が `redirect` を返した Order）で、state
 - `listEntryTickets` / `listReservations` / `listGoodsItems`: 本人の分だけ。`new@example.com` は 3 つとも `{ kind: "ok", data: [] }`（`unavailable` でも `not_found` でもない）。
 - `getEntryQr`: 本人の ticket が `VALID` なら `{ kind: "presentable", purpose: "ENTRY", mockMatrixSeed }`、それ以外は `{ kind: "not_presentable", ticketState }`。`getKaraokeQr`: Reservation が `CONFIRMED` かつ Ticket が `VALID` なら `presentable`（`purpose: "KARAOKE"`）、それ以外は `not_presentable`（`ticketState` は Karaoke Ticket の state）。
 - `mockMatrixSeed` は正規表現 `^mock-seed-\d{1,8}$` に一致し、同じ ref に対して常に同じ値（ref から決定的に導く。`Math.random` を使わない）。Token・JWT・UUID・長い hex / base64 の形にしない（SEC-QR-012/013）。`presentable` / `not_presentable` のどちらの object にも、ref の文字列そのものや token らしい field を含めない。
-- `getProfile`: `{ email, displayName }`（seed のとおり）。`updateProfile({ displayName })`: 空文字、または空白文字（半角・全角・タブ・改行）だけの場合は `{ kind: "validation_failed", field: "displayName" }`（保存しない）。それ以外は入力値を**そのまま**（trim せず）保存し `{ kind: "saved", profile }`。最大文字数は定めない（UCR-100-001）。保存後の `getProfile` に反映される。
+- `getProfile`: `{ email, displayName }`（seed のとおり。未設定は `displayName: null` で、email から補完しない）。`updateProfile({ displayName })`: `apps/web/src/api-client/display-name-policy.ts` の `normalizeDisplayName`（SPEC-030 §9.2、API-AUTH-004）を適用する。(1) `trim()` 後が空（空文字、半角・全角空白・タブ・改行だけ）→ 未設定にする（`displayName = null` で保存し `{ kind: "saved", profile: { email, displayName: null } }`）。(2) trim 後に内部 `Cc`（`\t`、`\u0000`、`\u007F`、`\u0085` など `\p{Cc}`）が残る、または 80 code points（`[...value].length`）を超える → `{ kind: "validation_failed", field: "displayName" }`（保存しない。DB 不変）。`Cc` と長さの両方に違反する場合の判定は `Cc` が先。(3) それ以外は trim した値を保存し `{ kind: "saved", profile }`。Unicode 正規化はしない。他の user は変わらない。保存後の `getProfile` に反映される。
 
 ## 13. 公開 Read と scenario `publicFetch`
 
 - `fail`: `getEvent`、`listFaqs`、`listAnnouncements`、`getAnnouncement`、`listEntryOfferings`、`getKaraokeSales`、`getKaraokeDay`、`getKaraokeSlot`、`listGoods`、`getGoods`、`resolveCartLines` はすべて `{ kind: "unavailable" }`。
 - `empty`: 一覧系（`listFaqs`、`listAnnouncements`、`listEntryOfferings`、`listGoods`）は `{ kind: "ok", data: [] }`。`getKaraokeSales` は `salesDates: []`。`getKaraokeDay` は（日付が販売対象日なら）`buckets: []`、`previousDate` / `nextDate` は通常どおり。`getEvent`、`getAnnouncement`、`getKaraokeSlot`、`getGoods`、`resolveCartLines` は `ok` と同じ。
 - `fail` と `empty` は互いに区別できる（`unavailable` を Empty に変換しない）。
-- `listSponsorLogos` は `publicFetch` の影響を受けない。`scenario.sponsorLogos`: `published` → PUBLISHED だけを displayOrder 昇順で `ok`、`none` → `ok` + `[]`、`fail` → `unavailable`、`image_broken` → `published` と同じ内容で `imageUrl` を §8.5 の壊れた URL にする。
+- `listSponsorLogos` は `publicFetch` の影響を受けない。`scenario.sponsorLogos`: `published` → PUBLISHED だけを `displayOrder` 昇順、**同値は ref 昇順**（`API-PUB-012` の `sort_order ASC, public_ref ASC`。保存順に依存しない）で `ok`、`none` → `ok` + `[]`、`fail` → `unavailable`、`image_broken` → `published` と同じ内容で `imageUrl` を §8.5 の壊れた URL にする、`image_disallowed_origin` → `published` と同じ内容（同じ 3 件・同順・同 `linkUrl`）で `imageUrl` だけを §8.5 の許可されない origin の URL にする。
 - `scenario.cart.state`: `fail` → `resolveCartLines` が `unavailable`。`partial` → `ok` だが、**先頭の line**だけ `{ lineKey, status: "unavailable" }`（他の line は通常どおり）。`ok` → 通常。
 - `scenario.eventFields`: §8.5。
 - `listAnnouncements({ limit })`: `limit` が指定されたら先頭から `limit` 件まで（降順の後で切る）。
@@ -554,6 +564,7 @@ export function createMockAuth(deps: MockAuthDeps): AuthPort;
 - `onSessionChange(cb)`: 登録し、unsubscribe 関数を返す。session が変わった操作（`signIn` 成功、`signOut`、`signUp` が `signed_in`、`verifyEmail` が `verified` で session の emailVerified が変わった）の**あと**に、登録中の全 cb を引数なしで 1 回ずつ呼ぶ。unsubscribe 後は呼ばない。変化がない操作では呼ばない。
 - `signIn({ email, password })`: `auth.login === "unavailable"` → `unavailable`、`credential_failure` → `credential_failure`。`ok` のとき、email が空・password が空・email が DB の user に存在しない → `{ kind: "credential_failure" }`（原因を区別しない）。存在すれば session を `authenticated` にして `{ kind: "signed_in", emailVerified }`（user の emailVerified）。`credential_failure` / `unavailable` では session を変えない。
 - `signUp({ email, password })`: `auth.signup === "unavailable"` → `unavailable`、`rejected` → `rejected`（user を作らない）。それ以外は email の形式（`^[^@\s]+@[^@\s]+$`）と `validatePassword` を検査し、不合格なら `{ kind: "rejected" }`（user を作らない）。合格のとき、
+  - 新しい user の `displayName` は **null**（email の local part などから推測して補完しない。SPEC-030 §9.2。TC-PG-MYP-002-103）。
   - `confirmation_required`: 新しい email なら user を `emailVerified:false` で作り、`pendingVerificationEmail` に記録、session は変えない。既存の email なら何も作らない。どちらも `{ kind: "confirmation_required" }`（存在を開示しない。SEC-API-027）。
   - `signed_in`: 新しい email なら user を `emailVerified:true` で作り session を `authenticated(emailVerified:true)` にして `{ kind: "signed_in" }`。既存の email なら何も変えず `{ kind: "confirmation_required" }`。
 - `verifyEmail({ context })`: `auth.verify === "unavailable"` → `unavailable`、`invalid_or_expired` → `invalid_or_expired`。`ok` のとき `context` が `null` または空文字 → `invalid_or_expired`。それ以外は、対象 user を「現在の session が authenticated ならその email、そうでなければ `pendingVerificationEmail`」で決める。対象が無い / DB に存在しない → `invalid_or_expired`。見つかれば user を `emailVerified:true` にし、session が同じ email の authenticated なら `emailVerified:true` に更新し、`pendingVerificationEmail` を null にして `{ kind: "verified" }`。
@@ -585,7 +596,7 @@ export function createMockAuth(deps: MockAuthDeps): AuthPort;
 3. `AuthPort.signUp` / `completePasswordReset` に validation 失敗が無い → `signUp` は `rejected`、`completePasswordReset` の password policy 違反は reject（programmer error）。
 4. `confirm_after_recheck` の「初回 read」は `getOrder` の呼び出し回数で数える（時間経過ではない）。React の StrictMode 等で `getOrder` が二重に呼ばれると 1 回で確定して見えるため、S7a の container は mount ごとに 1 回だけ読むこと。
 5. `karaokeSales` を scenario に追加した（PG-KRK-001 の販売前 / 終了 / 停止、`not_on_sale` を再現するため）。設計書 §8 の一覧外の追加 switch。
-6. Purchase Limit の閲覧者別可否・`notice`・`ENTRY_GOODS_PURCHASE` の port は Operation ID が無い（UCR-110-001）。
+6. Purchase Limit の閲覧者別可否・`ENTRY_GOODS_PURCHASE` の port は Operation ID が無い（UCR-110-001）。`getOrder` の通知は `API-ORD-003.notification_summary` として正本化された（旧 `notice` は廃止）。
 7. `KaraokeSales` には `usage` / 整備時間の数値を持たせない（Hold TTL との混同を避け、時間帯は slot の `usageStart` / `usageEnd` から導く）。
 8. 同じ Goods / Entry Offering の重複 line（Cart 契約で許容）は、入力順に draft へ割り当てて判定する（`taken`）。1 件でも不成立なら全体を破棄する（All-or-Nothing、BR-ORD-014 / BR-ORD-017）。Order 明細は line ごとに 1 件のまま集計しない。
 9. Checkout の idempotency replay は user + key のみで判定する（`orderRef` を含めない）。SPEC-110 §18 の `409 IDEMPOTENCY_KEY_REUSED` との差は mock の意図的な単純化で、実 API の検証根拠にしない。

@@ -1,5 +1,6 @@
 import { assertNever, type OrderState } from "@off-r39x/domain";
 import { cartLineKey } from "../../api-client/cart-line-key";
+import { normalizeDisplayName } from "../../api-client/display-name-policy";
 import type { ApiPort } from "../../api-client/port";
 import type {
   CartLine,
@@ -11,6 +12,7 @@ import type {
   EventInfo,
   GoodsItemDetail,
   GoodsItemSummary,
+  NotificationSummaryStatus,
   OrderDetail,
   OrderItem,
   OrderSummary,
@@ -64,6 +66,8 @@ const LIMIT_COUNTED_STATES: readonly OrderState[] = [
 ];
 
 const BROKEN_SPONSOR_IMAGE = "/mock/sponsors/__broken__.svg";
+// `.invalid` is a reserved TLD; this origin is never in the CSP img-src, so the browser blocks it.
+const DISALLOWED_SPONSOR_IMAGE_ORIGIN = "https://sponsor-images.invalid";
 
 type Sellable = {
   control: "ENABLED" | "SUSPENDED";
@@ -166,9 +170,33 @@ function orderDetail(state: DbState, order: OrderRow, scenario: Scenario): Order
         }
       : { entryTicketRefs: [], reservationRef: null, goodsItems: [] },
     receiptUrl: order.receiptUrl,
-    notice:
-      confirmed && scenario.notification === "failed_retryable" ? { kind: "email_delayed" } : null,
+    notificationSummary: notificationSummary(order, scenario),
   };
+}
+
+/**
+ * The owner projection of the simulated confirmation-notification state (SPEC-120 7.2 EML-NTF-003;
+ * the mock is not the contract, DEV-WEB-010). It is derived on read and never written to the DB.
+ * `summary_unavailable` models a summary-only failure: the Order itself is still returned.
+ */
+function notificationSummary(
+  order: OrderRow,
+  scenario: Scenario,
+): { status: NotificationSummaryStatus } | null {
+  switch (scenario.notification) {
+    case "summary_unavailable":
+      return null;
+    case "canceled":
+      return { status: "NONE" };
+    case "failed_retryable":
+      return { status: order.state === "CONFIRMED" ? "ATTENTION_REQUIRED" : "NONE" };
+    case "pending":
+      return { status: order.state === "CONFIRMED" ? "PENDING" : "NONE" };
+    case "sent":
+      return { status: order.state === "CONFIRMED" ? "SENT" : "NONE" };
+    default:
+      return assertNever(scenario.notification);
+  }
 }
 
 /** Deterministic, token-free value derived from a ref. Carries no QR material (SEC-QR-012/013). */
@@ -509,11 +537,19 @@ export function createMockApi(deps: MockApiDeps): ApiPort {
       if (mode === "none") return { kind: "ok", data: [] };
       const data = ctx.state.sponsors
         .filter((s) => s.publication === "PUBLISHED")
-        .sort((a, b) => a.displayOrder - b.displayOrder)
+        // sort_order ASC, then public_ref ASC (BR-EVT-005, API-PUB-012)
+        .sort(
+          (a, b) => a.displayOrder - b.displayOrder || (a.ref < b.ref ? -1 : a.ref > b.ref ? 1 : 0),
+        )
         .map((s) => ({
           sponsorRef: asRef<"sponsor">(s.ref),
           name: s.name,
-          imageUrl: mode === "image_broken" ? BROKEN_SPONSOR_IMAGE : s.imageUrl,
+          imageUrl:
+            mode === "image_broken"
+              ? BROKEN_SPONSOR_IMAGE
+              : mode === "image_disallowed_origin"
+                ? `${DISALLOWED_SPONSOR_IMAGE_ORIGIN}/${s.ref}.svg`
+                : s.imageUrl,
           linkUrl: s.linkUrl,
         }));
       return { kind: "ok", data };
@@ -977,11 +1013,10 @@ export function createMockApi(deps: MockApiDeps): ApiPort {
       // ProfileUpdate has no authentication result; the UI never calls this as a guest.
       const gate = access(viewerOf(ctx.state));
       if (!gate.ok) return UNAVAILABLE;
-      if (input.displayName.trim() === "") {
-        return { kind: "validation_failed", field: "displayName" };
-      }
-      // The value is stored as given. A maximum length is not defined (UCR-100-001).
-      gate.user.displayName = input.displayName;
+      // The mock stands in for the authority (API-AUTH-004, SPEC-030 9.2): invalid input changes nothing.
+      const normalized = normalizeDisplayName(input.displayName);
+      if (!normalized.ok) return { kind: "validation_failed", field: "displayName" };
+      gate.user.displayName = normalized.value;
       db.save(ctx.state);
       return {
         kind: "saved",

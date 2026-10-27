@@ -9,6 +9,7 @@ import {
   scenarioSchema,
 } from "../../../../apps/web/src/mock/backend/scenario.ts";
 import { createMemoryStorage } from "../../../harness/mock-backend.ts";
+import { NOTIFICATION_SCENARIOS } from "../../../harness/notification-summary.ts";
 
 describe("TC-DEV-WEB-013-101 scenario schema and defaults (design section 8, DEV-TS-004)", () => {
   it("uses the documented storage key", () => {
@@ -58,6 +59,7 @@ describe("TC-DEV-WEB-013-101 scenario schema and defaults (design section 8, DEV
       ["sponsorLogos", "none"],
       ["sponsorLogos", "fail"],
       ["sponsorLogos", "image_broken"],
+      ["sponsorLogos", "image_disallowed_origin"],
       ["checkout", "start_failed"],
       ["checkout", "opportunity_expired"],
       ["karaokeHold", "conflict"],
@@ -73,11 +75,33 @@ describe("TC-DEV-WEB-013-101 scenario schema and defaults (design section 8, DEV
       ["paymentOutcome", "expire"],
       ["paymentOutcome", "cancel"],
       ["notification", "failed_retryable"],
+      ["notification", "pending"],
+      ["notification", "canceled"],
+      ["notification", "summary_unavailable"],
       ["eventFields", "missing_optional"],
     ];
     for (const [key, value] of variants) {
       const result = scenarioSchema.safeParse({ ...defaultScenario(), [key]: value });
       expect(result.success, `${key}=${String(value)}`).toBe(true);
+    }
+  });
+
+  it("accepts exactly the five simulated internal notification states and rejects the summary statuses (EML-NTF-003)", () => {
+    // The scenario describes the mock backend's INTERNAL state; summary statuses are derived from it.
+    expect([...NOTIFICATION_SCENARIOS]).toEqual([
+      "sent",
+      "pending",
+      "failed_retryable",
+      "canceled",
+      "summary_unavailable",
+    ]);
+    for (const value of NOTIFICATION_SCENARIOS) {
+      const result = scenarioSchema.safeParse({ ...defaultScenario(), notification: value });
+      expect(result.success, value).toBe(true);
+    }
+    for (const value of ["ATTENTION_REQUIRED", "NONE", "PENDING", "SENT", "bounced", ""]) {
+      const result = scenarioSchema.safeParse({ ...defaultScenario(), notification: value });
+      expect(result.success, value).toBe(false);
     }
   });
 
@@ -144,6 +168,23 @@ describe("TC-DEV-WEB-013-102 scenario persistence never turns corruption into de
     const scenario = { ...defaultScenario(), paymentOutcome: "confirm" as const };
     saveScenario(storage, scenario);
     expect(loadScenario(storage)).toEqual({ kind: "ok", scenario });
+  });
+
+  it("round-trips every notification scenario and keeps the stored values `sent` and `failed_retryable` valid", () => {
+    for (const value of NOTIFICATION_SCENARIOS) {
+      const storage = createMemoryStorage();
+      const scenario = { ...defaultScenario(), notification: value } as never;
+      saveScenario(storage, scenario);
+      expect(loadScenario(storage), value).toEqual({ kind: "ok", scenario });
+    }
+    for (const value of ["sent", "failed_retryable"]) {
+      const storage = createMemoryStorage();
+      storage.seedRaw(
+        SCENARIO_STORAGE_KEY,
+        JSON.stringify({ ...defaultScenario(), notification: value }),
+      );
+      expect(loadScenario(storage).kind, value).toBe("ok");
+    }
   });
 
   it("refuses to save an invalid scenario and leaves the storage untouched", () => {

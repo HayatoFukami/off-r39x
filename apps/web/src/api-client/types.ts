@@ -115,7 +115,7 @@ export type Announcement = AnnouncementSummary & { body: string };
 export type SponsorLogo = {
   sponsorRef: Ref<"sponsor">;
   name: string;
-  imageUrl: string | null;
+  imageUrl: string;
   linkUrl: string | null;
 };
 export type EntryOffering = {
@@ -178,7 +178,7 @@ export type GoodsDetail = {
   availability: SaleAvailability;
   venuePickupOnly: true;
 };
-export type Profile = { email: string; displayName: string };
+export type Profile = { email: string; displayName: string | null };
 export type OrderItem =
   | {
       kind: "ENTRY_TICKET";
@@ -223,11 +223,17 @@ export type OrderEntitlements = {
     handoffState: GoodsHandoffState;
   }[];
 };
+/**
+ * API-ORD-003 notification_summary.status (SPEC-110, SPEC-120 7.2 EML-NTF-003). A display DTO owned by the
+ * API's projection, not a Domain State: the UI never receives the internal Notification State.
+ */
+export type NotificationSummaryStatus = "NONE" | "PENDING" | "SENT" | "ATTENTION_REQUIRED";
 export type OrderDetail = OrderSummary & {
   items: readonly OrderItem[]; // purchase-time Snapshot
   entitlements: OrderEntitlements; // always present; empty unless CONFIRMED
   receiptUrl: string | null;
-  notice: { kind: "email_delayed" } | null;
+  /** null = only the summary is unavailable; the Order itself is still returned (SPEC-110 API-ORD-003). */
+  notificationSummary: { status: NotificationSummaryStatus } | null;
 };
 export type EntryTicketSummary = {
   ticketRef: Ref<"ticket">;
