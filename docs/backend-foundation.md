@@ -15,7 +15,8 @@ pnpm check:boundaries
 pnpm validate:traceability
 pnpm validate:migrations
 pnpm test:unit
-# 破棄可能な合成データ専用の実 PostgreSQL 17 を指定する。設定なしでは DB テストは失敗する。
+# 合成データ専用の実 PostgreSQL 17 とsetup identityを指定する（CREATE/DROP DATABASE・test role作成権限が必要）。
+# DB test fileごとに独立した一時databaseを作成・削除する。設定なしでは失敗する。
 TEST_DATABASE_URL=postgresql://postgres@localhost:5432/r39x_test \
 TEST_DATABASE_CA=/path/to/test-ca.crt pnpm test:backend
 pnpm build:backend
@@ -53,14 +54,14 @@ Worker の停止は、新規処理を止めて協調終了を待ち、15秒を�
 
 ## 検証記録
 
-実行結果・例外・未実装範囲は [backend-foundation-evidence.md](backend-foundation-evidence.md) を参照。
+初回実装の記録は [backend-foundation-evidence.md](backend-foundation-evidence.md)、監査後修正と現在の制限は [backend-foundation-audit-evidence.md](backend-foundation-audit-evidence.md) を参照。
 
 ## 未検証・公開ブロッカー
 
 - Neon Auth の実際の管理 schema / version を確認した限定 Directory の配置・権限検証。合成 Provider table を使う PG17 テストは Neon 互換性の証明ではない。
 - Neon JWT の実 issuer / audience / JWKS / Ed25519 / 最大900秒の互換性。
-- `/auth/*` の許可 method/path、Cookie・Origin・CSRF・redirect、全4認証方式、同一Subject連携、Safari を含む実 Provider 検証。未確定のため汎用転送ルートは登録しない。
-- 共有 multi-instance Rate Limit の配線。独自の Redis / DB テーブル / 業務 API を追加して補完しない。
+- `/auth/*` は限定transport候補を実装済み。`NEON_AUTH_BASE_URL` を環境固定HTTPS URL（末尾slashなし、Providerの `/auth` を含む）として設定する。公開method/pathはソースの限定表のみ。実NeonでのCookie・Origin・CSRF・redirect、全4認証方式、同一Subject連携、Safari互換性は未検証であり、Production公開gateは未達。管理API・汎用転送・独自Session cacheは追加しない。
+- 共有 multi-instance Rate Limit の実バックエンド。中継と `API-AUTH-001` は必須guardへ接続したが、標準server入口へ渡す共有実装は未選定・未実装。SPEC-140 §67はSPEC-180へ選定を委譲する一方、SPEC-180に契約がない。独自の Redis / DB テーブル / 業務 API を追加して補完しない。新UCRは監査修正記録を参照。
 - 非本番の Stripe / Resend credentials、承認済み送信先、Provider Contract Smoke。Resend の same-key replay は同じ payload/key の `POST /emails` であり、未確認の検索 API を作らない。
 - 個別 Worker handler、claim/lease/通知永続化、業務照合・復旧の実装。空の起動基盤を配送・reconciliation の完了と扱わない。
 - 本番の監視配線、監査の運用、バックアップ、restore rehearsal、staging・全システム G1〜G10 の公開 gate。この基盤 suite だけで公開を許可しない。
@@ -77,3 +78,12 @@ Worker の停止は、新規処理を止めて協調終了を待ち、15秒を�
 - 影響を受ける可能性がある仕様書: SPEC-100、SPEC-150、SPEC-170、SPEC-190。
 
 `UCR-130-005` の deferred operational index は追加しない。
+
+## 監査後の実装境界
+
+- DB readinessはmigration journalに加え、release対象のPG17 catalog（列・default・制約定義／検証状態・Index定義／有効状態・sequence・schema owner）をsource-controlledな期待値と照合する。既存release以外の業務table実装を証明しない。
+- Directoryは3列の型／grantだけでなく、直接投影、Subjectの有効な一意Index、Subject／verified列のNOT NULLと有効な一意Indexによってcardinalityを確認する。catalogとOIDを用い、Directoryを読めないReconへ行読取権限を要求しない。実Neonのsource mappingはdeploymentで確認し、Provider所有tableは変更しない。
+- Stripe lookupはSDK Fetch transportを明示採用し、本文処理まで10秒のadapter deadlineと単調時計の確認を適用する。SDKの自動network retryは0。旧Node socket inactivity timeoutへの依存を除いた。
+- `GET /api/v1/self/principal` (`API-AUTH-001`) は公開RPC型と同じbuilderでmountする。署名済みJWT→現在Directory／Profile／Role→メール確認→共有guardを経てnavigation情報だけを返す。GETによるProfile作成は行わない。
+- 本変更は全SPEC-110の実装ではない。Profile provisioning／編集を含むその他のoperation、購入・予約・決済、Worker業務handlerは追加していない。
+- `NEON_AUTH_BASE_URL`／Directory mapping／共有guardが成立しない標準API起動はReadyにならない。空Worker registryも引き続きReadyにならない。合成依存による正常系試験を、標準3プロセスの本番Readyと読み替えない。
