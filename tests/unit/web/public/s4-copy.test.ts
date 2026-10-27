@@ -75,9 +75,13 @@ describe("TC-PG-PUB-001-611 copy carries the SPEC-050 fixed public wording", () 
   });
 
   it("keeps the dictionary free of English placeholder text and brand material", () => {
+    // "未設定" is required wording of the Profile (SPEC-050 18.2: the unset display name); only those
+    // three strings are exempt, so an invented placeholder anywhere else is still found.
+    const { unset, displayNameHint, status } = copy.mypage.profile;
+    const unsetWording = new Set<string>([unset, displayNameHint, status.cleared]);
     for (const text of stringLeaves(copy)) {
       expect(text.toLowerCase()).not.toContain("lorem");
-      expect(text).not.toContain("未設定");
+      if (!unsetWording.has(text)) expect(text).not.toContain("未設定");
     }
   });
 });

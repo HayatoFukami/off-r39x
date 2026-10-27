@@ -1,5 +1,6 @@
 import { assertNever, type OrderState } from "@off-r39x/domain";
 import { cartLineKey } from "../../api-client/cart-line-key";
+import { normalizeDisplayName } from "../../api-client/display-name-policy";
 import type { ApiPort } from "../../api-client/port";
 import type {
   CartLine,
@@ -977,11 +978,10 @@ export function createMockApi(deps: MockApiDeps): ApiPort {
       // ProfileUpdate has no authentication result; the UI never calls this as a guest.
       const gate = access(viewerOf(ctx.state));
       if (!gate.ok) return UNAVAILABLE;
-      if (input.displayName.trim() === "") {
-        return { kind: "validation_failed", field: "displayName" };
-      }
-      // The value is stored as given. A maximum length is not defined (UCR-100-001).
-      gate.user.displayName = input.displayName;
+      // The mock stands in for the authority (API-AUTH-004, SPEC-030 9.2): invalid input changes nothing.
+      const normalized = normalizeDisplayName(input.displayName);
+      if (!normalized.ok) return { kind: "validation_failed", field: "displayName" };
+      gate.user.displayName = normalized.value;
       db.save(ctx.state);
       return {
         kind: "saved",

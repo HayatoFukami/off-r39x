@@ -1434,7 +1434,8 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "every method names an Operation ID or UCR-110-001",
-        "ports without an Operation ID are marked and no new Operation ID is invented"
+        "ports without an Operation ID are marked and no new Operation ID is invented",
+        "the Profile ports cite API-AUTH-002 / API-AUTH-004 and no longer cite the superseded UCR-100-001"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -1978,7 +1979,13 @@
       "test_case_id": "TC-PG-MYP-002-101",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-MYP-002", "UCR-100-001", "TST-UNT-004"],
+      "upstream_rule_ids": [
+        "PG-MYP-002",
+        "API-AUTH-002",
+        "API-AUTH-004",
+        "SPEC-030-9.2",
+        "TST-UNT-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -1989,7 +1996,76 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "blank names rejected; saved as given; other users unaffected"
+        "blank names (empty, spaces, ideographic space, tab, line break) are saved as null (unset) and the email is never used instead; a name is saved trimmed; other users unaffected; guest and unverified are unavailable"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-FR-AUTH-011-001",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["FR-AUTH-011", "API-AUTH-004", "SPEC-030-9.2", "TST-UNT-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Pure module apps/web/src/api-client/display-name-policy.ts (no mock, no React); contract tests/contracts/s2-mock-backend.md and s8-mypage.md section 3.8; UI pre-check and UI mock rule (not API/DB coverage; TC-API-007-001 not executed)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "blank input becomes null; the value is trimmed; 80 code points pass and 81 fail (emoji and combining marks counted as code points); an internal Cc is rejected as control_character before the length is judged; Cf is accepted; the input is not changed and not Unicode-normalized"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-MYP-002-102",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-MYP-002", "API-AUTH-004", "SPEC-030-9.2", "TST-UNT-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Profile update boundary; contract tests/contracts/s2-mock-backend.md; UI mock test double (not API/DB/Provider coverage)",
+      "fixture_ids": ["MOCK-SEED-DEMO"],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "80 code points (including emoji and combining marks) are saved trimmed; 81 code points and an internal Cc return validation_failed with the mock DB and the name unchanged"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-MYP-002-103",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-MYP-002", "SPEC-030-9.2", "FR-AUTH-011", "TST-UNT-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Sign-up in the mock auth for both signup scenarios; contract tests/contracts/s2-mock-backend.md; UI mock test double (not API/DB/Provider coverage)",
+      "fixture_ids": ["MOCK-SEED-DEMO"],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "a newly registered user (confirmation_required and signed_in) is stored with displayName null; getProfile returns null and nothing derived from the email; seed users unchanged"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -10181,7 +10257,7 @@
       "test_case_id": "TC-PG-MYP-002-601",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-MYP-002", "SPEC-050-25", "TST-UNT-004"],
+      "upstream_rule_ids": ["PG-MYP-002", "SPEC-050-25", "SPEC-030-9.2", "TST-UNT-004"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -10192,7 +10268,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "Profile status and error messages never contain one another or the save action"
+        "Profile wording is literal (cleared status, tooLong / controlCharacter / invalid errors, unset wording, hint); no required-name error remains; statuses, errors and the save action never contain one another"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -11019,7 +11095,7 @@
       "test_case_id": "TC-PG-MYP-002-621",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-MYP-002", "SPEC-050-18.2", "TST-UNT-004"],
+      "upstream_rule_ids": ["PG-MYP-002", "SPEC-050-18.2", "SPEC-030-9.2", "TST-UNT-004"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -11030,7 +11106,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "Profile model never falls back to another Profile; failed read is unavailable"
+        "Profile model never falls back to another Profile; failed read is unavailable; an unset display name stays null (not a string)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -11042,7 +11118,13 @@
       "test_case_id": "TC-PG-MYP-002-622",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-MYP-002", "UCR-100-001", "DEV-WEB-009", "TST-UNT-004"],
+      "upstream_rule_ids": [
+        "PG-MYP-002",
+        "API-AUTH-004",
+        "SPEC-030-9.2",
+        "DEV-WEB-009",
+        "TST-UNT-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -11053,7 +11135,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "save result becomes saved / invalid / failed; blank rejected by the server without a DB change"
+        "save result becomes saved / invalid / failed; a server validation failure maps to error.invalid; a saved null stays null; a rejected name leaves the DB unchanged and a blank name clears to null"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -11076,7 +11158,30 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "after a save the input takes the server value only if it still equals the submitted value; a value typed meanwhile (including an emptied field) is kept"
+        "after a save the input takes the server value (an empty string for a cleared name) only if it still equals the submitted value; a value typed meanwhile (including an emptied field) is kept"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-MYP-002-624",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-MYP-002", "SPEC-050-18.2", "SPEC-030-9.2", "TST-UNT-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "contract tests/contracts/s8-mypage.md section 3.8; pure model",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "checkDisplayNameInput: empty, blank and 80 code points are ok; 81 code points give error.tooLong; an internal Cc gives error.controlCharacter (Cc wins when both apply); the input is never trimmed or changed"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -11169,6 +11274,29 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "latest / unconfirmed / upcoming selection rules without reading a clock"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-MYP-001-625",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-MYP-001", "SPEC-050-18.1", "SPEC-030-9.2", "TST-UNT-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "contract tests/contracts/s8-mypage.md; UI mock test double with the seed (not API/DB/Provider coverage)",
+      "fixture_ids": ["MOCK-SEED-DEMO"],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "an unset (null) display name is shown as 未設定 and never as the email; the other Overview areas are unchanged"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -11523,7 +11651,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "a disabled QR action is described by its reason; a Profile error takes focus and is tied to its field"
+        "a disabled QR action is described by its reason; a Profile error (81 characters) takes focus and is tied to its field"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -11699,7 +11827,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "email as plain text, one editable field, Password pointer, no ref input"
+        "email as plain text, one editable field, Password pointer, no ref input; placeholder 未設定, hint as the field description, no maxlength attribute"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -11744,6 +11872,7 @@
         "PG-MYP-002",
         "SPEC-050-25",
         "SPEC-050-31-22",
+        "SPEC-030-9.2",
         "TST-E2E-003",
         "TST-E2E-004"
       ],
@@ -11757,7 +11886,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "a blank name: alert with focus, aria-invalid, description and a link to the field; DB unchanged"
+        "an 81-character or control-character name: alert with focus, aria-invalid, description and a link to the field; DB unchanged; a blank field is saved as unset, not rejected"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -11817,6 +11946,66 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "the Profile route takes no reference; a query naming another user changes nothing"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-MYP-002-706",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-MYP-002",
+        "PG-MYP-001",
+        "SPEC-050-18.2",
+        "SPEC-050-18.1",
+        "SPEC-030-9.2",
+        "TST-E2E-003",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock mode (desktop and mobile Chromium); contract tests/contracts/s8-mypage.md; DB postconditions are the mock DB",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "an empty or blank name is saved as unset: cleared status, no alert, mock DB displayName null, empty input with the placeholder 未設定 after a reload, Overview shows 未設定 and not the email local part; other users unchanged"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-MYP-002-707",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-MYP-002",
+        "SPEC-050-18.2",
+        "SPEC-030-9.2",
+        "TST-E2E-003",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock mode (desktop and mobile Chromium); contract tests/contracts/s8-mypage.md; DB postconditions are the mock DB",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "a name with surrounding spaces is stored trimmed; 80 emoji and 80 combining-mark code points are saved; 81 is rejected with error.tooLong and the DB unchanged"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],

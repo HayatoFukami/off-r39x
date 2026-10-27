@@ -178,7 +178,7 @@ export type GoodsDetail = {
   availability: SaleAvailability;
   venuePickupOnly: true;
 };
-export type Profile = { email: string; displayName: string };
+export type Profile = { email: string; displayName: string | null };
 export type OrderItem =
   | {
       kind: "ENTRY_TICKET";

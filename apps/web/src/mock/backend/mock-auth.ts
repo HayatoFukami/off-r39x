@@ -78,14 +78,14 @@ export function createMockAuth(deps: MockAuthDeps): AuthPort {
       if (state.users.some((u) => u.email === email)) {
         return { kind: "confirmation_required" };
       }
-      const displayName = email.slice(0, email.indexOf("@"));
+      // The display name is never inferred from the email (SPEC-030 9.2): a new user has none.
       if (mode === "confirmation_required") {
-        state.users.push({ email, displayName, emailVerified: false });
+        state.users.push({ email, displayName: null, emailVerified: false });
         db.save(state);
         saveSessionState(storage, { ...sessionLoad.state, pendingVerificationEmail: email });
         return { kind: "confirmation_required" };
       }
-      state.users.push({ email, displayName, emailVerified: true });
+      state.users.push({ email, displayName: null, emailVerified: true });
       db.save(state);
       const next: SessionStoreState = {
         ...sessionLoad.state,

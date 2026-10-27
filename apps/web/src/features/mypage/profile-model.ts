@@ -1,3 +1,4 @@
+import { normalizeDisplayName } from "../../api-client/display-name-policy";
 import type { Profile, ProfileUpdate } from "../../api-client/types";
 import type { Loadable } from "../../presentation/components/list-state";
 import { copy } from "../../presentation/copy/ja";
@@ -8,7 +9,7 @@ import { copy } from "../../presentation/copy/ja";
 export type ProfileModel =
   | { kind: "loading" }
   | { kind: "unavailable" }
-  | { kind: "ready"; email: string; displayName: string };
+  | { kind: "ready"; email: string; displayName: string | null };
 
 export function buildProfileModel(input: Loadable<Profile>): ProfileModel {
   switch (input.kind) {
@@ -28,17 +29,38 @@ export function buildProfileModel(input: Loadable<Profile>): ProfileModel {
   }
 }
 
-/** After a save: keep what the user typed meanwhile; adopt the saved name only if the input is unchanged. */
+/**
+ * UX pre-check before the port is called (SPEC-050 18.2, SPEC-030 9.2). The API stays the authority
+ * (DEV-WEB-009): a blank value is fine (it clears the name), and the input is never trimmed here.
+ */
+export function checkDisplayNameInput(
+  value: string,
+): { kind: "ok" } | { kind: "invalid"; message: string } {
+  const result = normalizeDisplayName(value);
+  if (result.ok) return { kind: "ok" };
+  switch (result.reason) {
+    case "too_long":
+      return { kind: "invalid", message: copy.mypage.profile.error.tooLong };
+    case "control_character":
+      return { kind: "invalid", message: copy.mypage.profile.error.controlCharacter };
+    default: {
+      const unreachable: never = result.reason;
+      return unreachable;
+    }
+  }
+}
+
+/** After a save: keep what the user typed meanwhile; adopt the saved name (unset = empty) only if the input is unchanged. */
 export function resolveInputAfterSave(input: {
   current: string;
   submitted: string;
-  saved: string;
+  saved: string | null;
 }): string {
-  return input.current === input.submitted ? input.saved : input.current;
+  return input.current === input.submitted ? (input.saved ?? "") : input.current;
 }
 
 export type ProfileSaveStep =
-  | { kind: "saved"; displayName: string }
+  | { kind: "saved"; displayName: string | null }
   | { kind: "invalid"; message: string }
   | { kind: "failed"; message: string };
 
@@ -48,7 +70,7 @@ export function interpretProfileSave(result: ProfileUpdate): ProfileSaveStep {
     case "saved":
       return { kind: "saved", displayName: result.profile.displayName };
     case "validation_failed":
-      return { kind: "invalid", message: copy.mypage.profile.error.required };
+      return { kind: "invalid", message: copy.mypage.profile.error.invalid };
     case "unavailable":
       return { kind: "failed", message: copy.mypage.profile.error.unavailable };
     default: {

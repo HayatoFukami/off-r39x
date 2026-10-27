@@ -1590,6 +1590,29 @@
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
+      "rule_id": "FR-AUTH-011",
+      "code_paths": [
+        "apps/web/src/api-client/display-name-policy.ts",
+        "apps/web/src/features/mypage/profile-model.ts",
+        "apps/web/src/features/mypage/profile-page.tsx",
+        "apps/web/src/features/mypage/overview-model.ts",
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/mock/backend/mock-auth.ts",
+        "apps/web/src/mock/backend/db.ts"
+      ],
+      "test_case_ids": [
+        "TC-FR-AUTH-011-001",
+        "TC-PG-MYP-002-101",
+        "TC-PG-MYP-002-102",
+        "TC-PG-MYP-002-103",
+        "TC-PG-MYP-002-624",
+        "TC-PG-MYP-002-703",
+        "TC-PG-MYP-002-706",
+        "TC-PG-MYP-002-707"
+      ],
+      "notes": "implementation mapping only: SPEC-030 9.2 display name rule in the UI pre-check and the UI mock test double; not API/DB coverage (TC-API-007-001 not executed)"
+    },
+    {
       "rule_id": "PG-MYP-001",
       "code_paths": [
         "apps/web/src/mock/backend/mock-api.ts",
@@ -1633,7 +1656,8 @@
         "TC-SEC-WEB-009-721",
         "TC-DEV-WEB-009-601",
         "TC-PG-MYP-001-734",
-        "TC-DEV-WEB-001-805"
+        "TC-DEV-WEB-001-805",
+        "TC-PG-MYP-001-625"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
@@ -1641,6 +1665,7 @@
       "rule_id": "PG-MYP-002",
       "code_paths": [
         "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/api-client/display-name-policy.ts",
         "apps/web/src/features/mypage/profile-model.ts",
         "apps/web/src/features/mypage/profile-page.tsx",
         "apps/web/src/routes/self/mypage-profile.tsx"
@@ -1656,7 +1681,12 @@
         "TC-PG-MYP-002-703",
         "TC-PG-MYP-002-704",
         "TC-PG-MYP-002-705",
-        "TC-PG-MYP-002-623"
+        "TC-PG-MYP-002-623",
+        "TC-PG-MYP-002-102",
+        "TC-PG-MYP-002-103",
+        "TC-PG-MYP-002-624",
+        "TC-PG-MYP-002-706",
+        "TC-PG-MYP-002-707"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },

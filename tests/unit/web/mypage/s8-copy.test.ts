@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { copy } from "../../../../apps/web/src/presentation/copy/ja.ts";
+import { profileCopy } from "../../../harness/display-name.ts";
 import { stringLeaves } from "../../../harness/presentation.ts";
 
 // Contract: tests/contracts/s8-mypage.md section 2 (SPEC-050 17, 18, 19.2, 24.2, 25, 26.2).
@@ -89,6 +90,7 @@ describe("TC-PG-MYP-001-601 the Mypage copy is the contracted wording (SPEC-050 
 describe("TC-PG-MYP-002-601 the Profile copy keeps its statuses and errors apart (SPEC-050 18.2, 25)", () => {
   it("has the Profile wording literally", () => {
     const p = mypage().profile;
+    const b1 = profileCopy();
     expect(p.emailNote).toBe("ログインに使うメールアドレスです。この画面では変更できません");
     expect(p.displayNameLabel).toBe("表示名");
     expect(p.save).toBe("保存する");
@@ -96,26 +98,50 @@ describe("TC-PG-MYP-002-601 the Profile copy keeps its statuses and errors apart
       dirty: "未保存の変更があります",
       saving: "保存しています",
       saved: "表示名を保存しました",
+      cleared: "表示名を未設定にしました",
     });
-    expect(p.error.required).toBe("表示名を入力してください");
-    expect(p.error.unavailable).toBe(
-      "表示名を保存できませんでした。時間をおいて、もう一度お試しください",
+    expect(p.error).toEqual({
+      tooLong: "表示名は80文字以内で入力してください",
+      controlCharacter: "表示名に改行やタブなどの制御文字は使えません",
+      invalid: "表示名は80文字以内で、改行やタブなどの制御文字を含めずに入力してください",
+      unavailable: "表示名を保存できませんでした。時間をおいて、もう一度お試しください",
+    });
+    expect(b1.unset).toBe("未設定");
+    expect(b1.displayNameHint).toBe(
+      "任意です。80文字以内で入力してください。空欄で保存すると未設定になります",
     );
     expect(p.passwordReset).toBe("パスワードの再設定へ");
   });
 
-  it("the five status and error messages and the save action never contain one another", () => {
-    const p = mypage().profile;
+  it("no longer has the required-name error (a blank name is valid and means unset)", () => {
+    expect(Object.keys(mypage().profile.error)).not.toContain("required");
+    expect(stringLeaves(mypage().profile)).not.toContain("表示名を入力してください");
+  });
+
+  it("the statuses and errors and the save action never contain one another", () => {
+    const p = profileCopy();
     const messages = [
       p.status.dirty,
       p.status.saving,
       p.status.saved,
-      p.error.required,
+      p.status.cleared,
+      p.error.tooLong,
+      p.error.controlCharacter,
+      p.error.invalid,
       p.error.unavailable,
     ];
     expect(noneContainsAnother(messages)).toBe(true);
     for (const message of messages) expect(message).not.toContain(p.save);
     expect(p.error.unavailable).not.toContain(p.status.saved);
+  });
+
+  it("does not mention a password or a token", () => {
+    for (const text of stringLeaves(mypage().profile)) {
+      if (text === mypage().profile.passwordNote || text === mypage().profile.passwordReset) {
+        continue;
+      }
+      expect(text).not.toMatch(/パスワード|token|トークン/i);
+    }
   });
 });
 

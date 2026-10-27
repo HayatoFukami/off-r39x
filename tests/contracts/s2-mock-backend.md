@@ -109,7 +109,7 @@ export type GoodsDetail = {
   goodsRef: Ref<"goods">; name: string; description: string; unitPrice: Money;
   salesPeriod: SalesPeriod; availability: SaleAvailability; venuePickupOnly: true;
 };
-export type Profile = { email: string; displayName: string };
+export type Profile = { email: string; displayName: string | null };   // null = 未設定（API-AUTH-002 の display_name）。email で補完しない
 export type OrderItem =
   | { kind: "ENTRY_TICKET"; offeringRef: Ref<"offering">; name: string; quantity: number; unitPrice: Money; subtotal: Money }
   | { kind: "GOODS"; goodsRef: Ref<"goods">; name: string; quantity: number; unitPrice: Money; subtotal: Money }
@@ -171,7 +171,7 @@ export interface PurchaseApi {
 }
 export interface SelfApi {   // 他者所有でも不存在でも同じ not_found（SPEC-110 §22）
   getProfile(): Promise<Read<Profile>>;                                       // API-AUTH-002
-  updateProfile(i: { displayName: string }): Promise<ProfileUpdate>;          // API-AUTH-004（最大文字数は UCR-100-001 待ちで定めない）
+  updateProfile(i: { displayName: string }): Promise<ProfileUpdate>;          // API-AUTH-004（SPEC-030 §9.2: trim、空は null、1〜80 code points、内部 Cc 拒否）
   listOrders(): Promise<Read<readonly OrderSummary[]>>;                       // API-ORD-001
   getOrder(r: Ref<"order">): Promise<Read<OrderDetail>>;                      // API-ORD-003（purpose の ENTRY_GOODS_PURCHASE と notice は UCR-110-001）
   listEntryTickets(): Promise<Read<readonly EntryTicketSummary[]>>;           // API-TKT-001
@@ -526,7 +526,7 @@ webhook 待ち（`startCheckout` が `redirect` を返した Order）で、state
 - `listEntryTickets` / `listReservations` / `listGoodsItems`: 本人の分だけ。`new@example.com` は 3 つとも `{ kind: "ok", data: [] }`（`unavailable` でも `not_found` でもない）。
 - `getEntryQr`: 本人の ticket が `VALID` なら `{ kind: "presentable", purpose: "ENTRY", mockMatrixSeed }`、それ以外は `{ kind: "not_presentable", ticketState }`。`getKaraokeQr`: Reservation が `CONFIRMED` かつ Ticket が `VALID` なら `presentable`（`purpose: "KARAOKE"`）、それ以外は `not_presentable`（`ticketState` は Karaoke Ticket の state）。
 - `mockMatrixSeed` は正規表現 `^mock-seed-\d{1,8}$` に一致し、同じ ref に対して常に同じ値（ref から決定的に導く。`Math.random` を使わない）。Token・JWT・UUID・長い hex / base64 の形にしない（SEC-QR-012/013）。`presentable` / `not_presentable` のどちらの object にも、ref の文字列そのものや token らしい field を含めない。
-- `getProfile`: `{ email, displayName }`（seed のとおり）。`updateProfile({ displayName })`: 空文字、または空白文字（半角・全角・タブ・改行）だけの場合は `{ kind: "validation_failed", field: "displayName" }`（保存しない）。それ以外は入力値を**そのまま**（trim せず）保存し `{ kind: "saved", profile }`。最大文字数は定めない（UCR-100-001）。保存後の `getProfile` に反映される。
+- `getProfile`: `{ email, displayName }`（seed のとおり。未設定は `displayName: null` で、email から補完しない）。`updateProfile({ displayName })`: `apps/web/src/api-client/display-name-policy.ts` の `normalizeDisplayName`（SPEC-030 §9.2、API-AUTH-004）を適用する。(1) `trim()` 後が空（空文字、半角・全角空白・タブ・改行だけ）→ 未設定にする（`displayName = null` で保存し `{ kind: "saved", profile: { email, displayName: null } }`）。(2) trim 後に内部 `Cc`（`\t`、`\u0000`、`\u007F`、`\u0085` など `\p{Cc}`）が残る、または 80 code points（`[...value].length`）を超える → `{ kind: "validation_failed", field: "displayName" }`（保存しない。DB 不変）。`Cc` と長さの両方に違反する場合の判定は `Cc` が先。(3) それ以外は trim した値を保存し `{ kind: "saved", profile }`。Unicode 正規化はしない。他の user は変わらない。保存後の `getProfile` に反映される。
 
 ## 13. 公開 Read と scenario `publicFetch`
 
@@ -554,6 +554,7 @@ export function createMockAuth(deps: MockAuthDeps): AuthPort;
 - `onSessionChange(cb)`: 登録し、unsubscribe 関数を返す。session が変わった操作（`signIn` 成功、`signOut`、`signUp` が `signed_in`、`verifyEmail` が `verified` で session の emailVerified が変わった）の**あと**に、登録中の全 cb を引数なしで 1 回ずつ呼ぶ。unsubscribe 後は呼ばない。変化がない操作では呼ばない。
 - `signIn({ email, password })`: `auth.login === "unavailable"` → `unavailable`、`credential_failure` → `credential_failure`。`ok` のとき、email が空・password が空・email が DB の user に存在しない → `{ kind: "credential_failure" }`（原因を区別しない）。存在すれば session を `authenticated` にして `{ kind: "signed_in", emailVerified }`（user の emailVerified）。`credential_failure` / `unavailable` では session を変えない。
 - `signUp({ email, password })`: `auth.signup === "unavailable"` → `unavailable`、`rejected` → `rejected`（user を作らない）。それ以外は email の形式（`^[^@\s]+@[^@\s]+$`）と `validatePassword` を検査し、不合格なら `{ kind: "rejected" }`（user を作らない）。合格のとき、
+  - 新しい user の `displayName` は **null**（email の local part などから推測して補完しない。SPEC-030 §9.2。TC-PG-MYP-002-103）。
   - `confirmation_required`: 新しい email なら user を `emailVerified:false` で作り、`pendingVerificationEmail` に記録、session は変えない。既存の email なら何も作らない。どちらも `{ kind: "confirmation_required" }`（存在を開示しない。SEC-API-027）。
   - `signed_in`: 新しい email なら user を `emailVerified:true` で作り session を `authenticated(emailVerified:true)` にして `{ kind: "signed_in" }`。既存の email なら何も変えず `{ kind: "confirmation_required" }`。
 - `verifyEmail({ context })`: `auth.verify === "unavailable"` → `unavailable`、`invalid_or_expired` → `invalid_or_expired`。`ok` のとき `context` が `null` または空文字 → `invalid_or_expired`。それ以外は、対象 user を「現在の session が authenticated ならその email、そうでなければ `pendingVerificationEmail`」で決める。対象が無い / DB に存在しない → `invalid_or_expired`。見つかれば user を `emailVerified:true` にし、session が同じ email の authenticated なら `emailVerified:true` に更新し、`pendingVerificationEmail` を null にして `{ kind: "verified" }`。

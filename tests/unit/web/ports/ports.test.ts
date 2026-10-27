@@ -298,6 +298,14 @@ describe("TC-DEV-WEB-010-103 port doc comments name the Operation ID or the UCR 
     expect(portSource().join("\n")).toMatch(/Operation ID\s*(なし|none|missing)/i);
   });
 
+  it("cites API-AUTH-002 / API-AUTH-004 for the Profile ports without the superseded UCR-100-001 (SPEC-030 9.2)", () => {
+    const lines = portSource();
+    expect(window(lines, "getProfile")).toContain("API-AUTH-002");
+    expect(window(lines, "updateProfile")).toContain("API-AUTH-004");
+    expect(window(lines, "updateProfile")).not.toContain("UCR-100-001");
+    expect(lines.join("\n")).not.toContain("UCR-100-001");
+  });
+
   it("does not invent new Operation IDs", () => {
     const ids = new Set(
       read(join(webDir, "src/api-client/port.ts")).match(/API-[A-Z]+(?:-[A-Z]+)*-\d{3}/g) ?? [],
