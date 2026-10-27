@@ -57,14 +57,22 @@ describe("TC-TST-TRC-001-001 test-manifest.json", () => {
     }
   });
 
-  it("keeps UI-mock and scaffold cases non-critical with empty API / DB coverage", () => {
-    for (const c of cases) {
+  it("keeps auxiliary UI-mock cases non-critical with empty API / DB coverage", () => {
+    for (const c of cases.filter((entry) => entry.suite === "e2e-ui-mock")) {
       expect(c.critical).toBe(false);
       expect(c.api_operation_ids).toEqual([]);
       expect(c.db_constraint_names).toEqual([]);
       expect(c.fault_points).toEqual([]);
       expect(c.concurrency_seed).toBeNull();
     }
+  });
+
+  it("retains real DB coverage and critical classifications independently of the UI mock", () => {
+    const db = cases.filter((entry) => entry.level === "DB");
+    expect(db.length).toBeGreaterThan(0);
+    expect(db.some((entry) => (entry.db_constraint_names as string[]).length > 0)).toBe(true);
+    expect(db.some((entry) => entry.critical === true)).toBe(true);
+    for (const entry of db) expect(entry.suite).toBe("db");
   });
 
   it("is joinable with runtime results: every ID appears in a test title", () => {

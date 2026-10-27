@@ -4,15 +4,29 @@
   "type": "module",
   "scripts": {
     "test:unit": "vitest run --config vitest.config.mts",
+    "test:backend": "vitest run --config vitest.backend.config.mts",
     "test:e2e": "playwright test --config playwright.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@off-r39x/domain": "workspace:*"
+    "@off-r39x/domain": "workspace:*",
+    "@off-r39x/application": "workspace:*",
+    "@off-r39x/auth": "workspace:*",
+    "@off-r39x/api-contract": "workspace:*",
+    "@off-r39x/config": "workspace:*",
+    "@off-r39x/db": "workspace:*",
+    "@off-r39x/observability": "workspace:*",
+    "@off-r39x/reliability": "workspace:*",
+    "@off-r39x/security": "workspace:*",
+    "hono": "4.13.14",
+    "jose": "6.2.13",
+    "pg": "8.23.1",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@playwright/test": "^1",
     "@types/node": "^24",
+    "@types/pg": "^8",
     "vitest": "^3"
   }
 }

@@ -7,7 +7,13 @@
   },
   "scripts": {
     "dev": "pnpm --filter @off-r39x/web dev",
-    "build": "pnpm --filter @off-r39x/web build",
+    "build": "pnpm build:backend && pnpm --filter @off-r39x/web build",
+    "build:backend": "node scripts/build-backend.mts",
+    "start:api": "node dist/apps/api/server.js",
+    "start:email-worker": "node dist/workers/email-worker.js",
+    "start:reconciliation-worker": "node dist/workers/reconciliation-worker.js",
+    "db:migrate": "pnpm --filter @off-r39x/db migrate",
+    "validate:migrations": "node scripts/validate-generated-migrations.mts",
     "lint": "biome check .",
     "format": "biome format --write .",
     "typecheck": "pnpm -r --if-present typecheck",
@@ -17,10 +23,12 @@
     "build:mock": "node scripts/mock-web.mts build",
     "start:mock": "node scripts/mock-web.mts start",
     "test:unit": "pnpm --filter @off-r39x/tests test:unit",
+    "test:backend": "pnpm --filter @off-r39x/tests test:backend",
     "test:e2e": "pnpm --filter @off-r39x/tests test:e2e"
   },
   "devDependencies": {
     "@biomejs/biome": "^2",
+    "esbuild": "0.28.2",
     "typescript": "^5"
   }
 }
