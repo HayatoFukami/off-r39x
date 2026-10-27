@@ -122,7 +122,9 @@
         "packages/db/src/readiness.ts",
         "apps/api/src/bootstrap/index.ts",
         "packages/config/src/index.ts",
-        "apps/api/src/api/app.ts"
+        "apps/api/src/api/app.ts",
+        "tests/vitest.backend.config.mts",
+        "tests/harness/db/isolated-database.ts"
       ],
       "test_case_ids": ["TC-DB-FOUNDATION-006", "TC-STARTUP-AUDIT-001"],
       "notes": "Missing deployment mapping/schema/extension/hash/grant not ready"
@@ -135,7 +137,9 @@
         "packages/db/src/schema-contract.json",
         "apps/api/src/bootstrap/index.ts",
         "packages/config/src/index.ts",
-        "apps/api/src/api/app.ts"
+        "apps/api/src/api/app.ts",
+        "tests/vitest.backend.config.mts",
+        "tests/harness/db/isolated-database.ts"
       ],
       "test_case_ids": ["TC-DB-FOUNDATION-006", "TC-DB-AUDIT-001", "TC-STARTUP-AUDIT-001"],
       "notes": "No schema/extension fallback"
@@ -3356,7 +3360,9 @@
       "code_paths": [
         "apps/api/src/bootstrap/index.ts",
         "packages/config/src/index.ts",
-        "apps/api/src/api/app.ts"
+        "apps/api/src/api/app.ts",
+        "tests/vitest.backend.config.mts",
+        "tests/harness/db/isolated-database.ts"
       ],
       "test_case_ids": ["TC-STARTUP-AUDIT-001"],
       "notes": "Foundation audit repair; local synthetic evidence does not assert live-provider or release readiness"
@@ -3371,6 +3377,18 @@
         "packages/config/src/index.ts"
       ],
       "test_case_ids": ["TC-AUTH-AUDIT-002"],
+      "notes": "Foundation audit repair; local synthetic evidence does not assert live-provider or release readiness"
+    },
+    {
+      "rule_id": "TST-DB-001",
+      "code_paths": [
+        "apps/api/src/bootstrap/index.ts",
+        "packages/config/src/index.ts",
+        "apps/api/src/api/app.ts",
+        "tests/vitest.backend.config.mts",
+        "tests/harness/db/isolated-database.ts"
+      ],
+      "test_case_ids": ["TC-STARTUP-AUDIT-001"],
       "notes": "Foundation audit repair; local synthetic evidence does not assert live-provider or release readiness"
     }
   ]

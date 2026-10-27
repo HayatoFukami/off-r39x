@@ -15967,29 +15967,6 @@
       "critical": true
     },
     {
-      "test_case_id": "TC-STARTUP-AUDIT-001",
-      "level": "DB",
-      "suite": "db",
-      "upstream_rule_ids": ["REL-DB-012", "INF-HLT-002", "SEC-ABU-002"],
-      "system_invariant_ids": [],
-      "api_operation_ids": [],
-      "db_constraint_names": [],
-      "preconditions": "Real bootstrap/socket/TLS/PG17; harness-only build hash and CA; synthetic shared guard, not live shared rate-limit proof; no provider network in healthcheck",
-      "fixture_ids": [],
-      "clock_instant": null,
-      "concurrency_seed": null,
-      "fault_points": ["shared_enforcement_unavailable", "required_constraint_missing", "drain"],
-      "expected_http": [200, 503],
-      "expected_domain_postconditions": [
-        "Fail closed within the canonical boundary; no unintended business mutation"
-      ],
-      "expected_db_postconditions": [],
-      "expected_provider_postconditions": [],
-      "expected_observability": [],
-      "sensitivity_class": "synthetic",
-      "critical": true
-    },
-    {
       "test_case_id": "TC-AUTH-AUDIT-002",
       "level": "API",
       "suite": "api",
@@ -16016,6 +15993,29 @@
         "logout_revocation_unavailable"
       ],
       "expected_http": [503],
+      "expected_domain_postconditions": [
+        "Fail closed within the canonical boundary; no unintended business mutation"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-STARTUP-AUDIT-001",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": ["REL-DB-012", "INF-HLT-002", "SEC-ABU-002", "TST-DB-001"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Independent ephemeral PG17 database per file; actual bootstrap/socket/TLS; harness-only build hash and CA; synthetic shared guard, not live shared rate-limit evidence",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": ["shared_enforcement_unavailable", "required_constraint_missing", "drain"],
+      "expected_http": [200, 503],
       "expected_domain_postconditions": [
         "Fail closed within the canonical boundary; no unintended business mutation"
       ],

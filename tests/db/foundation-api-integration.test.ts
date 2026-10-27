@@ -20,7 +20,7 @@ const url = process.env.TEST_DATABASE_URL;
 if (!url) throw new Error("Real PostgreSQL integration requires TEST_DATABASE_URL");
 
 it("TC-DB-ARC-008-050 real PG profile bigint/public UUID and current roles resolve from signed identity without provisioning", async () => {
-  // backend-db serializes this file with the DB lane. Fixture rows roll back.
+  // The DB harness gives this file its own database. Fixture rows roll back.
   const pool = new Pool({ connectionString: url, max: 1 });
   try {
     const setup = await pool.connect();

@@ -27,13 +27,15 @@ vi.mock("@off-r39x/db", async (get) => {
 it("TC-STARTUP-AUDIT-001 actual API bootstrap moves Ready->notReady->Ready on DB/enforcement faults, then drains", async () => {
   if (!process.env.TEST_DATABASE_URL || !process.env.TEST_DATABASE_CA)
     throw new Error("Real verified-TLS PG17 required");
+  const databaseName = new URL(process.env.TEST_DATABASE_URL).pathname.slice(1);
+  const databaseIdentifier = `"${databaseName.replaceAll('"', '""')}"`;
   const setup = new Pool({ connectionString: process.env.TEST_DATABASE_URL, max: 1 });
   const client = await setup.connect();
   try {
     await prepareFoundationDatabase(client);
     await installSyntheticDirectory(client);
     await client.query(
-      "ALTER ROLE app_api_runtime SET r39x.environment='test'; ALTER ROLE app_api_runtime SET r39x.project_id='synthetic-project'; ALTER ROLE app_api_runtime SET r39x.branch_id='synthetic-branch'",
+      `ALTER DATABASE ${databaseIdentifier} SET r39x.environment='test'; ALTER DATABASE ${databaseIdentifier} SET r39x.project_id='synthetic-project'; ALTER DATABASE ${databaseIdentifier} SET r39x.branch_id='synthetic-branch'`,
     );
   } finally {
     client.release();
@@ -135,7 +137,7 @@ it("TC-STARTUP-AUDIT-001 actual API bootstrap moves Ready->notReady->Ready on DB
       );
     await runtime?.close();
     await setup.query(
-      "ALTER ROLE app_api_runtime RESET r39x.environment; ALTER ROLE app_api_runtime RESET r39x.project_id; ALTER ROLE app_api_runtime RESET r39x.branch_id",
+      `ALTER DATABASE ${databaseIdentifier} RESET r39x.environment; ALTER DATABASE ${databaseIdentifier} RESET r39x.project_id; ALTER DATABASE ${databaseIdentifier} RESET r39x.branch_id`,
     );
     await setup.end();
   }

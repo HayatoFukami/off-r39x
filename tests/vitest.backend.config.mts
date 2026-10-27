@@ -12,7 +12,7 @@ export default defineConfig({
           environment: "node",
           include: [`${level}/foundation-*.test.ts`],
           retry: 0,
-          fileParallelism: level !== "db" && level !== "integration",
+          setupFiles: level === "db" ? ["./harness/db/isolated-database.ts"] : [],
         },
       }),
     ),
