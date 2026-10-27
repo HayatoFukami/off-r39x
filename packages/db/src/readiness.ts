@@ -101,7 +101,7 @@ export async function checkReadiness(
     );
     const types = (
       await client.query(
-        "SELECT column_name,data_type FROM information_schema.columns WHERE table_schema='auth_read' AND table_name='identity_directory' ORDER BY ordinal_position",
+        "SELECT a.attname AS column_name,format_type(a.atttypid,a.atttypmod) AS data_type FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='auth_read' AND c.relname='identity_directory' AND a.attnum>0 AND NOT a.attisdropped ORDER BY a.attnum",
       )
     ).rows;
     fail(
@@ -143,20 +143,17 @@ export async function checkReadiness(
           `SELECT
         EXISTS(SELECT 1 FROM pg_index i JOIN pg_class c ON c.oid=i.indrelid JOIN pg_namespace n ON n.oid=c.relnamespace JOIN pg_attribute a ON a.attrelid=c.oid AND a.attnum=i.indkey[0]
           WHERE n.nspname=$1 AND c.relname=$2 AND a.attname=$3 AND i.indisunique AND i.indisvalid AND i.indisready AND i.indislive AND i.indimmediate AND i.indnkeyatts=1 AND i.indpred IS NULL AND i.indexprs IS NULL) AS unique_subject,
-        NOT EXISTS(SELECT 1 FROM auth_read.identity_directory WHERE auth_subject IS NULL OR email_verified IS NULL) AS nonnull_values,
-        NOT EXISTS(SELECT auth_subject FROM auth_read.identity_directory GROUP BY auth_subject HAVING count(*)>1) AS cardinality`,
-          [mapping.schema, mapping.table, mapping.subjectColumn],
+        (SELECT count(*)=2 AND bool_and(a.attnotnull) FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relname=$2 AND a.attname IN ($3,$4) AND NOT a.attisdropped) AS nonnull_values`,
+          [mapping.schema, mapping.table, mapping.subjectColumn, mapping.verifiedColumn],
         )
       ).rows[0];
       fail(
         "directory_source_integrity",
-        sourceIntegrity.unique_subject &&
-          sourceIntegrity.nonnull_values &&
-          sourceIntegrity.cardinality,
+        sourceIntegrity.unique_subject && sourceIntegrity.nonnull_values,
       );
       const projection = (
         await client.query(
-          "SELECT pg_get_viewdef('auth_read.identity_directory'::regclass,true) AS definition",
+          "SELECT pg_get_viewdef(c.oid,true) AS definition FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='auth_read' AND c.relname='identity_directory'",
         )
       ).rows[0].definition as string;
       // Accept only a direct projection, never a filtered join, stale literal or
@@ -206,8 +203,8 @@ export async function checkReadiness(
         EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='app' AND c.relkind IN ('r','p') AND has_table_privilege($1,c.oid,'DELETE')) AS deletes,
         EXISTS(SELECT 1 FROM pg_namespace WHERE nspname IN ('app','auth_read','neon_auth') AND pg_has_role($1,nspowner,'MEMBER')) AS owns_schema,
         EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='neon_auth' AND c.relkind IN ('r','p','v','m') AND (has_table_privilege($1,c.oid,'SELECT') OR has_any_column_privilege($1,c.oid,'SELECT'))) AS provider_reads,
-        has_table_privilege($1,'auth_read.identity_directory','SELECT') AS directory_read,
-        has_table_privilege($1,'auth_read.identity_directory','INSERT,UPDATE,DELETE') AS directory_write`,
+        has_table_privilege($1,(SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='auth_read' AND c.relname='identity_directory'),'SELECT') AS directory_read,
+        has_table_privilege($1,(SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='auth_read' AND c.relname='identity_directory'),'INSERT,UPDATE,DELETE') AS directory_write`,
           [role],
         )
       ).rows[0];

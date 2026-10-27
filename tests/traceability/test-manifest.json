@@ -15828,7 +15828,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "Real PG17; twelve catalog/directory DDL faults individually rolled back while journal remains intact",
+      "preconditions": "Independent real PG17 database; thirteen reversible catalog/directory DDL faults with unchanged journal; API and least-privilege Email/Recon database identities",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -15840,13 +15840,17 @@
         "column_contract_changed",
         "extension_missing",
         "directory_uniqueness_removed",
-        "directory_verified_projection_inverted"
+        "directory_verified_projection_inverted",
+        "directory_verified_not_null_removed",
+        "reconciliation_directory_read_denied"
       ],
       "expected_http": null,
       "expected_domain_postconditions": [
         "Fail closed within the canonical boundary; no unintended business mutation"
       ],
-      "expected_db_postconditions": [],
+      "expected_db_postconditions": [
+        "Required metadata remains inspectable by Recon without granting Directory row access"
+      ],
       "expected_provider_postconditions": [],
       "expected_observability": [],
       "sensitivity_class": "synthetic",
