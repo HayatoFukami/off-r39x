@@ -103,7 +103,9 @@
         "apps/web/next.config.ts",
         "apps/web/src/api-client/index.ts",
         "apps/web/src/auth/index.ts",
-        "scripts/mock-web.mts"
+        "scripts/mock-web.mts",
+        "apps/web/vite.config.ts",
+        "apps/web/src/config/build-env.ts"
       ],
       "test_case_ids": [
         "TC-DEV-WEB-011-001",
@@ -111,7 +113,9 @@
         "TC-DEV-WEB-011-101",
         "TC-DEV-WEB-011-201",
         "TC-DEV-WEB-011-203",
-        "TC-DEV-WEB-012-101"
+        "TC-DEV-WEB-012-101",
+        "TC-DEV-WEB-011-202",
+        "TC-DEV-WEB-011-204"
       ],
       "notes": "implementation mapping only"
     },
@@ -156,7 +160,9 @@
         "apps/web/app/(self)/mypage/karaoke/[reservationRef]/page.tsx",
         "apps/web/app/(self)/mypage/karaoke/[reservationRef]/qr/page.tsx",
         "apps/web/app/(self)/mypage/goods/page.tsx",
-        "apps/web/app/(self)/mypage/goods/[goodsItemRef]/page.tsx"
+        "apps/web/app/(self)/mypage/goods/[goodsItemRef]/page.tsx",
+        "scripts/generate-web-headers.mts",
+        "scripts/serve-web-dist.mts"
       ],
       "test_case_ids": [
         "TC-SEC-WEB-009-001",
@@ -164,23 +170,30 @@
         "TC-SEC-WEB-009-701",
         "TC-SEC-WEB-009-711",
         "TC-PG-XFN-003-704",
-        "TC-SEC-WEB-009-721"
+        "TC-SEC-WEB-009-721",
+        "TC-STACK-008-103",
+        "TC-STACK-008-201",
+        "TC-STACK-008-304"
       ],
       "notes": "implementation mapping only: no-store headers; verified by TC-SEC-WEB-009-001 (E2E header check); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "SEC-WEB-004",
       "code_paths": [
-        "apps/web/app/globals.css",
+        "apps/web/src/styles/globals.css",
         "apps/web/app/layout.tsx",
         "apps/web/src/features/mypage/mypage-nav.tsx",
-        "apps/web/app/(self)/mypage/layout.tsx"
+        "apps/web/app/(self)/mypage/layout.tsx",
+        "scripts/generate-web-headers.mts"
       ],
       "test_case_ids": [
         "TC-DEV-WEB-001-203",
         "TC-SEC-WEB-004-101",
         "TC-PG-CRT-001-533",
-        "TC-PG-MYP-001-731"
+        "TC-PG-MYP-001-731",
+        "TC-STACK-008-201",
+        "TC-STACK-008-203",
+        "TC-STACK-008-204"
       ],
       "notes": "implementation mapping only: system font stack, no external fonts; S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
@@ -945,14 +958,18 @@
         "apps/web/src/features/karaoke/karaoke-purchase-flow.ts",
         "apps/web/src/features/karaoke/use-karaoke-purchase.ts",
         "apps/web/src/features/karaoke/karaoke-slot-page.tsx",
-        "apps/web/src/features/public/route-params.ts"
+        "apps/web/src/features/public/route-params.ts",
+        "scripts/generate-web-headers.mts"
       ],
       "test_case_ids": [
         "TC-PG-XFN-001-105",
         "TC-SEC-WEB-005-601",
         "TC-SEC-WEB-005-602",
         "TC-SEC-WEB-005-611",
-        "TC-PG-KRK-003-623"
+        "TC-PG-KRK-003-623",
+        "TC-STACK-008-201",
+        "TC-STACK-008-203",
+        "TC-STACK-008-204"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
@@ -1153,7 +1170,7 @@
         "apps/web/src/presentation/layout",
         "apps/web/src/features/shell",
         "apps/web/src/presentation/components/ui",
-        "apps/web/app/globals.css",
+        "apps/web/src/styles/globals.css",
         "apps/web/public/mock/sponsors",
         "apps/web/src/features/public/home-model.ts",
         "apps/web/src/features/public/home-page.tsx",
@@ -2058,7 +2075,8 @@
         "apps/web/app/dev/error-probe/page.tsx",
         "apps/web/src/presentation/components/not-found-view.tsx",
         "apps/web/src/features/goods/goods-detail-page.tsx",
-        "apps/web/app/goods/[goodsRef]/page.tsx"
+        "apps/web/app/goods/[goodsRef]/page.tsx",
+        "apps/web/src/routes/route-table.tsx"
       ],
       "test_case_ids": [
         "TC-PG-XFN-002-201",
@@ -2067,7 +2085,8 @@
         "TC-SEC-WEB-012-101",
         "TC-PG-PUB-003-612",
         "TC-PG-KRK-002-615",
-        "TC-PG-GDS-002-504"
+        "TC-PG-GDS-002-504",
+        "TC-STACK-008-302"
       ],
       "notes": "implementation mapping only: UI mock shell (not API/DB/provider coverage)"
     },
@@ -2161,7 +2180,13 @@
         "apps/web/app/(self)/mypage/karaoke/[reservationRef]/page.tsx",
         "apps/web/app/(self)/mypage/karaoke/[reservationRef]/qr/page.tsx",
         "apps/web/app/(self)/mypage/goods/page.tsx",
-        "apps/web/app/(self)/mypage/goods/[goodsItemRef]/page.tsx"
+        "apps/web/app/(self)/mypage/goods/[goodsItemRef]/page.tsx",
+        "apps/web/src/routes",
+        "apps/web/src/routing",
+        "apps/web/src/main.tsx",
+        "apps/web/index.html",
+        "apps/web/vite.config.ts",
+        "scripts/serve-web-dist.mts"
       ],
       "test_case_ids": [
         "TC-DEV-WEB-001-201",
@@ -2191,7 +2216,23 @@
         "TC-DEV-WEB-001-802",
         "TC-DEV-WEB-001-803",
         "TC-DEV-WEB-001-804",
-        "TC-DEV-WEB-001-807"
+        "TC-DEV-WEB-001-807",
+        "TC-STACK-008-001",
+        "TC-STACK-008-002",
+        "TC-STACK-008-003",
+        "TC-STACK-008-004",
+        "TC-STACK-008-101",
+        "TC-STACK-008-102",
+        "TC-STACK-008-103",
+        "TC-STACK-008-104",
+        "TC-STACK-008-105",
+        "TC-STACK-008-106",
+        "TC-STACK-008-107",
+        "TC-STACK-008-301",
+        "TC-STACK-008-302",
+        "TC-STACK-008-303",
+        "TC-STACK-008-307",
+        "TC-STACK-008-308"
       ],
       "notes": "implementation mapping only: UI mock shell (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
@@ -2558,6 +2599,36 @@
         "TC-DEV-SEC-004-009"
       ],
       "notes": "implementation mapping only: secret / raw QR / PII scan; matched values are never printed"
+    },
+    {
+      "rule_id": "SEC-WEB-003",
+      "code_paths": ["scripts/generate-web-headers.mts"],
+      "test_case_ids": ["TC-STACK-008-202", "TC-STACK-008-205", "TC-STACK-008-304"],
+      "notes": "implementation mapping only: build-time CSP; inline scripts are allowed by hash only; not a Pages deployment check"
+    },
+    {
+      "rule_id": "SEC-WEB-006",
+      "code_paths": ["scripts/generate-web-headers.mts"],
+      "test_case_ids": ["TC-STACK-008-201"],
+      "notes": "implementation mapping only: connect-src is self only until the API exists; not a Pages deployment check"
+    },
+    {
+      "rule_id": "SEC-WEB-007",
+      "code_paths": ["scripts/generate-web-headers.mts"],
+      "test_case_ids": ["TC-STACK-008-201", "TC-STACK-008-304"],
+      "notes": "implementation mapping only: Strict-Transport-Security in dist/_headers; not a Pages deployment check"
+    },
+    {
+      "rule_id": "SEC-WEB-008",
+      "code_paths": ["scripts/generate-web-headers.mts"],
+      "test_case_ids": ["TC-STACK-008-201", "TC-STACK-008-304"],
+      "notes": "implementation mapping only: Permissions-Policy of a normal page in dist/_headers; the Staff scanner camera allowance is not implemented"
+    },
+    {
+      "rule_id": "SEC-WEB-011",
+      "code_paths": ["apps/web/vite.config.ts"],
+      "test_case_ids": ["TC-STACK-008-305", "TC-DEV-WEB-011-201"],
+      "notes": "implementation mapping only: build.sourcemap is false, so no source map is published"
     }
   ]
 }

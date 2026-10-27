@@ -9,7 +9,7 @@ import { SiteHeader } from "../src/features/shell/site-header";
 import { MockModeBadge } from "../src/mock/dev-ui/mock-mode-badge";
 import { HydrationMarker } from "../src/presentation/components/hydration-marker";
 import { copy } from "../src/presentation/copy/ja";
-import "./globals.css";
+import "../src/styles/globals.css";
 
 // Pages set `title`; Home keeps the site name (SPEC-050 7).
 export const metadata: Metadata = {

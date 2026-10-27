@@ -2,7 +2,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "lib": ["dom", "dom.iterable", "ES2023"],
-    "jsx": "preserve",
+    "jsx": "react-jsx",
     "allowImportingTsExtensions": true,
     "incremental": true,
     "plugins": [{ "name": "next" }],
@@ -14,6 +14,7 @@
     "app/**/*.tsx",
     "src/**/*.ts",
     "src/**/*.tsx",
+    "vite.config.ts",
     "next.config.ts",
     ".next/types/**/*.ts"
   ],
