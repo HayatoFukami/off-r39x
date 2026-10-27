@@ -71,6 +71,7 @@ pnpm --dir tests exec playwright install chromium  # if the browser binary is mi
 ## 6. Git policy
 
 - Commit specification revisions before their dependent implementation. Do not mix unrelated existing changes into task commits.
+- Line endings are LF everywhere (`.gitattributes` `eol=lf`, `.editorconfig`, Biome `lineEnding: "lf"`), regardless of `core.autocrlf`. On Windows, a CRLF working tree makes `pnpm lint` fail on formatting; re-checkout or convert the files to LF instead of reformatting them.
 
 ## 7. Specification changes and unresolved contracts
 
