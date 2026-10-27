@@ -3246,7 +3246,7 @@
         "apps/email-worker/src/main.ts",
         "apps/reconciliation-worker/src/main.ts"
       ],
-      "test_case_ids": ["TC-OBS-AUDIT-001"],
+      "test_case_ids": ["TC-OBS-AUDIT-001", "TC-DB-FOUNDATION-008"],
       "notes": "Foundation audit repair; local synthetic evidence does not assert live-provider or release readiness"
     },
     {

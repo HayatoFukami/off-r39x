@@ -32,6 +32,25 @@ it("TC-OBS-AUDIT-001 real DB retry, constraint, unavailability and unknown COMMI
         expect.objectContaining({ sqlstate: code }),
       );
     }
+    for (const code of ["ECONNRESET", "EPIPE"]) {
+      let attempts = 0;
+      await expect(
+        transaction(
+          pool,
+          async () => {
+            attempts++;
+            throw Object.assign(new Error("synthetic-private-value"), { code });
+          },
+          { logger, queryName: "foundation.native_transport" },
+        ),
+      ).rejects.toMatchObject({ code });
+      expect(attempts).toBe(1);
+    }
+    const nativeEvents = lines
+      .map((x) => JSON.parse(x))
+      .filter((e) => e.query_name === "foundation.native_transport");
+    expect(nativeEvents.filter((e) => e.event_name === "db.availability.failed")).toHaveLength(2);
+    expect(nativeEvents.every((e) => e.sqlstate === undefined)).toBe(true);
     const proxy = await startCommitAcknowledgementDropProxy(new URL(url));
     const failing = new Pool({ connectionString: proxy.url, ssl: false, max: 1 });
     try {

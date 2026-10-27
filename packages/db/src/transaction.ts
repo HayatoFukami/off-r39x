@@ -85,7 +85,10 @@ export async function transaction<T>(
         const onConnectionError = () => {
           discard = true;
         };
-        const onConnectionEnd = () => detachConnectionListeners();
+        const onConnectionEnd = () => {
+          discard = true;
+          detachConnectionListeners();
+        };
         detachConnectionListeners = () => {
           acquired.removeListener("error", onConnectionError);
           acquired.removeListener("end", onConnectionEnd);
@@ -139,22 +142,43 @@ export async function transaction<T>(
         });
         return { status: "commit_unknown" };
       }
+      const timeout =
+        error instanceof TransactionDeadlineError || code === "57014" || code === "55P03";
       const unavailable =
-        !client || !code || code.startsWith("08") || ["57P01", "57P02", "57P03"].includes(code);
+        !timeout &&
+        (!client ||
+          discard ||
+          (!!code &&
+            (code.startsWith("08") ||
+              [
+                "57P01",
+                "57P02",
+                "57P03",
+                "ECONNRESET",
+                "ECONNREFUSED",
+                "EPIPE",
+                "ETIMEDOUT",
+                "ENOTFOUND",
+                "EHOSTUNREACH",
+                "ENETUNREACH",
+              ].includes(code))));
+      if (unavailable) discard = true;
       const constraint = code === "23505" || code === "23P01";
       logger?.log({
-        event_name: unavailable
-          ? "db.availability.failed"
-          : constraint
-            ? "db.constraint_loser.completed"
-            : "db.transaction.completed",
+        event_name: timeout
+          ? "reliability.timeout.occurred"
+          : unavailable
+            ? "db.availability.failed"
+            : constraint
+              ? "db.constraint_loser.completed"
+              : "db.transaction.completed",
         level: constraint ? "INFO" : "ERROR",
         result: constraint ? "REJECTED" : "FAILED",
         failure_class: constraint ? "CONFLICT_LOSER" : "TEMPORARY_FAILURE",
         is_retry: attempt > 1,
         attempt_number: attempt,
         query_name: queryName,
-        ...(code && /^[0-9A-Z]{5}$/.test(code) ? { sqlstate: code } : {}),
+        ...(code && code !== "EPIPE" && /^[0-9A-Z]{5}$/.test(code) ? { sqlstate: code } : {}),
         duration_ms: Math.floor(performance.now() - start),
       });
       if (client && !discard) {

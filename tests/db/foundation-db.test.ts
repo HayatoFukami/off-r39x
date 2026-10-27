@@ -293,19 +293,32 @@ describe("PostgreSQL 17 foundation (real database)", () => {
 
   it("TC-DB-FOUNDATION-008 wall deadline discards connection and rolls back", async () => {
     const pool = new Pool({ connectionString: url, max: 1 });
+    const names: string[] = [];
     let finish: (() => void) | undefined;
     try {
       await expect(
-        transaction(pool, async (client) => {
-          await client.query(
-            "INSERT INTO app.business_profiles(auth_subject) VALUES ('00000000-0000-4000-8000-000000000008')",
-          );
-          await new Promise<void>((resolve) => {
-            finish = resolve;
-          });
-        }),
+        transaction(
+          pool,
+          async (client) => {
+            await client.query(
+              "INSERT INTO app.business_profiles(auth_subject) VALUES ('00000000-0000-4000-8000-000000000008')",
+            );
+            await new Promise<void>((resolve) => {
+              finish = resolve;
+            });
+          },
+          {
+            logger: {
+              log: (event) => {
+                names.push(event.event_name);
+              },
+            },
+          },
+        ),
       ).rejects.toThrow("deadline exceeded");
       expect(pool.totalCount).toBe(0);
+      expect(names).toContain("reliability.timeout.occurred");
+      expect(names).not.toContain("db.availability.failed");
       expect(
         (
           await pool.query(

@@ -238,7 +238,7 @@
       "test_case_id": "TC-DB-FOUNDATION-008",
       "level": "DB",
       "suite": "db",
-      "upstream_rule_ids": ["REL-TMO-003", "DEV-DB-008"],
+      "upstream_rule_ids": ["REL-TMO-003", "DEV-DB-008", "OBS-DB-003"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -251,7 +251,9 @@
       "expected_domain_postconditions": ["Caller deadline error and no later commit"],
       "expected_db_postconditions": ["Connection discarded; uncommitted write rolled back"],
       "expected_provider_postconditions": [],
-      "expected_observability": [],
+      "expected_observability": [
+        "reliability.timeout.occurred; no db.availability.failed for healthy callback deadline"
+      ],
       "sensitivity_class": "synthetic",
       "critical": true
     },
