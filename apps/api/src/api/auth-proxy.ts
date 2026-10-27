@@ -45,6 +45,14 @@ class TransportFailure extends Error {
     super("Auth transport rejected");
   }
 }
+function clearSessionCookies(headers: Headers): void {
+  headers.delete("Set-Cookie");
+  for (const name of cookieNames)
+    headers.append(
+      "Set-Cookie",
+      `${name}=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/; HttpOnly; Secure; SameSite=Lax`,
+    );
+}
 function httpsUrl(value: string): URL {
   const url = new URL(value);
   if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash)
@@ -54,6 +62,7 @@ function httpsUrl(value: string): URL {
 async function textWithinLimit(
   body: ReadableStream<Uint8Array> | null,
   signal: AbortSignal,
+  exceededStatus = 413,
 ): Promise<string> {
   if (!body) return "";
   const reader = body.getReader();
@@ -69,7 +78,7 @@ async function textWithinLimit(
       const { done, value } = await reader.read();
       if (done) break;
       size += value.byteLength;
-      if (size > 65536) throw new TransportFailure(413);
+      if (size > 65536) throw new TransportFailure(exceededStatus);
       chunks.push(value);
     }
     return Buffer.concat(chunks).toString("utf8");
@@ -219,7 +228,7 @@ export function createAuthProxy(
               redirect: "manual",
               signal,
             });
-            const bytes = await textWithinLimit(response.body, signal);
+            const bytes = await textWithinLimit(response.body, signal, 503);
             for (const name of [
               "content-type",
               "set-auth-jwt",
@@ -250,6 +259,7 @@ export function createAuthProxy(
                 [pair, ...lifetime, "Path=/", "HttpOnly", "Secure", "SameSite=Lax"].join("; "),
               );
             }
+            if (path === "sign-out") clearSessionCookies(headers);
             return new Response([204, 205, 304].includes(response.status) ? null : bytes, {
               status: response.status,
               headers,
@@ -264,7 +274,12 @@ export function createAuthProxy(
         headers.delete("Location");
         headers.delete("set-auth-jwt");
         headers.delete("set-auth-token");
-        return error(errorValue instanceof TransportFailure ? errorValue.status : 503);
+        // Local logout must invalidate this browser even when revocation fails.
+        // Keep the failure status: upstream Session revocation is not confirmed.
+        const status = errorValue instanceof TransportFailure ? errorValue.status : 503;
+        if (path === "sign-out" && status >= 500) clearSessionCookies(headers);
+        headers.set("Content-Type", "application/json");
+        return error(status);
       }
     },
   };

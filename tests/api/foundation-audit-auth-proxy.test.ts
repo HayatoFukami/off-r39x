@@ -87,6 +87,16 @@ it("TC-AUTH-AUDIT-002 upstream failure/body stall/redirects fail closed without 
   const res = await failed.handle(req());
   expect(res.status).toBe(503);
   expect(await res.text()).not.toContain("synthetic-private");
+  const logout = await failed.handle(
+    new Request("https://api.example.test/auth/sign-out", {
+      method: "POST",
+      headers: { Origin: cfg.webOrigin, "Content-Type": "application/json" },
+      body: "{}",
+    }),
+  );
+  expect(logout.status).toBe(503);
+  expect(logout.headers.getSetCookie()).toHaveLength(3);
+  for (const cookie of logout.headers.getSetCookie()) expect(cookie).toContain("Max-Age=0");
   const redirect = createAuthProxy(
     cfg,
     async () =>

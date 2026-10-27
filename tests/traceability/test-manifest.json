@@ -15909,41 +15909,6 @@
       "critical": true
     },
     {
-      "test_case_id": "TC-AUTH-AUDIT-002",
-      "level": "API",
-      "suite": "api",
-      "upstream_rule_ids": [
-        "SEC-API-001",
-        "SEC-API-003",
-        "SEC-API-008",
-        "SEC-AUTH-009",
-        "AR-SES-005"
-      ],
-      "system_invariant_ids": [],
-      "api_operation_ids": [],
-      "db_constraint_names": [],
-      "preconditions": "Limited Neon transport candidate; synthetic provider only; public allowlist, exact origin, no-store, host-only cookies, safe redirects, deadlines and mandatory enforcement",
-      "fixture_ids": [],
-      "clock_instant": null,
-      "concurrency_seed": null,
-      "fault_points": [
-        "csrf",
-        "redirect_rejected",
-        "provider_unavailable",
-        "response_body_stalled",
-        "shared_guard_missing"
-      ],
-      "expected_http": [200, 201, 400, 403, 404, 405, 503],
-      "expected_domain_postconditions": [
-        "Fail closed within the canonical boundary; no unintended business mutation"
-      ],
-      "expected_db_postconditions": [],
-      "expected_provider_postconditions": [],
-      "expected_observability": [],
-      "sensitivity_class": "synthetic",
-      "critical": true
-    },
-    {
       "test_case_id": "TC-AUTH-AUDIT-003",
       "level": "API",
       "suite": "api",
@@ -16015,6 +15980,42 @@
       "concurrency_seed": null,
       "fault_points": ["shared_enforcement_unavailable", "required_constraint_missing", "drain"],
       "expected_http": [200, 503],
+      "expected_domain_postconditions": [
+        "Fail closed within the canonical boundary; no unintended business mutation"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-AUTH-AUDIT-002",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": [
+        "SEC-API-001",
+        "SEC-API-003",
+        "SEC-API-008",
+        "SEC-AUTH-009",
+        "AR-SES-005",
+        "AR-SES-009",
+        "SEC-AUTH-012"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Synthetic upstream failure, stalled response body, invalid redirect; local logout cookie invalidation while provider revocation remains unconfirmed",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "provider_unavailable",
+        "response_body_stalled",
+        "redirect_rejected",
+        "logout_revocation_unavailable"
+      ],
+      "expected_http": [503],
       "expected_domain_postconditions": [
         "Fail closed within the canonical boundary; no unintended business mutation"
       ],

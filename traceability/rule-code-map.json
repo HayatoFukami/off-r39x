@@ -2293,7 +2293,12 @@
         "apps/web/src/presentation/layout/account-menu.tsx",
         "apps/web/src/features/shell/site-header.tsx",
         "apps/web/src/auth/logout-signal.ts",
-        "apps/web/src/auth/auth-gate.tsx"
+        "apps/web/src/auth/auth-gate.tsx",
+        "apps/api/src/api/auth-proxy.ts",
+        "apps/api/src/api/app.ts",
+        "apps/api/src/api/middleware/json.ts",
+        "apps/api/src/bootstrap/index.ts",
+        "packages/config/src/index.ts"
       ],
       "test_case_ids": [
         "TC-AR-SES-009-101",
@@ -2301,7 +2306,8 @@
         "TC-PG-AUTH-003-311",
         "TC-PG-AUTH-003-312",
         "TC-PG-CRT-001-523",
-        "TC-PG-CRT-001-426"
+        "TC-PG-CRT-001-426",
+        "TC-AUTH-AUDIT-002"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
@@ -3353,6 +3359,18 @@
         "apps/api/src/api/app.ts"
       ],
       "test_case_ids": ["TC-STARTUP-AUDIT-001"],
+      "notes": "Foundation audit repair; local synthetic evidence does not assert live-provider or release readiness"
+    },
+    {
+      "rule_id": "SEC-AUTH-012",
+      "code_paths": [
+        "apps/api/src/api/auth-proxy.ts",
+        "apps/api/src/api/app.ts",
+        "apps/api/src/api/middleware/json.ts",
+        "apps/api/src/bootstrap/index.ts",
+        "packages/config/src/index.ts"
+      ],
+      "test_case_ids": ["TC-AUTH-AUDIT-002"],
       "notes": "Foundation audit repair; local synthetic evidence does not assert live-provider or release readiness"
     }
   ]
