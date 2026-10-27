@@ -2,7 +2,7 @@
 
 ## 1. Current repository, not the planned system
 
-- Only the Next.js UI mock and pure domain types are implemented. Hono API, database, real auth, Stripe and Resend integrations are not implemented; mock tests do not prove those contracts.
+- The Next.js UI mock remains on the old frontend contract. Backend foundation now includes Hono, PG17/Drizzle/pg, verified JWT Principal/Capability, provider adapters, and worker startup/shutdown. Business operations, the Neon Auth proxy, live provider compatibility, and production readiness are not implemented/proven; mock tests do not prove those contracts. See `docs/backend-foundation.md`.
 - `README.md` is the setup overview; executable configuration wins for commands and current behavior. Business requirements remain owned by `docs/specs/` (`SPEC-000`–`SPEC-200`), not existing code or `docs/drafts/`.
 - `.claude/agents/*.md` still contain obsolete claims that source/test directories do not exist. They are not canonical specifications or a required OpenCode orchestration scheme. `CLAUDE.md` only points here.
 
@@ -29,7 +29,7 @@ pnpm start:mock --port 3200       # no extra -- separator
 - `apps/web/app/layout.tsx` mounts API/session providers and owns the **single `<main>`**. Pages must not introduce another main landmark.
 - `packages/domain` exports TypeScript source directly (`src/index.ts`); Next transpiles it via `transpilePackages`. It must not import external packages or app/framework code.
 - Features use API/auth ports, never `src/mock/` directly. Mock imports are allowed only in `src/api-client/index.ts`, `src/auth/index.ts`, `app/dev/**`, mock internals, and the root layout's `MockModeBadge`. Presentation must not import features, mock implementations or provider hooks. Exact exceptions are enforced by `scripts/check-import-boundaries.mts`.
-- Planned business data flow is `Browser → Next.js Web → Hono API → Supabase PostgreSQL` (`SPEC-010`). Browser/Web never query the Business DB directly; Hono owns business mutation/authorization, Supabase Auth owns authentication. Do not treat client IDs, roles, prices or payment results as authority.
+- Canonical business flow is `Browser → Railway Hono API → Neon PostgreSQL` (`SPEC-010`); the legacy Next.js UI mock is a separate surface. Browser/Web never query the Business DB directly; Hono owns business mutation/authorization and Neon Auth owns identity. Do not treat client IDs, roles, prices or payment results as authority.
 - For backend work, preserve verified-provider payment confirmation (never browser redirects), external calls outside DB transactions, and reconciliation instead of blind retries after unknown outcomes (`SPEC-070`, `SPEC-150`). Entry/Karaoke QR purposes stay separate and check-in atomic/single-use (`SPEC-080`).
 
 ## 4. Implementation workflow
@@ -47,7 +47,10 @@ pnpm lint                        # biome check, not a separate ESLint/Prettier s
 pnpm typecheck                   # recursive workspace checks
 pnpm check:boundaries            # separate gate, not included in lint
 pnpm validate:traceability       # separate gate, not included in typecheck
+pnpm validate:migrations         # static review aid, not a real PG17 migration test
 pnpm test:unit                   # Vitest unit AND security projects, Node environment
+pnpm test:backend                # foundation tests, real PG17 and TEST_DATABASE_URL/TEST_DATABASE_CA required
+pnpm build:backend               # bundles all three server processes without runtime Secrets
 pnpm test:e2e                    # Playwright UI-mock suite; builds and starts its own server
 pnpm build:mock                  # UI-mock build; standard non-mock command is pnpm build
 pnpm secret-scan --require-build # run after build to require and inspect build output
@@ -65,8 +68,9 @@ pnpm --dir tests exec playwright install chromium  # if the browser binary is mi
 - Playwright reserves `127.0.0.1:3100`, refuses an existing server, and rebuilds `apps/web/.next`; do not run alongside `start:mock` or another build/E2E run. Default projects are desktop/mobile Chromium, workers=2, timezone=UTC, retries=0. Windows loopback stalls are documented; use `--workers=1` for diagnosis, not retries to erase a failure.
 - Use `gotoHydrated`/`waitForHydration` from `tests/harness/browser/hydration.ts` before interactive assertions; navigation completing does not mean React is ready.
 - E2E is the auxiliary `e2e-ui-mock` suite, not real DB/API/provider coverage or SPEC-170 G8. Tests needing constraints, locks or transaction races require real PostgreSQL; provider contract tests require nonproduction credentials.
+- Backend DB tests require disposable PostgreSQL 17 at port 5432, verified test TLS with a synthetic CA, UTC, and a setup identity able to install test roles. Missing DB settings fail rather than skip. Run from the repository root; see `docs/backend-foundation.md`. Unbundled server source has no build-bound migration hash and cannot become Ready.
 - Both runners have retries=0. Do not skip/quarantine critical tests or rewrite expectations to match a spec-violating implementation. Report unexecuted checks with reasons and release impact, never as passed.
-- Secret scan covers root files, `apps/`, `packages/`, `scripts/`, `tests/`, `traceability/`, plus `.next/static/**` and `.next/server/app/**`; it does **not** cover server chunks/middleware or `.github/workflows/**` (README Issue #16). `OK` is not a full-bundle audit. Never put real secrets, raw QR, credentials, webhook bodies or unnecessary PII in source, fixtures, logs, screenshots or reports. Synthetic email domains must be reserved (`example.com`, `.test`, `.invalid`, etc.).
+- Secret scan covers root files, `.github/`, `apps/`, `packages/`, `scripts/`, `tests/`, `traceability/`, plus `.next/static/**` and `.next/server/**`. Pass `--build-dir dist --require-build` for bundled backend output. `OK` is a pattern scan of that scope, not a complete secret or bundle audit. Never put real secrets, raw QR, credentials, webhook bodies or unnecessary PII in source, fixtures, logs, screenshots or reports. Synthetic email domains must be reserved (`example.com`, `.test`, `.invalid`, etc.).
 
 ## 6. Git policy
 
