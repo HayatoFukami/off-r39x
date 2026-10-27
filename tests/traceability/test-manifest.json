@@ -15664,36 +15664,6 @@
       "critical": false
     },
     {
-      "test_case_id": "TC-DB-AUDIT-001",
-      "level": "DB",
-      "suite": "db",
-      "upstream_rule_ids": ["REL-DB-012", "INF-DB-008"],
-      "system_invariant_ids": [],
-      "api_operation_ids": [],
-      "db_constraint_names": [],
-      "preconditions": "Fresh real PostgreSQL17 with journal unchanged; required catalog compared before, during and after rollback of each DDL fault",
-      "fixture_ids": [],
-      "clock_instant": null,
-      "concurrency_seed": null,
-      "fault_points": [
-        "required_constraint_removed",
-        "constraint_definition_changed",
-        "index_removed_or_changed",
-        "schema_missing",
-        "column_contract_changed",
-        "extension_missing"
-      ],
-      "expected_http": null,
-      "expected_domain_postconditions": [
-        "Fail closed within the canonical boundary; no unintended business mutation"
-      ],
-      "expected_db_postconditions": [],
-      "expected_provider_postconditions": [],
-      "expected_observability": [],
-      "sensitivity_class": "synthetic",
-      "critical": true
-    },
-    {
       "test_case_id": "TC-STRIPE-AUDIT-001",
       "level": "Unit",
       "suite": "unit",
@@ -15861,6 +15831,38 @@
       "clock_instant": null,
       "concurrency_seed": null,
       "fault_points": ["event_loop_delay"],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Fail closed within the canonical boundary; no unintended business mutation"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DB-AUDIT-001",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": ["REL-DB-012", "INF-DB-008", "DB-ARC-008"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real PG17; twelve catalog/directory DDL faults individually rolled back while journal remains intact",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "required_constraint_removed",
+        "constraint_definition_changed",
+        "index_removed_or_changed",
+        "schema_missing",
+        "column_contract_changed",
+        "extension_missing",
+        "directory_uniqueness_removed",
+        "directory_verified_projection_inverted"
+      ],
       "expected_http": null,
       "expected_domain_postconditions": [
         "Fail closed within the canonical boundary; no unintended business mutation"

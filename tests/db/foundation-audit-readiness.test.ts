@@ -41,6 +41,8 @@ it("TC-DB-AUDIT-001 detects missing and altered release schema, constraints and 
       "ALTER TABLE app.role_assignments RENAME TO missing_role_assignments",
       "ALTER SCHEMA app RENAME TO missing_app",
       "DROP EXTENSION btree_gist",
+      "ALTER TABLE synthetic_provider.identities DROP CONSTRAINT identities_pkey",
+      "CREATE OR REPLACE VIEW auth_read.identity_directory WITH (security_barrier=true) AS SELECT subject AS auth_subject,current_email AS email,NOT verified AS email_verified FROM synthetic_provider.identities",
     ]) {
       // A single real backend connection; every fault is reverted without modifying migration sources/journal.
       await pool.query("BEGIN");

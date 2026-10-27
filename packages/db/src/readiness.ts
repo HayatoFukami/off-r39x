@@ -138,6 +138,35 @@ export async function checkReadiness(
               expectedColumns.includes(row.attname),
           ),
       );
+      const sourceIntegrity = (
+        await client.query(
+          `SELECT
+        EXISTS(SELECT 1 FROM pg_index i JOIN pg_class c ON c.oid=i.indrelid JOIN pg_namespace n ON n.oid=c.relnamespace JOIN pg_attribute a ON a.attrelid=c.oid AND a.attnum=i.indkey[0]
+          WHERE n.nspname=$1 AND c.relname=$2 AND a.attname=$3 AND i.indisunique AND i.indisvalid AND i.indisready AND i.indislive AND i.indimmediate AND i.indnkeyatts=1 AND i.indpred IS NULL AND i.indexprs IS NULL) AS unique_subject,
+        NOT EXISTS(SELECT 1 FROM auth_read.identity_directory WHERE auth_subject IS NULL OR email_verified IS NULL) AS nonnull_values,
+        NOT EXISTS(SELECT auth_subject FROM auth_read.identity_directory GROUP BY auth_subject HAVING count(*)>1) AS cardinality`,
+          [mapping.schema, mapping.table, mapping.subjectColumn],
+        )
+      ).rows[0];
+      fail(
+        "directory_source_integrity",
+        sourceIntegrity.unique_subject &&
+          sourceIntegrity.nonnull_values &&
+          sourceIntegrity.cardinality,
+      );
+      const projection = (
+        await client.query(
+          "SELECT pg_get_viewdef('auth_read.identity_directory'::regclass,true) AS definition",
+        )
+      ).rows[0].definition as string;
+      // Accept only a direct projection, never a filtered join, stale literal or
+      // transformed verified flag that happens to retain the same dependencies.
+      const quoteIdent = (value: string) =>
+        /^[a-z_][a-z0-9_]*$/.test(value) ? value : `"${value.replaceAll('"', '""')}"`;
+      const projectionColumn = (source: string, target: string) =>
+        `${quoteIdent(source)}${source === target ? "" : ` AS ${target}`}`;
+      const expectedProjection = `SELECT ${projectionColumn(mapping.subjectColumn, "auth_subject")}, ${projectionColumn(mapping.emailColumn, "email")}, ${projectionColumn(mapping.verifiedColumn, "email_verified")} FROM ${quoteIdent(mapping.schema)}.${quoteIdent(mapping.table)};`;
+      fail("directory_projection", projection.replace(/\s+/g, " ").trim() === expectedProjection);
       const sourceColumns = (
         await client.query(
           `SELECT a.attname, has_column_privilege('auth_directory_owner',c.oid,a.attnum,'SELECT') AS allowed

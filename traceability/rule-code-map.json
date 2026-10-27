@@ -84,9 +84,11 @@
         "packages/db/src/principals.ts",
         "packages/db/src/readiness.ts",
         "packages/auth/src/index.ts",
-        "apps/api/src/api/app.ts"
+        "apps/api/src/api/app.ts",
+        "packages/db/src/schema-contract.ts",
+        "packages/db/src/schema-contract.json"
       ],
-      "test_case_ids": ["TC-DB-FOUNDATION-004", "TC-DB-ARC-008-050"],
+      "test_case_ids": ["TC-DB-FOUNDATION-004", "TC-DB-ARC-008-050", "TC-DB-AUDIT-001"],
       "notes": "Explicit deployment-confirmed source mapping; synthetic Provider test is not Neon smoke"
     },
     {
