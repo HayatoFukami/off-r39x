@@ -1,0 +1,23 @@
+{
+  "name": "@off-r39x/config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "browser": null,
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "4.6.7",
+    "tldts": "7.4.19",
+    "@off-r39x/security": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.1"
+  }
+}
