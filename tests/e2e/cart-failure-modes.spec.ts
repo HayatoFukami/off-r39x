@@ -20,7 +20,7 @@ import {
 } from "../harness/browser/cart.ts";
 import { gotoHydrated } from "../harness/browser/hydration.ts";
 import { fixClock } from "../harness/browser/public.ts";
-import { KEYS, seedLocalStorage } from "../harness/browser/shell.ts";
+import { authenticatedSession, KEYS, seedLocalStorage } from "../harness/browser/shell.ts";
 import { GOODS, OFFERING } from "../harness/mock-seed.ts";
 
 // UI mock suite (TST-E2E-004: auxiliary, not G8). Review gap tests for S5 verification (round 1):
@@ -141,6 +141,87 @@ test.describe("TC-PG-CRT-001-542 a Cart store that cannot be read (Guest, no Car
     await expect(main(page)).not.toContainText(copy.sales.addSucceeded);
     await expect(headerCartLink(page, null)).toBeVisible();
     // Nothing was stored (the Cart key stays absent).
+    expect(await cartKeyStored(page)).toBe(false);
+  });
+});
+
+type MetadataProvenance = "guest" | "authenticated";
+
+/** Valid Cart lifecycle metadata (no Cart key) for the given provenance, with the matching mock session. */
+function lifecycleSeed(provenance: MetadataProvenance): Record<string, string> {
+  return {
+    [KEYS.cartLifecycle]: JSON.stringify({ version: 1, provenance }),
+    ...(provenance === "authenticated" ? { [KEYS.session]: authenticatedSession() } : {}),
+  };
+}
+
+const unreadableTargets = [
+  {
+    name: "Entry",
+    path: "/entry",
+    scope: (page: Page) => rowByHeading(page, offeringName(OFFERING.regular)),
+    sale: (page: Page) => rowByHeading(page, offeringName(OFFERING.regular)),
+  },
+  {
+    name: "Goods detail",
+    path: `/goods/${GOODS.tshirt}`,
+    scope: (page: Page) => main(page),
+    sale: (page: Page) =>
+      main(page).getByRole("heading", { level: 1, name: expectedGoodsDetail(GOODS.tshirt).name }),
+  },
+] as const;
+
+test.describe("TC-PG-CRT-001-543 a Cart store that cannot be read stops Cart additions the same way when valid Cart lifecycle metadata exists (guest / authenticated), on Entry and Goods detail (SPEC-050 12.1, 14.2, 14A.1, 25, FR-CRT-012)", () => {
+  for (const provenance of ["guest", "authenticated"] as const) {
+    for (const target of unreadableTargets) {
+      test(`${target.name} with ${provenance} metadata: sale stays viewable, quantity and Add are natively disabled with the Cart stop reason`, async ({
+        page,
+      }) => {
+        await fixClock(page);
+        await seedLocalStorage(page, lifecycleSeed(provenance));
+        await failCartReads(page);
+        await gotoHydrated(page, target.path);
+        const scope = target.scope(page);
+        // (1) The sale information stays viewable (SPEC-050 12.1 / 14.2).
+        await expect(target.sale(page)).toBeVisible();
+        // (2) Auto-wait first: the lifecycle settles after hydration. Native disabled, not aria-disabled.
+        await expect(addButton(scope)).toBeDisabled();
+        await expect(addButton(scope)).toHaveJSProperty("disabled", true);
+        await expect(quantityInput(scope)).toBeDisabled();
+        // (3) The stop reason (not the damaged-Cart alert) is attached to Add, with the link to the Cart.
+        const reason = await describedText(addButton(scope));
+        expect(reason).toContain(copy.cart.lifecycleBlocked.description);
+        expect(reason).toContain(copy.cart.corrupted.goToCart);
+        expect(reason).not.toContain(copy.cart.corrupted.title);
+        await expect(
+          scope.getByRole("link", { name: copy.cart.corrupted.goToCart, exact: true }),
+        ).toHaveAttribute("href", "/cart");
+        // (4) Nothing can be added, so no success and no damaged-Cart alert appears.
+        await expect(liveRegion(page)).not.toContainText(copy.sales.addSucceeded);
+        await expect(main(page)).not.toContainText(copy.sales.addSucceeded);
+        await expect(
+          main(page).getByRole("alert").filter({ hasText: copy.cart.corrupted.title }),
+        ).toHaveCount(0);
+        // (5) The Header does not show a count.
+        await expect(headerCartLink(page, null)).toBeVisible();
+        // (6) Nothing was stored: the Cart key stays absent and the seeded metadata is unchanged.
+        expect(await cartKeyStored(page)).toBe(false);
+      });
+    }
+  }
+
+  test("the Cart page with guest metadata shows the same stop as without metadata: no rows, no proceed button, no empty wording, no count", async ({
+    page,
+  }) => {
+    await fixClock(page);
+    await seedLocalStorage(page, lifecycleSeed("guest"));
+    await failCartReads(page);
+    await gotoHydrated(page, "/cart");
+    await expect(main(page).getByRole("alert")).toContainText(copy.cart.lifecycleBlocked.title);
+    await expect(main(page)).not.toContainText(copy.cart.empty);
+    await expect(rows(page)).toHaveCount(0);
+    await expect(proceedButton(page)).toHaveCount(0);
+    await expect(headerCartLink(page, null)).toBeVisible();
     expect(await cartKeyStored(page)).toBe(false);
   });
 });

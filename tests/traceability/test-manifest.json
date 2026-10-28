@@ -7476,6 +7476,42 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-PG-CRT-001-543",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "FR-CRT-012",
+        "PG-TKT-001",
+        "PG-GDS-002",
+        "PG-CRT-001",
+        "SPEC-050-12.1",
+        "SPEC-050-14.2",
+        "SPEC-050-14A.1",
+        "SPEC-050-25",
+        "TST-E2E-003",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock mode; Cart key getItem throws (init script); valid guest / authenticated Cart lifecycle metadata seeded; contract tests/contracts/s5-cart.md 5.1",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "With valid guest or authenticated lifecycle metadata, an unreadable Cart key stops Cart additions on Entry and Goods detail exactly as without metadata: the sale stays visible while quantity and Cart addition are natively disabled and described by the Cart stop reason with a Cart link, not the damaged-Cart alert",
+        "No add result, success announcement or Header count; the Cart key is never created",
+        "The Cart page shows the lifecycle stop (alert, no rows, no proceed button, no empty wording, no count)"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-TST-FLK-001-001",
       "level": "E2E",
       "suite": "e2e-ui-mock",
@@ -14897,6 +14933,40 @@
         "Absent API and pre-callback SecurityError permit Login while retaining a known Guest Cart; subsequent Login clears authenticated Cart; combined initial storage denial and unavailable Locks still permit explicit clear recovery and reload",
         "Unknown errors and unreadable or transitioning metadata do not permit authentication or memory-only recovery; restored native Locks allow explicit clear recovery",
         "Real cross-tab Web Lock and transition metadata hide Cart contents and counts and prevent authentication until released"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-FR-CRT-012-015",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "FR-CRT-012",
+        "PG-TKT-001",
+        "PG-GDS-002",
+        "PG-CRT-001",
+        "SPEC-050-12.1",
+        "SPEC-050-14A.1",
+        "TST-UNT-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real CartStore and CartLifecycle on one fault-injecting storage: Cart key read fault with guest, authenticated and absent metadata; contract tests/contracts/s5-cart.md 2.4 and s6-auth.md 10; UI mock test double (not API/DB/Provider coverage)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "A Cart key that cannot be read stops the Cart (blocked) with guest, authenticated and absent metadata, including a fault that starts after initialization, without writing or deleting the stored Cart or metadata; the stop is sticky when reads recover",
+        "Explicit recovery fails and keeps the stop while the Cart key still cannot be read, and returns recovered (empty Cart, ready) only once it can be read again",
+        "Login and registration are cart_blocked and the raw Auth call is not made, so a Guest Cart is not carried into Login",
+        "The Cart store alone still reports an unreadable key as corrupted, never as an empty Cart (TC-PG-CRT-001-422)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],

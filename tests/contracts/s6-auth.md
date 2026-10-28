@@ -389,6 +389,7 @@ export function describeContinuation(intent: ContinuationIntent | null): Continu
 - 実行時の同期・非同期エラーでは、callback開始前の `DOMException(SecurityError)` だけをLock Manager取得不能と判定する（[Web Locks request手順](https://w3c.github.io/web-locks/#dom-lockmanager-request)）。同一Coordinatorに未完了の要求や保有Leaseがなく、metadataが取得でき、欠落または有効な非遷移metadataである場合だけメモリ制御へ切り替える。正常な競合は `busy` のまま扱い、原因不明・Abort・非active Document・不正optionsのエラーを利用不能と混同しない。メモリ制御へ切替後も各取得時にmetadataを再確認する（`TC-FR-CRT-012-013/014`）。
 - 遷移マーカーがある場合は、実行時フォールバックでその所有者を確認できないため、認証開始とメモリ制御によるclear復旧を許可しない。切替前ならWeb Locks復旧後の明示的操作でLockを取得してclearできる。切替後に新たなマーカーを検出した場合や、取得済みLeaseの要求が異常rejectして所有状態が不明になった場合は、再読込してWeb Locksを再評価するまで停止を維持する。単にマーカーを削除して停止を解除しない。
 - metadata / Cart storageが利用できない場合、Cartだけを停止する。確立済みのAuth結果は維持し、AuthGateとCartを使わないKaraoke閲覧・認証済み購入は継続する。
+- Cart キーを読めない場合は、metadata が有効でも Cart を停止し、Login / 登録の開始を `cart_blocked` にする（Guest Cart を維持したまま Login へ進まない）。復旧は Cart キーを再び読めることを確かめてから `recovered` とする（TC-FR-CRT-012-015）。
 - `tests/e2e/auth-gate-logout.spec.ts` の既存Issue再現は、公開Login画面と失敗Loginで旧Cartの保存値が維持され、成功時に初めてclearされる順序をassertする。
 - `tests/e2e/cart-session-isolation.spec.ts` はAuthGateとCart / Guest KaraokeのLogin handoffで、必要なCart clear失敗中は遷移しないこと、AuthGateのstorage取得不可時はLoginへ進むことを検証する。Karaoke Slotは表示を保ち、Authenticated Userの購入開始がCart停止中も進むことを検証する。ActionはAPIで初めて期限切れが分かる場合と、UIが既にGuestを認識している場合の双方を検証する。
 - 既存Cart fixtureはGuest / authenticatedの非識別由来を明示する。由来不明・legacy Cartは専用Unitで検証し、通常の購入ケースに紛れ込ませない。
