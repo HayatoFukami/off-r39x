@@ -1,0 +1,14 @@
+# Normalize line endings to LF in the repository and in working trees,
+# regardless of each contributor's core.autocrlf setting (Biome expects LF).
+* text=auto eol=lf
+
+# Binary assets must never be converted.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
