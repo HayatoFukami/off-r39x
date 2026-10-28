@@ -385,6 +385,7 @@ export const copy = {
     pageTitle: "Entry Ticket",
     heading: "Entry Ticket",
     subject: "Entry Ticket情報",
+    eligibilitySubject: "購入条件",
     perAccountLimit: (limit: number): string => `1アカウントあたりの購入上限は${limit}枚です`,
   },
   notification: {

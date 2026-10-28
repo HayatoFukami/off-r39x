@@ -1300,7 +1300,7 @@
       "test_case_id": "TC-BR-ORD-014-102",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["BR-ORD-014", "BR-ORD-018", "TST-UNT-004"],
+      "upstream_rule_ids": ["BR-ORD-014", "BR-ORD-018", "TST-UNT-004", "API-PUR-ELG-001"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -1312,7 +1312,8 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "one PREPARED Order with a price Snapshot and exact total",
-        "allocation and per-account quota are consumed",
+        "allocation is consumed: stored remaining regular 10 -> 8 and tshirt 20 -> 19 (public listGoods max for tshirt 19)",
+        "the per-account quota is consumed and read through getPurchaseEligibility, not the public read: regular maxPurchasableQuantity 2 after 2 of 4; after a PREPARED Order of 4, regular is not purchasable with reasons [PURCHASE_LIMIT_EXCEEDED] and maxPurchasableQuantity 0 while listEntryOfferings still shows ON_SALE (max 4), and a second start is rejected with PURCHASE_LIMIT_EXCEEDED",
         "the result is created { orderRef } only: every sent line is in the Order (all-or-nothing)"
       ],
       "expected_db_postconditions": [],
@@ -1463,7 +1464,13 @@
       "test_case_id": "TC-DEV-WEB-010-102",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["DEV-WEB-010", "DEV-WEB-013", "TST-UNT-004", "API-PUR-CART-001"],
+      "upstream_rule_ids": [
+        "DEV-WEB-010",
+        "DEV-WEB-013",
+        "TST-UNT-004",
+        "API-PUR-CART-001",
+        "API-PUR-ELG-001"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -1476,7 +1483,8 @@
       "expected_domain_postconditions": [
         "exactly the documented methods and types (expectTypeOf)",
         "Cart cannot express Karaoke or prices; QR presentation carries a mock seed only",
-        "CartPurchaseStart is created { orderRef } | rejected { itemFailures: { lineKey, reasons: PurchaseReason[] }[] } | auth_required | email_unverified | unavailable; PurchaseReason is the 9 API-PUR-ELG-001 codes in the canonical order; types.ts keeps no includedLineKeys / ALLOCATION_CONFLICT / rejections"
+        "CartPurchaseStart is created { orderRef } | rejected { itemFailures: { lineKey, reasons: PurchaseReason[] }[] } | auth_required | email_unverified | unavailable; PurchaseReason is the 9 API-PUR-ELG-001 codes in the canonical order; types.ts keeps no includedLineKeys / ALLOCATION_CONFLICT / rejections",
+        "PurchaseApi.getPurchaseEligibility takes 1..50 { cartLineKey, kind, ref, quantity } and returns ok { purchasable === (reasons.length === 0), reasons, maxPurchasableQuantity } per line in input order, auth_required, email_unverified or unavailable; it is a read-only method (no idempotencyKey, no ids)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -1494,7 +1502,9 @@
         "API-ORD-003",
         "API-PUB-012",
         "TST-UNT-004",
-        "API-PUR-CART-001"
+        "API-PUR-CART-001",
+        "API-PUB-005",
+        "API-PUR-ELG-001"
       ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
@@ -1506,12 +1516,12 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "every method names an Operation ID or UCR-110-001",
-        "ports without an Operation ID are marked and no new Operation ID is invented",
+        "every method names a canonical API-* Operation ID; no UCR-110-001 and no Operation ID なし mark remains anywhere in port.ts, and no new Operation ID is invented",
         "the Profile ports cite API-AUTH-002 / API-AUTH-004 and no longer cite the superseded UCR-100-001",
         "getOrder cites API-ORD-003 (notification_summary) without UCR-110-001 or Operation ID なし",
         "listSponsorLogos cites API-PUB-012 (PUBLISHED only, public_ref ASC tie-break) without UCR-110-001 or Operation ID なし",
-        "startCartPurchase cites API-PUR-CART-001 (all-or-nothing, API-CHK-001 hand-off) without UCR-110-001 or Operation ID なし; only listEntryOfferings and resolveCartLines stay marked UCR-110-001 until B4b"
+        "startCartPurchase cites API-PUR-CART-001 (all-or-nothing, API-CHK-001 hand-off) without UCR-110-001 or Operation ID なし",
+        "listEntryOfferings cites API-PUB-005 and resolveCartLines cites API-PUB-005 / API-PUB-010 / API-PUB-011 as public reads that point to getPurchaseEligibility; getPurchaseEligibility cites API-PUR-ELG-001 as owner-scoped, read-only, no-store and not a reservation"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -1523,7 +1533,7 @@
       "test_case_id": "TC-DEV-WEB-013-101",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["DEV-WEB-013", "DEV-TS-004", "TST-UNT-004"],
+      "upstream_rule_ids": ["DEV-WEB-013", "DEV-TS-004", "TST-UNT-004", "API-PUR-ELG-001"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -1534,7 +1544,8 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "every switch has its documented default; schema is strict at every level; notification accepts exactly sent / pending / failed_retryable / canceled / summary_unavailable (the simulated internal state), rejects the summary statuses, and round-trips through storage; sponsorLogos accepts image_disallowed_origin"
+        "every switch has its documented default; schema is strict at every level; notification accepts exactly sent / pending / failed_retryable / canceled / summary_unavailable (the simulated internal state), rejects the summary statuses, and round-trips through storage; sponsorLogos accepts image_disallowed_origin",
+        "cart.state accepts exactly ok / fail / partial / eligibility_fail (default ok) and round-trips eligibility_fail through storage"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -1667,7 +1678,13 @@
       "test_case_id": "TC-PAY-BRW-001-102",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PAY-BRW-001", "PAY-BRW-003", "BR-ORD-016", "TST-UNT-004"],
+      "upstream_rule_ids": [
+        "PAY-BRW-001",
+        "PAY-BRW-003",
+        "BR-ORD-016",
+        "TST-UNT-004",
+        "API-PUR-ELG-001"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -1678,7 +1695,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "outcome changes only through the scenario; failure outcomes release allocations; review / awaiting hold them"
+        "outcome changes only through the scenario; failure outcomes (payment_failed, expire, cancel) release allocations: stored remaining regular 10 and tshirt 20, getPurchaseEligibility maxPurchasableQuantity for regular 4; confirm / remain_awaiting / review_required hold them: stored remaining regular 8 and tshirt 19, maxPurchasableQuantity 2"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -1710,21 +1727,50 @@
       "critical": false
     },
     {
-      "test_case_id": "TC-PG-CRT-001-101",
+      "test_case_id": "TC-PG-CRT-001-004",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-005", "TST-UNT-004"],
+      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-005", "API-PUR-ELG-001", "TST-UNT-004"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "resolveCartLines; contract tests/contracts/s2-mock-backend.md; UI mock test double (not API/DB/Provider coverage)",
+      "preconditions": "Pure presentPurchaseReasons over owner-scoped eligibility answers; contract tests/contracts/s1-presentation.md",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "the label follows the first reason and every description is listed in order (an INSUFFICIENT_QUANTITY description carries the maximum); a single reason is presented exactly like the rejection reason of startCartPurchase; a non-empty reason list is never on sale and never success; an empty reason list falls back to the cannot-confirm presentation and is never purchasable; the input is not mutated"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-CRT-001-101",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "PG-CRT-001",
+        "FR-CRT-005",
+        "TST-UNT-004",
+        "API-PUB-005",
+        "API-PUR-ELG-001"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "resolveCartLines for guest, demo, new user and a broken session; contract tests/contracts/s2-mock-backend.md; UI mock test double (not API/DB/Provider coverage)",
       "fixture_ids": ["MOCK-SEED-PUBLIC"],
       "clock_instant": "2027-03-01T03:00:00Z",
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "per-line availability including the 7 reasons, not_public and per-account quota"
+        "per-line public availability including the 7 public reasons and not_public; the answer does not depend on the viewer (no per-account quota, a broken session does not make it unavailable); the owner-scoped limit is read only through getPurchaseEligibility"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -1736,7 +1782,7 @@
       "test_case_id": "TC-PG-CRT-001-102",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-CRT-001", "TST-UNT-004"],
+      "upstream_rule_ids": ["PG-CRT-001", "TST-UNT-004", "API-PUR-ELG-001"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -1747,7 +1793,8 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "fail -> unavailable (not empty); partial -> first line unavailable"
+        "fail -> unavailable (not empty); partial -> first line unavailable",
+        "eligibility_fail leaves resolveCartLines (the public read) untouched and makes only getPurchaseEligibility fail with unavailable"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -1759,7 +1806,13 @@
       "test_case_id": "TC-PG-CRT-001-103",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-CRT-001", "FR-XFN-012", "TST-UNT-004", "API-PUR-CART-001"],
+      "upstream_rule_ids": [
+        "PG-CRT-001",
+        "FR-XFN-012",
+        "TST-UNT-004",
+        "API-PUR-CART-001",
+        "API-PUR-ELG-001"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -1770,7 +1823,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "same key and same content (in any line order): the same orderRef, no second Order, no second allocation, no new id, stored state unchanged",
+        "same key and same content (in any line order): the same orderRef, no second Order, no second allocation (stored remaining regular stays 8 and getPurchaseEligibility maxPurchasableQuantity stays 2), no new id, stored state unchanged",
         "same key with different content (quantity, added line, other item): the promise rejects and nothing is created",
         "a replay whose recorded Order cannot be found is refused: the promise rejects, stored state and ids are unchanged",
         "key is user-scoped; rejections are not memoized"
@@ -1798,6 +1851,40 @@
       "expected_domain_postconditions": [
         "no lines, 51 lines, a duplicate line key or a quantity outside 1..2147483647 reject the promise and change nothing",
         "50 lines and quantity 2147483647 are business results: an unknown ref is NOT_PUBLIC_OR_NOT_FOUND, an excess quantity INSUFFICIENT_QUANTITY"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-CRT-001-105",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "PG-CRT-001",
+        "FR-CRT-005",
+        "AR-AZ-011",
+        "SEC-API-029",
+        "API-PUR-ELG-001",
+        "TST-UNT-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "getPurchaseEligibility for guest, unverified user, broken session, verified users and the eligibility_fail scenario; contract tests/contracts/s2-mock-backend.md; UI mock test double (not API/DB/Provider coverage)",
+      "fixture_ids": ["MOCK-SEED-PUBLIC", "MOCK-SEED-DEMO"],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "guest -> auth_required, unverified -> email_unverified, broken session -> unavailable, checked before the eligibility_fail scenario (a guest never sees unavailable); a verified user gets one { purchasable, reasons, maxPurchasableQuantity } per item in input order with purchasable === (reasons.length === 0)",
+        "the quota counts the signed-in account only; maximum 0 with the reason outside the sales window and when sold out; a non-public item and an unknown ref are identical (NOT_PUBLIC_OR_NOT_FOUND alone, maximum 0); reasons keep the canonical order and match what the purchase start would reject for the same lines",
+        "50 lines and quantity 2147483647 are business answers; empty input, more than 50 lines, quantity outside 1..2147483647 and a duplicate cartLineKey reject with a RangeError",
+        "the read is not a reservation: the mock DB fingerprint, the stored keys and values, the write log and the id count are unchanged, no idempotency record appears and no id is drawn; only a purchase start takes the allocation",
+        "cart.state = eligibility_fail makes a verified user's read unavailable while resolveCartLines still works; a corrupted stored scenario also answers unavailable and writes nothing"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -2445,18 +2532,18 @@
       "test_case_id": "TC-PG-TKT-001-102",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-TKT-001", "UCR-110-001", "TST-UNT-004"],
+      "upstream_rule_ids": ["PG-TKT-001", "API-PUB-005", "API-PUR-ELG-001", "TST-UNT-004"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "Entry offerings for guest / demo / new user; contract tests/contracts/s2-mock-backend.md; UI mock test double (not API/DB/Provider coverage)",
+      "preconditions": "Entry offerings for guest / demo / new user and a broken session; contract tests/contracts/s2-mock-backend.md; UI mock test double (not API/DB/Provider coverage)",
       "fixture_ids": ["MOCK-SEED-DEMO"],
       "clock_instant": "2027-03-01T03:00:00Z",
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "PURCHASE_LIMIT_EXCEEDED only for the viewer who used the limit"
+        "listEntryOfferings is a public read that does not depend on the viewer: guest, demo, new user and a broken session see the same offerings and the same states, and PURCHASE_LIMIT_EXCEEDED never appears in it; the per-account limit of the owner is read only through getPurchaseEligibility"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -2468,7 +2555,13 @@
       "test_case_id": "TC-PG-XFN-001-102",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-XFN-001", "SPEC-050-16.6", "SPEC-050-21", "TST-UNT-004"],
+      "upstream_rule_ids": [
+        "PG-XFN-001",
+        "SPEC-050-16.6",
+        "SPEC-050-21",
+        "TST-UNT-004",
+        "API-PUR-ELG-001"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -2479,7 +2572,8 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "Order stays PREPARED and the retry reuses the same Order (no new Order)"
+        "Order stays PREPARED and the retry reuses the same Order (no new Order)",
+        "the allocation stays held after start_failed: stored remaining regular 8 and tshirt 19; getPurchaseEligibility maxPurchasableQuantity for regular 2"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -2491,7 +2585,13 @@
       "test_case_id": "TC-PG-XFN-001-103",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-XFN-001", "BR-ORD-016", "SPEC-050-16.4", "TST-UNT-004"],
+      "upstream_rule_ids": [
+        "PG-XFN-001",
+        "BR-ORD-016",
+        "SPEC-050-16.4",
+        "TST-UNT-004",
+        "API-PUR-ELG-001"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -2502,7 +2602,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "Order EXPIRED, allocations released, later checkout is state_conflict"
+        "Order EXPIRED, allocations released (stored remaining regular 8 -> 10 and tshirt 19 -> 20; getPurchaseEligibility maxPurchasableQuantity for regular 2 -> 4), later checkout is state_conflict"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -3089,7 +3189,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "scenario control list covers every scenario switch and matches the S2 zod schema values"
+        "scenario control list covers every scenario switch and matches the S2 zod schema values (cart.state includes eligibility_fail)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -3900,7 +4000,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "every scenario switch (including the five notification values) has a labelled control with exactly the schema values and is persisted immediately to r39x.mock.scenario.v1; a change survives reload and drives the footer sponsor area; invalid latencyLongMs is not persisted"
+        "every scenario switch (including the five notification values and cart.state eligibility_fail) has a labelled control with exactly the schema values and is persisted immediately to r39x.mock.scenario.v1; a change survives reload and drives the footer sponsor area; invalid latencyLongMs is not persisted"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -5897,6 +5997,30 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-PG-CRT-001-433",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-005", "API-PUR-ELG-001", "TST-UNT-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Pure canProceed with resolved lines and an eligibility state (loading / failed / ok / not applicable)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "proceeding is enabled only when every line is on sale publicly and the owner-scoped eligibility says purchasable with a maximum that covers the quantity; while the eligibility loads or when it failed, the lines are unconfirmed and proceeding is blocked (counted once as unresolved, never as purchasable)",
+        "the first reason of a line the eligibility refuses is named per line in Cart order; a purchasable line without an eligibility entry is unknown; a line that is not purchasable publicly keeps its public reason whatever the eligibility says; inputs are not mutated"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-PG-CRT-001-441",
       "level": "Unit",
       "suite": "unit",
@@ -6008,6 +6132,38 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-PG-CRT-001-446",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "PG-CRT-001",
+        "FR-CRT-005",
+        "API-PUR-ELG-001",
+        "TST-UNT-004",
+        "SEC-API-029",
+        "DEV-WEB-007"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Pure buildCartPageModel with resolutions and an eligibility state (loading / failed / ok / not applicable)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "the model is loading while the first eligibility is read; when it failed, names and amounts stay, unconfirmed lines say so and proceeding is blocked with only the unknown reason; once ok, each line is shown from its own answer (on sale with the maximum, or all of its reasons); an unconfirmed line is never shown as on sale",
+        "the eligibility is ignored in the states that come before it: corrupted, empty, loading and failed resolutions",
+        "while the lines or the session are re-read, a pending eligibility keeps the rows with their public parts (name, kind, quantity, prices, total) and shows the publicly open lines as 'cannot confirm', never on sale, with proceeding blocked; a line missing from the given eligibility (its quantity changed) is 'cannot confirm' while a line still in it keeps its answer"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-PG-CRT-001-451",
       "level": "Unit",
       "suite": "unit",
@@ -6045,7 +6201,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "no purchase operation, Order creation, idempotency key or navigation in the Entry or Goods detail UI, the add form or the Cart store; handleProceed seam present (the Cart page is covered by S7a)"
+        "no purchase operation, Order creation, idempotency key or navigation in the Entry or Goods detail UI, the add form or the Cart store (the Entry page may call only the read-only getPurchaseEligibility on the purchase port); the Goods detail page and the Cart store do not read the eligibility; handleProceed seam present (the Cart page is covered by S7a)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -6068,7 +6224,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "exactly one strict stored-Cart body schema; a separate FR-CRT-012 provenance metadata schema may validate metadata but cannot redefine Cart lines; no price / stock / owner field; no Karaoke or session in the store and Cart UI (the store knows no account; Logout clearing lives in the shell)"
+        "exactly one strict stored-Cart body schema; a separate FR-CRT-012 provenance metadata schema may validate metadata but cannot redefine Cart lines; no price / stock / owner field; no Karaoke or session in the store and Cart UI (the store knows no account; Logout clearing lives in the shell); no eligibility answer in the stored Cart, and no feature or presentation source that mentions the eligibility touches localStorage, sessionStorage, indexedDB, caches or cookies"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -6090,7 +6246,9 @@
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
-      "expected_domain_postconditions": ["S5 modules and routes exist at the contracted paths"],
+      "expected_domain_postconditions": [
+        "S5 modules and routes exist at the contracted paths, including src/features/purchase/eligibility-model.ts"
+      ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
       "expected_observability": [],
@@ -6135,7 +6293,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "containers are client components that read through useApi after mount; Header and Cart page share one store"
+        "containers are client components that read through useApi after mount; Header and Cart page share one store; the Cart page and the Entry page read the owner-scoped eligibility through useApi().purchase only for a verified session, decided by eligibilityMode and re-read with the session; the eligibility model is pure and persists nothing"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -6205,6 +6363,30 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "equal states are the same; a changed status, kind, email or emailVerified is a change; the relation is symmetric"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-TKT-001-413",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-TKT-001", "FR-TKT-026", "API-PUR-ELG-001", "TST-UNT-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Pure buildEntryModel with public offerings and an eligibility state (loading / failed / ok / not applicable)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "an offering that is on sale publicly can be added with the smaller of the public maximum and the owner's maximum when the eligibility says purchasable; when it refuses, its reasons are shown and add is disabled; an unconfirmed offering is never shown as on sale",
+        "an offering that is not on sale publicly stays as it is whatever the eligibility says; the per-account limit text input, the order and the price are kept; loading, empty and unavailable are kept and inputs are not mutated"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -6502,6 +6684,40 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "an overflowing add shows the overflow alert, not the storage-failure wording, no success notice; stored Cart and Header count unchanged; a storage failure keeps its own wording"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-TKT-001-511",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-TKT-001",
+        "FR-TKT-026",
+        "SEC-API-029",
+        "API-PUR-ELG-001",
+        "DEV-WEB-007"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock mode; Entry sales page; verified, unverified and Guest sessions; cart.state eligibility_fail; second tab changes the session; scenario latency long (5000 ms) written after the first display for the in-between checks",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "a verified user whose eligibility cannot be read cannot add the open offerings while the others keep their public state; a retry recovers without a reload and shows the owner's own limit and the open offering",
+        "after a reload with a working eligibility the owner sees their own limit and may add the open offering; nothing owner-specific is stored in localStorage or sessionStorage",
+        "a Guest and an unverified user get the public state only: the eligibility is not read, so its failure is invisible",
+        "a session change in another tab turns the eligibility on and off without a reload; the previous owner's answer does not stay",
+        "from a session change (Guest to verified, or to another verified user) until the re-read completes, the publicly open offerings are 'cannot confirm' with add disabled and no quantity guidance, never on sale and never the previous owner's purchase-limit answer; no alert; the list does not return to loading",
+        "after a switch from a verified owner to Guest the previous owner's purchase-limit answer is gone at once and add follows the public state"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -6939,6 +7155,41 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "the limit line changes to purchase-limit-exceeded and the proceed button is disabled with the blocked reason, and back, without a reload; stored Cart and Header count unchanged"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-CRT-001-514",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-CRT-001",
+        "FR-CRT-005",
+        "SEC-API-029",
+        "DEV-WEB-007",
+        "API-PUR-ELG-001"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock mode; Cart page with several lines; verified, unverified and Guest sessions; cart.state eligibility_fail; second tab changes the session; scenario latency long (5000 ms) written after the first display for the in-between checks",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "a verified user whose eligibility cannot be read sees 'cannot confirm' for the lines open publicly, keeps the public reason of the rest and cannot proceed; a retry recovers without a reload",
+        "once the eligibility works, the owner's own limit and the open line on sale are shown; nothing owner-specific (eligibility, purchasable, maximum, reasons) is stored in localStorage or sessionStorage",
+        "a Guest and an unverified user get the public conditions only: the eligibility is not read, so its failure is invisible",
+        "a session change in another tab turns the eligibility on and off without a reload; the previous owner's answer does not stay",
+        "from a session change (Guest to verified, or to another verified user) until the re-read completes, the publicly open lines are 'cannot confirm', never on sale and never the previous owner's purchase-limit answer; no alert; names and amounts stay; proceeding is disabled with the unknown reason",
+        "after a switch from a verified owner to Guest the previous owner's purchase-limit answer is gone at once and the public state is shown while proceeding stays disabled until the public re-read completes",
+        "a verified owner who changes a quantity sees that line as 'cannot confirm' until it is re-read for the new quantity, while an unchanged line keeps its answer and the field keeps focus and value"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -8513,6 +8764,41 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "each Purpose maps to its entitlement list path; composite leads with Entry Tickets"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-CRT-001-625",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "PG-CRT-001",
+        "FR-CRT-005",
+        "SEC-API-029",
+        "DEV-WEB-007",
+        "API-PUR-ELG-001",
+        "TST-UNT-004",
+        "PG-TKT-001"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Pure eligibilityMode / eligibilityTargets / toEligibilityInput / findEligibility / eligibilityForSession / eligibilityForLines over session states, public resolutions and eligibility answers",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "only a verified Authenticated User reads the eligibility: loading waits, guest and unverified users never trigger a read (the public conditions only), an undeterminable session fails closed without a call",
+        "only lines that are on sale publicly and fit the public maximum are sent, in Cart order; not-public, unavailable, not-on-sale, over-maximum, purchase-limit and quantity-shortage lines and lines without a resolution are dropped",
+        "anything but an ok answer is a failure (never 'under the limit'); an item is found by its line key only in an ok answer; inputs and answers are not mutated",
+        "an answer is used only under the session state it was read for: for a verified user a different, missing or merely equal session state gives loading and never the previous answer; Guest and unverified give not_applicable, an undeterminable session gives unavailable and a loading session gives loading",
+        "of an ok answer only the items whose line is still in the Cart with the quantity it was read for are kept, in their order; other answers are returned as they are; inputs are not mutated"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],

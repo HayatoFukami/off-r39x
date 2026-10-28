@@ -23,6 +23,7 @@ import type {
   OrderSummary,
   Profile,
   ProfileUpdate,
+  PurchaseEligibilityRead,
   QrPresentation,
   Read,
   Ref,
@@ -30,8 +31,6 @@ import type {
   ReservationSummary,
   SponsorLogo,
 } from "./types";
-
-// Methods without an Operation ID (Operation ID なし) cite UCR-110-001. No Operation ID is invented here.
 
 export interface PublicApi {
   /** API-PUB-001 */
@@ -44,7 +43,7 @@ export interface PublicApi {
   getAnnouncement(ref: Ref<"announcement">): Promise<Read<Announcement>>;
   /** API-PUB-012 (PUBLISHED only, sort_order ASC then public_ref ASC) */
   listSponsorLogos(): Promise<Read<readonly SponsorLogo[]>>;
-  /** API-PUB-005 plus the viewer-specific Purchase Limit result: Operation ID なし (UCR-110-001) */
+  /** API-PUB-005 (public sale data only; owner conditions come from getPurchaseEligibility) */
   listEntryOfferings(): Promise<Read<readonly EntryOffering[]>>;
   /** API-PUB-006 */
   getKaraokeSales(): Promise<Read<KaraokeSales>>;
@@ -56,7 +55,7 @@ export interface PublicApi {
   listGoods(): Promise<Read<readonly GoodsSummary[]>>;
   /** API-PUB-011 */
   getGoods(ref: Ref<"goods">): Promise<Read<GoodsDetail>>;
-  /** Composition of API-PUB-005, API-PUB-010 and API-PUB-011 plus UCR-110-001: Operation ID なし */
+  /** Composition of API-PUB-005, API-PUB-010 and API-PUB-011 (public conditions only; owner conditions come from getPurchaseEligibility) */
   resolveCartLines(lines: readonly CartLine[]): Promise<Read<readonly CartLineResolution[]>>;
 }
 
@@ -66,6 +65,8 @@ export interface PurchaseApi {
     lines: readonly CartLine[],
     o: { idempotencyKey: string },
   ): Promise<CartPurchaseStart>;
+  /** API-PUR-ELG-001 (owner-scoped read-only snapshot; private, no-store; not a reservation: re-verified at purchase start) */
+  getPurchaseEligibility(lines: readonly CartLine[]): Promise<PurchaseEligibilityRead>;
   /** API-PUR-KRK-001 */
   startKaraokePurchase(
     slot: Ref<"slot">,

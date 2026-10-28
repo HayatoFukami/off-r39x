@@ -31,7 +31,7 @@ const CONTROLS: readonly Control[] = [
   select("latency", "none", "long"),
   { path: "latencyLongMs", kind: "number" },
   select("sponsorLogos", "published", "none", "fail", "image_broken", "image_disallowed_origin"),
-  select("cart.state", "ok", "fail", "partial"),
+  select("cart.state", "ok", "fail", "partial", "eligibility_fail"),
   select("cart.purchaseStart", "ok", "reject_one", "limit", "unavailable"),
   select("checkout", "ok", "start_failed", "opportunity_expired"),
   select("karaokeHold", "ok", "conflict", "limit", "expire_before_checkout"),

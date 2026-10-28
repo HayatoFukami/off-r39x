@@ -74,6 +74,20 @@ export type CartPurchaseStart =
   | { kind: "email_unverified" }
   | { kind: "unavailable" };
 
+/** API-PUR-ELG-001 item, mapped to the UI line key. purchasable === (reasons.length === 0). */
+export type PurchaseEligibility = {
+  lineKey: string;
+  purchasable: boolean;
+  reasons: readonly PurchaseReason[];
+  maxPurchasableQuantity: number;
+};
+
+export type PurchaseEligibilityRead =
+  | { kind: "ok"; data: readonly PurchaseEligibility[] } // input order
+  | { kind: "auth_required" }
+  | { kind: "email_unverified" }
+  | { kind: "unavailable" };
+
 export type KaraokePurchaseStart =
   | { kind: "held"; orderRef: Ref<"order"> }
   | { kind: "slot_unavailable" }

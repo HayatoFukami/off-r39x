@@ -23,7 +23,7 @@
 | `apps/web/src/presentation/state-mapping/karaoke.ts` | `SlotPresentation`, `HoldPresentation`, `ReservationTicketPresentation`, `presentSlot`, `presentHold`, `presentReservationTicket` |
 | `apps/web/src/presentation/state-mapping/goods.ts` | `GoodsItemPresentation`, `presentGoodsItem` |
 | `apps/web/src/presentation/state-mapping/notification.ts` | `NotificationPresentation`, `presentNotificationSummary` |
-| `apps/web/src/presentation/state-mapping/availability.ts` | `AvailabilityInput`, `AvailabilityPresentation`, `RejectionPresentation`, `presentAvailability`, `presentRejectionReason` |
+| `apps/web/src/presentation/state-mapping/availability.ts` | `AvailabilityInput`, `AvailabilityPresentation`, `RejectionPresentation`, `presentAvailability`, `presentRejectionReason`, `presentPurchaseReasons`（B4b。§11.1） |
 
 relative import は拡張子なしでも `.ts` 付きでもよい（Vitest と `tests` の `tsc` の両方で解決できること）。`Tone` は `order.ts` で定義し、他の state-mapping は `import type { Tone } from "./order"` する。
 
@@ -492,3 +492,20 @@ export function presentRejectionReason(reason: PurchaseReason): RejectionPresent
 - `SLOT_UNAVAILABLE` / `PAYMENT_WINDOW_TOO_SHORT` は Karaoke 専用で Cart では生じないが、型と表示は 9 code すべてを持つ。
 - 9 つの label はすべて互いに異なる。未知の値（退役した `ALLOCATION_CONFLICT`、旧名の `NOT_PUBLIC` / `BEFORE_SALES` / `SALES_ENDED` / `SUSPENDED` を含む）は `Unexpected value` で投げる。
 - 辞書（`copy.availability.label` / `description`）は `ALLOCATION_CONFLICT` を持たない。
+
+### 11.1 `presentPurchaseReasons`（B4b。本人向け判定 `API-PUR-ELG-001` の理由）
+
+SPEC-050 §14A.1（Cart Item の購入不可理由）、§12.1、FR-CRT-005、TC-PG-CRT-001-004。
+
+```ts
+export function presentPurchaseReasons(
+  reasons: readonly PurchaseReason[],
+  maxPurchasableQuantity: number,
+): AvailabilityPresentation;
+```
+
+- `reasons` が空 → `presentAvailability({ kind: "unavailable" })` と等しい（防御。`purchasable: false`。空の理由を購入可と読まない。`maxPurchasableQuantity` を問わない）。
+- それ以外は `purchasable: false`。`label` は**先頭の理由**の label（`presentRejectionReason` と同じ）。`description` は**各理由の description を受け取った順に半角スペース 1 つで連結**したもの（理由を統合・除外・1 件に減らさない）。ただし `INSUFFICIENT_QUANTITY` の description は、`maxPurchasableQuantity >= 1` のとき `copy.availability.insufficientQuantity(String(max))`（数量変更を促す動的文言）、`0` のときは辞書の静的な `INSUFFICIENT_QUANTITY` を使う。
+- `tone`: 先頭の理由が `INSUFFICIENT_QUANTITY` なら `failure`、それ以外は `neutral`。`success` は返さない。ON_SALE の label を返さない。
+- 理由が 1 件のとき（`INSUFFICIENT_QUANTITY` を除く）は `presentRejectionReason(reason)` と label・description が同じ。
+- 入力（`reasons` が frozen でも）を変更しない。

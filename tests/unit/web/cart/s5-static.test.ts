@@ -44,6 +44,7 @@ const MODULES = [
   "src/features/cart/cart-page.tsx",
   "src/features/entry/entry-model.ts",
   "src/features/entry/entry-page.tsx",
+  "src/features/purchase/eligibility-model.ts",
   "src/features/goods/goods-detail-model.ts",
   "src/features/goods/goods-detail-page.tsx",
 ] as const;
@@ -128,6 +129,27 @@ describe("TC-DEV-WEB-001-403 the S5 containers read through the port after mount
     });
   }
 
+  for (const path of ["src/features/cart/cart-page.tsx", "src/features/entry/entry-page.tsx"]) {
+    it(`${path} reads the owner-scoped eligibility through useApi() only for a verified session, and re-reads it with the session (API-PUR-ELG-001, SEC-API-029, SPEC-050 12.1 / 26.2)`, () => {
+      const source = stripComments(read(path));
+      expect(source).toMatch(/\.purchase\.getPurchaseEligibility\s*\(/);
+      expect(source).toMatch(/\beligibilityMode\s*\(/);
+      expect(source).toMatch(/eligibility-model/);
+      // The session (not a local flag) decides whether the eligibility is read, so a session change re-reads it.
+      expect(source).toMatch(/\buseSession\s*\(/);
+      expect(source).not.toMatch(/\b(fetch|localStorage|sessionStorage|setItem)\b/);
+    });
+  }
+
+  it("the eligibility model is pure: no React, no storage, no port or mock import (it only maps a session and answers)", () => {
+    const source = stripComments(read("src/features/purchase/eligibility-model.ts"));
+    expect(source).not.toBe("");
+    expect(source).not.toMatch(/from\s+["']react["']/);
+    expect(source).not.toMatch(/from\s+["'][^"']*\/mock\//);
+    expect(source).not.toMatch(/\b(fetch|localStorage|sessionStorage|setItem|useApi|useSession)\b/);
+    expect(source).not.toMatch(/\bconsole\s*\./);
+  });
+
   it("the Header count and the Cart page share one store (same-tab updates, SPEC-050 8.5)", () => {
     expect(stripComments(read("src/features/cart/use-cart-count.ts"))).toMatch(
       /cart-store|use-cart/,
@@ -150,9 +172,31 @@ describe("TC-PG-CRT-001-461 the Entry / Goods detail UI and the Cart store start
     "src/features/cart/cart-store.ts",
   ]) {
     it(`${path} does not call a purchase operation, create an Order or navigate away`, () => {
-      expect(stripComments(read(path)), path).not.toMatch(forbidden);
+      // The Entry page may call the read-only eligibility (API-PUR-ELG-001); it is not a purchase operation.
+      const source = stripComments(read(path)).replace(
+        /\.purchase\.getPurchaseEligibility\b/g,
+        ".eligibilityRead",
+      );
+      expect(source, path).not.toMatch(forbidden);
     });
   }
+
+  it("the Entry page calls nothing but the read-only eligibility on the purchase port", () => {
+    const calls = [
+      ...stripComments(read("src/features/entry/entry-page.tsx")).matchAll(/\.purchase\.(\w+)/g),
+    ].map((match) => match[1]);
+    expect(calls.length).toBeGreaterThan(0);
+    expect(new Set(calls)).toEqual(new Set(["getPurchaseEligibility"]));
+  });
+
+  it("the Goods detail page and the Cart store do not read the eligibility (out of scope of B4b: Goods detail and Karaoke Slot wait for a decision)", () => {
+    for (const path of [
+      "src/features/goods/goods-detail-page.tsx",
+      "src/features/cart/cart-store.ts",
+    ]) {
+      expect(stripComments(read(path)), path).not.toMatch(/getPurchaseEligibility/);
+    }
+  });
 
   it("the Cart page keeps a single seam for the purchase start: handleProceed", () => {
     expect(stripComments(read("src/features/cart/cart-page.tsx"))).toMatch(/handleProceed/);
@@ -181,6 +225,23 @@ describe("TC-PG-CRT-001-462 the Cart holds references and quantities only and ca
     expect(code).not.toMatch(
       /\b(unitPrice|price|amount|currency|remaining|stock|availability|owner|email)\b/i,
     );
+    // An owner-scoped eligibility answer is never part of the stored Cart (SEC-API-029, DEV-WEB-007).
+    expect(code).not.toMatch(/eligib|purchasable|reasons/i);
+  });
+
+  it("no feature or presentation source persists an eligibility answer: it stays in memory and is re-read (SEC-API-029, DEV-WEB-007, SPEC-050 26.2)", () => {
+    const files = [...walk(abs("src/features")), ...walk(abs("src/presentation"))].filter((f) =>
+      /\.(ts|tsx)$/.test(f),
+    );
+    expect(files.length).toBeGreaterThan(10);
+    for (const file of files) {
+      const code = stripComments(readFileSync(file, "utf8"));
+      const mentionsEligibility = /eligib/i.test(code);
+      if (!mentionsEligibility) continue;
+      expect(code, rel(file)).not.toMatch(
+        /\b(localStorage|sessionStorage|indexedDB|caches|document\.cookie)\b|\.setItem\s*\(/,
+      );
+    }
   });
 
   it("the store, the hooks and the Cart UI never mention Karaoke (Karaoke cannot be added, by type and by schema)", () => {

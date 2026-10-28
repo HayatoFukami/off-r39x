@@ -85,6 +85,13 @@ describe("TC-PG-CRT-001-451 copy carries the SPEC-050 fixed Cart wording", () =>
     expect(copy.entry.perAccountLimit(2)).not.toBe(copy.entry.perAccountLimit(4));
   });
 
+  it("names the eligibility failure of the Entry page as a purchase condition, not as the sales information (API-PUR-ELG-001, SPEC-050 12.1 / 21)", () => {
+    const subject = copy.entry.eligibilitySubject;
+    expect(subject).toBe("購入条件");
+    expect(copy.pageState.unavailable(subject)).toBe("購入条件を取得できません");
+    expect(subject).not.toBe(copy.entry.subject);
+  });
+
   it("states the venue pickup without any shipping field wording (SPEC-050 14.2)", () => {
     expect(copy.goods.detail.pickupNotice).toContain("会場");
     expect(copy.goods.detail.pickupNotice).not.toMatch(/配送先|住所|配送業者|配送追跡|お届け/);

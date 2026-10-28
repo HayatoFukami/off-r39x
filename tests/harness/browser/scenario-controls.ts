@@ -16,7 +16,11 @@ export const SCENARIO_CONTROLS: readonly ScenarioControl[] = [
     kind: "select",
     values: ["published", "none", "fail", "image_broken", "image_disallowed_origin"],
   },
-  { path: "cart.state", kind: "select", values: ["ok", "fail", "partial"] },
+  {
+    path: "cart.state",
+    kind: "select",
+    values: ["ok", "fail", "partial", "eligibility_fail"],
+  },
   {
     path: "cart.purchaseStart",
     kind: "select",
