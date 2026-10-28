@@ -345,7 +345,7 @@ describe("TC-PG-CRT-001-446 the Cart page model shows the owner-scoped eligibili
   });
   const unknown = presentAvailability({ kind: "unavailable" });
 
-  it("is loading while the eligibility is being read (the resolutions alone are not enough)", () => {
+  it("is loading while the first eligibility is read (no rows before any answer; the resolutions alone are not enough)", () => {
     const model = buildCartPageModel(
       input({
         cart: ready(lines),
@@ -493,18 +493,66 @@ describe("TC-PG-CRT-001-446 the Cart page model shows the owner-scoped eligibili
     expect(model.proceed.canProceed).toBe(false);
   });
 
-  it("keeps the previous rows and blocks proceeding while the lines are re-read, with the eligibility too", () => {
-    const base = {
-      cart: ready([e, g]),
-      resolutions: ok([resolved(e, "Regular", "3000"), resolved(g, "Towel", "1800")]),
-      eligibility: { kind: "ok", data: [eligible(e), eligible(g)] } as const,
-    };
-    const settled = buildCartPageModel(input({ ...base, refreshing: false }));
-    const refreshing = buildCartPageModel(input({ ...base, refreshing: true }));
-    if (settled.kind !== "ready" || refreshing.kind !== "ready") throw new Error("expected ready");
-    expect(settled.proceed).toEqual({ canProceed: true });
-    expect(refreshing.rows).toEqual(settled.rows);
-    expect(refreshing.proceed).toEqual({ canProceed: false, reasons: [{ kind: "unresolved" }] });
+  it("while the lines or the session are re-read and the owner's answer is pending, the rows keep their public parts and the open lines are 'cannot confirm', never on sale; proceeding is blocked", () => {
+    const cart = ready([e, g, soon]);
+    const resolutions = ok(publicResolutions());
+    const settled = buildCartPageModel(
+      input({
+        cart,
+        resolutions,
+        eligibility: { kind: "ok", data: [eligible(e), eligible(g)] },
+        refreshing: false,
+      }),
+    );
+    const pending = buildCartPageModel(
+      input({ cart, resolutions, eligibility: { kind: "loading" }, refreshing: true }),
+    );
+    if (settled.kind !== "ready") throw new Error("expected the settled model to be ready");
+    // Not the page-wide loading: the rows stay (B4b-F-1, SPEC-050 12.1 'do not guess while pending').
+    expect(pending.kind).toBe("ready");
+    if (pending.kind !== "ready") return;
+    expect(pending.rows).toHaveLength(3);
+    pending.rows.forEach((row, index) => {
+      const before = settled.rows[index];
+      expect(row.lineKey).toBe(before?.lineKey);
+      expect(row.kind).toBe(before?.kind);
+      expect(row.kindLabel).toBe(before?.kindLabel);
+      expect(row.quantity).toBe(before?.quantity);
+      expect(row.name).toBe(before?.name);
+      expect(row.unitPriceText).toBe(before?.unitPriceText);
+      expect(row.subtotalText).toBe(before?.subtotalText);
+    });
+    expect(pending.totalText).toBe(settled.totalText);
+    for (const index of [0, 1]) {
+      const status = pending.rows[index]?.status;
+      expect(status).toEqual(unknown);
+      expect(status?.label).not.toBe(copy.availability.label.ON_SALE);
+      expect(status?.purchasable).toBe(false);
+    }
+    // The line that is not open publicly keeps its public state (with the start date).
+    expect(pending.rows[2]?.status).toEqual(
+      presentAvailability({ kind: "BEFORE_SALES", startsAt: SOON }),
+    );
+    expect(pending.proceed).toEqual({ canProceed: false, reasons: [{ kind: "unresolved" }] });
+  });
+
+  it("while re-reading, a line shows only what the given eligibility says: a line missing from it (its quantity changed) is 'cannot confirm', a line still in it keeps its answer", () => {
+    const model = buildCartPageModel(
+      input({
+        cart: ready([e, g]),
+        resolutions: ok([resolved(e, "Regular", "3000"), resolved(g, "Towel", "1800")]),
+        eligibility: { kind: "ok", data: [eligible(g)] },
+        refreshing: true,
+      }),
+    );
+    expect(model.kind).toBe("ready");
+    if (model.kind !== "ready") return;
+    expect(model.rows[0]?.status).toEqual(unknown);
+    expect(model.rows[1]?.status).toEqual(
+      presentAvailability({ kind: "ON_SALE", maxSelectableQuantity: 4 }),
+    );
+    expect(model.rows[1]?.status.label).toBe(copy.availability.label.ON_SALE);
+    expect(model.proceed).toEqual({ canProceed: false, reasons: [{ kind: "unresolved" }] });
   });
 
   it("does not mutate the eligibility input", () => {

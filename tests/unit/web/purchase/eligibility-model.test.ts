@@ -10,7 +10,12 @@ import type {
   UtcInstant,
 } from "../../../../apps/web/src/api-client/types.ts";
 import type { SessionState } from "../../../../apps/web/src/auth/use-session.ts";
+import type { EligibilityInput } from "../../../../apps/web/src/features/purchase/eligibility-model.ts";
 import * as model from "../../../../apps/web/src/features/purchase/eligibility-model.ts";
+import {
+  eligibilityForLines,
+  eligibilityForSession,
+} from "../../../../apps/web/src/features/purchase/eligibility-model.ts";
 
 // Contract: tests/contracts/s5-cart.md section 3.3 (eligibility-model.ts; SPEC-110 API-PUR-ELG-001,
 // SPEC-050 12.1 / 14A.1 / 26.2, SEC-API-029, DEV-WEB-007). Pure functions: no React, no storage.
@@ -172,5 +177,198 @@ describe("TC-PG-CRT-001-625 toEligibilityInput and findEligibility: anything but
   it("does not mutate the answer", () => {
     const frozen = Object.freeze(items.map((item) => Object.freeze({ ...item })));
     expect(model.toEligibilityInput({ kind: "ok", data: frozen }).kind).toBe("ok");
+  });
+});
+
+describe("TC-PG-CRT-001-625 eligibilityForSession: an answer is used only under the session state it was read for (B4b-F-1, SEC-API-029, SPEC-050 12.1)", () => {
+  const previousOwner: EligibilityInput = {
+    kind: "ok",
+    data: [
+      {
+        lineKey: "ENTRY_TICKET:limit",
+        purchasable: false,
+        reasons: ["PURCHASE_LIMIT_EXCEEDED"],
+        maxPurchasableQuantity: 0,
+      },
+      { lineKey: "GOODS:b", purchasable: true, reasons: [], maxPurchasableQuantity: 4 },
+    ],
+  };
+  const stores: EligibilityInput[] = [
+    previousOwner,
+    { kind: "unavailable" },
+    { kind: "loading" },
+    { kind: "not_applicable" },
+  ];
+  const otherVerified: SessionState = {
+    status: "ready",
+    session: { kind: "authenticated", email: "other@example.com", emailVerified: true },
+  };
+  /** Equal in content to `verified`, but another object: SessionProvider keeps the reference only while the session is unchanged. */
+  const equalButNotSame = (): SessionState => ({
+    status: "ready",
+    session: { kind: "authenticated", email: "user@example.com", emailVerified: true },
+  });
+
+  it("is loading while the current session is loading", () => {
+    for (const stored of stores) {
+      expect(eligibilityForSession(stored, verified, { status: "loading" })).toEqual({
+        kind: "loading",
+      });
+    }
+  });
+
+  it("is not_applicable for a guest or an unverified user, whatever was stored and read before (the previous owner's answer is gone at once)", () => {
+    for (const session of [guest, unverified]) {
+      for (const stored of stores) {
+        for (const readSession of [null, verified, session, otherVerified]) {
+          const result = eligibilityForSession(stored, readSession, session);
+          expect(result).toEqual({ kind: "not_applicable" });
+          expect(JSON.stringify(result)).not.toContain("PURCHASE_LIMIT_EXCEEDED");
+        }
+      }
+    }
+  });
+
+  it("is unavailable when the session cannot be determined (fail closed), whatever was stored", () => {
+    for (const stored of stores) {
+      for (const readSession of [null, verified]) {
+        expect(eligibilityForSession(stored, readSession, { status: "unavailable" })).toEqual({
+          kind: "unavailable",
+        });
+      }
+    }
+  });
+
+  it("returns the stored answer as it is for a verified user when it was read for the same session state", () => {
+    const session = equalButNotSame();
+    for (const stored of [previousOwner, { kind: "unavailable" }, { kind: "loading" }] as const) {
+      expect(eligibilityForSession(stored, session, session)).toBe(stored);
+    }
+    expect(eligibilityForSession(previousOwner, session, session)).toEqual(previousOwner);
+  });
+
+  it("treats a stored not_applicable as not read yet for a verified user", () => {
+    expect(eligibilityForSession({ kind: "not_applicable" }, verified, verified)).toEqual({
+      kind: "loading",
+    });
+  });
+
+  it.each([
+    ["no session state was recorded", null],
+    ["it was read for a guest", guest],
+    ["it was read for another verified user", otherVerified],
+    ["it was read for an unverified user", unverified],
+  ] as const)(
+    "is loading for a verified user when %s, and never carries the previous data",
+    (_name, readSession) => {
+      const result = eligibilityForSession(previousOwner, readSession, verified);
+      expect(result).toEqual({ kind: "loading" });
+      expect(JSON.stringify(result)).not.toContain("PURCHASE_LIMIT_EXCEEDED");
+      expect(result).not.toHaveProperty("data");
+    },
+  );
+
+  it("is loading when the recorded session state is only equal in content, not the same reference (fail closed)", () => {
+    const current = equalButNotSame();
+    expect(current).toEqual(verified);
+    expect(current).not.toBe(verified);
+    expect(eligibilityForSession(previousOwner, verified, current)).toEqual({ kind: "loading" });
+    expect(eligibilityForSession({ kind: "unavailable" }, verified, current)).toEqual({
+      kind: "loading",
+    });
+  });
+
+  it("does not mutate its inputs", () => {
+    const frozen: EligibilityInput = Object.freeze({
+      kind: "ok",
+      data: Object.freeze([...previousOwner.data.map((item) => Object.freeze({ ...item }))]),
+    });
+    const read = Object.freeze({ ...verified });
+    const current = Object.freeze({ ...equalButNotSame() });
+    const before = JSON.stringify([frozen, read, current]);
+    eligibilityForSession(frozen, read, current);
+    eligibilityForSession(frozen, read, read);
+    expect(JSON.stringify([frozen, read, current])).toBe(before);
+  });
+});
+
+describe("TC-PG-CRT-001-625 eligibilityForLines: of an ok answer only the items read for the current quantity are kept (B4b-F-1, API-PUR-ELG-001)", () => {
+  const e = (quantity: number) => entry(quantity);
+  const g = (quantity: number) => goods(quantity);
+  const answerFor = (...lines: CartLine[]): EligibilityInput => ({
+    kind: "ok",
+    data: lines.map((line) => ({
+      lineKey: cartLineKey(line),
+      purchasable: true,
+      reasons: [],
+      maxPurchasableQuantity: 4,
+    })),
+  });
+  const keysOf = (input: EligibilityInput): string[] =>
+    input.kind === "ok" ? input.data.map((item) => item.lineKey) : [];
+
+  it.each([
+    [{ kind: "loading" }],
+    [{ kind: "unavailable" }],
+    [{ kind: "not_applicable" }],
+  ] as const)("returns %j as it is", (input) => {
+    expect(eligibilityForLines(input, [e(1)], [e(2)])).toBe(input);
+    expect(eligibilityForLines(input, [], [])).toBe(input);
+  });
+
+  it("drops the item of a line whose quantity changed and keeps the others", () => {
+    const input = answerFor(e(2), g(1));
+    const result = eligibilityForLines(input, [e(2), g(1)], [e(3), g(1)]);
+    expect(keysOf(result)).toEqual([cartLineKey(g(1))]);
+    expect(result.kind).toBe("ok");
+  });
+
+  it("keeps every item in its original order when the lines are the same (the Cart order may differ)", () => {
+    const input = answerFor(e(2), g(1));
+    expect(keysOf(eligibilityForLines(input, [e(2), g(1)], [e(2), g(1)]))).toEqual([
+      cartLineKey(e(1)),
+      cartLineKey(g(1)),
+    ]);
+    expect(keysOf(eligibilityForLines(input, [e(2), g(1)], [g(1), e(2)]))).toEqual([
+      cartLineKey(e(1)),
+      cartLineKey(g(1)),
+    ]);
+  });
+
+  it("drops items whose line left the Cart or was not among the lines that were read", () => {
+    const other = entry(1, OFFERING_2);
+    const input = answerFor(e(2), g(1), other);
+    // g left the Cart; other was never among the read lines (its item cannot belong to this read).
+    const result = eligibilityForLines(input, [e(2), g(1)], [e(2), other]);
+    expect(keysOf(result)).toEqual([cartLineKey(e(1))]);
+  });
+
+  it("keeps an ok answer with no item when nothing matches (never a different kind)", () => {
+    const input = answerFor(e(2));
+    expect(eligibilityForLines(input, [e(2)], [e(5)])).toEqual({ kind: "ok", data: [] });
+    expect(eligibilityForLines(input, [], [])).toEqual({ kind: "ok", data: [] });
+  });
+
+  it("only keeps items whose line has the same quantity now as when it was read", () => {
+    const read = [e(1), g(2), entry(3, OFFERING_2)];
+    const now = [e(1), g(3), entry(3, OFFERING_2)];
+    const result = eligibilityForLines(answerFor(...read), read, now);
+    if (result.kind !== "ok") throw new Error("expected an ok answer");
+    for (const item of result.data) {
+      const before = read.find((line) => cartLineKey(line) === item.lineKey);
+      const after = now.find((line) => cartLineKey(line) === item.lineKey);
+      expect(before, item.lineKey).toBeDefined();
+      expect(after?.quantity, item.lineKey).toBe(before?.quantity);
+    }
+    expect(result.data).toHaveLength(2);
+  });
+
+  it("does not mutate its inputs", () => {
+    const input = answerFor(e(2), g(1));
+    const readLines = Object.freeze([Object.freeze(e(2)), Object.freeze(g(1))]);
+    const lines = Object.freeze([Object.freeze(e(3)), Object.freeze(g(1))]);
+    const before = JSON.stringify([input, readLines, lines]);
+    eligibilityForLines(input, readLines, lines);
+    expect(JSON.stringify([input, readLines, lines])).toBe(before);
   });
 });

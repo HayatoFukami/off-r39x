@@ -23,6 +23,8 @@ import {
   readCart,
   readCartRaw,
   readDbRaw,
+  recordedTexts,
+  recordTextsIn,
   removeButton,
   rowByHeading,
   type StoredLine,
@@ -46,7 +48,7 @@ import {
   seedLocalStorage,
   sessionJson,
 } from "../harness/browser/shell.ts";
-import { GOODS, MARKER, NOW_ISO, OFFERING } from "../harness/mock-seed.ts";
+import { EMAIL, GOODS, MARKER, NOW_ISO, OFFERING } from "../harness/mock-seed.ts";
 
 // UI mock suite (TST-E2E-004: auxiliary, not G8). Contract: tests/contracts/s5-cart.md sections 5.3, 6.
 // PG-CRT-001 (SPEC-050 14A.1) without purchase start: 9, 21, 22, 24, 25, 26.4, 31 items 24 (first half) / 25 / 28,
@@ -989,5 +991,175 @@ test.describe("TC-PG-CRT-001-514 the owner-scoped eligibility is read for a veri
     );
     expect(await readCartRaw(page)).toBe(cartBefore);
     await other.close();
+  });
+
+  // ---- B4b-F-1 (rule E): while the reads are repeated after a session or quantity change, nothing that
+  // belongs to the previous viewer or the previous quantity is shown for the new one. The in-between
+  // states are checked with a long latency that is switched on after the first display, and by a recorder
+  // that notices a state shown only for a moment (the final display alone cannot).
+  const NEEDLES = [
+    label.label.ON_SALE,
+    label.label.UNAVAILABLE,
+    label.label.PURCHASE_LIMIT_EXCEEDED,
+  ];
+  const MID = { timeout: 2_000 };
+  const DONE = { timeout: 20_000 };
+  const slow = (page: Page) =>
+    writeStorage(page, KEYS.scenario, scenarioJson({ latency: "long", latencyLongMs: 5000 }));
+  const verifiedNew = () =>
+    sessionJson({ kind: "authenticated", email: EMAIL.fresh, emailVerified: true });
+  const openPair = (page: Page, session: string | null) =>
+    openRows(
+      page,
+      [entryLine(OFFERING.limit, 1), entryLine(OFFERING.regular, 1)],
+      session === null ? {} : { [KEYS.session]: session },
+    );
+
+  test("after a Guest becomes a verified user the open lines are 'cannot confirm' until the owner's answer arrives: never on sale and never the previous state, without an alert", async ({
+    page,
+    context,
+  }) => {
+    test.setTimeout(90_000);
+    await openPair(page, null);
+    for (const ref of [OFFERING.limit, OFFERING.regular]) {
+      await expect(rowOf(page, ref)).toContainText(label.label.ON_SALE);
+    }
+    await expect(proceedButton(page)).toBeEnabled();
+    await slow(page);
+    await recordTextsIn(rowOf(page, OFFERING.limit), "limit", NEEDLES);
+    await recordTextsIn(rowOf(page, OFFERING.regular), "regular", NEEDLES);
+    const cartBefore = await readCartRaw(page);
+    const other = await openSecondTab(context);
+    await other.goto("/");
+    await writeStorage(other, KEYS.session, authenticatedSession());
+
+    for (const ref of [OFFERING.limit, OFFERING.regular]) {
+      await expect(rowOf(page, ref)).toContainText(label.label.UNAVAILABLE, MID);
+      await expect(rowOf(page, ref)).not.toContainText(label.label.ON_SALE, MID);
+      await expect(rowOf(page, ref)).not.toContainText(label.label.PURCHASE_LIMIT_EXCEEDED, MID);
+      await expect(rowOf(page, ref)).toContainText(formatMoney(price(ref)), MID);
+    }
+    await expect(rows(page)).toHaveCount(2, MID);
+    await expect(alert(page)).toHaveCount(0, MID);
+    await expect(proceedButton(page)).toBeDisabled(MID);
+    expect(await proceedReason(page)).toContain(copy.cart.proceed.unknown);
+
+    await expect(rowOf(page, OFFERING.limit)).toContainText(
+      label.label.PURCHASE_LIMIT_EXCEEDED,
+      DONE,
+    );
+    await expect(rowOf(page, OFFERING.regular)).toContainText(label.label.ON_SALE, DONE);
+    await expect(proceedButton(page)).toBeDisabled();
+    expect(await proceedReason(page)).toContain(copy.cart.proceed.blocked);
+
+    const limit = await recordedTexts(page, "limit");
+    expect(limit.filter((seen) => seen.includes(label.label.ON_SALE))).toEqual([]);
+    const regular = await recordedTexts(page, "regular");
+    expect(regular[0]).toBeDefined();
+    expect(regular[0]).toContain(label.label.UNAVAILABLE);
+    expect(regular[0]).not.toContain(label.label.ON_SALE);
+    expect(await readCartRaw(page)).toBe(cartBefore);
+    expect(await storedText(page, [KEYS.scenario])).not.toMatch(FORBIDDEN_ELIGIBILITY_IN_STORAGE);
+    await other.close();
+  });
+
+  test("after a verified owner becomes a Guest the previous owner's purchase limit disappears at once and the public state is shown; proceeding stays disabled until the public re-read completes", async ({
+    page,
+    context,
+  }) => {
+    test.setTimeout(90_000);
+    await openPair(page, authenticatedSession());
+    await expect(rowOf(page, OFFERING.limit)).toContainText(label.label.PURCHASE_LIMIT_EXCEEDED);
+    await slow(page);
+    await recordTextsIn(rowOf(page, OFFERING.limit), "limit", NEEDLES);
+    const other = await openSecondTab(context);
+    await other.goto("/");
+    await writeStorage(other, KEYS.session, sessionJson());
+
+    await expect(rowOf(page, OFFERING.limit)).toContainText(label.label.ON_SALE, MID);
+    await expect(rowOf(page, OFFERING.limit)).not.toContainText(
+      label.label.PURCHASE_LIMIT_EXCEEDED,
+      MID,
+    );
+    await expect(rowOf(page, OFFERING.regular)).toContainText(label.label.ON_SALE, MID);
+    await expect(proceedButton(page)).toBeDisabled(MID);
+    expect(await proceedReason(page)).toContain(copy.cart.proceed.unknown);
+    await expect(proceedButton(page)).toBeEnabled(DONE);
+
+    const limit = await recordedTexts(page, "limit");
+    expect(limit.filter((seen) => seen.includes(label.label.PURCHASE_LIMIT_EXCEEDED))).toEqual([]);
+    await other.close();
+  });
+
+  test("a switch from one verified user to another shows 'cannot confirm' until the new owner's answer arrives; the previous owner's purchase limit never appears", async ({
+    page,
+    context,
+  }) => {
+    test.setTimeout(90_000);
+    await openPair(page, authenticatedSession());
+    await expect(rowOf(page, OFFERING.limit)).toContainText(label.label.PURCHASE_LIMIT_EXCEEDED);
+    await slow(page);
+    await recordTextsIn(rowOf(page, OFFERING.limit), "limit", NEEDLES);
+    const other = await openSecondTab(context);
+    await other.goto("/");
+    await writeStorage(other, KEYS.session, verifiedNew());
+
+    for (const ref of [OFFERING.limit, OFFERING.regular]) {
+      await expect(rowOf(page, ref)).toContainText(label.label.UNAVAILABLE, MID);
+      await expect(rowOf(page, ref)).not.toContainText(label.label.PURCHASE_LIMIT_EXCEEDED, MID);
+      await expect(rowOf(page, ref)).not.toContainText(label.label.ON_SALE, MID);
+    }
+    await expect(alert(page)).toHaveCount(0, MID);
+    await expect(proceedButton(page)).toBeDisabled(MID);
+    expect(await proceedReason(page)).toContain(copy.cart.proceed.unknown);
+
+    // The new user used none of the limit offering (limit 2, quantity 1).
+    await expect(rowOf(page, OFFERING.limit)).toContainText(label.label.ON_SALE, DONE);
+    await expect(proceedButton(page)).toBeEnabled(DONE);
+
+    const limit = await recordedTexts(page, "limit");
+    expect(limit[0]).toBeDefined();
+    expect(limit[0]).toContain(label.label.UNAVAILABLE);
+    expect(limit.filter((seen) => seen.includes(label.label.PURCHASE_LIMIT_EXCEEDED))).toEqual([]);
+    await other.close();
+  });
+
+  test("a verified owner who changes a quantity sees that line as 'cannot confirm' until it is re-read for the new quantity; the unchanged line keeps its answer and the field keeps focus and value", async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    await openRows(page, [entryLine(OFFERING.regular, 2), goodsLine(GOODS.tshirt, 1)], {
+      [KEYS.session]: verifiedNew(),
+    });
+    const regularRow = rowOf(page, OFFERING.regular);
+    await expect(regularRow).toContainText(label.label.ON_SALE);
+    await expect(rows(page).nth(1)).toContainText(label.label.ON_SALE);
+    await expect(proceedButton(page)).toBeEnabled();
+    await slow(page);
+    await recordTextsIn(regularRow, "regular", NEEDLES);
+    const input = quantityInput(regularRow);
+    await input.fill("3");
+
+    await expect(regularRow).toContainText(label.label.UNAVAILABLE, MID);
+    await expect(regularRow).not.toContainText(label.label.ON_SALE, MID);
+    await expect(rows(page).nth(1)).toContainText(label.label.ON_SALE, MID);
+    await expect(input).toBeFocused(MID);
+    await expect(input).toHaveValue("3", MID);
+    await expect(input).not.toHaveAttribute("aria-invalid", "true", MID);
+    await expect(rows(page)).toHaveCount(2, MID);
+    await expect(alert(page)).toHaveCount(0, MID);
+    await expect(proceedButton(page)).toBeDisabled(MID);
+    expect(await proceedReason(page)).toContain(copy.cart.proceed.unknown);
+
+    await expect(regularRow).toContainText(label.label.ON_SALE, DONE);
+    await expect(proceedButton(page)).toBeEnabled(DONE);
+    await expect
+      .poll(() => readCart(page))
+      .toEqual(stored([entryLine(OFFERING.regular, 3), goodsLine(GOODS.tshirt, 1)]));
+
+    const regular = await recordedTexts(page, "regular");
+    expect(regular[0]).toBeDefined();
+    expect(regular[0]).toContain(label.label.UNAVAILABLE);
+    expect(regular[0]).not.toContain(label.label.ON_SALE);
   });
 });

@@ -22,9 +22,13 @@ import type { CartSnapshot } from "./cart-store";
 export type CartInput = {
   cart: { kind: "loading" } | CartSnapshot;
   resolutions: Loadable<readonly CartLineResolution[]>;
-  /** The quantity changed and the resolutions are not yet re-read for the current Cart. */
+  /** The lines or the session changed and the reads are not yet repeated for the current Cart and session. */
   refreshing: boolean;
-  /** API-PUR-ELG-001 answer for a verified owner; not_applicable for Guest and unverified users. */
+  /**
+   * API-PUR-ELG-001 answer for a verified owner; not_applicable for Guest and unverified users. The
+   * container passes only the part read for the current session and quantities (eligibilityForSession /
+   * eligibilityForLines).
+   */
   eligibility: EligibilityInput;
 };
 
@@ -110,8 +114,9 @@ export function buildCartPageModel(input: CartInput): CartPageModel {
     };
   }
   const data = resolutions.data;
-  // The owner-scoped answer is pending: show no state a pending read could contradict.
-  if (eligibility.kind === "loading") return { kind: "loading" };
+  // The first owner-scoped answer is pending: show no state it could contradict. While re-reading,
+  // the rows keep their public parts and the open lines are "cannot confirm".
+  if (eligibility.kind === "loading" && !refreshing) return { kind: "loading" };
   const find = (line: CartLine): CartLineResolution | undefined =>
     data.find((resolution) => resolution.lineKey === cartLineKey(line));
   const rows = lines.map((line) => {

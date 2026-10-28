@@ -19,6 +19,8 @@ import { CartPurchaseFeedback } from "../purchase/cart-purchase-feedback";
 import {
   type EligibilityInput,
   type EligibilityMode,
+  eligibilityForLines,
+  eligibilityForSession,
   eligibilityMode,
   eligibilityTargets,
   toEligibilityInput,
@@ -36,6 +38,8 @@ type Resolution = {
   signature: string | null;
   /** The session state they were read under (null before the first read). */
   session: SessionState | null;
+  /** The lines that were read (null before the first read). Quantities bind the eligibility to them. */
+  lines: readonly CartLine[] | null;
   value: Loadable<readonly CartLineResolution[]>;
   /** The owner-scoped eligibility read together with `value`. Kept in memory only (SEC-API-029). */
   eligibility: EligibilityInput;
@@ -148,6 +152,7 @@ export function CartPage() {
   const [resolution, setResolution] = useState<Resolution>({
     signature: null,
     session: null,
+    lines: null,
     value: { kind: "loading" },
     eligibility: { kind: "loading" },
   });
@@ -171,7 +176,7 @@ export function CartPage() {
     void (async () => {
       const value = await settleRead(api.public.resolveCartLines(lines));
       const eligibility = await readEligibility(api, mode, lines, value);
-      if (active) setResolution({ signature, session, value, eligibility });
+      if (active) setResolution({ signature, session, lines, value, eligibility });
     })();
     return () => {
       active = false;
@@ -187,6 +192,7 @@ export function CartPage() {
     setResolution({
       signature: null,
       session: null,
+      lines: null,
       value: { kind: "loading" },
       eligibility: { kind: "loading" },
     });
@@ -197,6 +203,12 @@ export function CartPage() {
     lines !== null &&
     resolution.signature !== null &&
     (resolution.signature !== signatureOf(lines) || resolution.session !== session);
+  // The owner-scoped answer is used only for the session and the quantities it was read for (B4b-F-1).
+  const eligibility = eligibilityForLines(
+    eligibilityForSession(resolution.eligibility, resolution.session, session),
+    resolution.lines ?? [],
+    lines ?? [],
+  );
   const model = buildCartPageModel({
     cart:
       cart.state.kind === "ready" || cart.state.kind === "corrupted"
@@ -204,7 +216,7 @@ export function CartPage() {
         : { kind: "loading" },
     resolutions: resolution.value,
     refreshing,
-    eligibility: resolution.eligibility,
+    eligibility,
   });
 
   const names = new Map<string, string | null>(

@@ -5,7 +5,7 @@ import type { ApiPort } from "../../api-client/port";
 import { useApi } from "../../api-client/provider";
 import { settleRead } from "../../api-client/settle-read";
 import type { CartLine, EntryOffering } from "../../api-client/types";
-import { useSession } from "../../auth/use-session";
+import { type SessionState, useSession } from "../../auth/use-session";
 import { CART_HREF } from "../../config/site";
 import type { Loadable } from "../../presentation/components/list-state";
 import { PageState } from "../../presentation/components/page-state";
@@ -17,6 +17,7 @@ import { type AddResult, AddResultNotice, AddToCartForm } from "../cart/add-to-c
 import {
   type EligibilityInput,
   type EligibilityMode,
+  eligibilityForSession,
   eligibilityMode,
   toEligibilityInput,
 } from "../purchase/eligibility-model";
@@ -69,6 +70,8 @@ function OfferingView({
 }
 
 type EntryState = {
+  /** The session state the eligibility was read under (null before the first read). */
+  session: SessionState | null;
   offerings: Loadable<readonly EntryOffering[]>;
   /** The owner-scoped eligibility read together with the offerings. Kept in memory only (SEC-API-029). */
   eligibility: EligibilityInput;
@@ -100,6 +103,7 @@ async function readEligibility(
 export function EntryPage() {
   const api = useApi();
   const [state, setState] = useState<EntryState>({
+    session: null,
     offerings: { kind: "loading" },
     eligibility: { kind: "loading" },
   });
@@ -116,12 +120,13 @@ export function EntryPage() {
     void (async () => {
       const offerings = await settleRead(api.public.listEntryOfferings());
       const eligibility = await readEligibility(api, mode, offerings);
-      if (token.current === current) setState({ offerings, eligibility });
+      if (token.current === current) setState({ session, offerings, eligibility });
     })();
   }, [api, session]);
 
   // The owner conditions depend on the session (per-account limit), so both are read again when it changes.
-  // The previous list stays shown meanwhile; a response for an older session is dropped by the token.
+  // The public offerings stay shown while both are read again; the owner-scoped answer is used only for
+  // the session it was read for (B4b-F-1). A response for an older session is dropped by the token.
   useEffect(() => {
     const ref = token;
     load();
@@ -131,11 +136,12 @@ export function EntryPage() {
   }, [load]);
 
   const reload = (): void => {
-    setState({ offerings: { kind: "loading" }, eligibility: { kind: "loading" } });
+    setState({ session: null, offerings: { kind: "loading" }, eligibility: { kind: "loading" } });
     load();
   };
 
-  const list = buildEntryModel(state.offerings, state.eligibility);
+  const eligibility = eligibilityForSession(state.eligibility, state.session, session);
+  const list = buildEntryModel(state.offerings, eligibility);
 
   return (
     <div className="flex flex-col gap-4">
@@ -158,7 +164,7 @@ export function EntryPage() {
       ) : null}
       {list.kind === "items" ? (
         <>
-          {state.eligibility.kind === "unavailable" ? (
+          {eligibility.kind === "unavailable" ? (
             <PageState
               state="unavailable"
               message={copy.pageState.unavailable(copy.entry.eligibilitySubject)}

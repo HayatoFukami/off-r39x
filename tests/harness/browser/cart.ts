@@ -81,6 +81,46 @@ export async function storedText(page: Page, exceptKeys: readonly string[] = [])
   }, exceptKeys);
 }
 
+type RecordWindow = Window & { __recordedTexts?: Record<string, string[][]> };
+
+/**
+ * Records, from now on, which of the needles the element's text contains after every DOM change
+ * inside it (the current text is not recorded; consecutive equal snapshots are kept once). A transient
+ * state that is shown for a moment and then replaced is therefore found, which a check of the final
+ * display cannot do. The recording stops when the element is unmounted. It does not touch the display.
+ */
+export async function recordTextsIn(
+  locator: Locator,
+  key: string,
+  needles: readonly string[],
+): Promise<void> {
+  await locator.evaluate(
+    (element, args) => {
+      const recordWindow = window as RecordWindow;
+      const store: Record<string, string[][]> = recordWindow.__recordedTexts ?? {};
+      recordWindow.__recordedTexts = store;
+      store[args.key] = [];
+      const observer = new MutationObserver(() => {
+        const text = element.textContent ?? "";
+        const found = args.needles.filter((needle) => text.includes(needle));
+        const snapshots = store[args.key] ?? [];
+        const last = snapshots[snapshots.length - 1];
+        if (last === undefined || last.join("\u0000") !== found.join("\u0000")) {
+          snapshots.push(found);
+        }
+        store[args.key] = snapshots;
+      });
+      observer.observe(element, { childList: true, subtree: true, characterData: true });
+    },
+    { key, needles: [...needles] },
+  );
+}
+
+/** The snapshots recorded under the key: each is the list of needles contained at that change. */
+export async function recordedTexts(page: Page, key: string): Promise<string[][]> {
+  return page.evaluate((name) => (window as RecordWindow).__recordedTexts?.[name] ?? [], key);
+}
+
 /** What an owner-scoped eligibility answer would leave behind if it were persisted. */
 export const FORBIDDEN_ELIGIBILITY_IN_STORAGE =
   /eligib|purchasable|maxPurchasable|"reasons"|PURCHASE_LIMIT_EXCEEDED|NOT_PUBLIC_OR_NOT_FOUND/;

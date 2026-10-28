@@ -2759,12 +2759,14 @@
         "apps/web/src/mock/backend/mock-api.ts",
         "apps/web/src/features/purchase/eligibility-model.ts",
         "apps/web/src/features/cart/cart-page.tsx",
+        "apps/web/src/features/cart/cart-view-model.ts",
         "apps/web/src/features/entry/entry-page.tsx"
       ],
       "test_case_ids": [
         "TC-PG-CRT-001-105",
         "TC-PG-CRT-001-625",
         "TC-PG-CRT-001-514",
+        "TC-PG-CRT-001-446",
         "TC-PG-TKT-001-511"
       ],
       "notes": "implementation mapping only: owner-scoped eligibility in the UI mock test double (no DB / idempotency write) and the browser side (shown to verified owners only, never persisted, re-read on session change); not API coverage (TC-API-005-001 not executed)"

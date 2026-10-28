@@ -6135,7 +6135,14 @@
       "test_case_id": "TC-PG-CRT-001-446",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-005", "API-PUR-ELG-001", "TST-UNT-004"],
+      "upstream_rule_ids": [
+        "PG-CRT-001",
+        "FR-CRT-005",
+        "API-PUR-ELG-001",
+        "TST-UNT-004",
+        "SEC-API-029",
+        "DEV-WEB-007"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -6146,8 +6153,9 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "the model is loading while the eligibility is read; when it failed, names and amounts stay, unconfirmed lines say so and proceeding is blocked with only the unknown reason; once ok, each line is shown from its own answer (on sale with the maximum, or all of its reasons); an unconfirmed line is never shown as on sale",
-        "the eligibility is ignored in the states that come before it: corrupted, empty, loading and failed resolutions"
+        "the model is loading while the first eligibility is read; when it failed, names and amounts stay, unconfirmed lines say so and proceeding is blocked with only the unknown reason; once ok, each line is shown from its own answer (on sale with the maximum, or all of its reasons); an unconfirmed line is never shown as on sale",
+        "the eligibility is ignored in the states that come before it: corrupted, empty, loading and failed resolutions",
+        "while the lines or the session are re-read, a pending eligibility keeps the rows with their public parts (name, kind, quantity, prices, total) and shows the publicly open lines as 'cannot confirm', never on sale, with proceeding blocked; a line missing from the given eligibility (its quantity changed) is 'cannot confirm' while a line still in it keeps its answer"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -6687,11 +6695,17 @@
       "test_case_id": "TC-PG-TKT-001-511",
       "level": "E2E",
       "suite": "e2e-ui-mock",
-      "upstream_rule_ids": ["PG-TKT-001", "FR-TKT-026", "SEC-API-029", "API-PUR-ELG-001"],
+      "upstream_rule_ids": [
+        "PG-TKT-001",
+        "FR-TKT-026",
+        "SEC-API-029",
+        "API-PUR-ELG-001",
+        "DEV-WEB-007"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "Mock mode; Entry sales page; verified, unverified and Guest sessions; cart.state eligibility_fail; second tab changes the session",
+      "preconditions": "Mock mode; Entry sales page; verified, unverified and Guest sessions; cart.state eligibility_fail; second tab changes the session; scenario latency long (5000 ms) written after the first display for the in-between checks",
       "fixture_ids": [],
       "clock_instant": "2027-03-01T03:00:00Z",
       "concurrency_seed": null,
@@ -6701,7 +6715,9 @@
         "a verified user whose eligibility cannot be read cannot add the open offerings while the others keep their public state; a retry recovers without a reload and shows the owner's own limit and the open offering",
         "after a reload with a working eligibility the owner sees their own limit and may add the open offering; nothing owner-specific is stored in localStorage or sessionStorage",
         "a Guest and an unverified user get the public state only: the eligibility is not read, so its failure is invisible",
-        "a session change in another tab turns the eligibility on and off without a reload; the previous owner's answer does not stay"
+        "a session change in another tab turns the eligibility on and off without a reload; the previous owner's answer does not stay",
+        "from a session change (Guest to verified, or to another verified user) until the re-read completes, the publicly open offerings are 'cannot confirm' with add disabled and no quantity guidance, never on sale and never the previous owner's purchase-limit answer; no alert; the list does not return to loading",
+        "after a switch from a verified owner to Guest the previous owner's purchase-limit answer is gone at once and add follows the public state"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -7160,7 +7176,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "Mock mode; Cart page with several lines; verified, unverified and Guest sessions; cart.state eligibility_fail; second tab changes the session",
+      "preconditions": "Mock mode; Cart page with several lines; verified, unverified and Guest sessions; cart.state eligibility_fail; second tab changes the session; scenario latency long (5000 ms) written after the first display for the in-between checks",
       "fixture_ids": [],
       "clock_instant": "2027-03-01T03:00:00Z",
       "concurrency_seed": null,
@@ -7170,7 +7186,10 @@
         "a verified user whose eligibility cannot be read sees 'cannot confirm' for the lines open publicly, keeps the public reason of the rest and cannot proceed; a retry recovers without a reload",
         "once the eligibility works, the owner's own limit and the open line on sale are shown; nothing owner-specific (eligibility, purchasable, maximum, reasons) is stored in localStorage or sessionStorage",
         "a Guest and an unverified user get the public conditions only: the eligibility is not read, so its failure is invisible",
-        "a session change in another tab turns the eligibility on and off without a reload; the previous owner's answer does not stay"
+        "a session change in another tab turns the eligibility on and off without a reload; the previous owner's answer does not stay",
+        "from a session change (Guest to verified, or to another verified user) until the re-read completes, the publicly open lines are 'cannot confirm', never on sale and never the previous owner's purchase-limit answer; no alert; names and amounts stay; proceeding is disabled with the unknown reason",
+        "after a switch from a verified owner to Guest the previous owner's purchase-limit answer is gone at once and the public state is shown while proceeding stays disabled until the public re-read completes",
+        "a verified owner who changes a quantity sees that line as 'cannot confirm' until it is re-read for the new quantity, while an unchanged line keeps its answer and the field keeps focus and value"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -8762,12 +8781,13 @@
         "SEC-API-029",
         "DEV-WEB-007",
         "API-PUR-ELG-001",
-        "TST-UNT-004"
+        "TST-UNT-004",
+        "PG-TKT-001"
       ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "Pure eligibilityMode / eligibilityTargets / toEligibilityInput / findEligibility over session states, public resolutions and eligibility answers",
+      "preconditions": "Pure eligibilityMode / eligibilityTargets / toEligibilityInput / findEligibility / eligibilityForSession / eligibilityForLines over session states, public resolutions and eligibility answers",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -8776,7 +8796,9 @@
       "expected_domain_postconditions": [
         "only a verified Authenticated User reads the eligibility: loading waits, guest and unverified users never trigger a read (the public conditions only), an undeterminable session fails closed without a call",
         "only lines that are on sale publicly and fit the public maximum are sent, in Cart order; not-public, unavailable, not-on-sale, over-maximum, purchase-limit and quantity-shortage lines and lines without a resolution are dropped",
-        "anything but an ok answer is a failure (never 'under the limit'); an item is found by its line key only in an ok answer; inputs and answers are not mutated"
+        "anything but an ok answer is a failure (never 'under the limit'); an item is found by its line key only in an ok answer; inputs and answers are not mutated",
+        "an answer is used only under the session state it was read for: for a verified user a different, missing or merely equal session state gives loading and never the previous answer; Guest and unverified give not_applicable, an undeterminable session gives unavailable and a loading session gives loading",
+        "of an ok answer only the items whose line is still in the Cart with the quantity it was read for are kept, in their order; other answers are returned as they are; inputs are not mutated"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
