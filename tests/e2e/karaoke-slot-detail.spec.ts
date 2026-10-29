@@ -12,7 +12,7 @@ import {
   storedText,
   writeStorage,
 } from "../harness/browser/cart.ts";
-import { gotoHydrated } from "../harness/browser/hydration.ts";
+import { gotoHydrated, reloadHydrated } from "../harness/browser/hydration.ts";
 import {
   actionRegion,
   alertsOf,
@@ -151,7 +151,17 @@ test.describe("TC-PG-KRK-003-646 a verified user sees the Purchase Limit before 
   test("a verified user at the limit: the limit label and description, the button disabled with the limit reason, no alert, no Order, the slot still AVAILABLE", async ({
     page,
   }) => {
-    await openAs(page, slotRoute(SLOT.d1_1000), { scenario: limitScenario });
+    // The baseline of the mock database is taken before the owner-scoped read: a Guest opens the same slot (the
+    // eligibility is not read for a Guest), then the verified session and the limit scenario are set and the page is
+    // read again. Whatever the verified read does to the database shows up as a difference to this baseline.
+    await openAs(page, slotRoute(SLOT.d1_1000), { session: null });
+    await expect(infoRegion(page)).toContainText(d.purchasableLabel);
+    await expect(guestButton(page)).toBeEnabled();
+    const dbBefore = await readDbRaw(page);
+    expect(dbBefore).not.toBeNull();
+    await writeStorage(page, KEYS.session, authenticatedSession());
+    await writeStorage(page, KEYS.scenario, scenarioJson(limitScenario));
+    await reloadHydrated(page);
     const info = infoRegion(page);
     await expect(info).toContainText(availability.label.PURCHASE_LIMIT_EXCEEDED);
     await expect(info).toContainText(availability.description.PURCHASE_LIMIT_EXCEEDED);
@@ -170,7 +180,6 @@ test.describe("TC-PG-KRK-003-646 a verified user sees the Purchase Limit before 
     await expect(info).toContainText(copy.karaoke.guide.purchaseLimit);
     await expect(backToDayLink(page)).toBeVisible();
     // Nothing was created or changed by the pre-check, and nothing of the answer is stored.
-    const dbBefore = await readDbRaw(page);
     expect(await newOrders(page)).toHaveLength(0);
     expect(await slotStateInDb(page, SLOT.d1_1000)).toBe("AVAILABLE");
     expect(await readDbRaw(page)).toBe(dbBefore);
