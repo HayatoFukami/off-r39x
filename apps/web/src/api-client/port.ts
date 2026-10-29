@@ -6,6 +6,7 @@ import type {
   CartLineResolution,
   CartPurchaseStart,
   CheckoutStart,
+  EligibilityTarget,
   EntryOffering,
   EntryTicketDetail,
   EntryTicketSummary,
@@ -65,8 +66,8 @@ export interface PurchaseApi {
     lines: readonly CartLine[],
     o: { idempotencyKey: string },
   ): Promise<CartPurchaseStart>;
-  /** API-PUR-ELG-001 (owner-scoped read-only snapshot; private, no-store; not a reservation: re-verified at purchase start) */
-  getPurchaseEligibility(lines: readonly CartLine[]): Promise<PurchaseEligibilityRead>;
+  /** API-PUR-ELG-001 (owner-scoped read-only snapshot of Cart lines or one KARAOKE Slot with quantity 1; private, no-store; not a reservation: re-verified at purchase start) */
+  getPurchaseEligibility(targets: readonly EligibilityTarget[]): Promise<PurchaseEligibilityRead>;
   /** API-PUR-KRK-001 */
   startKaraokePurchase(
     slot: Ref<"slot">,

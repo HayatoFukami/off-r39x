@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { cartLineKey } from "../../../../apps/web/src/api-client/cart-line-key.ts";
 import type {
   EntryOffering,
   GoodsDetail,
@@ -8,8 +9,14 @@ import type {
   UtcInstant,
 } from "../../../../apps/web/src/api-client/types.ts";
 import { buildEntryModel } from "../../../../apps/web/src/features/entry/entry-model.ts";
-import { buildGoodsDetailModel } from "../../../../apps/web/src/features/goods/goods-detail-model.ts";
+import {
+  buildGoodsDetailModel,
+  buildGoodsDetailModel as buildGoodsDetailModelWithEligibility,
+  type GoodsDetailModel,
+  goodsEligibilityTarget,
+} from "../../../../apps/web/src/features/goods/goods-detail-model.ts";
 import { parseGoodsRef } from "../../../../apps/web/src/features/public/route-params.ts";
+import type { EligibilityInput } from "../../../../apps/web/src/features/purchase/eligibility-model.ts";
 import { copy } from "../../../../apps/web/src/presentation/copy/ja.ts";
 import { formatJstDateTime } from "../../../../apps/web/src/presentation/format/datetime.ts";
 import {
@@ -339,6 +346,171 @@ describe("TC-PG-GDS-002-411 buildGoodsDetailModel shows the Goods state table an
       data: goodsDetail({ kind: "ON_SALE", maxSelectableQuantity: null }),
     });
     expect(JSON.stringify(model)).not.toMatch(/address|carrier|tracking|shipping|delivery/i);
+  });
+});
+
+describe("TC-PG-GDS-002-413 buildGoodsDetailModel narrows an on-sale Goods by the owner-scoped eligibility and fails closed; goodsEligibilityTarget (B4c, SPEC-050 12.1 / 14.2, API-PUR-ELG-001, SEC-API-029, FR-GDS-004)", () => {
+  const ON_SALE_20: SaleAvailability = { kind: "ON_SALE", maxSelectableQuantity: 20 };
+  const ref = "a0000000-0000-4000-8000-000000000001" as Ref<"goods">;
+  const key = cartLineKey({ kind: "GOODS", goodsRef: ref, quantity: 1 });
+  const loaded = (availability: SaleAvailability = ON_SALE_20) =>
+    ({ kind: "ok", data: goodsDetail(availability) }) as const;
+  const answer = (over: Partial<PurchaseEligibility> = {}): EligibilityInput => ({
+    kind: "ok",
+    data: [{ lineKey: key, purchasable: true, reasons: [], maxPurchasableQuantity: 5, ...over }],
+  });
+  const readyOf = (model: GoodsDetailModel) => {
+    if (model.kind !== "ready") throw new Error(`expected ready but got ${model.kind}`);
+    return model;
+  };
+
+  it("(a) is the public model, to the last field, for not_applicable (Guest and unverified) and when the second argument is omitted", () => {
+    const publicModel = buildGoodsDetailModel(loaded());
+    expect(buildGoodsDetailModelWithEligibility(loaded(), { kind: "not_applicable" })).toEqual(
+      publicModel,
+    );
+    const ready = readyOf(publicModel);
+    expect(ready.status).toEqual(presentAvailability(ON_SALE_20));
+    expect(ready.addable).toBe(true);
+    expect(ready.maxSelectableQuantity).toBe(20);
+  });
+
+  it.each([
+    ["loading", { kind: "loading" }],
+    ["unavailable", { kind: "unavailable" }],
+    ["an ok answer without any item", { kind: "ok", data: [] }],
+    [
+      "an ok answer with the item of another key only",
+      answer({ lineKey: "GOODS:a0000000-0000-4000-8000-000000000002" }),
+    ],
+  ] as const)(
+    "(b) shows 'cannot confirm' with adding disabled and no maximum when the answer is %s, and keeps the name, description, price and period",
+    (_name, eligibility) => {
+      const publicReady = readyOf(buildGoodsDetailModel(loaded()));
+      const ready = readyOf(buildGoodsDetailModelWithEligibility(loaded(), eligibility));
+      expect(ready.status).toEqual(presentAvailability({ kind: "unavailable" }));
+      expect(ready.status.label).toBe(copy.availability.label.UNAVAILABLE);
+      expect(ready.status.label).not.toBe(copy.availability.label.ON_SALE);
+      expect(ready.addable).toBe(false);
+      expect(ready.maxSelectableQuantity).toBeNull();
+      expect({ ...ready, status: null, addable: null, maxSelectableQuantity: null }).toEqual({
+        ...publicReady,
+        status: null,
+        addable: null,
+        maxSelectableQuantity: null,
+      });
+      expect(ready.name).toBe("T-shirt");
+      expect(ready.priceText).toBe("¥4,000");
+      expect(ready.pickupNotice).toBe(copy.goods.detail.pickupNotice);
+    },
+  );
+
+  it("(c) shows on sale with the smaller of the public and the owner maximum when the owner answer is purchasable", () => {
+    const ready = readyOf(buildGoodsDetailModelWithEligibility(loaded(), answer()));
+    expect(ready.status).toEqual(
+      presentAvailability({ kind: "ON_SALE", maxSelectableQuantity: 5 }),
+    );
+    expect(ready.addable).toBe(true);
+    expect(ready.maxSelectableQuantity).toBe(5);
+    const publicSmaller = readyOf(
+      buildGoodsDetailModelWithEligibility(
+        loaded({ kind: "ON_SALE", maxSelectableQuantity: 3 }),
+        answer(),
+      ),
+    );
+    expect(publicSmaller.maxSelectableQuantity).toBe(3);
+  });
+
+  it("(d) shows the owner-scoped reasons with adding disabled when the owner answer is not purchasable", () => {
+    const ready = readyOf(
+      buildGoodsDetailModelWithEligibility(
+        loaded(),
+        answer({ purchasable: false, reasons: ["SOLD_OUT"], maxPurchasableQuantity: 0 }),
+      ),
+    );
+    expect(ready.status).toEqual(presentPurchaseReasons(["SOLD_OUT"], 0));
+    expect(ready.status.label).toBe(copy.availability.label.SOLD_OUT);
+    expect(ready.addable).toBe(false);
+    expect(ready.maxSelectableQuantity).toBeNull();
+  });
+
+  it.each([
+    { kind: "BEFORE_SALES", startsAt: SOON },
+    { kind: "SALES_ENDED" },
+    { kind: "SUSPENDED" },
+    { kind: "SOLD_OUT" },
+    { kind: "INSUFFICIENT_QUANTITY", maxSelectableQuantity: 3 },
+    { kind: "PURCHASE_LIMIT_EXCEEDED" },
+  ] as const)(
+    "(e) keeps the public state of a %j Goods whatever the owner answer is",
+    (availability) => {
+      const publicModel = buildGoodsDetailModel(loaded(availability));
+      for (const eligibility of [
+        { kind: "loading" },
+        { kind: "unavailable" },
+        { kind: "ok", data: [] },
+        answer(),
+        answer({ purchasable: false, reasons: ["SOLD_OUT"], maxPurchasableQuantity: 0 }),
+      ] as const) {
+        expect(buildGoodsDetailModelWithEligibility(loaded(availability), eligibility)).toEqual(
+          publicModel,
+        );
+      }
+    },
+  );
+
+  it("(f) keeps loading, not_found and unavailable as they are whatever the owner answer is", () => {
+    for (const eligibility of [{ kind: "loading" }, { kind: "unavailable" }, answer()] as const) {
+      expect(buildGoodsDetailModelWithEligibility({ kind: "loading" }, eligibility)).toEqual({
+        kind: "loading",
+      });
+      expect(buildGoodsDetailModelWithEligibility({ kind: "not_found" }, eligibility)).toEqual({
+        kind: "not_found",
+      });
+      for (const kind of ["unavailable", "auth_required", "email_unverified"] as const) {
+        expect(buildGoodsDetailModelWithEligibility({ kind }, eligibility)).toEqual({
+          kind: "unavailable",
+        });
+      }
+    }
+  });
+
+  it("goodsEligibilityTarget is the quantity-1 GOODS line of a Goods that is on sale publicly, and null otherwise", () => {
+    expect(goodsEligibilityTarget(loaded())).toEqual({ kind: "GOODS", goodsRef: ref, quantity: 1 });
+    expect(
+      goodsEligibilityTarget(loaded({ kind: "ON_SALE", maxSelectableQuantity: null })),
+    ).toEqual({ kind: "GOODS", goodsRef: ref, quantity: 1 });
+    for (const availability of [
+      { kind: "BEFORE_SALES", startsAt: SOON },
+      { kind: "SALES_ENDED" },
+      { kind: "SUSPENDED" },
+      { kind: "SOLD_OUT" },
+      { kind: "INSUFFICIENT_QUANTITY", maxSelectableQuantity: 3 },
+      { kind: "PURCHASE_LIMIT_EXCEEDED" },
+    ] as const) {
+      expect(goodsEligibilityTarget(loaded(availability)), availability.kind).toBeNull();
+    }
+    for (const input of [
+      { kind: "loading" },
+      { kind: "not_found" },
+      { kind: "unavailable" },
+      { kind: "auth_required" },
+      { kind: "email_unverified" },
+    ] as const) {
+      expect(goodsEligibilityTarget(input), input.kind).toBeNull();
+    }
+  });
+
+  it("does not mutate its inputs", () => {
+    const input = Object.freeze({
+      kind: "ok" as const,
+      data: Object.freeze(goodsDetail(ON_SALE_20)),
+    });
+    const eligibility = Object.freeze(answer());
+    const before = JSON.stringify([input, eligibility]);
+    buildGoodsDetailModelWithEligibility(input, eligibility);
+    goodsEligibilityTarget(input);
+    expect(JSON.stringify([input, eligibility])).toBe(before);
   });
 });
 

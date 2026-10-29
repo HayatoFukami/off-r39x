@@ -27,14 +27,14 @@
 | `apps/web/src/features/cart/cart-store.ts` | client から使う | `CartStorage`, `CartSnapshot`, `CartWriteResult`, `CartStore`, `CartStoreDeps`, `createCartStore`, `getBrowserCartStore` |
 | `apps/web/src/features/cart/use-cart.ts` | client hook | `CartState`, `useCart` |
 | `apps/web/src/features/cart/use-cart-count.ts` | client hook（S3 既存。変更） | `useCartCount`（store 経由。同一 tab の変更でも更新される） |
-| `apps/web/src/features/purchase/eligibility-model.ts` | 純粋（B4b。React・storage・port・mock を import しない。`SessionState` は型だけ） | `EligibilityInput`, `eligibilityMode`, `eligibilityTargets`, `toEligibilityInput`, `findEligibility`, `eligibilityForSession`, `eligibilityForLines`（B4b-F-1。§5.1 / §5.3） |
+| `apps/web/src/features/purchase/eligibility-model.ts` | 純粋（B4b。React・storage・port・mock を import しない。`SessionState` は型だけ） | `EligibilityInput`, `eligibilityMode`, `eligibilityTargets`, `toEligibilityInput`, `findEligibility`, `eligibilityForSession`, `eligibilityForLines`（B4b-F-1。§5.1 / §5.3）, `SaleDecision`, `decideSaleState`（B4c。Entry と Goods 詳細が共有する、公開上の状態を本人向け判定で絞る規則。§4.1 / §4.2。`presentation/state-mapping/availability` の `presentAvailability` / `presentPurchaseReasons` だけを import する） |
 | `apps/web/src/features/cart/can-proceed.ts` | 純粋 | `ProceedBlockReason`, `ProceedDecision`, `canProceed` |
 | `apps/web/src/features/cart/cart-view-model.ts` | 純粋 | `CartInput`, `CartRow`, `CartPageModel`, `buildCartPageModel` |
 | `apps/web/src/features/cart/add-to-cart-form.tsx` | client view | `AddToCartForm`（Entry / Goods 共通の数量 + 追加 UI） |
 | `apps/web/src/features/cart/cart-page.tsx` | client container | `CartPage` |
 | `apps/web/src/features/entry/entry-model.ts` | 純粋 | `EntryOfferingItem`, `buildEntryModel` |
 | `apps/web/src/features/entry/entry-page.tsx` | client container | `EntryPage` |
-| `apps/web/src/features/goods/goods-detail-model.ts` | 純粋 | `GoodsDetailModel`, `buildGoodsDetailModel` |
+| `apps/web/src/features/goods/goods-detail-model.ts` | 純粋 | `GoodsDetailModel`, `buildGoodsDetailModel`, `goodsEligibilityTarget`（B4c） |
 | `apps/web/src/features/goods/goods-detail-page.tsx` | client container | `GoodsDetailPage`（props `{ goodsRef: Ref<"goods"> }`） |
 | `apps/web/src/features/public/route-params.ts` | 純粋（S4 既存。追加のみ） | `parseGoodsRef` を追加 |
 | `apps/web/src/routes/public/entry.tsx` | route | `/entry`（PG-TKT-001）。`metadata.title = copy.entry.pageTitle` |
@@ -311,6 +311,7 @@ export function buildEntryModel(
   - `ok` かつ `purchasable` → ON_SALE の表示、`addable: true`、`maxSelectableQuantity = min(公開の max ?? Infinity, maxPurchasableQuantity)`。
   - `ok` かつ購入不可 → `presentPurchaseReasons(reasons, maxPurchasableQuantity)`、`addable: false`、`maxSelectableQuantity: null`。
   - `Loadable` が loading / empty / unavailable のときは従来のまま（eligibility を見ない）。入力を変更しない。
+- 判定は `decideSaleState(availability, eligibility, targetKey)`（§0。B4c で Goods 詳細と共通化。規則は変えない）で行う。
 
 ### 4.2 `features/goods/goods-detail-model.ts`
 
@@ -320,10 +321,16 @@ export type GoodsDetailModel =
   | { kind: "ready"; goodsRef: Ref<"goods">; name: string; description: string; unitPrice: Money; priceText: string;
       salesPeriodText: string; status: AvailabilityPresentation; addable: boolean;
       maxSelectableQuantity: number | null; pickupNotice: string };
-export function buildGoodsDetailModel(input: Loadable<GoodsDetail>): GoodsDetailModel;
+export function buildGoodsDetailModel(
+  input: Loadable<GoodsDetail>,
+  eligibility?: EligibilityInput,      // 既定 { kind: "not_applicable" }（B4c）
+): GoodsDetailModel;
+/** 本人向け判定を読む対象: 公開上 ON_SALE の Goods だけ（数量 1 の GOODS の line）。それ以外は null。 */
+export function goodsEligibilityTarget(input: Loadable<GoodsDetail>): CartLine | null;
 ```
 
 - `ok` → `ready`（`pickupNotice = copy.goods.detail.pickupNotice`。他は §4.1 と同じ規則）。`not_found` → `not_found`。`unavailable` / `auth_required` / `email_unverified` → `unavailable`（Not Found と混同しない）。`loading` → `loading`。
+- 【B4c】公開上 `ON_SALE` の Goods だけが `eligibility`（line = 数量 1 の `GOODS`、key は `cartLineKey`）で絞られる。規則は §4.1 の【B4b】と同じ（`decideSaleState`）: `not_applicable` → 公開のまま（第 2 引数を省略したときと `toEqual`）。`loading` / `unavailable` / entry なし → 「状態を確認できません」・`addable: false`・`maxSelectableQuantity: null`（名称・説明・価格・販売期間・`pickupNotice` は変えない）。購入可 → ON_SALE の表示・`addable: true`・`min(公開の max ?? Infinity, maxPurchasableQuantity)`。購入不可 → `presentPurchaseReasons`・`addable: false`・max null。公開上 ON_SALE でない Goods は eligibility が何を言っても公開の状態のまま。`goodsEligibilityTarget(input)` は ok かつ ON_SALE のときだけ対象を返す（TC-PG-GDS-002-413）。`loading` / `not_found` / `unavailable` は eligibility を見ない。入力を変更しない。
 
 ### 4.3 `parseGoodsRef`
 
@@ -352,6 +359,7 @@ focus 順は DOM 順と一致させる。Entry / Goods では**数量入力の�
 - route param が canonical UUID でない → route module が `NotFoundView` を描画する（`copy.notFound.title`。HTTP status は静的 shell の 200）。port が `not_found`（非公開・存在しない）→ Not Found 表示（`copy.notFound` と同じ見た目で、商品名・「非公開」等を出さない）。`unavailable` → `h1` = `copy.goods.detail.heading` + `role="alert"` + `copy.pageState.unavailable(copy.goods.detail.subject)` + retry（有効な Add を出さない）。loading: `h1` = `copy.goods.detail.heading` + status。
 - ready: `h1` = 商品名、説明（`PlainText`）、価格、販売期間、状態の label と description、`copy.goods.detail.pickupNotice`、数量入力、Add button、表示用合計、`Cartを見る` Link、`copy.goods.detail.backToList` Link（`/goods`）、live region（§5.1 と同じ規則）。**配送先住所・配送業者・配送追跡の field や文言を置かない**（入力欄は数量だけ）。`<ul>` / `<li>` を使わない。
 - 状態表（§14.2）: ON_SALE のとき Add 有効、その他（販売期間外 / 停止 / 売り切れ / 開始前）は無効 + 理由。Add の検証・結果・購入開始なしは §5.1 と同じ。
+- 【B4c】本人向け判定（SPEC-050 §12.1「Goods／Karaokeの対象画面も同Operationを使用する」、§14.2「取得Failure → 購入可否を確認できない → Disabled」、`API-PUR-ELG-001`、SEC-API-029）: §5.1 の session の規則と fail closed の規則を Goods 詳細にも適用する。verified の Authenticated User のときだけ `purchase.getPurchaseEligibility([{ kind: "GOODS", goodsRef, quantity: 1 }])` を呼ぶ（公開上 ON_SALE の Goods だけ。Guest・未確認・session `loading` の間は呼ばない。`unavailable` は呼ばずに fail closed）。公開 read と eligibility は両方がそろってから 1 回だけ反映し、session が変わったら読み直す。再取得の間も名称・説明・価格・販売期間・数量入力・追加結果は保ち（`GoodsReady` は unmount しない）、本人別判定は読んだときの session に対してだけ使う（`eligibilityForSession`）。verified に対応する判定が無い間は「状態を確認できません」・Add 無効（`aria-describedby` の理由は `description.UNAVAILABLE`）・数量の上限案内なし・`role="alert"` なし。Guest / 未確認になったらその場で公開の状態。取得失敗（`unavailable`）は fail closed: 「状態を確認できません」・Add 無効・上限案内なしで、`AddResultNotice` の前に `role="alert"`（`copy.pageState.unavailable(copy.entry.eligibilitySubject)`）と `<button>` `copy.pageState.retry`（公開 read と eligibility の両方を読み直す）を出す。公開上 ON_SALE でない Goods は公開の状態のままで、eligibility を呼ばない。判定は storage に保存しない（TC-PG-GDS-002-507 / -508）。
 
 ### 5.3 `/cart`（PG-CRT-001）
 
@@ -385,14 +393,14 @@ focus 順は DOM 順と一致させる。Entry / Goods では**数量入力の�
 | `tests/unit/web/cart/quantity.test.ts` | §2.2 |
 | `tests/unit/web/cart/cart-store.test.ts` | §2.3（`subtractLines` は TC-PG-CRT-001-427） |
 | `tests/unit/web/cart/can-proceed.test.ts` | §3.1（eligibility は TC-PG-CRT-001-433） |
-| `tests/unit/web/purchase/eligibility-model.test.ts` | §0（TC-PG-CRT-001-625。`eligibilityMode` / `eligibilityTargets` / `toEligibilityInput` / `findEligibility` / `eligibilityForSession` / `eligibilityForLines`） |
+| `tests/unit/web/purchase/eligibility-model.test.ts` | §0（TC-PG-CRT-001-625。`eligibilityMode` / `eligibilityTargets` / `toEligibilityInput` / `findEligibility` / `eligibilityForSession` / `eligibilityForLines` / `decideSaleState`） |
 | `tests/unit/web/auth/session-equality.test.ts` | §5（`sameSessionState`。s3-layout.md §3.3） |
 | `tests/unit/web/cart/cart-view-model.test.ts` | §3.2（eligibility は TC-PG-CRT-001-446） |
-| `tests/unit/web/cart/sales-models.test.ts` | §4（eligibility は TC-PG-TKT-001-413） |
+| `tests/unit/web/cart/sales-models.test.ts` | §4（eligibility は TC-PG-TKT-001-413、Goods 詳細の eligibility は TC-PG-GDS-002-413） |
 | `tests/unit/web/cart/s5-copy.test.ts` | §1 |
 | `tests/unit/web/cart/s5-static.test.ts` | §0 と静的検査（構成、page 殻、直書き、Karaoke 不在、購入開始不在、Cart本体の単一 schema。FR-CRT-012の別由来metadataは独立したruntime schemaを許す） |
 | `tests/e2e/entry-sales.spec.ts` | §5.1（本人向け判定は TC-PG-TKT-001-511。途中表示（latency long）も TC-PG-TKT-001-511） |
-| `tests/e2e/goods-detail.spec.ts` | §5.2 |
+| `tests/e2e/goods-detail.spec.ts` | §5.2（本人向け判定は TC-PG-GDS-002-507、途中表示（latency long）は TC-PG-GDS-002-508） |
 | `tests/e2e/cart-page.spec.ts` | §5.3（本人向け判定は TC-PG-CRT-001-514。途中表示（latency long）も TC-PG-CRT-001-514） |
 | `tests/e2e/cart-store.spec.ts` | 永続、Header の即時更新、他 tab、壊れた保存内容、FR-CRT-012 |
 | `tests/e2e/cart-session-isolation.spec.ts` | TC-FR-CRT-012-011: lifecycle停止中も販売Pageを表示し、Cart追加を無効にする |
@@ -414,9 +422,9 @@ focus 順は DOM 順と一致させる。Entry / Goods では**数量入力の�
 11. **Cache-Control**: `/entry` と `/cart` は静的 route として S4 §4 と同じ扱い（`private` / `no-store` を含まない）。
 12. **Goods 詳細の `not_found`**: S4 の Announcement 詳細と同じく、client が Not Found 表示（HTTP 200）。不正な UUID も route module が `NotFoundView` を描画する（HTTP 200）。
 13. **認証とCart lifecycle**: Login・Logout・Session復元・保護Page / Actionでの期限切れ判定は `FR-CRT-012` に従う。Cart本体とは別の非識別metadataを使い、必要なclearと停止状態の確定後に認証結果を公開する。LogoutはHomeへ戻り、clearのstorage障害でも認証結果を維持する。storage障害では保存値を成功として扱わず、内容・件数・編集・購入を停止し、明示的なclear再試行を提供する。公開PageのGuest照会だけではclearしない。
-14. **session 変化での再取得**: Entry / Cart の本人別の購入可否は現在のユーザーの購入済み数量に依存するため（B4b からは `API-PUR-ELG-001` の判定。公開 read は閲覧者に依存しない）、Guest で開いたまま別 tab でログインした画面は Guest 時の状態を残してはならず、ログアウトした画面は前の利用者の判定を残してはならない（SPEC-050 §14A.1: 現在の販売状態を Server-side の値で表示）。Cart store は session を知らないまま。`SessionProvider` は `sameSessionState` で、実際に変わったときだけ state の参照を変える（他 tab の Cart 書き込みの `storage` event だけでは再取得しない）。session が `loading` の間は読まない。再取得の間に残すのは、閲覧者に依存しない公開 read の部分だけである。前の session の本人別判定と、判定不要（`not_applicable`）の公開表示は、新しい session に出さない（verified には「状態を確認できません」、Guest / 未確認には公開の状態。SPEC-050 §12.1「取得中を推測せず」、§14A.1、SPEC-110 `API-PUR-ELG-001` Safety、SEC-API-029）。Cart ページは購入手続きを、Entry は公開上 ON_SALE の offering の Add を無効にする。
+14. **session 変化での再取得**: Entry / Cart / Goods 詳細の本人別の購入可否は現在のユーザーの購入済み数量に依存するため（B4b からは `API-PUR-ELG-001` の判定。公開 read は閲覧者に依存しない）、Guest で開いたまま別 tab でログインした画面は Guest 時の状態を残してはならず、ログアウトした画面は前の利用者の判定を残してはならない（SPEC-050 §14A.1: 現在の販売状態を Server-side の値で表示）。Cart store は session を知らないまま。`SessionProvider` は `sameSessionState` で、実際に変わったときだけ state の参照を変える（他 tab の Cart 書き込みの `storage` event だけでは再取得しない）。session が `loading` の間は読まない。再取得の間に残すのは、閲覧者に依存しない公開 read の部分だけである。前の session の本人別判定と、判定不要（`not_applicable`）の公開表示は、新しい session に出さない（verified には「状態を確認できません」、Guest / 未確認には公開の状態。SPEC-050 §12.1「取得中を推測せず」、§14A.1、SPEC-110 `API-PUR-ELG-001` Safety、SEC-API-029）。Cart ページは購入手続きを、Entry は公開上 ON_SALE の offering の Add を無効にする。
 15. **数量 overflow**: UI から到達できる（Cart ページの数量入力は上限なしで `9007199254740991` を保存でき、その後 Entry / Goods で 1 を追加すると合算が overflow）。保存先に書けない失敗（`storage_unavailable`）とは別の原因なので、別の結果 kind（`quantity_overflow`）と別の文言（`copy.sales.addQuantityOverflow`）で示す。例外 class（`CartQuantityOverflowError extends RangeError`）で区別し、UI で `instanceof RangeError` を使わない。
-16. **本人向け判定（B4b、Open issues Q1〜Q7 の既定案）**: SPEC-050 §12.1 は「認証済み利用者の購入上限・購入可能数量は `API-PUR-ELG-001` の本人向け一括判定から取得」「Guest は公開上限と選択数量だけを検証」「取得中・取得 Failure を『上限未到達』と推測せず、再取得を提供」と定める。→ verified の Authenticated User だけが判定を読み、Guest と未確認の利用者は呼ばない（購入開始時に server が login / 確認へ送る）。公開上購入不可の line は判定に送らない（結果が変わらず、件数・数量の 400 も避ける）。判定の失敗は fail closed（「状態を確認できません」）で、`toEligibilityInput` は `auth_required` / `email_unverified` も `unavailable` に写す。判定は保存せず、session が変わるたびに読み直す。Goods 詳細と Karaoke Slot への適用は B4c（利用者の判断待ち）で、本契約の対象外。
+16. **本人向け判定（B4b、Open issues Q1〜Q7 の既定案）**: SPEC-050 §12.1 は「認証済み利用者の購入上限・購入可能数量は `API-PUR-ELG-001` の本人向け一括判定から取得」「Guest は公開上限と選択数量だけを検証」「取得中・取得 Failure を『上限未到達』と推測せず、再取得を提供」と定める。→ verified の Authenticated User だけが判定を読み、Guest と未確認の利用者は呼ばない（購入開始時に server が login / 確認へ送る）。公開上購入不可の line は判定に送らない（結果が変わらず、件数・数量の 400 も避ける）。判定の失敗は fail closed（「状態を確認できません」）で、`toEligibilityInput` は `auth_required` / `email_unverified` も `unavailable` に写す。判定は保存せず、session が変わるたびに読み直す。Goods 詳細にも同じ規則を適用した（B4c）。Goods は SPEC-030 §10.3 で Purchase Limit を持たないが、§12.1 の「Goods の対象画面も同Operationを使用する」と §14.2 の「取得Failure → Disabled」に従い、取得失敗は fail closed にする。Karaoke Slot は s7b-karaoke.md の【B4c】。
 17. **再取得中の行の文言（B4b-F-1）**: 本人別判定の未取得の行は、既存の「状態を確認できません」（`presentAvailability({ kind: "unavailable" })`）で示し、新しい文言・状態を作らない。失敗が確定したとき（`unavailable`）だけ `role="alert"` と再読み込みを出す。
 
 ## 9. Hydration-ready signal（検証 round 1 で追加。SPEC-170 §69 / TST-FLK-001）

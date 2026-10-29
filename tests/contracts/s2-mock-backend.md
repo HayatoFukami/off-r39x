@@ -17,6 +17,7 @@
 | `apps/web/src/api-client/types.ts` | S1 の `Ref`, `Money`, `UtcInstant`, `BusinessDateJst`, `SaleAvailability` を**変更せず**、§1 の型を追加 |
 | `apps/web/src/api-client/port.ts` | `PublicApi`, `PurchaseApi`, `SelfApi`, `ApiPort`（型のみ） |
 | `apps/web/src/api-client/cart-line-key.ts` | `cartLineKey` |
+| `apps/web/src/api-client/eligibility-target-key.ts` | `eligibilityTargetKey`（B4c） |
 | `apps/web/src/auth/port.ts` | `Session`, `AuthPort`（型のみ） |
 | `apps/web/src/auth/password-policy.ts` | `PASSWORD_MIN_LENGTH`, `PASSWORD_MAX_LENGTH`, `PasswordPolicyResult`, `validatePassword` |
 | `apps/web/src/mock/backend/clock.ts` | `Clock`, `systemClock` |
@@ -180,7 +181,7 @@ export interface PublicApi {
   resolveCartLines(lines: readonly CartLine[]): Promise<Read<readonly CartLineResolution[]>>; // API-PUB-005 / API-PUB-010 / API-PUB-011 の合成（公開条件だけ。閲覧者に依存しない。本人別の可否は getPurchaseEligibility）
 }
 export interface PurchaseApi {
-  getPurchaseEligibility(lines: readonly CartLine[]): Promise<PurchaseEligibilityRead>; // API-PUR-ELG-001（本人向け・参照のみ・private/no-store。在庫確保ではなく、購入開始時に再検証される）
+  getPurchaseEligibility(targets: readonly EligibilityTarget[]): Promise<PurchaseEligibilityRead>; // API-PUR-ELG-001（Cart line、または KARAOKE の Slot（数量 1）。本人向け・参照のみ・private/no-store。在庫確保ではなく、購入開始時に再検証される）
   startCartPurchase(lines: readonly CartLine[], o: { idempotencyKey: string }): Promise<CartPurchaseStart>; // API-PUR-CART-001（all-or-nothing。Checkout は startCheckout / API-CHK-001）
   startKaraokePurchase(slot: Ref<"slot">, o: { idempotencyKey: string }): Promise<KaraokePurchaseStart>;    // API-PUR-KRK-001
   startCheckout(order: Ref<"order">, o: { idempotencyKey: string }): Promise<CheckoutStart>;               // API-CHK-001
@@ -202,13 +203,23 @@ export interface SelfApi {   // 他者所有でも不存在でも同じ not_foun
 export interface ApiPort { readonly public: PublicApi; readonly purchase: PurchaseApi; readonly self: SelfApi }
 ```
 
-各 method の doc comment に対応する正本の Operation ID を書く。`port.ts` に `UCR-110-001` と「Operation ID なし」は 1 つも残さない（全 method が正本の Operation ID を持つ）。`listEntryOfferings`（`API-PUB-005`）と `resolveCartLines`（`API-PUB-005` / `API-PUB-010` / `API-PUB-011` の複合）の注記は、これらが公開の読み取りであり本人別の条件は `getPurchaseEligibility` から取得する、と書く。`getPurchaseEligibility` の注記は `API-PUR-ELG-001`、owner-scoped、read-only、no-store、予約ではない（not a reservation）と書く。`startCartPurchase` は `API-PUR-CART-001`（`UCR-110-001` は INCORPORATED）として正本化されたので、`UCR-110-001` / 「Operation ID なし」を書かない。`listSponsorLogos` は `API-PUB-012`（`image_url` 必須、`sort_order ASC, public_ref ASC`）として正本化されたので `UCR-110-001` / 「Operation ID なし」を書かない。`getOrder` は `API-ORD-003`（`notification_summary` を含む）として正本化されたので、`UCR-110-001` / 「Operation ID なし」を書かない。新しい Operation ID を発明しない。
+各 method の doc comment に対応する正本の Operation ID を書く。`port.ts` に `UCR-110-001` と「Operation ID なし」は 1 つも残さない（全 method が正本の Operation ID を持つ）。`listEntryOfferings`（`API-PUB-005`）と `resolveCartLines`（`API-PUB-005` / `API-PUB-010` / `API-PUB-011` の複合）の注記は、これらが公開の読み取りであり本人別の条件は `getPurchaseEligibility` から取得する、と書く。`getPurchaseEligibility` の注記は `API-PUR-ELG-001`、owner-scoped、read-only、no-store、予約ではない（not a reservation）と書き、B4c 以降は Karaoke の対象（`KARAOKE` の Slot、数量 1）も受けることを書く（注記に他の Operation ID を書かない）。`startCartPurchase` は `API-PUR-CART-001`（`UCR-110-001` は INCORPORATED）として正本化されたので、`UCR-110-001` / 「Operation ID なし」を書かない。`listSponsorLogos` は `API-PUB-012`（`image_url` 必須、`sort_order ASC, public_ref ASC`）として正本化されたので `UCR-110-001` / 「Operation ID なし」を書かない。`getOrder` は `API-ORD-003`（`notification_summary` を含む）として正本化されたので、`UCR-110-001` / 「Operation ID なし」を書かない。新しい Operation ID を発明しない。
 
 `apps/web/src/api-client/cart-line-key.ts`:
 
 ```ts
 export function cartLineKey(line: CartLine): string;   // `${line.kind}:${ref}`。例 "ENTRY_TICKET:<offeringRef>" / "GOODS:<goodsRef>"
 ```
+
+`apps/web/src/api-client/eligibility-target-key.ts`（B4c。`api-client/types`、`api-client/cart-line-key`、`@off-r39x/domain` の `assertNever` だけを import する）:
+
+```ts
+// API-PUR-ELG-001 の Body の 1 件を UI の型に写したもの（型は types.ts）。KARAOKE は CartLine に入らない（FR-CRT-002）。
+export type EligibilityTarget = CartLine | { kind: "KARAOKE"; slotRef: Ref<"slot">; quantity: 1 };
+export function eligibilityTargetKey(target: EligibilityTarget): string;   // Cart line は cartLineKey と同じ値、KARAOKE は `KARAOKE:${slotRef}`
+```
+
+`PurchaseEligibility` の形（`lineKey` / `purchasable` / `reasons` / `maxPurchasableQuantity`）は変えない。KARAOKE の `lineKey` は `eligibilityTargetKey` の値（TC-PG-KRK-003-617）。
 
 ## 3. AuthPort `apps/web/src/auth/port.ts`
 
@@ -511,7 +522,7 @@ session は `SESSION_STORAGE_KEY` から読む。
 ### 11.2 `startKaraokePurchase(slotRef, { idempotencyKey })`
 
 1. latency → session 判定 → idempotency（`held` のみ記録。同じ key は同じ `orderRef` を返し、Order を増やさない）。
-2. 判定の順序は、1 の後、(a) scenario `karaokeHold`: `conflict` → `{ kind: "slot_unavailable" }`、`limit` → `{ kind: "purchase_limit_exceeded" }`、(b) `karaokeSales !== "ON_SALE"` → `{ kind: "not_on_sale" }`、(c) slot の state（3）の順。(a)(b) は状態を変えない。
+2. 判定の順序は、1 の後、(a) scenario `karaokeHold`: `conflict` → `{ kind: "slot_unavailable" }`、`limit` → `{ kind: "purchase_limit_exceeded" }`、(b) `karaokeSales !== "ON_SALE"` → `{ kind: "not_on_sale" }`、(c) slot の state（3）の順。(a)(b) は状態を変えない。（B4c: scenario `karaokeHold: "limit"` は §11.5 の KARAOKE の判定にも `PURCHASE_LIMIT_EXCEEDED` として効く。`conflict` / `expire_before_checkout` は購入開始・Checkout だけの scenario で、判定には効かない。）
 3. slot が存在しない、または `AVAILABLE` でない（HELD / SOLD / SALES_STOPPED）→ `{ kind: "slot_unavailable" }`（状態を変えない）。
 4. 成立 → slot を `HELD` にし、Order を作る（`purpose = KARAOKE_PURCHASE`、`state = PREPARED`、明細は KARAOKE 1 件）。`{ kind: "held", orderRef }`。Karaoke の Order は Cart の Order とは別の独立した Order（BR-ORD-019）で、購入開始で複合 Order にならない。
 
@@ -556,17 +567,17 @@ webhook 待ち（`startCheckout` が `redirect` を返した Order）で、state
   `summary_unavailable` でも `getOrder` は `ok` を返し、state・entitlements・receiptUrl は通常どおり（部分障害を Order の失敗にしない）。state と entitlements は scenario の影響を受けない。read は DB を書き換えない。
 - `listOrders`: 本人の Order だけを `createdAt` 降順（非増加）で返す。guest / 未確認は §10。`getOrder`: 本人の Order 以外は `not_found`。
 
-### 11.5 `getPurchaseEligibility(lines)`（B4b。`API-PUR-ELG-001`、SEC-API-029、AR-AZ-011）
+### 11.5 `getPurchaseEligibility(targets)`（B4b / B4c。`API-PUR-ELG-001`、SEC-API-029、AR-AZ-011）
 
 本人向けの**参照のみ**の一括判定。購入開始の前に画面へ本人別の可否・理由・購入できる最大数量を見せるための read で、在庫の確保でも購入の保証でもない（表示後の競合は購入開始時に再検証される。`startCartPurchase` が同じ line に同じ理由を返す）。
 
 1. latency → session 判定（§10。guest → `auth_required`、emailVerified:false → `email_unverified`、session が壊れている → `unavailable`）。続いて scenario（`corrupted` なら `unavailable`、`cart.state === "eligibility_fail"` なら `unavailable`）。認証の判定が scenario より先。
-2. 入力検証（§11.1-3 と同じ。API-PUR-ELG-001 の Body）: 空、51 件以上、quantity が `Number.isSafeInteger` で 1〜2147483647 の範囲外、`cartLineKey` の重複は **Promise を reject**（`RangeError`）。50 件ちょうどと quantity 2147483647 は業務結果として評価する。
-3. 各 line を**互いに独立に**、`evaluatePurchaseConditions`（§11.1-5 と同じ純粋関数。requested = line の数量、Entry の `used` = 署名中の user の既存 Order の使用数（§8.6）、Goods は上限なし）で評価する。`ok` の `data` は**入力順**で、各 item は `{ lineKey, purchasable, reasons, maxPurchasableQuantity }`。
+2. 入力検証（§11.1-3 と同じ。API-PUR-ELG-001 の Body）: 空、51 件以上、quantity が `Number.isSafeInteger` で 1〜2147483647 の範囲外、`eligibilityTargetKey` の重複は **Promise を reject**（`RangeError`）。**KARAOKE は数量 1 のときだけ有効**（それ以外は reject）。重複は `eligibilityTargetKey` で判定する（Cart line は `cartLineKey` と同じ。同じ Slot の 2 件は重複）。50 件ちょうどと quantity 2147483647（Cart line）は業務結果として評価する。`startCartPurchase` の検証（§11.1-3）は Cart line だけで、変わらない。
+3. 各 target を**互いに独立に**評価する。Cart line は `evaluatePurchaseConditions`（§11.1-5 と同じ純粋関数。requested = line の数量、Entry の `used` = 署名中の user の既存 Order の使用数（§8.6）、Goods は上限なし）。**KARAOKE（B4c）は `evaluateKaraokeConditions`（`apps/web/src/mock/backend/purchase-conditions.ts` の純粋関数。`{ kind: "missing" }` または `{ kind: "slot", slotState, saleStatus, limitReached }`）**: 存在しない Slot → `["NOT_PUBLIC_OR_NOT_FOUND"]` **だけ**・最大 0。それ以外は正本の順に積む（重複なし）: scenario `karaokeSales` が `BEFORE_SALES` → `SALES_NOT_STARTED`、`SALES_ENDED` → `SALES_CLOSED`、`SUSPENDED` → `SALES_STOPPED`（`ON_SALE` は何もしない）、scenario `karaokeHold === "limit"` → `PURCHASE_LIMIT_EXCEEDED`、slot の state が `AVAILABLE` でない（HELD / SOLD / SALES_STOPPED）→ `SLOT_UNAVAILABLE`。理由が無いときだけ `purchasable: true`・最大 1、それ以外は最大 0（Karaoke の最大は 0 または 1）。**`PAYMENT_WINDOW_TOO_SHORT` は mock では生じない**（mock に支払い期限が無く、時間の定数も置けない。TC-PG-KRK-003-106）。`ok` の `data` は**入力順**（ENTRY / GOODS / KARAOKE の混在も入力順）で、各 item は `{ lineKey, purchasable, reasons, maxPurchasableQuantity }`。`lineKey` は `eligibilityTargetKey`（Cart line は `cartLineKey`、KARAOKE は `KARAOKE:<slotRef>`）。
    - `purchasable === (reasons.length === 0)`。`reasons` は正本の順で重複なし。非公開と不存在は同じ答え（`["NOT_PUBLIC_OR_NOT_FOUND"]` だけ、最大 0）。
    - `maxPurchasableQuantity`: 公開で販売期間内・停止なしの item は `max(0, min(remaining, perAccountLimit - used))`（`perAccountLimit` が null なら `remaining`）。販売期間外・停止・`SOLD_OUT`・非公開は 0。
    - 本人の使用数だけを数える（別の user の Order は数えない）。
-4. **何も書かない**: `db.save` を呼ばず、`idGenerator` も呼ばず、idempotency 記録を作らず、Order の状態も進めない（`getOrder` のような simulated webhook の読み取り回数を増やさない）。呼び出しの前後で `load()` の JSON、storage の全 key と値、書き込みログ、id の採番数が一致する。
+4. **何も書かない**: `db.save` を呼ばず、`idGenerator` も呼ばず、idempotency 記録を作らず、Order の状態も Slot の state も進めない（`getOrder` のような simulated webhook の読み取り回数を増やさない）。呼び出しの前後で `load()` の JSON、storage の全 key と値、書き込みログ、id の採番数が一致する。
 5. 結果は port の外へ保存されない（UI は storage に書かない。SEC-API-029）。
 
 ## 12. Self Read の意味論
@@ -582,7 +593,7 @@ webhook 待ち（`startCheckout` が `redirect` を返した Order）で、state
 - `empty`: 一覧系（`listFaqs`、`listAnnouncements`、`listEntryOfferings`、`listGoods`）は `{ kind: "ok", data: [] }`。`getKaraokeSales` は `salesDates: []`。`getKaraokeDay` は（日付が販売対象日なら）`buckets: []`、`previousDate` / `nextDate` は通常どおり。`getEvent`、`getAnnouncement`、`getKaraokeSlot`、`getGoods`、`resolveCartLines` は `ok` と同じ。
 - `fail` と `empty` は互いに区別できる（`unavailable` を Empty に変換しない）。
 - `listSponsorLogos` は `publicFetch` の影響を受けない。`scenario.sponsorLogos`: `published` → PUBLISHED だけを `displayOrder` 昇順、**同値は ref 昇順**（`API-PUB-012` の `sort_order ASC, public_ref ASC`。保存順に依存しない）で `ok`、`none` → `ok` + `[]`、`fail` → `unavailable`、`image_broken` → `published` と同じ内容で `imageUrl` を §8.5 の壊れた URL にする、`image_disallowed_origin` → `published` と同じ内容（同じ 3 件・同順・同 `linkUrl`）で `imageUrl` だけを §8.5 の許可されない origin の URL にする。
-- `scenario.cart.state`: `fail` → `resolveCartLines` が `unavailable`。`partial` → `ok` だが、**先頭の line**だけ `{ lineKey, status: "unavailable" }`（他の line は通常どおり）。`ok` → 通常。`eligibility_fail` → `resolveCartLines` は `ok` と同じ結果を返し、`getPurchaseEligibility`（§11.5）だけが `unavailable` を返す（公開 read の障害ではない）。
+- `scenario.cart.state`: `fail` → `resolveCartLines` が `unavailable`。`partial` → `ok` だが、**先頭の line**だけ `{ lineKey, status: "unavailable" }`（他の line は通常どおり）。`ok` → 通常。`eligibility_fail` → `resolveCartLines` は `ok` と同じ結果を返し、`getPurchaseEligibility`（§11.5）だけが `unavailable` を返す（公開 read の障害ではない。KARAOKE を含むすべての対象で `unavailable`。名前に `cart` を含むが `getPurchaseEligibility` 全体の失敗の switch で、Goods 詳細と Karaoke Slot にも効く。保存済みの scenario を壊さないため名前は変えない）。
 - `scenario.eventFields`: §8.5。
 - `listAnnouncements({ limit })`: `limit` が指定されたら先頭から `limit` 件まで（降順の後で切る）。
 - `getAnnouncement`: PUBLISHED だけ `ok`。DRAFT / ARCHIVED / 存在しない / 形式不正は `not_found`（`ok` のときの話。`fail` は `unavailable`）。`body` は seed の文字列をそのまま返す（HTML エスケープ・除去をしない。描画側が plain text として表示する）。
@@ -621,11 +632,12 @@ export function createMockAuth(deps: MockAuthDeps): AuthPort;
 | `tests/unit/web/mock/public-api.test.ts`（seed の公開データも含む） | §8, §9, §13 |
 | `tests/unit/web/mock/cart-purchase.test.ts` | §9, §11.1, §11.5（`getPurchaseEligibility`。本人別上限の消費はここで確かめる） |
 | `tests/unit/web/mock/review-gaps.test.ts` | §11.1（重複 line）, 静的走査 |
-| `tests/unit/web/mock/karaoke-purchase.test.ts` | §11.2 |
+| `tests/unit/web/mock/karaoke-purchase.test.ts` | §11.2、§11.5（KARAOKE の対象。TC-PG-KRK-003-107） |
 | `tests/unit/web/mock/checkout-payment.test.ts` | §11.3（key のみの replay を含む）, §11.4（在庫の確保と戻りは保存済み DB の `remaining`、本人別上限の消費は §11.5 の `getPurchaseEligibility` で確かめる。公開 read は本人の消費を反映しない） |
 | `tests/unit/web/mock/self-api.test.ts` | §10, §12 |
 | `tests/unit/web/mock/mock-auth.test.ts` | §14 |
 | `tests/unit/web/ports/ports.test.ts` | §1, §2, §3 の型、`zod` 依存、Hold TTL の不在 |
+| `tests/unit/web/ports/eligibility-target-key.test.ts` | §2（`eligibilityTargetKey`。TC-PG-KRK-003-617） |
 
 ## 16. 仕様の曖昧さについてテスト担当が決めたこと
 
@@ -638,3 +650,4 @@ export function createMockAuth(deps: MockAuthDeps): AuthPort;
 7. `KaraokeSales` には `usage` / 整備時間の数値を持たせない（Hold TTL との混同を避け、時間帯は slot の `usageStart` / `usageEnd` から導く）。
 8. 同じ Goods / Entry Offering の重複 line は、`API-PUR-CART-001`（同一 kind + 参照の重複は 400 `VALIDATION_FAILED`）により不正入力として reject する（B4a で変更。以前は入力順に逐次評価して許容していた）。1 件でも不成立なら全体を破棄する（All-or-Nothing、BR-ORD-014 / BR-ORD-017）。
 9. Checkout の idempotency replay は user + key のみで判定する（`orderRef` を含めない）。SPEC-110 §18 の `409 IDEMPOTENCY_KEY_REUSED` との差は mock の意図的な単純化で、実 API の検証根拠にしない。
+10. **Karaoke の事前判定（B4c）**: mock は Karaoke の Purchase Limit の数値を持たないので、scenario `karaokeHold: "limit"` を本人の上限到達として判定（§11.5）にも使う。Slot の HELD / SOLD / SALES_STOPPED は `SLOT_UNAVAILABLE` で表す（B4a の copy の意味。正本は Slot state と理由の対応を定めていない）。支払い期限は mock に無いので `PAYMENT_WINDOW_TOO_SHORT` は生じない。いずれも DEV-WEB-010 により契約の根拠にしない。（計画書 B4c の項目番号は 9 だが、本書の項目 9 は Checkout の replay なので 10 とした。）

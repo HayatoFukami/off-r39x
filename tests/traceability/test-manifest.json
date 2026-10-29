@@ -1469,7 +1469,8 @@
         "DEV-WEB-013",
         "TST-UNT-004",
         "API-PUR-CART-001",
-        "API-PUR-ELG-001"
+        "API-PUR-ELG-001",
+        "PG-KRK-003"
       ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
@@ -1484,7 +1485,7 @@
         "exactly the documented methods and types (expectTypeOf)",
         "Cart cannot express Karaoke or prices; QR presentation carries a mock seed only",
         "CartPurchaseStart is created { orderRef } | rejected { itemFailures: { lineKey, reasons: PurchaseReason[] }[] } | auth_required | email_unverified | unavailable; PurchaseReason is the 9 API-PUR-ELG-001 codes in the canonical order; types.ts keeps no includedLineKeys / ALLOCATION_CONFLICT / rejections",
-        "PurchaseApi.getPurchaseEligibility takes 1..50 { cartLineKey, kind, ref, quantity } and returns ok { purchasable === (reasons.length === 0), reasons, maxPurchasableQuantity } per line in input order, auth_required, email_unverified or unavailable; it is a read-only method (no idempotencyKey, no ids)"
+        "PurchaseApi.getPurchaseEligibility takes 1..50 Cart lines or KARAOKE slots (quantity 1), keyed by eligibilityTargetKey (EligibilityTarget = CartLine | { kind: KARAOKE; slotRef; quantity: 1 }; CartLine never holds Karaoke), and returns ok { purchasable === (reasons.length === 0), reasons, maxPurchasableQuantity } per target in input order, auth_required, email_unverified or unavailable; it is a read-only method (no idempotencyKey, no ids); a guest asking for a KARAOKE target gets auth_required"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -1521,7 +1522,7 @@
         "getOrder cites API-ORD-003 (notification_summary) without UCR-110-001 or Operation ID なし",
         "listSponsorLogos cites API-PUB-012 (PUBLISHED only, public_ref ASC tie-break) without UCR-110-001 or Operation ID なし",
         "startCartPurchase cites API-PUR-CART-001 (all-or-nothing, API-CHK-001 hand-off) without UCR-110-001 or Operation ID なし",
-        "listEntryOfferings cites API-PUB-005 and resolveCartLines cites API-PUB-005 / API-PUB-010 / API-PUB-011 as public reads that point to getPurchaseEligibility; getPurchaseEligibility cites API-PUR-ELG-001 as owner-scoped, read-only, no-store and not a reservation"
+        "listEntryOfferings cites API-PUB-005 and resolveCartLines cites API-PUB-005 / API-PUB-010 / API-PUB-011 as public reads that point to getPurchaseEligibility; getPurchaseEligibility cites API-PUR-ELG-001 as owner-scoped, read-only, no-store and not a reservation; its annotation also names the KARAOKE slot target (quantity 1) and cites no other Operation ID"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -2140,6 +2141,42 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-KRK-003-107",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "PG-KRK-003",
+        "FR-KRK-007",
+        "BR-KRK-003",
+        "KRK-AVL-003",
+        "AR-AZ-011",
+        "SEC-API-029",
+        "API-PUR-ELG-001",
+        "TST-UNT-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Mock backend with a verified user (demo); getPurchaseEligibility with KARAOKE targets over every seed slot, every karaokeSales value and every karaokeHold value; contract tests/contracts/s2-mock-backend.md 11.5 and 16; UI mock test double (not API/DB/Provider coverage)",
+      "fixture_ids": ["MOCK-SEED-KARAOKE"],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "expected_domain_postconditions": [
+        "an AVAILABLE slot under ON_SALE is purchasable with no reason and a maximum of 1, keyed KARAOKE:<slotRef>; HELD, SOLD and SALES_STOPPED slots give SLOT_UNAVAILABLE with a maximum of 0",
+        "karaokeSales BEFORE_SALES / SALES_ENDED / SUSPENDED give SALES_NOT_STARTED / SALES_CLOSED / SALES_STOPPED; scenario karaokeHold limit gives PURCHASE_LIMIT_EXCEEDED while conflict and expire_before_checkout (purchase-start-only scenarios) do not matter; co-occurring reasons keep the canonical order without a duplicate; an unknown slot gives NOT_PUBLIC_OR_NOT_FOUND alone",
+        "PAYMENT_WINDOW_TOO_SHORT never appears (the mock has no payment window); purchasable === (reasons.length === 0) and the maximum is 0 or 1; a mixed ENTRY / KARAOKE / GOODS input is answered in input order with cartLineKey / KARAOKE:<slotRef> keys",
+        "a KARAOKE quantity other than 1, the same slot twice and an empty input reject with RangeError; reads leave the mock DB JSON, the Slot states, the storage writes, the id counter and the idempotency records unchanged (SEC-API-029)",
+        "a guest gets auth_required, an unverified user email_unverified, and scenario cart.state eligibility_fail makes a verified user's read unavailable for every target including KARAOKE (authentication is checked first)"
+      ]
     },
     {
       "test_case_id": "TC-PG-MYP-002-101",
@@ -6190,7 +6227,7 @@
       "test_case_id": "TC-PG-CRT-001-461",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-001", "BR-ORD-020"],
+      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-001", "BR-ORD-020", "PG-GDS-002"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -6201,7 +6238,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "no purchase operation, Order creation, idempotency key or navigation in the Entry or Goods detail UI, the add form or the Cart store (the Entry page may call only the read-only getPurchaseEligibility on the purchase port); the Goods detail page and the Cart store do not read the eligibility; handleProceed seam present (the Cart page is covered by S7a)"
+        "no purchase operation, Order creation, idempotency key or navigation in the Entry or Goods detail UI, the add form or the Cart store (the Entry and Goods detail pages may call only the read-only getPurchaseEligibility on the purchase port); the Cart store does not read the eligibility; handleProceed seam present (the Cart page is covered by S7a)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -6282,7 +6319,7 @@
       "test_case_id": "TC-DEV-WEB-001-403",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["DEV-WEB-001", "DEV-DEP-006"],
+      "upstream_rule_ids": ["DEV-WEB-001", "DEV-DEP-006", "PG-GDS-002", "SEC-API-029"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -6293,7 +6330,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "containers are client components that read through useApi after mount; Header and Cart page share one store; the Cart page and the Entry page read the owner-scoped eligibility through useApi().purchase only for a verified session, decided by eligibilityMode and re-read with the session; the eligibility model is pure and persists nothing"
+        "containers are client components that read through useApi after mount; Header and Cart page share one store; the Cart page, the Entry page and the Goods detail page read the owner-scoped eligibility through useApi().purchase only for a verified session, decided by eligibilityMode and re-read with the session (the Goods detail page uses the answer only through eligibilityForSession); the eligibility model is pure and persists nothing"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -6460,6 +6497,39 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-GDS-002-413",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "PG-GDS-002",
+        "FR-GDS-004",
+        "SEC-API-029",
+        "API-PUR-ELG-001",
+        "SPEC-050-12.1",
+        "SPEC-050-14.2",
+        "TST-UNT-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Pure buildGoodsDetailModel with an eligibility argument and goodsEligibilityTarget; contract tests/contracts/s5-cart.md 4.2; UI mock test double (not API/DB/Provider coverage)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "expected_domain_postconditions": [
+        "for not_applicable (Guest and unverified) the model equals the public model; for an on-sale Goods a loading, unavailable or missing owner answer is 'cannot confirm' (not the on-sale label) with add disabled and no maximum while the name, description, price, period and pickup notice stay",
+        "an owner answer that is purchasable shows on sale with the smaller of the public and the owner maximum; one that is not purchasable shows its reasons with add disabled; a Goods that is not on sale publicly keeps its public state whatever the answer",
+        "loading, not_found and unavailable reads keep their kind whatever the answer; goodsEligibilityTarget is the quantity-1 GOODS line of an on-sale Goods and null otherwise; inputs are not mutated"
+      ]
     },
     {
       "test_case_id": "TC-PG-TKT-001-501",
@@ -6862,6 +6932,73 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-GDS-002-507",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-GDS-002",
+        "SEC-API-029",
+        "API-PUR-ELG-001",
+        "SPEC-050-12.1",
+        "SPEC-050-14.2",
+        "SPEC-050-21",
+        "TST-E2E-003",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Mock mode (desktop and mobile Chromium); Goods detail; verified, unverified and Guest sessions; scenario cart.state eligibility_fail; contract tests/contracts/s5-cart.md 5.2; DB postconditions are the mock DB",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "expected_domain_postconditions": [
+        "a verified user whose eligibility cannot be read sees 'cannot confirm' (not on sale) with Add disabled and the reason attached, no quantity guidance, one alert naming the purchase conditions with a retry button, while the name, description, price and period stay; retrying only reads (Cart, mock DB and storage keys unchanged, nothing owner-specific stored)",
+        "a retry with a working eligibility recovers without a reload: on sale, Add enabled, the maximum announced again; a verified user with a working eligibility sees and adds as before",
+        "a Guest and an unverified user get the public state only (the eligibility is not read, so its failure is invisible); a Goods that is not on sale publicly keeps its public state even when the eligibility fails"
+      ]
+    },
+    {
+      "test_case_id": "TC-PG-GDS-002-508",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-GDS-002",
+        "SEC-API-029",
+        "DEV-WEB-007",
+        "API-PUR-ELG-001",
+        "SPEC-050-12.1",
+        "SPEC-050-26.2",
+        "TST-E2E-003",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Mock mode (desktop and mobile Chromium); Goods detail; second tab changes the session; scenario cart.state eligibility_fail; scenario latency long (5000 ms) written after the first display for the in-between checks; contract tests/contracts/s5-cart.md 5.2; DB postconditions are the mock DB",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "expected_domain_postconditions": [
+        "from a Guest to a verified user until the re-read completes, the Goods is 'cannot confirm' with Add disabled and no quantity guidance, never on sale; no alert; the name, price and typed quantity stay (the form is not unmounted); afterwards on sale with Add enabled; the first recorded state is 'cannot confirm'",
+        "from a verified user whose eligibility failed to a Guest, the alert disappears at once and is never shown again, and the public state returns with Add enabled; the Cart and the mock DB stay unchanged"
+      ]
     },
     {
       "test_case_id": "TC-PG-CRT-001-501",
@@ -8818,12 +8955,13 @@
         "DEV-WEB-007",
         "API-PUR-ELG-001",
         "TST-UNT-004",
-        "PG-TKT-001"
+        "PG-TKT-001",
+        "PG-GDS-002"
       ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "Pure eligibilityMode / eligibilityTargets / toEligibilityInput / findEligibility / eligibilityForSession / eligibilityForLines over session states, public resolutions and eligibility answers",
+      "preconditions": "Pure eligibilityMode / eligibilityTargets / toEligibilityInput / findEligibility / eligibilityForSession / eligibilityForLines over session states, public resolutions and eligibility answers and decideSaleState over SaleAvailability kinds",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -8834,7 +8972,8 @@
         "only lines that are on sale publicly and fit the public maximum are sent, in Cart order; not-public, unavailable, not-on-sale, over-maximum, purchase-limit and quantity-shortage lines and lines without a resolution are dropped",
         "anything but an ok answer is a failure (never 'under the limit'); an item is found by its line key only in an ok answer; inputs and answers are not mutated",
         "an answer is used only under the session state it was read for: for a verified user a different, missing or merely equal session state gives loading and never the previous answer; Guest and unverified give not_applicable, an undeterminable session gives unavailable and a loading session gives loading",
-        "of an ok answer only the items whose line is still in the Cart with the quantity it was read for are kept, in their order; other answers are returned as they are; inputs are not mutated"
+        "of an ok answer only the items whose line is still in the Cart with the quantity it was read for are kept, in their order; other answers are returned as they are; inputs are not mutated",
+        "decideSaleState keeps the public state unless the item is on sale publicly; on sale it shows the owner answer, and a pending, failed or missing answer is 'cannot confirm' with add disabled and no maximum"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -10176,7 +10315,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "contracted slot detail wording including the not-purchasable label, description and reason, trimmed non-empty"
+        "contracted slot detail wording including the not-purchasable label, description and reason, trimmed non-empty; the two pre-check reasons PURCHASE_LIMIT_EXCEEDED (purchase limit reached) and UNCONFIRMED (conditions cannot be confirmed) of disabledReason"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -10199,7 +10338,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "no copy fragment (including the not-purchasable reason and description) contains another; the purchasable and not-purchasable labels are in none of them"
+        "no copy fragment (including the not-purchasable reason and description) contains another; the purchasable and not-purchasable labels are in none of them; the PURCHASE_LIMIT_EXCEEDED and UNCONFIRMED reasons are part of the group"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -10365,6 +10504,66 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-PG-KRK-003-616",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "PG-KRK-003",
+        "FR-KRK-007",
+        "BR-KRK-003",
+        "KRK-AVL-003",
+        "SEC-API-029",
+        "API-PUR-ELG-001",
+        "SPEC-050-12.1",
+        "SPEC-050-13.3",
+        "TST-UNT-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Pure buildKaraokeSlotModel with an eligibility argument and karaokeEligibilityTarget over the seed slot d1_1000 and public variations; contract tests/contracts/s7b-karaoke.md 3.2; UI mock test double (not API/DB/Provider coverage)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "expected_domain_postconditions": [
+        "a slot that is not purchasable publicly (HELD, SOLD, SALES_STOPPED, a sale status other than ON_SALE, a false port flag) keeps its public model whatever the owner answer is; not_applicable (Guest and unverified) equals the public model",
+        "for a publicly purchasable slot a loading, unavailable, missing, other-slot or inconsistent (purchasable with a maximum of 0) answer is 'cannot confirm' with the button disabled and the unconfirmed reason; a purchasable answer is the purchasable model",
+        "a purchase limit shows the purchase-limit label and description with its own disabled reason; each of the nine reason codes shows its own label and maps to the sale or not-purchasable disabled reason by the first reason, with every description listed in the received order; purchasable is true exactly when disabledReason is null",
+        "karaokeEligibilityTarget is the quantity-1 KARAOKE target of a publicly purchasable slot and null otherwise; loading, not_found and unavailable keep their kind; inputs are not mutated"
+      ]
+    },
+    {
+      "test_case_id": "TC-PG-KRK-003-617",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-KRK-003", "FR-CRT-002", "API-PUR-ELG-001", "TST-UNT-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Pure eligibilityTargetKey over Cart lines and a KARAOKE target; static check of apps/web/src/api-client/eligibility-target-key.ts; contract tests/contracts/s2-mock-backend.md 2; UI mock test double (not API/DB/Provider coverage)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "expected_domain_postconditions": [
+        "a KARAOKE target is keyed KARAOKE:<slotRef>; an ENTRY_TICKET or GOODS line is keyed exactly as cartLineKey; the same UUID in the three kinds gives three different keys; the input is not mutated",
+        "the key function lives in api-client/eligibility-target-key.ts and imports only api-client types, cart-line-key and @off-r39x/domain"
+      ]
+    },
+    {
       "test_case_id": "TC-PG-KRK-003-621",
       "level": "Unit",
       "suite": "unit",
@@ -10498,7 +10697,13 @@
       "test_case_id": "TC-DEV-WEB-001-704",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["DEV-WEB-001", "DEV-DEP-006", "PG-KRK-003"],
+      "upstream_rule_ids": [
+        "DEV-WEB-001",
+        "DEV-DEP-006",
+        "PG-KRK-003",
+        "SEC-API-029",
+        "API-PUR-ELG-001"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -10508,7 +10713,10 @@
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
-      "expected_domain_postconditions": ["container and hook via port only, apart from the Cart"],
+      "expected_domain_postconditions": [
+        "container and hook via port only, apart from the Cart",
+        "the container reads the owner-scoped eligibility only for a verified session (eligibilityMode, re-read with the session, used only through eligibilityForSession) and calls nothing else on the purchase port; the purchase start stays in the hook"
+      ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
       "expected_observability": [],
@@ -10625,6 +10833,77 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-KRK-003-646",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-KRK-003",
+        "FR-KRK-007",
+        "KRK-AVL-003",
+        "SEC-API-029",
+        "API-PUR-ELG-001",
+        "SPEC-050-12.1",
+        "SPEC-050-13.3",
+        "SPEC-050-21",
+        "TST-E2E-003",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Mock mode (desktop and mobile Chromium); Karaoke slot detail; verified, unverified and Guest sessions; scenario karaokeHold limit and cart.state eligibility_fail; contract tests/contracts/s7b-karaoke.md 4.1 and 8; DB postconditions are the mock DB",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "expected_domain_postconditions": [
+        "a verified user at the limit sees the purchase-limit label and description before any purchase start, with the button disabled and described by the limit reason (not the purchase-start failure text), no alert, no status, no Order, the slot AVAILABLE and the mock DB unchanged; the date, time, price and the generic limit guidance stay",
+        "a Guest and an unverified user at the same scenario get the public state (purchasable label, action enabled, no alert): the eligibility is not read",
+        "a verified user whose eligibility cannot be read sees 'cannot confirm' with the button disabled and the unconfirmed reason and one alert with retry; no Order; a retry with a working eligibility recovers; a Guest and an unverified user do not see the failure; a slot that is not purchasable publicly keeps its public state; nothing owner-specific is stored"
+      ]
+    },
+    {
+      "test_case_id": "TC-PG-KRK-003-647",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-KRK-003",
+        "SEC-API-029",
+        "DEV-WEB-007",
+        "API-PUR-ELG-001",
+        "SPEC-050-12.1",
+        "SPEC-050-13.3",
+        "SPEC-050-26.2",
+        "TST-E2E-003",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Mock mode (desktop and mobile Chromium); Karaoke slot detail; second tab changes the session; scenario karaokeHold limit; scenario latency long (5000 ms) written after the first display for the in-between checks; contract tests/contracts/s7b-karaoke.md 4.1; DB postconditions are the mock DB",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "expected_domain_postconditions": [
+        "from a Guest to a verified user until the re-read completes, the slot is 'cannot confirm' with the button disabled, never purchasable; no alert; the date, time and price stay; afterwards purchasable with the button enabled; the first recorded state is 'cannot confirm'",
+        "from a verified user at the limit to a Guest the previous user's purchase limit disappears at once and the public state returns; no recorded state shows the limit afterwards",
+        "from one verified user to another the new owner sees 'cannot confirm' (never the previous owner's limit and never purchasable) until their own answer arrives; no Order is created in any case"
+      ]
     },
     {
       "test_case_id": "TC-PG-KRK-003-651",
@@ -10766,7 +11045,7 @@
       "test_case_id": "TC-PG-KRK-003-663",
       "level": "E2E",
       "suite": "e2e-ui-mock",
-      "upstream_rule_ids": ["PG-KRK-003", "SPEC-050-21"],
+      "upstream_rule_ids": ["PG-KRK-003", "SPEC-050-21", "API-PUR-ELG-001"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -10776,7 +11055,10 @@
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
-      "expected_domain_postconditions": ["limit and not-on-sale are separate failures"],
+      "expected_domain_postconditions": [
+        "limit and not-on-sale are separate failures",
+        "the limit is found at purchase start after the pre-check passed (the scenario is switched after the page rendered)"
+      ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
       "expected_observability": [],

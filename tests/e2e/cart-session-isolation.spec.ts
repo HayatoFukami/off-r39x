@@ -301,6 +301,12 @@ test.describe("TC-FR-CRT-012-006 protected purchase expiry and raw Guest preflig
             ? { lines: CART }
             : { session: null, extra: cartEntries(CART, "authenticated") },
         );
+        // B4c: a verified Karaoke page enables its action only after the owner-scoped pre-check was read. The session is
+        // rewritten below only after that read, otherwise the pre-check itself would see the expired session (a precondition
+        // of this test, not part of what it asserts).
+        if (target === "karaoke" && source === "api_expiry") {
+          await expect(purchaseButton(page)).toBeEnabled();
+        }
         const cartBefore = await readCartRaw(page);
         const dbBefore = await readDbRaw(page);
         // Expiry after render is first discovered by the protected API action. No storage event updates the UI cache.
