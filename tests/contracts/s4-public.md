@@ -321,7 +321,7 @@ export function buildGoodsListModel(input: Loadable<readonly GoodsSummary[]>): L
 - 状態の仕込みは S3 §10 の `seedLocalStorage`（scenario / session / db）。DB 仕込みは `buildSeed(NOW_ISO)` の状態を加工して `r39x.mock.db.v1` へ入れる（`dbStateSchema` の strict 検証を通る形のまま）。
 - browser の timezone は UTC（`playwright.config.ts`）。表示は JST。
 - 検査対象のページは、`pageerror` / `console.error`（resource load 失敗を除く）が無く、外部 origin へ要求せず、`/admin` / `/staff` / `/dev` への href を持たず、390px 幅で横 scroll が無い。
-- `/`、`/announcements`、`/karaoke`、`/goods`（静的 route）の `Cache-Control` は `private` / `no-store` を含まない（SEC-WEB-009 は protected route 用。公開 page を private にしない）。`Cache-Control` は `dist/_headers` が決め、公開 route に `private` / `no-store` は付かない（動的 route も同じ）。
+- `/`、`/announcements`、`/karaoke`、`/goods`（静的 route）の `Cache-Control` はちょうど `no-store, private, max-age=0`（SEC-WEB-009 改訂後: content-hash 付き asset 以外の全応答。SEC-WEB-010 の cache 許可は Browser-facing Web の静的応答に適用されず、SEC-WEB-009 の静的応答の段落に従うので矛盾しない）。`Cache-Control` は `dist/_headers` の `/*` 規則が決め、公開 route も動的 route も同じ値になる（TC-SEC-WEB-009-601）。
 
 ## 5. テストファイルと契約の対応
 
@@ -353,4 +353,4 @@ export function buildGoodsListModel(input: Loadable<readonly GoodsSummary[]>): L
 5. 公開ルートの UUID の大文字は未規定。→ canonical lowercase だけを有効とし、それ以外は Not Found 表示（S2 / SPEC-110 の canonical 形に合わせる。HTTP status は 200）。
 6. Karaoke の Purchase Limit の数値、整備時間の数値は port が返さない。→ 数値を創作せず、整備時間の 5 分と標準利用 15 分だけは SPEC-050 §13.1 が明記するため静的 copy に含める。
 7. Event 基本情報の section 単位の失敗（FAQ だけ失敗など）は、現行の scenario（`publicFetch` は全 read 共通）では E2E で再現できない。→ 分離は `buildHomeModel` の Unit で検証する。E2E で再現するには scenario へ section 別の fail switch が必要（S2 契約の変更になるため、本スライスでは行わない。オーケストレーターの判断事項）。
-8. `Cache-Control` の検査は静的な 4 route に限る（動的 route にも `private` は付かないが、検査の対象は従来どおり）。
+8. `Cache-Control` の検査は静的な 4 route に限る（動的 route にも同じ `no-store, private, max-age=0` が付くが、検査の対象は従来どおり）。

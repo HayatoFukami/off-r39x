@@ -382,7 +382,7 @@ focus 順は DOM 順と一致させる。Entry / Goods では**数量入力の�
 ## 6. E2E の共通条件
 
 - 時刻は `page.clock.setFixedTime(NOW_ISO)`、状態の仕込みは `seedLocalStorage`（S3 / S4 と同じ）。DB 仕込みは `dbJson`。保存内容の確認は `tests/harness/browser/cart.ts`。
-- 検査対象のページは、`pageerror` / `console.error`（resource load 失敗を除く）が無く、外部 origin へ要求せず、`/admin` / `/staff` への href を持たず、390px 幅で横 scroll が無い。`/entry` と `/cart`（静的 route）の `Cache-Control` は `private` / `no-store` を含まない（S4 §4 と同じ）。動的 route `/goods/[goodsRef]` は対象外。
+- 検査対象のページは、`pageerror` / `console.error`（resource load 失敗を除く）が無く、外部 origin へ要求せず、`/admin` / `/staff` への href を持たず、390px 幅で横 scroll が無い。`/entry` と `/cart`（静的 route）の `Cache-Control` はちょうど `no-store, private, max-age=0`（S4 §4 と同じ。TC-SEC-WEB-009-602）。動的 route `/goods/[goodsRef]` は対象外。
 - Cart 内容の E2E は seed の UUID（`tests/harness/mock-seed.ts`）だけを使う。保存内容に価格・金額が現れないことを、追加・変更の後で毎回確認する。
 
 ## 7. テストファイルと契約の対応
@@ -419,7 +419,7 @@ focus 順は DOM 順と一致させる。Entry / Goods では**数量入力の�
 8. **Resolve 失敗時の行**: 未解決の行を表示し続け（名称は汎用文言、金額なし、状態は「状態を確認できません」）、削除と数量変更を可能にする。購入可能と表示せず、購入手続きは無効（§14A.1 Failure）。
 9. **再取得中**: 数量変更後は直前の resolution で行を表示したまま、購入手続きだけを無効にする。入力欄を unmount しない（focus と入力の継続性）。【v3】保つのは、閲覧者にも判定の数量にも依存しない公開 read の部分だけである。本人別判定は、数量を変えた line には使わない（§5.3）。
 10. **title**: `copy.pageTitle` は S4 のテストが全 key を固定しているため、S5 の title は `copy.entry` / `copy.cart` / `copy.goods.detail` の `pageTitle` に置く。
-11. **Cache-Control**: `/entry` と `/cart` は静的 route として S4 §4 と同じ扱い（`private` / `no-store` を含まない）。
+11. **Cache-Control**: `/entry` と `/cart` は静的 route として S4 §4 と同じ扱い（ちょうど `no-store, private, max-age=0`）。
 12. **Goods 詳細の `not_found`**: S4 の Announcement 詳細と同じく、client が Not Found 表示（HTTP 200）。不正な UUID も route module が `NotFoundView` を描画する（HTTP 200）。
 13. **認証とCart lifecycle**: Login・Logout・Session復元・保護Page / Actionでの期限切れ判定は `FR-CRT-012` に従う。Cart本体とは別の非識別metadataを使い、必要なclearと停止状態の確定後に認証結果を公開する。LogoutはHomeへ戻り、clearのstorage障害でも認証結果を維持する。storage障害では保存値を成功として扱わず、内容・件数・編集・購入を停止し、明示的なclear再試行を提供する。公開PageのGuest照会だけではclearしない。
 14. **session 変化での再取得**: Entry / Cart / Goods 詳細の本人別の購入可否は現在のユーザーの購入済み数量に依存するため（B4b からは `API-PUR-ELG-001` の判定。公開 read は閲覧者に依存しない）、Guest で開いたまま別 tab でログインした画面は Guest 時の状態を残してはならず、ログアウトした画面は前の利用者の判定を残してはならない（SPEC-050 §14A.1: 現在の販売状態を Server-side の値で表示）。Cart store は session を知らないまま。`SessionProvider` は `sameSessionState` で、実際に変わったときだけ state の参照を変える（他 tab の Cart 書き込みの `storage` event だけでは再取得しない）。session が `loading` の間は読まない。再取得の間に残すのは、閲覧者に依存しない公開 read の部分だけである。前の session の本人別判定と、判定不要（`not_applicable`）の公開表示は、新しい session に出さない（verified には「状態を確認できません」、Guest / 未確認には公開の状態。SPEC-050 §12.1「取得中を推測せず」、§14A.1、SPEC-110 `API-PUR-ELG-001` Safety、SEC-API-029）。Cart ページは購入手続きを、Entry は公開上 ON_SALE の offering の Add を無効にする。

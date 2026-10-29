@@ -5,11 +5,17 @@ import {
   createTree,
   type FileMap,
   findingsOf,
+  REPO_ROOT,
   type RunResult,
   removeTree,
   runScript,
 } from "../../harness/script-fixtures.ts";
-import { expectedHeadersFile, INDEX_HTML, sha256Source } from "../../harness/web-dist.ts";
+import {
+  expectedHeadersFile,
+  HASHED_ASSET,
+  INDEX_HTML,
+  sha256Source,
+} from "../../harness/web-dist.ts";
 
 // scripts/generate-web-headers.mts: writes apps/web/dist/_headers from the built HTML (SPEC-140 21 / 22 / 22.1,
 // SEC-WEB-003..009, SEC-WEB-026, SPEC-180 13.1 / 13.2). Contract: tests/contracts/s9-finalize.md section 8.
@@ -53,7 +59,7 @@ function directive(headers: string, name: string): string {
 }
 
 describe("TC-STACK-008-201 the generated _headers is exactly the specified file (SEC-WEB-003..009, SPEC-140 21 / 22 / 22.1)", () => {
-  it("without inline scripts or origins it matches the v2 content character for character", () => {
+  it("without inline scripts, origins or assets it matches the v3 content character for character", () => {
     const dist = makeDist();
     const result = generate(dist);
     expect(result.status, result.output).toBe(0);
@@ -61,54 +67,52 @@ describe("TC-STACK-008-201 the generated _headers is exactly the specified file 
     expect(read(dist)).toBe(expectedHeadersFile());
   });
 
-  it("orders the rules /* then the twelve protected rules, each with no-store, Pragma and no-referrer", () => {
+  it("writes a single /* rule: no protected-prefix rule, no header removal line, no old Referrer-Policy", () => {
     const dist = makeDist();
     generate(dist);
     const headers = read(dist);
     const paths = headers.split("\n").filter((line) => line.startsWith("/"));
-    expect(paths).toEqual([
-      "/*",
-      "/account",
-      "/account/*",
-      "/auth",
-      "/auth/*",
-      "/purchase",
-      "/purchase/*",
-      "/mypage",
-      "/mypage/*",
-      "/admin",
-      "/admin/*",
-      "/staff",
-      "/staff/*",
-    ]);
-    expect(
-      (headers.match(/^ {2}Cache-Control: no-store, private, max-age=0$/gm) ?? []).length,
-    ).toBe(12);
-    expect((headers.match(/^ {2}Pragma: no-cache$/gm) ?? []).length).toBe(12);
-    expect((headers.match(/^ {2}Referrer-Policy: no-referrer$/gm) ?? []).length).toBe(12);
+    expect(paths).toEqual(["/*"]);
+    expect(headers).not.toContain("strict-origin-when-cross-origin");
+    expect(headers).not.toMatch(/^\/(account|auth|purchase|mypage|admin|staff)/m);
+    expect(headers).not.toMatch(/^ *!/m);
   });
 
-  it("carries the six non-CSP security headers once, on the /* rule only, with the specified values", () => {
+  it("carries the eight non-CSP headers once, on the /* rule, with the specified values", () => {
     const dist = makeDist();
     generate(dist);
     const headers = read(dist);
     for (const line of [
       "  X-Content-Type-Options: nosniff",
-      "  Referrer-Policy: strict-origin-when-cross-origin",
+      "  Referrer-Policy: no-referrer",
       "  X-Frame-Options: DENY",
       "  Strict-Transport-Security: max-age=63072000; includeSubDomains",
       "  Cross-Origin-Opener-Policy: same-origin",
       "  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=()",
+      "  Cache-Control: no-store, private, max-age=0",
+      "  Pragma: no-cache",
     ]) {
       expect(
         headers.split("\n").filter((l) => l === line),
         line,
       ).toHaveLength(1);
     }
-    const base = headers.slice(0, headers.indexOf("\n/account\n"));
-    expect(base).toContain("X-Frame-Options: DENY");
-    expect(base).toContain("Strict-Transport-Security: max-age=63072000; includeSubDomains");
-    expect(base).not.toContain("Cache-Control");
+    expect(
+      headers.split("\n").filter((l) => l.startsWith("  Content-Security-Policy: ")),
+    ).toHaveLength(1);
+    // Every header name appears exactly once in the whole file (a single rule carries them all).
+    for (const name of [
+      "Referrer-Policy",
+      "Cache-Control",
+      "Pragma",
+      "X-Frame-Options",
+      "Strict-Transport-Security",
+    ]) {
+      expect(
+        headers.split("\n").filter((l) => l.startsWith(`  ${name}:`)),
+        name,
+      ).toHaveLength(1);
+    }
   });
 
   it("keeps the CSP directives of the baseline and no placeholder", () => {
@@ -391,5 +395,215 @@ describe("TC-STACK-008-207 unusable input and CLI errors", () => {
     expect(result.status).toBe(2);
     expect(result.output).toMatch(/USAGE/);
     expect(findingsOf(result)).toEqual([]);
+  });
+});
+
+const hashedBody = (name: string): string => `export const n = ${JSON.stringify(name)};\n`;
+
+describe("TC-STACK-008-208 each content-hashed asset gets an exact-match rule that restores a long cache (SEC-WEB-009, SPEC-140 22, SPEC-180 13.1)", () => {
+  const assets = ["index-AbCd1234.js", "index-EfGh_5-8.css", "logo-0123abcd.svg"];
+  const files: FileMap = {
+    "dist/index.html": INDEX_HTML,
+    "dist/assets/index-AbCd1234.js": hashedBody("a"),
+    "dist/assets/index-EfGh_5-8.css": "body { margin: 0; }\n",
+    "dist/assets/logo-0123abcd.svg": '<svg xmlns="http://www.w3.org/2000/svg"></svg>\n',
+    "dist/mock/x.svg": '<svg xmlns="http://www.w3.org/2000/svg"></svg>\n',
+    "dist/favicon.ico": "ico",
+  };
+
+  it("matches the v3 file with one rule per asset, in code unit order, and --check agrees", () => {
+    for (const name of assets) expect(HASHED_ASSET.test(name), name).toBe(true);
+    const dist = makeDist(files);
+    const result = generate(dist);
+    expect(result.status, result.output).toBe(0);
+    expect(result.stdout).toMatch(/^OK headers inline-scripts=0 img-origins=0$/m);
+    const headers = read(dist);
+    expect(headers).toBe(expectedHeadersFile({ assets }));
+    expect(headers.split("\n").filter((line) => line.startsWith("/"))).toEqual([
+      "/*",
+      "/assets/index-AbCd1234.js",
+      "/assets/index-EfGh_5-8.css",
+      "/assets/logo-0123abcd.svg",
+    ]);
+    const check = generate(dist, { args: ["--check"] });
+    expect(check.status, check.output).toBe(0);
+    expect(read(dist)).toBe(headers);
+  });
+
+  it("writes exactly the three lines ! Cache-Control, ! Pragma and the long cache under each asset rule", () => {
+    const dist = makeDist(files);
+    generate(dist);
+    const lines = read(dist).split("\n");
+    for (const name of assets) {
+      const at = lines.indexOf(`/assets/${name}`);
+      expect(at, name).toBeGreaterThan(0);
+      expect(lines.slice(at + 1, at + 5), name).toEqual([
+        "  ! Cache-Control",
+        "  ! Pragma",
+        "  Cache-Control: public, max-age=31536000, immutable",
+        "",
+      ]);
+    }
+  });
+
+  it("writes no rule for files outside dist/assets/ (mock/x.svg, favicon.ico, index.html)", () => {
+    const dist = makeDist(files);
+    generate(dist);
+    const headers = read(dist);
+    expect(headers).not.toContain("/mock/");
+    expect(headers).not.toContain("x.svg");
+    expect(headers).not.toContain("favicon");
+    expect(headers).not.toContain("/index.html");
+    expect(headers.split("\n").filter((line) => line.startsWith("/"))).toHaveLength(4);
+  });
+});
+
+describe("TC-STACK-008-209 a dist that breaks the header assumptions fails the build and writes nothing (SEC-WEB-009, SPEC-180 13.1, SEC-WEB-003)", () => {
+  // Runs generate and --check on the files; both must exit 1 with every expected line. A plain run must not
+  // create _headers and must leave an existing _headers byte for byte unchanged.
+  function expectBuildFailure(
+    files: FileMap,
+    errorLines: readonly string[],
+    origins?: string,
+  ): string {
+    const dist = makeDist(files);
+    const run = generate(dist, { origins });
+    expect(run.status, run.output).toBe(1);
+    for (const line of errorLines) expect(run.output).toContain(`${line}\n`);
+    expect(existsSync(join(dist, "_headers"))).toBe(false);
+
+    const check = generate(dist, { origins, args: ["--check"] });
+    expect(check.status, check.output).toBe(1);
+    for (const line of errorLines) expect(check.output).toContain(`${line}\n`);
+    expect(check.output).not.toMatch(/^ERROR headers-stale/m);
+    expect(existsSync(join(dist, "_headers"))).toBe(false);
+
+    writeFileSync(join(dist, "_headers"), "STALE-SENTINEL\n", "utf8");
+    const again = generate(dist, { origins });
+    expect(again.status, again.output).toBe(1);
+    expect(read(dist)).toBe("STALE-SENTINEL\n");
+    return run.output;
+  }
+
+  const indexOnly: FileMap = { "dist/index.html": INDEX_HTML };
+
+  it("(1) an unhashed file in dist/assets/: ERROR asset-unhashed <path>", () => {
+    expectBuildFailure({ ...indexOnly, "dist/assets/app.js": "export {};\n" }, [
+      "ERROR asset-unhashed assets/app.js",
+    ]);
+  });
+
+  it("(2) a subdirectory of dist/assets/: ERROR asset-unhashed <directory>", () => {
+    expectBuildFailure({ ...indexOnly, "dist/assets/sub/x-AbCd1234.js": "export {};\n" }, [
+      "ERROR asset-unhashed assets/sub",
+    ]);
+  });
+
+  it("(3) several violations are all listed, one line each", () => {
+    expectBuildFailure(
+      { ...indexOnly, "dist/assets/a.js": "export {};\n", "dist/assets/b.css": "a {}\n" },
+      ["ERROR asset-unhashed assets/a.js", "ERROR asset-unhashed assets/b.css"],
+    );
+  });
+
+  it.each([["404.html"], ["guide/404.html"], ["404.HTML"]])(
+    "(4) %s anywhere under dist: ERROR html-404-present <path>",
+    (path) => {
+      expectBuildFailure({ ...indexOnly, [`dist/${path}`]: INDEX_HTML }, [
+        `ERROR html-404-present ${path}`,
+      ]);
+    },
+  );
+
+  const assetName = (i: number): string => `chunk${String(i).padStart(3, "0")}-AbCd1234.js`;
+  const manyAssets = (count: number): FileMap =>
+    Object.fromEntries(
+      Array.from({ length: count }, (_unused, i) => [
+        `dist/assets/${assetName(i)}`,
+        hashedBody(String(i)),
+      ]),
+    );
+
+  it("(5) 100 hashed assets make 101 rules: ERROR headers-rule-limit rules=101", () => {
+    expectBuildFailure({ ...indexOnly, ...manyAssets(100) }, [
+      "ERROR headers-rule-limit rules=101",
+    ]);
+  });
+
+  it("(5) boundary: 99 hashed assets make exactly 100 rules and are accepted", () => {
+    const dist = makeDist({ ...indexOnly, ...manyAssets(99) });
+    const result = generate(dist);
+    expect(result.status, result.output).toBe(0);
+    const headers = read(dist);
+    expect(headers.split("\n").filter((line) => line.startsWith("/"))).toHaveLength(100);
+    expect(headers).toBe(
+      expectedHeadersFile({ assets: Array.from({ length: 99 }, (_unused, i) => assetName(i)) }),
+    );
+    expect(generate(dist, { args: ["--check"] }).status).toBe(0);
+  });
+
+  // Sponsor image origins (reserved domain example.com, lower case, labels of 30..63 characters) that make line
+  // 3 of the file, the CSP line, exactly `target` characters long. The harness computes the line length itself.
+  function originsForCspLine(target: number): string[] {
+    const make = (count: number, extra: readonly number[]): string[] =>
+      Array.from(
+        { length: count },
+        (_unused, i) =>
+          `https://h${String(i).padStart(2, "0")}${"a".repeat(27 + (extra[i] ?? 0))}.example.com`,
+      );
+    const lineLength = (origins: readonly string[]): number =>
+      (expectedHeadersFile({ imgOrigins: origins }).split("\n")[2] ?? "").length;
+    let count = 1;
+    while (lineLength(make(count + 1, [])) <= target) count += 1;
+    let remainder = target - lineLength(make(count, []));
+    const extra: number[] = [];
+    for (let i = 0; i < count; i += 1) {
+      const add = Math.min(remainder, 33);
+      extra.push(add);
+      remainder -= add;
+    }
+    const origins = make(count, extra);
+    expect(remainder).toBe(0);
+    expect(lineLength(origins)).toBe(target);
+    return origins;
+  }
+
+  it("(6) a CSP line of 2,001 characters: ERROR headers-line-too-long line=3, without any origin in the output", () => {
+    const origins = originsForCspLine(2001);
+    const output = expectBuildFailure(
+      indexOnly,
+      ["ERROR headers-line-too-long line=3"],
+      JSON.stringify(origins),
+    );
+    expect(output).not.toContain("example.com");
+    expect(output).not.toMatch(/h00a/);
+  });
+
+  it("(6) boundary: a CSP line of exactly 2,000 characters is accepted", () => {
+    const origins = originsForCspLine(2000);
+    const dist = makeDist(indexOnly);
+    const result = generate(dist, { origins: JSON.stringify(origins) });
+    expect(result.status, result.output).toBe(0);
+    expect(read(dist)).toBe(expectedHeadersFile({ imgOrigins: origins }));
+    expect(
+      Math.max(
+        ...read(dist)
+          .split("\n")
+          .map((line) => line.length),
+      ),
+    ).toBe(2000);
+  });
+});
+
+describe("TC-STACK-008-210 the hash check relies on Vite's default asset naming, which the repository keeps (SEC-WEB-009, DEV-WEB-001, SPEC-180 13.1)", () => {
+  it("has no apps/web/public/assets directory, so no fixed-name public file lands in dist/assets/", () => {
+    expect(existsSync(join(REPO_ROOT, "apps", "web", "public", "assets"))).toBe(false);
+  });
+
+  it("does not set assetsDir, entryFileNames, chunkFileNames or assetFileNames in vite.config.ts", () => {
+    const config = readFileSync(join(REPO_ROOT, "apps", "web", "vite.config.ts"), "utf8");
+    for (const key of ["assetsDir", "entryFileNames", "chunkFileNames", "assetFileNames"]) {
+      expect(config, key).not.toContain(key);
+    }
   });
 });
