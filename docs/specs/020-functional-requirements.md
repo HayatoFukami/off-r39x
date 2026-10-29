@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-020
 title: Functional Requirements
-version: 2.0.0
+version: 2.1.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -277,7 +277,20 @@ Entry TicketとGoodsは、Cartを経由して1回の外部決済へまとめて�
 | FR-CRT-009 | 複合Orderの支払確定では、含まれるEntry Ticketの発行とAllocation確定、およびGoodsのAllocation確定と履行可能化を、中途半端な確定状態を残さない一貫した業務更新として成立させなければならない。いずれかが成立しない場合は、Orderを通常の `CONFIRMED` として扱ってはならない。 |
 | FR-CRT-010 | 複合Orderが支払前に取消、失効または支払不成立となった場合、当該Orderに属する全てのAllocationを同一Order内で一貫して解放しなければならない。 |
 | FR-CRT-011 | 購入開始が成功しOrderが作成された時点で、当該Orderに含めたItemをCartから除去できなければならない。購入開始失敗時は、Cart内容を失わず利用者が内容を見直せなければならない。 |
-| FR-CRT-012 | Cart内容は特定Accountの所有権や権利を発生させてはならない。CartはBrowser側の購入前補助でありAuth Subjectを保持しないため、「他者のCart内容」は直前にAuthenticated Userとして利用していた者が追加した内容を指す。Cart本体は対象の参照と数量だけを保持する（`FR-CRT-003`）。Browser側metadataは由来の区別と、認証遷移中またはCart復旧が必要な状態の識別に限り、個人識別情報なしで記録してよい。metadataは認証・認可・所有権の根拠としてはならず、Auth Subject、Account ID、Email、これらのhash、Role、認証credentialを含めてはならない。metadataが欠落または不正、あるいは認証利用済みの場合、Cartの由来は不明とする。Guest由来と確認できるCartは初回Login時（CartからのContinuationを含む）とGuest由来のCartを維持できる新規登録時に保持する（`FR-CRT-006`）。有効Session中の再Loginは同じAccountと確認できないためCartをclearする。由来不明のCartは、Login / 新規登録後にSession成立を確認した場合にclearする。認証利用済みSessionのLogoutでは当該BrowserのCartをclearし、clear後にGuestが新たに作成するCartはGuest由来とする。Guestが保護Page / 保護ActionからAuthentication Gateへ進む場合、遷移前に由来不明または認証利用済みのCartをclearする。Guest由来と確認できるCartは保持する。Loginを中止しても、遷移前にclearしたCartは復元しない。認証済みSessionの期限切れまたは無効を安全にrefreshできないと保護Page / 保護Actionで判定した場合も、Authentication Gateへ遷移する前にCartをclearする。本Requirementは定期的なSession監視を要求せず、判定は保護Page / 保護Actionのアクセス時に行う。認証遷移中は同一Browser内の他のCart操作を一時停止し、待機中と表示する。認証処理の終了時に遷移記録を解消し、Cartを再評価可能にする。Web Locksが利用できる場合はBrowser間の認証遷移を排他し、処理の終了またはBrowserの終了時にLockを解放する。利用できない場合は同一Tab内のメモリ状態で遷移を制御する。遷移記録が残り、進行中の認証処理を確認できない場合は安全のためCartを停止し、Login / 登録画面からCartをclearして復旧できるようにする。Cartまたはmetadataを安全に読み書き・clearできない場合もCartの表示・件数・編集・購入を停止し、Guest Cartを維持したままLoginへ進めてはならない。Login / 登録画面にはCartのclearが必要であることを示し、明示的な復旧操作を提供する。復旧が失敗した場合は失敗理由を示し、停止を維持する。認証処理自体は成立結果を維持し、Cart整理の失敗を認証失敗として表示してはならない。Browser storage自体を取得できない場合、Cartは存在しないものとして扱う。Cart表示・編集・購入は停止するが、Authentication Gateへの遷移およびKaraoke等Cartを使用しない機能を妨げない。storage取得不可の状態で再試行した場合は失敗理由を表示し、明示的再試行でstorageを再取得しCart clearとmetadata更新が成功したときだけ利用を再開する。Karaoke Slotの閲覧とAuthenticated UserのKaraoke購入開始はCart状態の影響を受けない。GuestのKaraoke購入開始でAuthentication Gateへ進む直前のCart clearは本Requirementに従い、clearが必要な場合に失敗したときだけ遷移を止め復旧を示す。LoginまたはLogoutによって他者のCart内容や購入済み権利が表示されてはならない。Cartのclearは、既存のOrder、Ticket、Reservation、Goods購入、Allocationを変更・削除・取消してはならない。 |
+| FR-CRT-012 | Cart内容は特定Accountの所有権や権利を発生させてはならない。CartはBrowser側の購入前補助でありAuth Subjectを保持しないため、「他者のCart内容」は直前にAuthenticated Userとして利用していた者が追加した内容を指す。Cart本体は対象の参照と数量だけを保持する（`FR-CRT-003`）。Browser側metadataは由来の区別と、認証遷移中またはCart復旧が必要な状態の識別、および本表の直後の「FR-CRT-012 の外部完了認証の規則」が定める外部完了認証の結果待ち記録に限り、個人識別情報なしで記録してよい。metadataは認証・認可・所有権の根拠としてはならず、Auth Subject、Account ID、Email、これらのhash、Role、認証credentialを含めてはならない。metadataが欠落または不正、あるいは認証利用済みの場合、Cartの由来は不明とする。Guest由来と確認できるCartは初回Login時（CartからのContinuationを含む）とGuest由来のCartを維持できる新規登録時に保持する（`FR-CRT-006`）。有効Session中の再Loginは同じAccountと確認できないためCartをclearする。由来不明のCartは、Login / 新規登録後にSession成立を確認した場合にclearする。認証利用済みSessionのLogoutでは当該BrowserのCartをclearし、clear後にGuestが新たに作成するCartはGuest由来とする。Guestが保護Page / 保護ActionからAuthentication Gateへ進む場合、遷移前に由来不明または認証利用済みのCartをclearする。Guest由来と確認できるCartは保持する。Loginを中止しても、遷移前にclearしたCartは復元しない。認証済みSessionの期限切れまたは無効を安全にrefreshできないと保護Page / 保護Actionで判定した場合も、Authentication Gateへ遷移する前にCartをclearする。本Requirementは定期的なSession監視を要求せず、判定は保護Page / 保護Actionのアクセス時に行う。認証遷移中は同一Browser内の他のCart操作を一時停止し、待機中と表示する。認証処理の終了時に遷移記録を解消し、Cartを再評価可能にする。Web Locksが利用できる場合はBrowser間の認証遷移を排他し、処理の終了またはBrowserの終了時にLockを解放する。利用できない場合は同一Tab内のメモリ状態で遷移を制御する。遷移記録が残り、進行中の認証処理を確認できない場合は安全のためCartを停止し、Login / 登録画面からCartをclearして復旧できるようにする。認証の完了が開始画面の外で起きる方式（Google、Magic Link。以下「外部完了認証」）の開始、認証遷移、Cartの保持・clear、外部完了認証の結果待ち記録および保証の限界は、本表の直後の「FR-CRT-012 の外部完了認証の規則」に従う。Cartまたはmetadataを安全に読み書き・clearできない場合もCartの表示・件数・編集・購入を停止し、Guest Cartを維持したままLoginへ進めてはならない。Login / 登録画面にはCartのclearが必要であることを示し、明示的な復旧操作を提供する。復旧が失敗した場合は失敗理由を示し、停止を維持する。認証処理自体は成立結果を維持し、Cart整理の失敗を認証失敗として表示してはならない。Browser storage自体を取得できない場合、Cartは存在しないものとして扱う。Cart表示・編集・購入は停止するが、Authentication Gateへの遷移およびKaraoke等Cartを使用しない機能を妨げない。storage取得不可の状態で再試行した場合は失敗理由を表示し、明示的再試行でstorageを再取得しCart clearとmetadata更新が成功したときだけ利用を再開する。Karaoke Slotの閲覧とAuthenticated UserのKaraoke購入開始はCart状態の影響を受けない。GuestのKaraoke購入開始でAuthentication Gateへ進む直前のCart clearは本Requirementに従い、clearが必要な場合に失敗したときだけ遷移を止め復旧を示す。LoginまたはLogoutによって他者のCart内容や購入済み権利が表示されてはならない。外部完了認証によるLoginで他者のCart内容を表示しないことを保証しない範囲は、本表の直後の「FR-CRT-012 の外部完了認証の規則」の手順10に限る。Cartのclearは、既存のOrder、Ticket、Reservation、Goods購入、Allocationを変更・削除・取消してはならない。 |
+
+FR-CRT-012 の外部完了認証の規則は次のとおりとする。外部完了認証は、認証の完了が開始画面の外で起きる方式（Google、Magic Link）をいう。外部完了認証の戻りは、外部完了認証の後に認証基盤が表示させる、開始した画面と同じPage（`SPEC-050` §15.0）への遷移をいい、外部完了認証の戻りで表示された画面は、その遷移で表示された画面をいう。外部完了認証を開始した元の画面、外部完了認証の戻りの遷移が起きていない他のTab、および再読込またはBrowserの履歴の移動で再表示された画面は、外部完了認証の戻りで表示された画面に当たらない。外部完了認証の結果待ち記録は、外部完了認証を開始したことと、その記録がある間に同じBrowserで別の方式によるLoginまたは新規登録が成立したかどうかだけを、Browser側metadataへ個人識別情報なしで記録する。Auth Subject、Account ID、Email、これらのhash、Role、認証credentialその他Accountを識別する情報を含めない。
+
+1. 外部完了認証はGuestだけが開始できる。Email未確認のSessionを持つ利用者はGuestではない。
+2. 外部完了認証の開始操作（Google認証の開始、Magic Linkの送信）は認証遷移とする。開始操作を認証基盤へ要求する前に、由来不明または認証利用済みのCartをclearし、Guest由来と確認できるCartは保持する。clear後のCartはGuest由来とする。Cartまたはmetadataを安全に読み書き・clearできない場合は開始しない。Browser storage自体を取得できない場合は、Cartが存在しないものとして扱い、開始を妨げず、外部完了認証の結果待ち記録を作成しない。
+3. 外部完了認証の結果待ち記録は、手順2のclearとmetadataの更新が成功した後、開始操作を認証基盤へ要求する前に作成する。外部完了認証の結果待ち記録が既にある場合は、新しい開始の内容で置き換える。開始操作の要求が失敗した場合と結果が不明な場合も、外部完了認証の結果待ち記録を残す。
+4. 開始操作の要求を終えた時点で遷移記録を解消し、開始画面の外で処理が続く間は遷移記録とLockを残さない。外部完了認証の結果待ち記録はCartを停止しない。
+5. 外部完了認証の結果待ち記録がある間に、同じBrowserで別の方式によるLoginまたは新規登録が成立した場合（Sessionが成立した場合。Email未確認のSessionを含む）、その成立を外部完了認証の結果待ち記録に記録する。
+6. 外部完了認証の結果の受領とは、外部完了認証の結果待ち記録があるBrowserで、外部完了認証の戻りで表示された画面が、外部完了認証によって成立したSession（Email未確認のSessionを含む）を確認した時点をいう。外部完了認証の結果の受領は、1回の外部完了認証の戻りにつき1回だけ起きる。外部完了認証の結果の受領では、開始時点の由来（手順2によりGuest由来）と手順5の成立の有無だけで判定する。手順5の成立が記録されている場合は有効Session中の再LoginとしてCartをclearし、記録されていない場合はCartを保持する。外部完了認証の結果待ち記録の作成後にSessionの確認によってCartへ付けた認証利用済みの由来は、この判定に用いない。外部完了認証の戻りで表示された画面以外の画面によるSessionの確認は、外部完了認証の結果の受領にも手順9の確認にも当たらない。その確認は成立済みSessionの継続として扱い、その確認を理由に外部完了認証の結果待ち記録を解消せず、Cartをclearしない。
+7. 外部完了認証の結果待ち記録は、外部完了認証の結果の受領とLogoutでだけ解消する。中止・失敗・期限切れで戻った場合は解消しない。
+8. 中止・失敗・期限切れで戻っても、手順2でclearしたCartは復元しない。
+9. 外部完了認証の結果待ち記録が無いBrowserで、外部完了認証の戻りで表示された画面が、外部完了認証によって成立したSessionを確認した場合（Linkを別端末または別のBrowserで開いた場合を含む）は、その確認の直前のCartの由来に従い、Guest由来と確認できるCartは保持し、由来不明または認証利用済みのCartはclearする。この確認も、1回の外部完了認証の戻りにつき1回だけ行う。
+10. 有効なSession（Email未確認のSessionを含む）があるBrowserで、外部完了認証によって別のSessionが成立したが、そのBrowserで外部完了認証の戻りで表示された画面による確認（手順6または手順9）が行われない場合、外部完了認証の結果待ち記録の有無にかかわらず、SPAは成立したSessionを元のSessionと区別できない。本システムはAccountを識別する情報をmetadataに記録しないため、この場合、他者のCart内容を表示しないことは、そのBrowserで次に外部完了認証の戻りで表示された画面による確認（手順6または手順9）またはLogoutが行われるまで保証しない。
 
 ## 12. マイページ Functional Requirements
 
@@ -519,4 +532,18 @@ Entry TicketとGoodsは、Cartを経由して1回の外部決済へまとめて�
 
 ## 22. 上流仕様変更要求
 
-なし。
+他仕様書への新規Upstream Change Requestはない。
+
+本書の要件の不足を解消する次の要求を、本改訂（v2.1.0）で本文へ取り込んだ。現在の契約は本文を正とし、以下の記録を別の契約として実装しない。
+
+### UCR-020-001 — INCORPORATED
+
+- **Status:** `INCORPORATED`（`SPEC-020 v2.1.0`）
+- 対象: SPEC-020（FR-CRT-012）
+- 現在の仕様（改訂前）: FR-CRT-012は、認証遷移中は同一Browser内の他のCart操作を一時停止し、認証処理の終了時に遷移記録を解消する、Web Locksが利用できる場合はBrowser間の認証遷移を排他し処理の終了またはBrowserの終了時にLockを解放する、遷移記録が残り進行中の認証処理を確認できない場合はCartを停止する、と定めていた。Guest由来のCartは初回Login時に保持し、有効Session中の再LoginではCartをclearし、由来不明のCartはSession成立を確認した場合にclearする、とも定めていた。`SPEC-050` §15.0 / `SPEC-060` §11.1.1 が採用するGoogle（Providerへの画面遷移を伴う）とMagic Link（メールのLinkを開いた時点で、別のTabや別の端末でSessionが成立しうる）について、認証の完了が開始画面の外で起きる場合のCartの保持・clearを定めていなかった。
+- 要求する変更: 認証の完了が開始画面の外で起きる方式（外部完了認証）について、Guestだけが開始できること（Email未確認のSessionを持つ利用者はGuestではない）、開始操作を認証遷移として由来不明または認証利用済みのCartをclearし遷移記録とLockを残さないこと、Browser storage自体を取得できない場合は開始を妨げず記録を作成しないこと、Accountを識別する情報を含まない外部完了認証の結果待ち記録を開始操作の要求前に作成しCartを停止しないこと、その記録がある間の別の方式によるLoginまたは新規登録の成立を記録すること、外部完了認証の戻りで表示された画面だけが結果を確認し、記録がある場合は開始時点の由来と別の方式の成立の有無だけで、記録が無い場合は確認の直前のCartの由来でCartの保持・clearを判定すること、それ以外の画面によるSessionの確認を成立済みSessionの継続として扱うこと、記録の解消を外部完了認証の結果の受領とLogoutに限ること、中止・失敗・期限切れでCartを復元しないこと、記録の有無にかかわらず有効なSessionがあるBrowserで外部完了認証の戻りで表示された画面による確認が行われない場合の保証の限界を明記する。
+- 理由: 画面遷移の間はLockを保持できず、遷移記録を残すと戻った時点や中止時に必ず「進行中の認証処理を確認できない」状態になり、Guest Cartの保持（`FR-CRT-006`）と `SPEC-050` §15.0 の「取消・閉じるはGuestのまま同画面へ戻し、別方式を選べる」が両立しない。遷移記録を残さない場合、戻った時点では初回Loginと有効Session中の再Loginを区別できない。同じBrowserで結果を確認しうる画面が複数ある場合（Linkを別のTabで開き、元の画面も残っている場合）に判定を一つに定める必要がある。本システムはAccountを識別する情報をmetadataに記録しないため、有効なSessionがあるBrowserで外部完了認証の戻りで表示された画面による確認が行われない場合は、記録の有無にかかわらず元のSessionと新しいSessionを区別できず、分離を保証できる範囲を明示する必要がある。
+- 変更しない場合の影響: 実装者が、Google / Magic LinkのたびにCartを停止・clearする実装か、有効Session中の再LoginでもCartを保持して他者のCart内容を表示しうる実装かを独自に選ぶ。結果を確認しうる画面が複数ある場合に、後の画面で初回LoginのGuest Cartをclearする実装を誘発しうる。分離を保証できない範囲が不明なまま、Accountを識別する情報をmetadataへ記録する実装を誘発しうる。
+- 影響を受ける可能性がある仕様書: SPEC-040, SPEC-050, SPEC-060, SPEC-110, SPEC-140, SPEC-170
+- **本書側反映:** FR-CRT-012（metadataの記録目的への外部完了認証の結果待ち記録の追加、外部完了認証の規則への参照、保証の限界の範囲の明示）と、§11Aの表の直後の「FR-CRT-012 の外部完了認証の規則」。開始画面の中で完了する方式（Email+Password、Email OTP）の規則は変更しない。
+- **残作業:** なし。`SPEC-050` §15.0 の画面上の扱いは `UCR-050-003`（`SPEC-050 v2.2.0`、INCORPORATED）で反映した。`SPEC-040` UF-AUTH-001〜003、`SPEC-060` §6.1 / §7.1 / §10.1 / §11.1.1 / §13、`SPEC-110` §23.1、`SPEC-140` SEC-AUTH-007 / SEC-WEB-013、`SPEC-170` は確認の結果、変更を要しない。
