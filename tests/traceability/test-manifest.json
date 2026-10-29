@@ -7622,9 +7622,11 @@
         "PG-TKT-001",
         "PG-GDS-002",
         "PG-CRT-001",
+        "AR-SES-007",
         "SPEC-050-12.1",
         "SPEC-050-14.2",
         "SPEC-050-14A.1",
+        "SPEC-050-15.6",
         "SPEC-050-25",
         "TST-E2E-003",
         "TST-E2E-004"
@@ -7632,7 +7634,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "Mock mode; Cart key getItem throws (init script); valid guest / authenticated Cart lifecycle metadata seeded; contract tests/contracts/s5-cart.md 5.1",
+      "preconditions": "Mock mode; Cart key getItem throws (init script; the tests of Q-1 can switch it off from the page); valid guest / authenticated Cart lifecycle metadata seeded; contracts tests/contracts/s5-cart.md 5.1 and tests/contracts/s6-auth.md section 10",
       "fixture_ids": [],
       "clock_instant": "2027-03-01T03:00:00Z",
       "concurrency_seed": null,
@@ -7641,7 +7643,9 @@
       "expected_domain_postconditions": [
         "With valid guest or authenticated lifecycle metadata, an unreadable Cart key stops Cart additions on Entry and Goods detail exactly as without metadata: the sale stays visible while quantity and Cart addition are natively disabled and described by the Cart stop reason with a Cart link, not the damaged-Cart alert",
         "No add result, success announcement or Header count; the Cart key is never created",
-        "The Cart page shows the lifecycle stop (alert, no rows, no proceed button, no empty wording, no count)"
+        "The Cart page shows the lifecycle stop (alert, no rows, no proceed button, no empty wording, no count)",
+        "Q-1 (user decision: stop; no UCR): valid guest metadata alone is not taken as proof that an unreadable Cart is safe. A Guest on a protected page (/mypage) gets the Cart recovery instead of a redirect to Login (URL kept, no protected content, no navigation); a Guest's Karaoke purchase start becomes the Cart recovery instead of a hand-off (no navigation to Login, no Order or Hold, slot AVAILABLE, mock database unchanged, action disabled); Login and Registration show the recovery with submit disabled, and a forced submit is cart_blocked (still on the page, still Guest, the mock session key is never written, no credential or service failure text)",
+        "After the Cart can be read again the explicit recovery lifts the stop in each case: the protected page redirects to Login (continue=mypage), the Karaoke action hands off to Login (continue=karaoke-slot) with no Order created, and Login signs in and reaches Mypage"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],

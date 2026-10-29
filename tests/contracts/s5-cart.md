@@ -219,7 +219,7 @@ export function useCart(): {
 
 - `useCart` は `getBrowserCartStore()` を `useSyncExternalStore` で購読する。store が `null` のとき操作（`clear` を含む）は `{ kind: "storage_unavailable" }` を返す。
 - FR-CRT-012 の認証遷移中は追加・編集・購入操作を無効化して待機中と示す。Cart停止 / storage取得不可では追加を無効化し、Cart停止は `/cart` の復旧、storage取得不可は理由と再試行を提供する。販売情報の閲覧は継続できる。
-- 【B4c-fix】Cart キー（`r39x.cart.v1`）の `getItem` が例外を投げる間は、lifecycle metadata の有無・内容にかかわらず Cart 停止（`blocked`）である（FR-CRT-012「Cartまたはmetadataを安全に読み書き・clearできない場合も停止」）。lifecycle は `getSnapshot` / `initializeGuestIfEmpty` / `markAuthenticated` / `beginTransition` で Cart キーを読めることを確かめ、読めなければ停止する。停止は明示的な復旧（`recover`）が Cart の clear・metadata の更新・Cart キーの読み取りに成功するまで続く。store 単体の snapshot は従来どおり `corrupted`（§2.3）。読めるが壊れた Cart 本体（JSON 破損・schema 不一致）は停止ではなく従来どおり `corrupted`。TC-FR-CRT-012-015 / TC-PG-CRT-001-543。
+- 【B4c-fix】Cart キー（`r39x.cart.v1`）の `getItem` が例外を投げる間は、lifecycle metadata の有無・内容にかかわらず Cart 停止（`blocked`）である（FR-CRT-012「Cartまたはmetadataを安全に読み書き・clearできない場合も停止」）。lifecycle は `getSnapshot` / `initializeGuestIfEmpty` / `markAuthenticated` / `beginTransition` で Cart キーを読めることを確かめ、読めなければ停止する。停止は明示的な復旧（`recover`）が Cart の clear・metadata の更新・Cart キーの読み取りに成功するまで続く。store 単体の snapshot は従来どおり `corrupted`（§2.3）。読めるが壊れた Cart 本体（JSON 破損・schema 不一致）は停止ではなく従来どおり `corrupted`。TC-FR-CRT-012-015 / TC-PG-CRT-001-543。【Q-1。利用者決定: 止める挙動を維持する。UCR は起票しない】metadata が `guest` を示していても、Guest 由来の metadata だけでは読めない Cart を安全と確認できたとみなさない。AuthGate・Guest の Karaoke handoff・Login・登録は止まって `CartRecovery` を出し、復旧後に進める（s6-auth.md §10 の【Q-1】、TC-PG-CRT-001-543）。
 - `useCartCount(): number | null` は同じ store を購読する。`ready` → `cartTotalQuantity`、`corrupted` / store なし → `null`、server snapshot は `null`。S3 の表示規則（1 以上のときだけ数字、accessible name `カート（n点）`）は変えない。**同一 tab での追加・変更・削除、他 tab の変更、`localStorage.clear()` のいずれでも Header の数が更新される。**
 
 ## 3. `canProceed` と Cart view model
@@ -404,7 +404,7 @@ focus 順は DOM 順と一致させる。Entry / Goods では**数量入力の�
 | `tests/e2e/cart-page.spec.ts` | §5.3（本人向け判定は TC-PG-CRT-001-514。途中表示（latency long）も TC-PG-CRT-001-514） |
 | `tests/e2e/cart-store.spec.ts` | 永続、Header の即時更新、他 tab、壊れた保存内容、FR-CRT-012 |
 | `tests/e2e/cart-session-isolation.spec.ts` | TC-FR-CRT-012-011: lifecycle停止中も販売Pageを表示し、Cart追加を無効にする |
-| `tests/e2e/cart-failure-modes.spec.ts` | 書けない / 読めない保存先（TC-PG-CRT-001-541 / -542 / -543、TC-PG-GDS-002-541）。§5.1 の停止表示を含む |
+| `tests/e2e/cart-failure-modes.spec.ts` | 書けない / 読めない保存先（TC-PG-CRT-001-541 / -542 / -543、TC-PG-GDS-002-541。-543 は Q-1 の AuthGate・Guest Karaoke handoff・Login・登録の停止と復旧も固定する）。§5.1 の停止表示を含む |
 | `tests/e2e/cart-common.spec.ts` | §6（title、見出し、runtime error、外部 origin、href、横 scroll、Cache-Control、404） |
 
 ## 8. 曖昧さ・仕様の不足についてテスト担当が決めたこと
