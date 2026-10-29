@@ -490,8 +490,39 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "/account/login, /auth/anything, /purchase/anything, /mypage, /admin and /staff/anything (the six SEC-WEB-009 prefixes) answer 200 with Cache-Control containing no-store and private, and Pragma no-cache, from dist/_headers",
-        "GET / is marked neither private nor no-store"
+        "/account/login, /auth/anything, /purchase/anything, /mypage, /admin and /staff/anything answer 200 with Cache-Control exactly no-store, private, max-age=0 and Pragma no-cache, from the /* rule of dist/_headers",
+        "GET / also carries Cache-Control no-store, private, max-age=0 and Pragma no-cache (SEC-WEB-009 as revised: every response except content-hashed assets)"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-SEC-WEB-009-002",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "SEC-WEB-009",
+        "SPEC-140-22",
+        "SEC-AUTH-013",
+        "DEV-WEB-007",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s3-layout.md section 13",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "alternative spellings of protected paths (/%6Dypage, /MYPAGE, /mypage/, /%61ccount/login, /%6Dypage/orders/<synthetic uuid>, /%70urchase/orders/<synthetic uuid>) answer 200 text/html with Cache-Control exactly no-store, private, max-age=0, Pragma no-cache and Referrer-Policy exactly no-referrer",
+        "//mypage and /x/%2e%2e/mypage, sent unnormalised over a raw request, carry the same three values (status recorded, not asserted)",
+        "the browser document response for /%6Dypage carries the same three values (the rendered screen is not checked)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -5580,7 +5611,7 @@
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
-      "expected_domain_postconditions": ["Cache-Control contains neither private nor no-store"],
+      "expected_domain_postconditions": ["Cache-Control is exactly no-store, private, max-age=0"],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
       "expected_observability": [],
@@ -7537,7 +7568,7 @@
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": 200,
-      "expected_domain_postconditions": ["Cache-Control contains neither private nor no-store"],
+      "expected_domain_postconditions": ["Cache-Control is exactly no-store, private, max-age=0"],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
       "expected_observability": [],
@@ -8849,7 +8880,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "HTTP 200 with Cache-Control no-store, private, max-age=0 and Pragma no-cache; public pages not private"
+        "HTTP 200 with Cache-Control no-store, private, max-age=0 and Pragma no-cache; the browser navigation response of / is no-store as well"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -15564,7 +15595,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v2); requests sent with node:http so the path is not normalised",
+      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v3 approach A); requests sent with node:http so the path is not normalised",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -15593,7 +15624,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v2); requests sent with node:http so the path is not normalised",
+      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v3 approach A); requests sent with node:http so the path is not normalised",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -15622,15 +15653,15 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v2); requests sent with node:http so the path is not normalised",
+      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v3 approach A); requests sent with node:http so the path is not normalised",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "protected prefixes (6 prefixes, the prefix itself and below) carry Cache-Control no-store, private, max-age=0, Pragma no-cache and Referrer-Policy \"strict-origin-when-cross-origin, no-referrer\"; public paths and prefix look-alikes carry neither",
-        "the CSP and the five other security headers appear exactly once on every response including 404; same-name headers of several matching rules are joined with \", \" in file order"
+        "(a) the former protected prefixes carry exactly one Cache-Control no-store, private, max-age=0, Pragma no-cache and exactly one Referrer-Policy no-referrer; (b) public paths and prefix look-alikes carry the same three values",
+        "(c) the CSP, the six security headers, Cache-Control and Pragma appear exactly once on every response including 404 (except the content-hashed asset, which has the long cache and no Pragma); an unhashed asset and a missing asset are no-store; (d) same-name headers of several matching rules are joined with \", \" in file order"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -15652,7 +15683,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v2); requests sent with node:http so the path is not normalised",
+      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v3 approach A); requests sent with node:http so the path is not normalised",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -15681,7 +15712,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v2); requests sent with node:http so the path is not normalised",
+      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v3 approach A); requests sent with node:http so the path is not normalised",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -15710,14 +15741,14 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v2); requests sent with node:http so the path is not normalised",
+      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v3 approach A); requests sent with node:http so the path is not normalised",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "a missing dist, index.html or _headers, an unsupported _headers syntax (!, :placeholder, absolute URL, middle wildcard) and a port in use each print the specified ERROR line and exit 1 without listening"
+        "a missing dist, index.html or _headers, an unsupported _headers syntax (a ! line before any path, a ! without a name, a name with a space, ! Content-Type, ! content-length, :placeholder, absolute URL, middle wildcard) and a port in use each print the specified ERROR line and exit 1 without listening"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -15739,7 +15770,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v2); requests sent with node:http so the path is not normalised",
+      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v3 approach A); requests sent with node:http so the path is not normalised",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -15747,6 +15778,68 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "invalid CLI input prints USAGE and exits 2; READY carries the actual port; no request URL, query or header value reaches stdout or stderr"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-108",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "DEV-WEB-001",
+        "SEC-WEB-009",
+        "SPEC-140-22",
+        "SPEC-180-13.1",
+        "TST-GEN-006"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v3 approach A); requests sent with node:http so the path is not normalised",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "! Name removes the named header accumulated so far, case-insensitively, before the same rule's own set whatever the line order; the removal does not affect later rules, and removing a header that was never set is not an error",
+        "on the hashed asset path Cache-Control is exactly public, max-age=31536000, immutable (one line), Pragma is absent and a header set by a later rule is still joined; other paths keep no-store and Pragma"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-109",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "DEV-WEB-001",
+        "SEC-WEB-009",
+        "SPEC-140-22",
+        "SPEC-180-13.1",
+        "TST-GEN-006",
+        "DEV-WEB-007",
+        "SEC-AUTH-013"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v3 approach A); requests sent with node:http so the path is not normalised",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "alternative spellings (/%6Dypage, /MYPAGE, /mypage/, //mypage, /%61ccount/login, deeper and query forms, /x/%2e%2e/mypage, /%61ssets/<hashed file>, and trailing-slash and upper-case forms of the hashed asset path) carry Cache-Control exactly no-store, private, max-age=0 (one line), Pragma no-cache, Referrer-Policy exactly no-referrer (one line) and one CSP",
+        "only the canonical hashed asset path is public, max-age=31536000, immutable without Pragma, with the other security headers present"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -15782,7 +15875,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "with no inline script and no origin the generated dist/_headers equals the v2 content character for character (rule order, CSP, six security headers, 12 protected rules); stdout OK headers inline-scripts=0 img-origins=0"
+        "with no inline script, no origin and no asset the generated dist/_headers equals the v3 content character for character (a single /* rule with the CSP and eight headers including Referrer-Policy no-referrer, Cache-Control no-store, private, max-age=0 and Pragma no-cache; no protected-prefix rule, no ! line, no strict-origin-when-cross-origin); stdout OK headers inline-scripts=0 img-origins=0"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -16007,6 +16100,76 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-STACK-008-208",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["SEC-WEB-009", "SPEC-140-22", "SPEC-180-13.1"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "scripts/generate-web-headers.mts run as a child process with --dist on a synthetic dist in os.tmpdir() and a controlled SPONSOR_IMAGE_ALLOWED_ORIGINS",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "a synthetic dist with three content-hashed files under assets/ plus mock/x.svg and favicon.ico produces the /* rule followed by one exact-match rule per hashed asset in code unit order, each with ! Cache-Control, ! Pragma and Cache-Control: public, max-age=31536000, immutable; no rule for files outside assets/; --check then exits 0"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-209",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["SEC-WEB-009", "SPEC-180-13.1", "SEC-WEB-003"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "scripts/generate-web-headers.mts run as a child process with --dist on a synthetic dist in os.tmpdir() and a controlled SPONSOR_IMAGE_ALLOWED_ORIGINS",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "an unhashed file or a subdirectory in assets/ (ERROR asset-unhashed, all listed), a 404.html anywhere in dist in any letter case (ERROR html-404-present), more than 100 rules (ERROR headers-rule-limit rules=101) and a CSP line over 2,000 characters (ERROR headers-line-too-long line=3) each exit 1, also under --check, and write no _headers (an existing one is unchanged)",
+        "boundaries: 99 hashed assets (100 rules) and a CSP line of exactly 2,000 characters are accepted; the error output contains no origin value"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-210",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["SEC-WEB-009", "DEV-WEB-001", "SPEC-180-13.1"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "static read of the repository's apps/web/public directory and apps/web/vite.config.ts only; no script is executed and nothing is built",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "apps/web/public/assets does not exist and apps/web/vite.config.ts sets none of assetsDir, entryFileNames, chunkFileNames and assetFileNames, so dist/assets/ keeps Vite's default [name]-[hash] naming that the hash check relies on"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-STACK-008-301",
       "level": "E2E",
       "suite": "e2e-ui-mock",
@@ -16098,7 +16261,7 @@
       "expected_http": 200,
       "expected_domain_postconditions": [
         "page responses carry the CSP of dist/_headers (no unsafe-inline / unsafe-eval in script-src), nosniff, DENY, HSTS, COOP and a Permissions-Policy that does not allow the camera",
-        "public pages are neither private nor no-store and use the default Referrer-Policy; the six protected prefixes carry no-store, Pragma and an effective no-referrer"
+        "every page response, public or protected, carries Cache-Control no-store, private, max-age=0, Pragma no-cache and exactly Referrer-Policy no-referrer"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -16199,6 +16362,31 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "navigating to another page starts at scrollY 0 and Back returns to the previous page; the skip link focuses main#main-content and keeps it after re-render"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-309",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": ["SEC-WEB-009", "SPEC-140-22", "SPEC-180-13.1", "TST-E2E-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s3-layout.md section 13",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "the real build's dist/assets/ holds only content-hashed files (at most 99), dist has no 404.html, and dist/_headers path lines are exactly /* and /assets/<each file> in code unit order",
+        "a real hashed JS and CSS asset answer 200 with Cache-Control exactly public, max-age=31536000, immutable, no Pragma, a CSP, nosniff and Referrer-Policy no-referrer",
+        "the same asset under /%61ssets/ and a missing /assets/missing-r39x.js are no-store (the missing asset is a non-HTML 404)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],

@@ -194,15 +194,14 @@ test.describe("TC-SEC-WEB-009-701 the real protected and account pages answer 20
     });
   }
 
-  test("the browser navigation response carries the same headers, and public pages do not", async ({
+  test("the browser navigation response carries the same headers, and Home is no-store as well", async ({
     page,
   }) => {
     const login = await gotoHydrated(page, "/account/login");
     expect(login?.status()).toBe(200);
     expect(login?.headers()["cache-control"] ?? "").toContain("no-store");
     const home = await gotoHydrated(page, "/");
-    expect(home?.headers()["cache-control"] ?? "").not.toContain("private");
-    expect(home?.headers()["cache-control"] ?? "").not.toContain("no-store");
+    expect(home?.headers()["cache-control"]).toBe("no-store, private, max-age=0");
   });
 });
 

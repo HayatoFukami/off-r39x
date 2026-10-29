@@ -1,5 +1,6 @@
 // Local static server for apps/web/dist (SPEC-180 13.1, SPEC-140 22, SEC-WEB-009, DEV-WEB-001). It stands in for
-// the static host in development and E2E: it applies dist/_headers per path, answers the SPA shell (200) for an
+// the static host in development and E2E: it applies dist/_headers per path (including `! Name` removals, with the
+// meaning the OSS Pages asset server gives them), answers the SPA shell (200) for an
 // unknown extension-less path and a non-HTML 404 for a missing asset. It is not a deployment target and adds no
 // Cache-Control of its own. Nothing about a request (URL, query, headers) is ever written to stdout / stderr.
 // Runs under plain `node` (type stripping): erasable TypeScript syntax only, node: built-ins only.
@@ -87,8 +88,13 @@ function parseArgs(argv: readonly string[]): Options {
 
 interface Rule {
   readonly path: string;
+  /** Lower-case names removed (`! Name`) from the headers of the earlier rules, before this rule's own are set. */
+  readonly unset: readonly string[];
   readonly headers: readonly (readonly [string, string])[];
 }
+
+/** Set by this server after the rules, so a removal of either cannot be reproduced: refused at start-up. */
+const UNSETTABLE = new Set(["content-type", "content-length"]);
 
 /** `/*` (every path), `<prefix>/*` (below the prefix) or an exact path. No placeholder, no other wildcard. */
 function isSupportedRulePath(path: string): boolean {
@@ -99,11 +105,13 @@ function isSupportedRulePath(path: string): boolean {
 
 /**
  * The syntax that scripts/generate-web-headers.mts writes: `#` comment lines, blank lines, path lines and
- * header lines indented by two or more spaces. Header removal (`! Name`), placeholders, wildcards inside a path
- * and absolute URLs are refused instead of being half understood (fail closed).
+ * header lines indented by two or more spaces: `Name: value` and `! Name` (remove the header from the earlier
+ * rules, as the OSS Pages asset server does). Placeholders, wildcards inside a path, absolute URLs, a `!` before the first
+ * path line or without a plain name, and `! Content-Type` / `! Content-Length` are refused instead of being half
+ * understood (fail closed).
  */
 function parseHeaders(text: string): Rule[] {
-  const rules: { path: string; headers: [string, string][] }[] = [];
+  const rules: { path: string; unset: string[]; headers: [string, string][] }[] = [];
   const lines = text.split(/\r?\n/);
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index] ?? "";
@@ -111,6 +119,13 @@ function parseHeaders(text: string): Rule[] {
     const invalid = `ERROR headers-invalid line=${index + 1}`;
     if (line.startsWith("  ")) {
       const current = rules[rules.length - 1];
+      if (/^ {2,}!/.test(line)) {
+        const removal = /^ {2,}!\s*([A-Za-z][A-Za-z0-9-]*)\s*$/.exec(line);
+        const name = (removal?.[1] ?? "").toLowerCase();
+        if (current === undefined || removal === null || UNSETTABLE.has(name)) fail(invalid, 1);
+        current.unset.push(name);
+        continue;
+      }
       const match = /^ {2,}([A-Za-z][A-Za-z0-9-]*):[ \t]*(\S.*?)[ \t]*$/.exec(line);
       const value = match?.[2] ?? "";
       // Only visible ASCII and tab: anything else would make the HTTP layer throw later.
@@ -122,7 +137,7 @@ function parseHeaders(text: string): Rule[] {
     }
     const path = line.trimEnd();
     if (!isSupportedRulePath(path)) fail(invalid, 1);
-    rules.push({ path, headers: [] });
+    rules.push({ path, unset: [], headers: [] });
   }
   return rules;
 }
@@ -134,11 +149,17 @@ function ruleMatches(rulePath: string, pathname: string): boolean {
   return pathname === rulePath;
 }
 
-/** Every matching rule contributes in file order; the same header of several rules is joined with ", " (Pages does the same). */
+/**
+ * Every matching rule contributes in file order; the same header of several rules is joined with ", " (Pages does
+ * the same). Within a rule the removals (`! Name`) come first, whatever the line order: they drop the headers
+ * accumulated from the earlier rules, then the rule's own headers are added. A removal never reaches a later rule
+ * and removing a header that is not there does nothing.
+ */
 function headersFor(rules: readonly Rule[], pathname: string): Map<string, string> {
   const joined = new Map<string, { name: string; values: string[] }>();
   for (const rule of rules) {
     if (!ruleMatches(rule.path, pathname)) continue;
+    for (const key of rule.unset) joined.delete(key);
     for (const [name, value] of rule.headers) {
       const key = name.toLowerCase();
       const entry = joined.get(key);

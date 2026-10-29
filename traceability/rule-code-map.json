@@ -165,16 +165,23 @@
       ],
       "test_case_ids": [
         "TC-SEC-WEB-009-001",
+        "TC-SEC-WEB-009-002",
         "TC-SEC-WEB-009-602",
         "TC-SEC-WEB-009-701",
         "TC-SEC-WEB-009-711",
         "TC-PG-XFN-003-704",
         "TC-SEC-WEB-009-721",
         "TC-STACK-008-103",
+        "TC-STACK-008-108",
+        "TC-STACK-008-109",
         "TC-STACK-008-201",
-        "TC-STACK-008-304"
+        "TC-STACK-008-208",
+        "TC-STACK-008-209",
+        "TC-STACK-008-210",
+        "TC-STACK-008-304",
+        "TC-STACK-008-309"
       ],
-      "notes": "implementation mapping only: no-store headers; verified by TC-SEC-WEB-009-001 (E2E header check); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
+      "notes": "implementation mapping only: Cache-Control no-store / Pragma on every static response except the canonical paths of content-hashed assets, and Referrer-Policy no-referrer on every static response including content-hashed assets (SEC-WEB-009, SPEC-140 22); verified locally by serve-web-dist and the UI mock E2E; not a Pages deployment check; S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "SEC-WEB-004",
@@ -2334,6 +2341,8 @@
         "TC-STACK-008-105",
         "TC-STACK-008-106",
         "TC-STACK-008-107",
+        "TC-STACK-008-108",
+        "TC-STACK-008-109",
         "TC-STACK-008-301",
         "TC-STACK-008-302",
         "TC-STACK-008-303",

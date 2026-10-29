@@ -12,17 +12,18 @@ import {
 import {
   BASE_SECURITY_HEADERS,
   cspValue,
-  DEFAULT_REFERRER_POLICY,
   DOTFILE_SENTINEL,
   distTree,
   expectedHeadersFile,
+  HASHED_ASSET_PATH,
   headerLines,
   headerValue,
+  IMMUTABLE,
   INDEX_HTML,
   NO_STORE,
   OUTSIDE_SENTINEL,
-  PROTECTED_REFERRER_POLICY,
   type RawResponse,
+  REFERRER_POLICY,
   RESERVED_SENTINEL,
   type RunningServer,
   rawRequest,
@@ -30,8 +31,10 @@ import {
 } from "../../harness/web-dist.ts";
 
 // scripts/serve-web-dist.mts: the local static server for apps/web/dist (SPEC-180 13.1, SPEC-140 22, SEC-WEB-009,
-// DEV-WEB-001, DEV-REP-001 / 004, TST-GEN-006). It reads dist/_headers, serves the SPA shell for extension-less
-// unknown paths and a non-HTML 404 for missing assets. Contract: tests/contracts/s9-finalize.md section 8.
+// DEV-WEB-001, DEV-REP-001 / 004, TST-GEN-006). It reads dist/_headers (approach A: the protective headers on
+// `/*`, exact-match rules that remove them with `! Name` for content-hashed assets), serves the SPA shell for
+// extension-less unknown paths and a non-HTML 404 for missing assets. Contract: tests/contracts/s9-finalize.md
+// section 8.
 // Every case starts the real script as a child process on port 0 and talks to it over HTTP.
 
 const SERVER_TIMEOUT = { timeout: 60_000 } as const;
@@ -69,10 +72,17 @@ async function serve(
 const get = (server: RunningServer, path: string): Promise<RawResponse> =>
   rawRequest(server.port, "GET", path);
 
-const SECURITY_NAMES = [
-  "Content-Security-Policy",
-  ...BASE_SECURITY_HEADERS.map(([name]) => name),
-].filter((name) => name !== "Referrer-Policy");
+const SECURITY_NAMES = ["Content-Security-Policy", ...BASE_SECURITY_HEADERS.map(([name]) => name)];
+
+/** The protective headers of every response except a content-hashed asset: exactly one line each. */
+function expectProtective(response: RawResponse, label: string): void {
+  expect(headerLines(response, "Cache-Control"), `${label} Cache-Control lines`).toBe(1);
+  expect(headerValue(response, "cache-control"), label).toBe(NO_STORE);
+  expect(headerLines(response, "Pragma"), `${label} Pragma lines`).toBe(1);
+  expect(headerValue(response, "pragma"), label).toBe("no-cache");
+  expect(headerLines(response, "Referrer-Policy"), `${label} Referrer-Policy lines`).toBe(1);
+  expect(headerValue(response, "referrer-policy"), label).toBe(REFERRER_POLICY);
+}
 
 describe("TC-STACK-008-101 an extension-less unknown path is the SPA shell (DEV-WEB-001, SPEC-050 5.4)", () => {
   it(
@@ -147,7 +157,7 @@ describe("TC-STACK-008-102 assets are served with a type and a missing asset is 
   );
 });
 
-describe("TC-STACK-008-103 dist/_headers is applied per path (SEC-WEB-009, SPEC-140 22, SPEC-180 13.1)", () => {
+describe("TC-STACK-008-103 dist/_headers is applied to every response (SEC-WEB-009, SPEC-140 22, SPEC-180 13.1)", () => {
   const protectedPaths = [
     "/account",
     "/account/login",
@@ -164,28 +174,25 @@ describe("TC-STACK-008-103 dist/_headers is applied per path (SEC-WEB-009, SPEC-
   ];
 
   it(
-    "(a) puts no-store and Pragma on every protected prefix and ends the Referrer-Policy with no-referrer",
+    "(a) puts exactly one no-store Cache-Control, Pragma and exactly one no-referrer on every protected prefix",
     SERVER_TIMEOUT,
     async () => {
       const { server } = await serve();
       for (const path of protectedPaths) {
         const response = await get(server, path);
         expect(response.status, path).toBe(200);
-        expect(headerValue(response, "cache-control"), path).toBe(NO_STORE);
-        expect(headerValue(response, "pragma"), path).toBe("no-cache");
-        const policy = headerValue(response, "referrer-policy") ?? "";
-        expect(policy, path).toBe(`${DEFAULT_REFERRER_POLICY}, ${PROTECTED_REFERRER_POLICY}`);
-        expect(policy.split(",").pop()?.trim(), path).toBe("no-referrer");
+        expectProtective(response, path);
       }
     },
   );
 
   it(
-    "(b) leaves public paths without private / no-store and with the default Referrer-Policy only",
+    "(b) every non-asset path carries the protective headers: public paths and look-alikes get the same three values",
     SERVER_TIMEOUT,
     async () => {
       const { server } = await serve();
-      // `/accounting` and `/mypagefoo` merely start with a protected prefix: a prefix rule matches whole segments.
+      // `/accounting`, `/mypagefoo` and `/staffing` merely start with a former protected prefix. With the rule on
+      // `/*` there is no distinction left; they must still get exactly the same values as every other path.
       for (const path of [
         "/",
         "/goods",
@@ -196,16 +203,13 @@ describe("TC-STACK-008-103 dist/_headers is applied per path (SEC-WEB-009, SPEC-
       ]) {
         const response = await get(server, path);
         expect(response.status, path).toBe(200);
-        const cacheControl = headerValue(response, "cache-control") ?? "";
-        expect(cacheControl, path).not.toMatch(/private|no-store/);
-        expect(headerValue(response, "pragma"), path).toBeUndefined();
-        expect(headerValue(response, "referrer-policy"), path).toBe(DEFAULT_REFERRER_POLICY);
+        expectProtective(response, path);
       }
     },
   );
 
   it(
-    "(c) sends the CSP and the five other security headers exactly once on every response, 404 included",
+    "(c) sends the CSP, the security headers, Cache-Control and Pragma exactly once on every response, 404 included",
     SERVER_TIMEOUT,
     async () => {
       const { server } = await serve();
@@ -220,13 +224,24 @@ describe("TC-STACK-008-103 dist/_headers is applied per path (SEC-WEB-009, SPEC-
         "/assets/missing.js",
         "/no-such/deeper",
         "/assets/app.js",
+        HASHED_ASSET_PATH,
       ]) {
         const response = await get(server, path);
         for (const name of SECURITY_NAMES) {
           expect(headerLines(response, name), `${path} ${name}`).toBe(1);
           expect(headerValue(response, name), `${path} ${name}`).toBe(expectedValue.get(name));
         }
-        expect(headerLines(response, "Referrer-Policy"), path).toBe(1);
+        if (path === HASHED_ASSET_PATH) {
+          expect(headerLines(response, "Cache-Control"), `${path} Cache-Control`).toBe(1);
+          expect(headerValue(response, "cache-control"), path).toBe(IMMUTABLE);
+          expect(headerLines(response, "Pragma"), `${path} Pragma`).toBe(0);
+        } else {
+          expectProtective(response, path);
+        }
+      }
+      // The unhashed synthetic asset and a missing asset (404) are not exempt: they are no-store.
+      for (const path of ["/assets/app.js", "/assets/missing.js"]) {
+        expect(headerValue(await get(server, path), "cache-control"), path).toBe(NO_STORE);
       }
     },
   );
@@ -238,7 +253,7 @@ describe("TC-STACK-008-103 dist/_headers is applied per path (SEC-WEB-009, SPEC-
       const { server } = await serve();
       const response = await get(server, "/mypage/missing.js");
       expect(response.status).toBe(404);
-      expect(headerValue(response, "cache-control")).toBe(NO_STORE);
+      expectProtective(response, "/mypage/missing.js");
       expect(headerLines(response, "Content-Security-Policy")).toBe(1);
     },
   );
@@ -405,7 +420,11 @@ describe("TC-STACK-008-106 start-up checks fail closed and nothing listens (exit
   });
 
   it.each([
-    ["header removal with !", ["/*", "  X-A: b", "  ! X-B"], 3],
+    ["a ! line before any path line", ["  ! X-A", "/*", "  X-A: b"], 1],
+    ["a ! line without a header name", ["/*", "  X-A: b", "  !"], 3],
+    ["a ! line whose name contains a space", ["/*", "  ! X B"], 2],
+    ["the removal of Content-Type, which the server sets itself", ["/*", "  ! Content-Type"], 2],
+    ["the removal of content-length in lower case", ["/*", "  ! content-length"], 2],
     ["a placeholder in a path", ["# c", "/*", "  X-A: b", "", "/:id", "  X-B: c"], 5],
     ["an absolute URL as a path", ["https://example.com/*", "  X-A: b"], 1],
     ["a wildcard in the middle of a path", ["/*", "  X-A: b", "/a/*/b", "  X-B: c"], 3],
@@ -495,6 +514,127 @@ describe("TC-STACK-008-107 CLI errors are USAGE (exit 2) and request data is nev
       ]) {
         expect(output, sentinel).not.toContain(sentinel);
       }
+    },
+  );
+});
+
+describe("TC-STACK-008-108 `! Name` removes a header, matching the OSS Pages asset server (wrangler pages dev); confirming on Pages is Issue C (SEC-WEB-009, DEV-WEB-001, SPEC-180 13.1)", () => {
+  const HASHED = "/assets/app-r39xAb12.js";
+  const custom = [
+    "/*",
+    "  X-A: one",
+    `  Cache-Control: ${NO_STORE}`,
+    "  Pragma: no-cache",
+    "",
+    HASHED,
+    `  Cache-Control: ${IMMUTABLE}`,
+    "  ! cache-control",
+    "  ! Pragma",
+    "",
+    HASHED,
+    "  ! X-None",
+    "  X-A: two",
+    "",
+  ].join("\n");
+
+  it(
+    "removes earlier values before the rule's own set, whatever the line order, and never affects later rules",
+    SERVER_TIMEOUT,
+    async () => {
+      const { server } = await serve({ "dist/_headers": custom });
+
+      const hashed = await get(server, HASHED);
+      expect(hashed.status).toBe(200);
+      expect(headerLines(hashed, "Cache-Control")).toBe(1);
+      expect(headerValue(hashed, "cache-control")).toBe(IMMUTABLE);
+      expect(headerLines(hashed, "Pragma")).toBe(0);
+      expect(headerValue(hashed, "pragma")).toBeUndefined();
+      // The removals sit in the second rule; the third rule's set is joined as before.
+      expect(headerLines(hashed, "X-A")).toBe(1);
+      expect(headerValue(hashed, "x-a")).toBe("one, two");
+
+      const other = await get(server, "/goods");
+      expect(other.status).toBe(200);
+      expect(headerValue(other, "cache-control")).toBe(NO_STORE);
+      expect(headerLines(other, "Cache-Control")).toBe(1);
+      expect(headerValue(other, "pragma")).toBe("no-cache");
+      expect(headerValue(other, "x-a")).toBe("one");
+    },
+  );
+
+  it(
+    "starts with the removal of a header that was never set and does not touch a later rule's set",
+    SERVER_TIMEOUT,
+    async () => {
+      const later = [
+        "/*",
+        "  Pragma: no-cache",
+        "",
+        "/a",
+        "  ! Pragma",
+        "  ! X-Never-Set",
+        "",
+        "/a",
+        "  Pragma: again",
+        "",
+      ].join("\n");
+      const { server } = await serve({ "dist/_headers": later });
+      const response = await get(server, "/a");
+      expect(response.status).toBe(200);
+      expect(headerLines(response, "Pragma")).toBe(1);
+      expect(headerValue(response, "pragma")).toBe("again");
+      expect(headerValue(response, "x-never-set")).toBeUndefined();
+      expect(headerValue(await get(server, "/b"), "pragma")).toBe("no-cache");
+    },
+  );
+});
+
+describe("TC-STACK-008-109 every spelling of a path gets the protective headers; only the exact hashed asset path is exempt (SEC-WEB-009, SEC-AUTH-013, DEV-WEB-007, SPEC-140 22)", () => {
+  // Sent with rawRequest: the path goes onto the wire exactly as written (fetch / URL would turn `//mypage`
+  // into a host and fold `%2e%2e`). Statuses are only asserted where they do not depend on the file system.
+  const spellings: readonly (readonly [string, number | undefined])[] = [
+    ["/%6Dypage", 200],
+    ["/MYPAGE", 200],
+    ["/mypage/", 200],
+    ["//mypage", 200],
+    ["/%61ccount/login", 200],
+    ["/%6Dypage/orders/x", 200],
+    ["/mypage%2Forders", 200],
+    ["/Mypage?context=x", 200],
+    ["/x/%2e%2e/mypage", 404],
+    ["/%61ssets/app-r39xAb12.js", 200],
+    ["/assets/app-r39xAb12.js/", undefined],
+    ["/ASSETS/app-r39xAb12.js", undefined],
+  ];
+
+  it(
+    "gives each alternative spelling Cache-Control exactly no-store, Pragma, exactly no-referrer and one CSP",
+    SERVER_TIMEOUT,
+    async () => {
+      const { server } = await serve();
+      for (const [path, status] of spellings) {
+        const response = await get(server, path);
+        if (status !== undefined) expect(response.status, path).toBe(status);
+        expectProtective(response, path);
+        expect(headerLines(response, "Content-Security-Policy"), `${path} CSP`).toBe(1);
+        expect(headerValue(response, "cache-control"), path).not.toBe(IMMUTABLE);
+      }
+    },
+  );
+
+  it(
+    "control: only the canonical hashed asset path is IMMUTABLE and has no Pragma, and still has the other security headers",
+    SERVER_TIMEOUT,
+    async () => {
+      const { server } = await serve();
+      const response = await get(server, HASHED_ASSET_PATH);
+      expect(response.status).toBe(200);
+      expect(headerLines(response, "Cache-Control")).toBe(1);
+      expect(headerValue(response, "cache-control")).toBe(IMMUTABLE);
+      expect(headerLines(response, "Pragma")).toBe(0);
+      expect(headerLines(response, "Referrer-Policy")).toBe(1);
+      expect(headerValue(response, "referrer-policy")).toBe(REFERRER_POLICY);
+      expect(headerLines(response, "Content-Security-Policy")).toBe(1);
     },
   );
 });
