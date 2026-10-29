@@ -160,6 +160,25 @@ describe("TC-DEV-WEB-001-704 the container and the hook wire the purchase start 
     expect(page).not.toMatch(/from\s+["'][^"']*\/mock\//);
   });
 
+  it("the container reads the owner-scoped eligibility through useApi() only for a verified session and re-reads it with the session (API-PUR-ELG-001, SEC-API-029, SPEC-050 12.1 / 13.3 / 26.2)", () => {
+    expect(page).toMatch(/\.purchase\s*\.\s*getPurchaseEligibility\s*\(/);
+    expect(page).toMatch(/\beligibilityMode\s*\(/);
+    expect(page).toMatch(/\beligibilityForSession\s*\(/);
+    expect(page).toMatch(/eligibility-model/);
+    expect(page).toMatch(/\buseSession\s*\(/);
+    expect(page).not.toMatch(/\b(localStorage|sessionStorage|setItem)\b/);
+  });
+
+  it("the container calls nothing but the read-only eligibility on the purchase port (the purchase start stays in the hook)", () => {
+    // `copy.purchase.*` is wording, not the purchase port.
+    const callsOf = (code: string): Set<string | undefined> =>
+      new Set([...code.matchAll(/(?<!\bcopy)\.purchase\s*\.\s*(\w+)/g)].map((match) => match[1]));
+    const pageCalls = callsOf(page);
+    expect(pageCalls.size).toBeGreaterThan(0);
+    expect(pageCalls).toEqual(new Set(["getPurchaseEligibility"]));
+    expect(callsOf(hook)).toEqual(new Set(["startKaraokePurchase", "startCheckout"]));
+  });
+
   it("no Hold duration is defined anywhere in the S7b sources (no TTL in the UI, design 4)", () => {
     for (const file of s7bSources) {
       const code = stripComments(readFileSync(file, "utf8"));

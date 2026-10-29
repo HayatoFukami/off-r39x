@@ -49,6 +49,13 @@ describe("TC-PG-KRK-003-601 the Karaoke slot detail copy is the contracted wordi
     expect(detail.disabledReason.NOT_PURCHASABLE).toBe(
       "現在この枠は購入できないため、購入手続きへ進めません。空き状況から別の枠を選んでください。",
     );
+    // B4c: the reasons of the pre-check (API-PUR-ELG-001) that "choose another slot" would not solve.
+    expect(copy.karaoke.slotDetail.disabledReason.PURCHASE_LIMIT_EXCEEDED).toBe(
+      "購入上限に達しているため、購入手続きへ進めません。",
+    );
+    expect(copy.karaoke.slotDetail.disabledReason.UNCONFIRMED).toBe(
+      "購入条件を確認できないため、購入手続きへ進めません。",
+    );
     expect(detail.separateNote).toBe(
       "Karaokeの購入はカートを使いません。Entry TicketやGoodsとは別の購入、別の支払いになります。",
     );
@@ -71,6 +78,11 @@ describe("TC-PG-KRK-003-602 no copy fragment contains another, so negative asser
     ["disabledReason.SALES_STOPPED", detail.disabledReason.SALES_STOPPED],
     ["disabledReason.NOT_ON_SALE", detail.disabledReason.NOT_ON_SALE],
     ["disabledReason.NOT_PURCHASABLE", detail.disabledReason.NOT_PURCHASABLE],
+    [
+      "disabledReason.PURCHASE_LIMIT_EXCEEDED",
+      copy.karaoke.slotDetail.disabledReason.PURCHASE_LIMIT_EXCEEDED,
+    ],
+    ["disabledReason.UNCONFIRMED", copy.karaoke.slotDetail.disabledReason.UNCONFIRMED],
     ["notPurchasableDescription", detail.notPurchasableDescription],
     ["failure.conflict", detail.failure.conflict],
     ["failure.limit", detail.failure.limit],

@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ApiPort } from "../../api-client/port";
 import { useApi } from "../../api-client/provider";
 import { settleRead } from "../../api-client/settle-read";
 import type { KaraokeSlotDetail, Ref } from "../../api-client/types";
-import { useSession } from "../../auth/use-session";
+import { type SessionState, useSession } from "../../auth/use-session";
 import type { Loadable } from "../../presentation/components/list-state";
 import { NotFoundView } from "../../presentation/components/not-found-view";
 import { PageState } from "../../presentation/components/page-state";
@@ -14,7 +15,14 @@ import { Button } from "../../presentation/components/ui/button";
 import { copy } from "../../presentation/copy/ja";
 import { Link } from "../../routing/link";
 import { CartRecovery } from "../cart/cart-recovery";
-import { buildKaraokeSlotModel } from "./karaoke-slot-model";
+import {
+  type EligibilityInput,
+  type EligibilityMode,
+  eligibilityForSession,
+  eligibilityMode,
+  toEligibilityInput,
+} from "../purchase/eligibility-model";
+import { buildKaraokeSlotModel, karaokeEligibilityTarget } from "./karaoke-slot-model";
 import { type KaraokePurchasePhase, useKaraokePurchase } from "./use-karaoke-purchase";
 
 const detail = copy.karaoke.slotDetail;
@@ -56,25 +64,63 @@ function progressText(phase: KaraokePurchasePhase): string | null {
   return null;
 }
 
+type SlotState = {
+  /** The session state the eligibility was read under (null before the first read). */
+  session: SessionState | null;
+  slot: Loadable<KaraokeSlotDetail>;
+  /** The owner-scoped eligibility read together with the slot. Kept in memory only (SEC-API-029). */
+  eligibility: EligibilityInput;
+};
+
+const INITIAL_STATE: SlotState = {
+  session: null,
+  slot: { kind: "loading" },
+  eligibility: { kind: "loading" },
+};
+
+/** Reads the eligibility of a slot that is purchasable publicly (quantity 1); verified owners only. */
+async function readEligibility(
+  api: ApiPort,
+  mode: Exclude<EligibilityMode, "wait">,
+  slot: Loadable<KaraokeSlotDetail>,
+): Promise<EligibilityInput> {
+  if (mode === "not_applicable") return { kind: "not_applicable" };
+  if (mode === "unavailable") return { kind: "unavailable" };
+  const target = karaokeEligibilityTarget(slot);
+  if (target === null) return { kind: "ok", data: [] };
+  try {
+    return toEligibilityInput(await api.purchase.getPurchaseEligibility([target]));
+  } catch {
+    return { kind: "unavailable" };
+  }
+}
+
 // PG-KRK-003 container: reads the slot after mount through the port. Karaoke purchase contents never enter the Cart.
 export function KaraokeSlotPage({ slotRef }: { slotRef: Ref<"slot"> }) {
   const api = useApi();
-  const session = useSession();
-  const [input, setInput] = useState<Loadable<KaraokeSlotDetail>>({ kind: "loading" });
+  const { state: sessionState } = useSession();
+  const [state, setState] = useState<SlotState>(INITIAL_STATE);
   const token = useRef(0);
   const alertRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(() => {
+    const mode = eligibilityMode(sessionState);
+    if (mode === "wait") return;
     token.current += 1;
     const current = token.current;
-    void settleRead(api.public.getKaraokeSlot(slotRef)).then((result) => {
-      if (token.current === current) setInput(result);
-    });
-  }, [api, slotRef]);
+    // The public slot and the owner-scoped eligibility are applied together, once.
+    void (async () => {
+      const slot = await settleRead(api.public.getKaraokeSlot(slotRef));
+      const eligibility = await readEligibility(api, mode, slot);
+      if (token.current === current) setState({ session: sessionState, slot, eligibility });
+    })();
+  }, [api, slotRef, sessionState]);
 
+  // The public slot stays shown while both are read again; the owner-scoped answer is used only for
+  // the session it was read for (B4b-F-1, SPEC-050 12.1 / 13.3). A response for an older session is
+  // dropped by the token.
   useEffect(() => {
     const ref = token;
-    setInput({ kind: "loading" });
     load();
     return () => {
       ref.current += 1;
@@ -82,7 +128,7 @@ export function KaraokeSlotPage({ slotRef }: { slotRef: Ref<"slot"> }) {
   }, [load]);
 
   const reload = (): void => {
-    setInput({ kind: "loading" });
+    setState(INITIAL_STATE);
     load();
   };
 
@@ -101,7 +147,8 @@ export function KaraokeSlotPage({ slotRef }: { slotRef: Ref<"slot"> }) {
     }
   }, [phaseKind]);
 
-  const model = buildKaraokeSlotModel(input);
+  const eligibility = eligibilityForSession(state.eligibility, state.session, sessionState);
+  const model = buildKaraokeSlotModel(state.slot, eligibility);
   if (model.kind === "not_found") return <NotFoundView />;
 
   const heading = <h1 className="text-2xl font-bold">{copy.karaoke.slotDetail.heading}</h1>;
@@ -126,7 +173,7 @@ export function KaraokeSlotPage({ slotRef }: { slotRef: Ref<"slot"> }) {
     );
   }
 
-  const guest = session.state.status === "ready" && session.state.session.kind === "guest";
+  const guest = sessionState.status === "ready" && sessionState.session.kind === "guest";
   const failure = failureText(purchase.phase);
   const progress = progressText(purchase.phase);
   const blockedByPhase =
@@ -164,6 +211,13 @@ export function KaraokeSlotPage({ slotRef }: { slotRef: Ref<"slot"> }) {
       </section>
       <section aria-labelledby="karaoke-slot-action" className="flex flex-col gap-3">
         <SectionHeading id="karaoke-slot-action">{detail.actionHeading}</SectionHeading>
+        {eligibility.kind === "unavailable" && failure === null ? (
+          <PageState
+            state="unavailable"
+            message={copy.pageState.unavailable(copy.entry.eligibilitySubject)}
+            onRetry={reload}
+          />
+        ) : null}
         <div>
           <Button
             type="button"

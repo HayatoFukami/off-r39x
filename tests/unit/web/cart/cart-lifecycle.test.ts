@@ -381,3 +381,116 @@ describe("TC-FR-CRT-012-004 real storage faults and authentication preflight (FR
     },
   );
 });
+
+describe("TC-FR-CRT-012-015 a Cart key that cannot be read stops the Cart whatever the metadata says, and only an explicit recovery that can read it again resumes (FR-CRT-012)", () => {
+  const authenticatedSession = {
+    kind: "ok",
+    session: { kind: "authenticated", email: input.email, emailVerified: true },
+  } as const;
+
+  // (a) Guest metadata: the session lookup path (initializeGuestIfEmpty) used to return before reading the Cart key.
+  it("(a) stops with valid Guest metadata and leaves the stored Cart and metadata untouched", () => {
+    const s = setup(metadata("guest"));
+    s.faults.cartRead = true;
+    const before = new Map(s.data);
+    s.lifecycle.initializeGuestIfEmpty();
+    expect(s.lifecycle.getSnapshot()).toEqual({ kind: "blocked" });
+    expect(new Map(s.data)).toEqual(before);
+    // (g) the store itself keeps its own contract: unreadable is corrupted, never an empty Cart.
+    expect(s.store.getSnapshot()).toEqual({ kind: "corrupted" });
+  });
+
+  // (b) Authenticated metadata: markAuthenticated used to return before reading the Cart key.
+  it("(b) stops with valid authenticated metadata on session restoration and leaves storage untouched", async () => {
+    const s = setup(metadata("authenticated"));
+    s.raw.getSession = vi.fn(async () => authenticatedSession);
+    s.faults.cartRead = true;
+    const before = new Map(s.data);
+    await expect(s.port.getSession()).resolves.toEqual(authenticatedSession);
+    expect(s.lifecycle.getSnapshot()).toEqual({ kind: "blocked" });
+    expect(new Map(s.data)).toEqual(before);
+    expect(s.store.getSnapshot()).toEqual({ kind: "corrupted" });
+  });
+
+  // (c) Control: with no metadata the unreadable Cart already stops (TC-PG-CRT-001-542); (a) and (b) must match it.
+  it("(c) stops without metadata (the existing path that (a) and (b) must agree with)", () => {
+    const s = setup(null);
+    s.faults.cartRead = true;
+    const before = new Map(s.data);
+    s.lifecycle.initializeGuestIfEmpty();
+    expect(s.lifecycle.getSnapshot()).toEqual({ kind: "blocked" });
+    expect(new Map(s.data)).toEqual(before);
+    expect(s.data.has(CART_LIFECYCLE_STORAGE_KEY)).toBe(false);
+    expect(s.store.getSnapshot()).toEqual({ kind: "corrupted" });
+  });
+
+  // (d) A fault that starts after initialization is stopped too, and the stop is sticky until an explicit recovery.
+  it("(d) stops a fault that starts later, stays stopped when reads recover, and resumes only through explicit recovery", async () => {
+    const s = setup(metadata("guest"));
+    s.lifecycle.initializeGuestIfEmpty();
+    expect(s.lifecycle.getSnapshot()).toEqual({ kind: "ready" });
+
+    s.faults.cartRead = true;
+    expect(s.lifecycle.getSnapshot()).toEqual({ kind: "blocked" });
+    expect(s.store.getSnapshot()).toEqual({ kind: "corrupted" });
+
+    s.faults.cartRead = false;
+    expect(s.lifecycle.getSnapshot()).toEqual({ kind: "blocked" });
+    // Ordinary synchronization must not remove the sticky stop.
+    s.lifecycle.initializeGuestIfEmpty();
+    expect(s.lifecycle.getSnapshot()).toEqual({ kind: "blocked" });
+
+    await expect(s.lifecycle.recover("guest")).resolves.toBe("recovered");
+    expectEmpty(s);
+    expect(s.data.get(CART_LIFECYCLE_STORAGE_KEY)).toBe(metadata("guest"));
+    expect(s.lifecycle.getSnapshot()).toEqual({ kind: "ready" });
+  });
+
+  // (e) Recovery that cannot read the Cart key again is a failure and keeps the stop.
+  it("(e) recovery that still cannot read the Cart key fails and keeps the stop until it can", async () => {
+    const s = setup(metadata("guest"));
+    s.faults.cartRead = true;
+
+    await expect(s.lifecycle.recover("guest")).resolves.toBe("failed");
+    expect(s.lifecycle.getSnapshot()).toEqual({ kind: "blocked" });
+    expect(s.store.getSnapshot()).toEqual({ kind: "corrupted" });
+
+    s.faults.cartRead = false;
+    // Reads working again does not resume by itself.
+    expect(s.lifecycle.getSnapshot()).toEqual({ kind: "blocked" });
+    await expect(s.lifecycle.recover("guest")).resolves.toBe("recovered");
+    expectEmpty(s);
+    expect(s.lifecycle.getSnapshot()).toEqual({ kind: "ready" });
+  });
+
+  // (f) Login / registration must not start with a Guest Cart that cannot be read (SPEC-020 FR-CRT-012).
+  it.each([
+    ["guest", "signIn"],
+    ["guest", "signUp"],
+    ["authenticated", "signIn"],
+    ["authenticated", "signUp"],
+  ] as const)(
+    "(f) %s metadata: %s is cart_blocked, the raw Auth call is not made and storage is untouched",
+    async (provenance, method) => {
+      const s = setup(metadata(provenance));
+      s.faults.cartRead = true;
+      const before = new Map(s.data);
+      await expect(s.port[method](input)).resolves.toEqual({ kind: "cart_blocked" });
+      expect(s.raw[method]).not.toHaveBeenCalled();
+      expect(new Map(s.data)).toEqual(before);
+      expect(s.lifecycle.getSnapshot()).toEqual({ kind: "blocked" });
+      expect(s.store.getSnapshot()).toEqual({ kind: "corrupted" });
+    },
+  );
+
+  // (g) The store contract is unchanged: a Cart key that throws is corrupted, not empty (TC-PG-CRT-001-422).
+  it("(g) the Cart store alone still reports an unreadable key as corrupted, never as an empty Cart", () => {
+    for (const marker of [metadata("guest"), metadata("authenticated"), null]) {
+      const s = setup(marker);
+      s.faults.cartRead = true;
+      expect(s.store.getSnapshot()).toEqual({ kind: "corrupted" });
+      s.faults.cartRead = false;
+      expect(s.store.getSnapshot()).toMatchObject({ kind: "ready" });
+    }
+  });
+});

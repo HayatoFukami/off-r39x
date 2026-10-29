@@ -436,7 +436,10 @@
         "apps/web/src/features/karaoke/use-karaoke-purchase.ts",
         "apps/web/src/features/karaoke/karaoke-slot-page.tsx",
         "apps/web/src/features/public/route-params.ts",
-        "apps/web/src/presentation/copy/ja.ts"
+        "apps/web/src/presentation/copy/ja.ts",
+        "apps/web/src/api-client/eligibility-target-key.ts",
+        "apps/web/src/mock/backend/purchase-conditions.ts",
+        "apps/web/src/features/purchase/eligibility-model.ts"
       ],
       "test_case_ids": [
         "TC-PG-KRK-003-001",
@@ -474,7 +477,12 @@
         "TC-PG-KRK-003-662",
         "TC-PG-KRK-003-663",
         "TC-PG-KRK-003-664",
-        "TC-PG-KRK-003-615"
+        "TC-PG-KRK-003-615",
+        "TC-PG-KRK-003-107",
+        "TC-PG-KRK-003-617",
+        "TC-PG-KRK-003-616",
+        "TC-PG-KRK-003-646",
+        "TC-PG-KRK-003-647"
       ],
       "notes": "implementation mapping only: hold presentation; S2 mock backend"
     },
@@ -896,7 +904,8 @@
         "TC-AR-AZ-011-102",
         "TC-PG-XFN-001-106",
         "TC-PG-XFN-003-702",
-        "TC-PG-CRT-001-105"
+        "TC-PG-CRT-001-105",
+        "TC-PG-KRK-003-107"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
@@ -1571,7 +1580,8 @@
         "apps/web/src/features/goods/goods-detail-model.ts",
         "apps/web/src/features/public/route-params.ts",
         "apps/web/src/features/cart/add-to-cart-form.tsx",
-        "apps/web/src/routes/public/goods-detail.tsx"
+        "apps/web/src/routes/public/goods-detail.tsx",
+        "apps/web/src/features/purchase/eligibility-model.ts"
       ],
       "test_case_ids": [
         "TC-PG-GDS-001-101",
@@ -1590,7 +1600,11 @@
         "TC-PG-CRT-001-531",
         "TC-PG-CRT-001-532",
         "TC-PG-CRT-001-533",
-        "TC-PG-CRT-001-534"
+        "TC-PG-CRT-001-534",
+        "TC-PG-GDS-002-413",
+        "TC-PG-GDS-002-507",
+        "TC-PG-GDS-002-508",
+        "TC-PG-CRT-001-625"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
@@ -2538,7 +2552,9 @@
         "TC-FR-CRT-012-011",
         "TC-FR-CRT-012-012",
         "TC-FR-CRT-012-013",
-        "TC-FR-CRT-012-014"
+        "TC-FR-CRT-012-014",
+        "TC-FR-CRT-012-015",
+        "TC-PG-CRT-001-543"
       ],
       "notes": "Browser Cart isolation across authentication and protected boundaries; real CartStore unit faults and UI mock E2E only, not API/DB/provider coverage."
     },
@@ -2760,14 +2776,20 @@
         "apps/web/src/features/purchase/eligibility-model.ts",
         "apps/web/src/features/cart/cart-page.tsx",
         "apps/web/src/features/cart/cart-view-model.ts",
-        "apps/web/src/features/entry/entry-page.tsx"
+        "apps/web/src/features/entry/entry-page.tsx",
+        "apps/web/src/api-client/eligibility-target-key.ts",
+        "apps/web/src/features/goods/goods-detail-page.tsx",
+        "apps/web/src/features/karaoke/karaoke-slot-page.tsx"
       ],
       "test_case_ids": [
         "TC-PG-CRT-001-105",
         "TC-PG-CRT-001-625",
         "TC-PG-CRT-001-514",
         "TC-PG-CRT-001-446",
-        "TC-PG-TKT-001-511"
+        "TC-PG-TKT-001-511",
+        "TC-PG-KRK-003-107",
+        "TC-PG-GDS-002-508",
+        "TC-PG-KRK-003-647"
       ],
       "notes": "implementation mapping only: owner-scoped eligibility in the UI mock test double (no DB / idempotency write) and the browser side (shown to verified owners only, never persisted, re-read on session change); not API coverage (TC-API-005-001 not executed)"
     }

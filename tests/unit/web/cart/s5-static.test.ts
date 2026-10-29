@@ -123,13 +123,21 @@ describe("TC-DEV-WEB-001-403 the S5 containers read through the port after mount
     });
   }
 
-  for (const path of ["src/features/entry/entry-page.tsx", "src/features/cart/cart-page.tsx"]) {
+  for (const path of [
+    "src/features/entry/entry-page.tsx",
+    "src/features/cart/cart-page.tsx",
+    "src/features/goods/goods-detail-page.tsx",
+  ]) {
     it(`${path} reads the session state so that a session change re-fetches the sales state (FR-CRT-005, FR-CRT-012)`, () => {
       expect(stripComments(read(path))).toMatch(/\buseSession\s*\(/);
     });
   }
 
-  for (const path of ["src/features/cart/cart-page.tsx", "src/features/entry/entry-page.tsx"]) {
+  for (const path of [
+    "src/features/cart/cart-page.tsx",
+    "src/features/entry/entry-page.tsx",
+    "src/features/goods/goods-detail-page.tsx",
+  ]) {
     it(`${path} reads the owner-scoped eligibility through useApi() only for a verified session, and re-reads it with the session (API-PUR-ELG-001, SEC-API-029, SPEC-050 12.1 / 26.2)`, () => {
       const source = stripComments(read(path));
       expect(source).toMatch(/\.purchase\.getPurchaseEligibility\s*\(/);
@@ -140,6 +148,12 @@ describe("TC-DEV-WEB-001-403 the S5 containers read through the port after mount
       expect(source).not.toMatch(/\b(fetch|localStorage|sessionStorage|setItem)\b/);
     });
   }
+
+  it("src/features/goods/goods-detail-page.tsx uses the eligibility only for the session it was read for (eligibilityForSession, B4b-F-1, SEC-API-029)", () => {
+    expect(stripComments(read("src/features/goods/goods-detail-page.tsx"))).toMatch(
+      /\beligibilityForSession\s*\(/,
+    );
+  });
 
   it("the eligibility model is pure: no React, no storage, no port or mock import (it only maps a session and answers)", () => {
     const source = stripComments(read("src/features/purchase/eligibility-model.ts"));
@@ -172,7 +186,7 @@ describe("TC-PG-CRT-001-461 the Entry / Goods detail UI and the Cart store start
     "src/features/cart/cart-store.ts",
   ]) {
     it(`${path} does not call a purchase operation, create an Order or navigate away`, () => {
-      // The Entry page may call the read-only eligibility (API-PUR-ELG-001); it is not a purchase operation.
+      // The Entry and Goods detail pages may call the read-only eligibility (API-PUR-ELG-001); it is not a purchase operation.
       const source = stripComments(read(path)).replace(
         /\.purchase\.getPurchaseEligibility\b/g,
         ".eligibilityRead",
@@ -189,13 +203,20 @@ describe("TC-PG-CRT-001-461 the Entry / Goods detail UI and the Cart store start
     expect(new Set(calls)).toEqual(new Set(["getPurchaseEligibility"]));
   });
 
-  it("the Goods detail page and the Cart store do not read the eligibility (out of scope of B4b: Goods detail and Karaoke Slot wait for a decision)", () => {
-    for (const path of [
-      "src/features/goods/goods-detail-page.tsx",
-      "src/features/cart/cart-store.ts",
-    ]) {
-      expect(stripComments(read(path)), path).not.toMatch(/getPurchaseEligibility/);
-    }
+  it("the Goods detail page calls nothing but the read-only eligibility on the purchase port", () => {
+    const calls = [
+      ...stripComments(read("src/features/goods/goods-detail-page.tsx")).matchAll(
+        /(?<!\bcopy)\.purchase\s*\.\s*(\w+)/g,
+      ),
+    ].map((match) => match[1]);
+    expect(calls.length).toBeGreaterThan(0);
+    expect(new Set(calls)).toEqual(new Set(["getPurchaseEligibility"]));
+  });
+
+  it("the Cart store does not read the eligibility", () => {
+    expect(stripComments(read("src/features/cart/cart-store.ts"))).not.toMatch(
+      /getPurchaseEligibility/,
+    );
   });
 
   it("the Cart page keeps a single seam for the purchase start: handleProceed", () => {

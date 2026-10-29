@@ -4,13 +4,20 @@ import type {
   CartLineResolution,
   PurchaseEligibility,
   PurchaseEligibilityRead,
+  SaleAvailability,
 } from "../../api-client/types";
 import type { SessionState } from "../../auth/use-session";
+import {
+  type AvailabilityPresentation,
+  presentAvailability,
+  presentPurchaseReasons,
+} from "../../presentation/state-mapping/availability";
 
 // Pure rules for the owner-scoped purchase eligibility (SPEC-110 API-PUR-ELG-001, SPEC-050 12.1 /
 // 14A.1 / 26.2, SEC-API-029, DEV-WEB-007). No React, storage, port or mock: the container reads the
 // port and keeps the answer in memory only. A failed or pending read is never "under the limit".
 // An answer is used only for the session and the quantities it was read for (B4b-F-1).
+// decideSaleState is shared by Entry and Goods detail (B4c).
 
 export type EligibilityInput =
   | { kind: "not_applicable" } // Guest or unverified: public conditions only
@@ -117,4 +124,54 @@ export function findEligibility(
   lineKey: string,
 ): PurchaseEligibility | undefined {
   return input.kind === "ok" ? input.data.find((item) => item.lineKey === lineKey) : undefined;
+}
+
+export type SaleDecision = {
+  status: AvailabilityPresentation;
+  addable: boolean;
+  maxSelectableQuantity: number | null;
+};
+
+/** The state of one publicly listed item: the public one, narrowed by the owner-scoped answer when it is on sale. */
+export function decideSaleState(
+  availability: SaleAvailability,
+  eligibility: EligibilityInput,
+  targetKey: string,
+): SaleDecision {
+  if (availability.kind !== "ON_SALE" || eligibility.kind === "not_applicable") {
+    const status = presentAvailability(availability);
+    return {
+      status,
+      addable: status.purchasable,
+      maxSelectableQuantity:
+        availability.kind === "ON_SALE" ? availability.maxSelectableQuantity : null,
+    };
+  }
+  const item = findEligibility(eligibility, targetKey);
+  // A pending or failed read, or a missing entry, is never shown as on sale.
+  if (item === undefined) {
+    return {
+      status: presentAvailability({ kind: "unavailable" }),
+      addable: false,
+      maxSelectableQuantity: null,
+    };
+  }
+  if (!item.purchasable) {
+    return {
+      status: presentPurchaseReasons(item.reasons, item.maxPurchasableQuantity),
+      addable: false,
+      maxSelectableQuantity: null,
+    };
+  }
+  return {
+    status: presentAvailability({
+      kind: "ON_SALE",
+      maxSelectableQuantity: item.maxPurchasableQuantity,
+    }),
+    addable: true,
+    maxSelectableQuantity: Math.min(
+      availability.maxSelectableQuantity ?? Number.POSITIVE_INFINITY,
+      item.maxPurchasableQuantity,
+    ),
+  };
 }

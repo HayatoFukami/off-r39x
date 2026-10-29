@@ -13,7 +13,8 @@
 - 含む: `/karaoke/slots/{slotRef}`（PG-KRK-003）の表示、Guest → Login（Continuation `karaoke-slot`）→ Slot へ復帰、Authenticated の購入開始（`purchase.startKaraokePurchase` → `purchase.startCheckout`）、Hold 系の結果表示（取得中 / 確保成功 / 競合 / 失効 / 上限 / 販売期間外 / 失敗）、`start_failed` / 決済結果は S7a の PG-XFN-001 と `/dev/mock-checkout/[orderRef]` を**そのまま再利用**する。
 - 含まない（S8）: Mypage の Karaoke 予約・Karaoke QR の各ページ。S7b は `/mypage/karaoke/{ref}` への `href` を PG-XFN-001（S7a）が出すことを前提にするだけで、遷移先の実在を前提にしない。
 - **Cart とは別の購入**: Karaoke の購入内容は Cart へ入れず、Cartの商品一覧を参照・変更しない（FR-CRT-002、BR-ORD-019、SPEC-070 §8）。Slot閲覧とAuthenticated Userの購入開始はCart lifecycleに影響されない。GuestがLoginへ進む直前に必要なCart clearは `FR-CRT-012` に従い、必要なclearが失敗した場合だけSlot上に復旧を示す。通常の購入開始は Cart に内容があっても影響を受けず、Cart の保存値（`r39x.cart.v1`）は購入開始の前後でバイト単位で変わらない。
-- **mock backend / port への追加は不要**。S2 の `createMockApi` は `public.getKaraokeSlot`、`purchase.startKaraokePurchase`（`held` / `slot_unavailable` / `purchase_limit_exceeded` / `not_on_sale` / `auth_required` / `email_unverified` / `unavailable`）、`purchase.startCheckout`（`opportunity_expired` を含む）、scenario `karaokeHold`（`ok` / `conflict` / `limit` / `expire_before_checkout`）と `karaokeSales`、seed の Slot 4 状態（`SLOT.d1_1000` AVAILABLE、`d1_1020` HELD、`d1_1040` SOLD、`d1_1200` SALES_STOPPED）をすべて実装済みで、`tests/unit/web/mock/karaoke-purchase.test.ts`（TC-PG-KRK-003-102〜105）が検証している。coder は `apps/web/src/mock/backend/**`、`src/api-client/{port,types}.ts`、`src/auth/**` を変更しない。S7a の `features/purchase/**`、`MockCheckoutScreen`、`AccessDeniedView` も変更しない（`interpretCheckoutStart` は import して再利用してよい）。
+- 【B4c】Slot 詳細は、verified の Authenticated User に限り、購入開始の前に `purchase.getPurchaseEligibility([{ kind: "KARAOKE", slotRef, quantity: 1 }])`（`API-PUR-ELG-001`）で本人別の購入可否（Purchase Limit を含む）を読む。mock backend / port の変更は S2（`s2-mock-backend.md` §11.5。`EligibilityTarget` に KARAOKE を加える）が行い、S7b の container / model が使う。以下の「mock backend / port への追加は不要」は B4c 以前の S7b の範囲についての記述で、B4c の port 変更は S2 契約に従う。
+- **mock backend / port への追加は不要**（B4c 以前の S7b。上記の B4c を除く）。S2 の `createMockApi` は `public.getKaraokeSlot`、`purchase.startKaraokePurchase`（`held` / `slot_unavailable` / `purchase_limit_exceeded` / `not_on_sale` / `auth_required` / `email_unverified` / `unavailable`）、`purchase.startCheckout`（`opportunity_expired` を含む）、scenario `karaokeHold`（`ok` / `conflict` / `limit` / `expire_before_checkout`）と `karaokeSales`、seed の Slot 4 状態（`SLOT.d1_1000` AVAILABLE、`d1_1020` HELD、`d1_1040` SOLD、`d1_1200` SALES_STOPPED）をすべて実装済みで、`tests/unit/web/mock/karaoke-purchase.test.ts`（TC-PG-KRK-003-102〜105）が検証している。coder は `apps/web/src/mock/backend/**`、`src/api-client/{port,types}.ts`、`src/auth/**` を変更しない。S7a の `features/purchase/**`、`MockCheckoutScreen`、`AccessDeniedView` も変更しない（`interpretCheckoutStart` は import して再利用してよい）。
 - **Hold の TTL を UI にもコピーにも置かない**（SPEC-050 §13.3 末尾、設計書 §4）。失効は scenario `expire_before_checkout` で起こす。画面に「◯分」「◯秒」「残り時間」を出さない。
 
 共通の約束（S4〜S7a の約束を引き継ぐ）:
@@ -30,7 +31,7 @@
 | パス | 種別 | export |
 |---|---|---|
 | `apps/web/src/features/public/route-params.ts`（S4 既存。追加） | 純粋 | `parseSlotRef`（既存 export は変えない） |
-| `apps/web/src/features/karaoke/karaoke-slot-model.ts` | 純粋（react / next を import しない） | `KaraokeSlotModel`, `buildKaraokeSlotModel` |
+| `apps/web/src/features/karaoke/karaoke-slot-model.ts` | 純粋（react / next を import しない） | `KaraokeSlotModel`, `buildKaraokeSlotModel`, `karaokeEligibilityTarget`（B4c） |
 | `apps/web/src/features/karaoke/karaoke-purchase-flow.ts` | 純粋 | `KaraokeProceedPlan`, `planKaraokeProceed`, `KaraokeStartStep`, `interpretKaraokeStart`, `KaraokeCheckoutStep`, `interpretKaraokeCheckout` |
 | `apps/web/src/features/karaoke/use-karaoke-purchase.ts` | client hook | `KaraokePurchasePhase`, `useKaraokePurchase` |
 | `apps/web/src/features/karaoke/karaoke-slot-page.tsx` | client container | `KaraokeSlotPage`（props `{ slotRef: Ref<"slot"> }`） |
@@ -70,6 +71,9 @@ karaoke: {
       SALES_STOPPED: "この枠は販売停止のため、購入手続きへ進めません。",
       NOT_ON_SALE: "現在は販売期間外または販売停止中のため、購入手続きへ進めません。",
       NOT_PURCHASABLE: "現在この枠は購入できないため、購入手続きへ進めません。空き状況から別の枠を選んでください。",
+      // 【B4c】本人向け判定（API-PUR-ELG-001）で使う 2 件
+      PURCHASE_LIMIT_EXCEEDED: "購入上限に達しているため、購入手続きへ進めません。",
+      UNCONFIRMED: "購入条件を確認できないため、購入手続きへ進めません。",
     },
     failure: {
       conflict: "他の利用者が先に確保したため購入を開始できません",
@@ -84,7 +88,7 @@ karaoke: {
 
 - 上記は**そのまま**使う（`s7b-copy.test.ts` が固定する）。全 leaf は trim 済みの非空 string。
 - `copy.karaoke.slotDetail.holding` は SPEC-050 §13.3 手順 3「枠を確保しています」。`failure.conflict` は手順 4（設計書 §6 の文末表記）、`failure.expired` は手順 7。
-- **部分文字列の衝突を避ける**: `disabledReason.*`、`failure.*`、`holding`、`purchasableDescription`、`notPurchasableDescription`、`disabledReason.NOT_PURCHASABLE` の 11 件は、**どの 2 件も一方が他方を含まない**（E2E の否定 assert が誤検知しない。S7a の教訓）。`purchasableLabel`（予約購入可能）と `notPurchasableLabel`（現在購入不可）はこの 11 件のどれにも含まれない（`notPurchasableLabel` は `purchasableLabel` も含まない）。
+- **部分文字列の衝突を避ける**: `disabledReason.*`、`failure.*`、`holding`、`purchasableDescription`、`notPurchasableDescription`、`disabledReason.NOT_PURCHASABLE` の 11 件は、**どの 2 件も一方が他方を含まない**。【B4c】`disabledReason.PURCHASE_LIMIT_EXCEEDED` と `disabledReason.UNCONFIRMED` を加えた 13 件も同様（`failure.limit` は `disabledReason.PURCHASE_LIMIT_EXCEEDED` を含まず、含まれもしない。購入開始後の alert と事前の理由を E2E で区別するため）（E2E の否定 assert が誤検知しない。S7a の教訓）。`purchasableLabel`（予約購入可能）と `notPurchasableLabel`（現在購入不可）はこの 11 件のどれにも含まれない（`notPurchasableLabel` は `purchasableLabel` も含まない）。
 - 全 leaf は Hold の具体秒数・残り時間を表す数字（`/[0-9０-９]+\s*(分|秒)/`）を含まない。
 - `copy.karaoke.slotDetail.*` は「取り消されました」「キャンセルされました」を含まない。
 
@@ -102,7 +106,12 @@ export type KaraokeSlotModel =
   | { kind: "ready"; slotRef: Ref<"slot">; dateText: string; timeText: string; priceText: string;
       stateLabel: string; description: string; tone: Tone;
       purchasable: boolean; disabledReason: string | null; dayHref: string };
-export function buildKaraokeSlotModel(input: Loadable<KaraokeSlotDetail>): KaraokeSlotModel;
+export function buildKaraokeSlotModel(
+  input: Loadable<KaraokeSlotDetail>,
+  eligibility?: EligibilityInput,      // 既定 { kind: "not_applicable" }（B4c）
+): KaraokeSlotModel;
+/** 本人向け判定を読む対象: 公開上 AVAILABLE かつ ON_SALE かつ purchasable の Slot だけ（quantity 1 の KARAOKE）。それ以外は null。 */
+export function karaokeEligibilityTarget(input: Loadable<KaraokeSlotDetail>): EligibilityTarget | null;
 ```
 
 - `loading` → `loading`。`not_found` → `not_found`。`unavailable` / `auth_required` / `email_unverified` → `unavailable`（`not_found` と混同しない）。`ok` → `ready`。
@@ -113,7 +122,14 @@ export function buildKaraokeSlotModel(input: Loadable<KaraokeSlotDetail>): Karao
   - `state === "AVAILABLE"` かつ `saleStatus === "ON_SALE"` かつ port の `purchasable !== true`（不整合な組み合わせ。TC-PG-KRK-003-615）: `stateLabel = copy.karaoke.slotDetail.notPurchasableLabel`、`description = copy.karaoke.slotDetail.notPurchasableDescription`、`tone = "neutral"`、`purchasable = false`、`disabledReason = disabledReason.NOT_PURCHASABLE`（SPEC-050 §25: Disabled の理由を周辺 Text で示す）。
   - `state === "AVAILABLE"` かつ `saleStatus !== "ON_SALE"`: `presentKaraokeSaleStatus(saleStatus)` の `label` / `description` / `tone`（「予約購入可能」「選択可能」を出さない）、`purchasable = false`、`disabledReason = disabledReason.NOT_ON_SALE`。
 - **多重防御（INV-010-04）は双方向**: port の `purchasable` が `true` でも、`state === "AVAILABLE" && saleStatus === "ON_SALE"` でなければ `purchasable = false`。逆に `state === "AVAILABLE" && saleStatus === "ON_SALE"` でも、port の `purchasable` が `false`（`true` でない）なら `purchasable = false`（`notPurchasableLabel` 等を表示）。state と saleStatus の理由を flag より優先する。
-- `ready` では `purchasable === true` ⇔ `disabledReason === null`。入力を変更しない。例外を投げない。
+- 【B4c】本人向け判定（`eligibility`）の適用。**公開の規則（上記）で購入可と判定された Slot だけ**が対象（`state === "AVAILABLE"` かつ `saleStatus === "ON_SALE"` かつ port の `purchasable === true`）。それ以外は公開の model のまま（eligibility が何を言っても全 field が `toEqual`。改善しない）。対象の Slot に対して `decideSaleState(presentAvailability / presentPurchaseReasons, eligibility, KARAOKE:<slotRef>)`（S5 契約 §0。Entry・Goods 詳細と共通の規則）で:
+  - `not_applicable`（Guest・未確認。公開の条件のみ）: 公開の model のまま（第 2 引数の省略と同じ）。
+  - `loading` / `unavailable` / entry なし / 購入可だが max が 1 未満（不整合）: fail closed。`stateLabel = copy.availability.label.UNAVAILABLE`、`description = copy.availability.description.UNAVAILABLE`、`tone = "review"`、`purchasable = false`、`disabledReason = copy.karaoke.slotDetail.disabledReason.UNCONFIRMED`。日時・価格・`dayHref` は公開のまま。
+  - 購入可（max ≥ 1）: 公開の model のまま（`toEqual`）。
+  - 購入不可: `stateLabel = presentRejectionReason(先頭の理由).label`、`description = presentPurchaseReasons(reasons, maxPurchasableQuantity).description`（受け取った順にすべて。`maxPurchasableQuantity` は eligibility の entry の値）、`tone = presentPurchaseReasons(...).tone`、`purchasable = false`。`disabledReason` は先頭の理由で決める: `PURCHASE_LIMIT_EXCEEDED` → `disabledReason.PURCHASE_LIMIT_EXCEEDED`、`SALES_NOT_STARTED` / `SALES_CLOSED` / `SALES_STOPPED` → `NOT_ON_SALE`、それ以外（`NOT_PUBLIC_OR_NOT_FOUND` / `SOLD_OUT` / `INSUFFICIENT_QUANTITY` / `SLOT_UNAVAILABLE` / `PAYMENT_WINDOW_TOO_SHORT`）→ `NOT_PURCHASABLE`。
+  - `loading` / `not_found` / `unavailable`（`auth_required` / `email_unverified` を含む）の入力は eligibility に関係なく従来のまま。
+  - `karaokeEligibilityTarget(input)`: ok かつ上記の対象条件を満たすときだけ `{ kind: "KARAOKE", slotRef, quantity: 1 }`、それ以外は null（TC-PG-KRK-003-616）。
+- `ready` では `purchasable === true` ⇔ `disabledReason === null`（eligibility の適用後も）。入力を変更しない。例外を投げない。
 
 ### 3.3 `features/karaoke/karaoke-purchase-flow.ts`
 
@@ -151,6 +167,7 @@ export type KaraokePurchasePhase =
 ### 4.1 取得と表示
 
 - mount 後に `public.getKaraokeSlot(slotRef)` を読む（最初の描画は常に loading）。
+- 【B4c】本人向け判定の読み方（S5 契約 §5.1 / §5.2 の B4b 規則 E と同じ。`eligibilityMode` / `eligibilityForSession` を使う）: verified の Authenticated User のときだけ、`karaokeEligibilityTarget` が返した対象（公開で購入可の Slot）について `purchase.getPurchaseEligibility([target])` を読む。Guest・未確認・session `loading` の間は呼ばない（`unavailable` は呼ばずに fail closed）。公開 read と eligibility は両方がそろってから 1 回だけ反映し、session が変わったら読み直す（古い応答は token で捨てる）。再取得の間も日時・価格・購入 button の位置は保ち、他人（前の session）の判定を現在の利用者に使わない。verified に対応する判定が無い間は fail closed（`UNCONFIRMED`）。取得失敗は §4.2 のとおり購入 button を無効にし、`role="alert"` + `copy.pageState.unavailable(copy.entry.eligibilitySubject)` と `<button type="button">` `copy.pageState.retry`（公開 read と eligibility の両方を読み直す）を購入結果の alert の位置（`actionHeading` の section 内）に出す。Guest / 未確認になったらその場で公開の状態に戻り、前の利用者の失敗 alert は消える。判定は storage に保存しない。
 - loading: `h1` = `copy.karaoke.slotDetail.heading` と `PageState` の `role="status"`（`copy.pageState.loading`）。価格・日時・状態・購入ボタンを出さない。
 - not_found: `NotFoundView`（S4 の日 page と同じ。`h1` = `copy.notFound.title`）。存在しない Slot の ref でも同じ。
 - unavailable: `h1` = `copy.karaoke.slotDetail.heading`、`role="alert"` + `copy.pageState.unavailable(copy.karaoke.slotDetail.subject)` + `<button type="button">` `copy.pageState.retry`（read の再取得のみ。購入 button を出さない）。
@@ -162,7 +179,7 @@ export type KaraokePurchasePhase =
 ### 4.2 購入 button
 
 - ネイティブ `<button type="button">`。name（exact）: Guest（`useSession` が `ready` + `guest`）は `proceedGuest`、それ以外は `proceed`。
-- `disabled`（ネイティブ）: `purchasable === false`、または処理中（`holding` / `preparing`）、または `limit` / `expired` / Guest handoffの`cart_recovery` phase のあと。`purchasable === false` のとき `aria-describedby` が `disabledReason` の `<p id>` を指す。処理中は `aria-busy="true"`（name は変えない）。二重クリックで Order は 1 件だけ。
+- `disabled`（ネイティブ）: `purchasable === false`（【B4c】本人向け判定を反映した model の値。Purchase Limit 到達・判定を確認できない場合を含む。session が `unavailable` のときも「確認できない」として無効にする。K-Q4）、または処理中（`holding` / `preparing`）、または `limit` / `expired` / Guest handoffの`cart_recovery` phase のあと。`purchasable === false` のとき `aria-describedby` が `disabledReason` の `<p id>` を指す。処理中は `aria-busy="true"`（name は変えない）。二重クリックで Order は 1 件だけ。
 - Guest: 押すと `planKaraokeProceed` → `router.push("/account/login?continue=karaoke-slot%3A<ref>")`。API を呼ばない。mock DB・Order・Slot 状態を変えない。Cartの扱いは `FR-CRT-012` に従い、Guest由来でないCartのclearに失敗した場合は遷移を止めてSlot閲覧を保ち、復旧操作を提供する。Login 後は S6 の Continuation で同じ Slot 画面へ戻り、**購入は自動では始まらない**（利用者が改めて Action する）。現在の Slot 状態を再取得して表示する。
 - Authenticated: 試行ごとに新しい idempotency key（`crypto.randomUUID()`）で `purchase.startKaraokePurchase(slotRef, { idempotencyKey })`。
 
@@ -179,6 +196,7 @@ export type KaraokePurchasePhase =
 3. alert: `<div role="alert" tabindex="-1">`（`main` 内で 1 つ）。`failure.conflict` / `limit` / `notOnSale` / `expired` / `unavailable` のうち対応する 1 つの文言。表示後に**この要素へ focus** を移す。次の試行を始めたら消える。
    - `conflict` と `expired` の alert には Link `chooseAgain`（exact。`href = dayHref`。PG-KRK-002 へ戻る Action）を含める。他の alert には含めない。
 4. `conflict` / `not_on_sale` のあと、**現在の Slot を再取得して**表示を更新する（読み込み中の loading 表示にしない。内容を保ったまま差し替える）。再取得した結果が HELD / SOLD / SALES_STOPPED なら、ready の表示（label・理由・button の disabled）が現在の状態になる。`purchase_limit_exceeded` は state が変わらないため再取得不要。
+- 【B4c】上記 1〜5 は購入開始の**結果**の扱いで変えない。事前に本人向け判定で Purchase Limit が分かっている場合（§4.1）は購入開始に進めない（button が無効）。事前判定のあとに状態が変わった場合（scenario の切り替えなど）に備え、購入開始時の `purchase_limit_exceeded` も従来どおり扱う（TC-PG-KRK-003-663）。
 5. `limit` のあとは button を `disabled` のままにし、理由として `failure.limit` を `aria-describedby` で結ぶ（Disabled。SPEC-050 §13.3 表「Purchase Limit 超過」）。
 
 ### 4.4 Hold 失効（`expired`）
@@ -203,11 +221,11 @@ export type KaraokePurchasePhase =
 | ファイル | 内容 |
 |---|---|
 | `tests/unit/web/karaoke/s7b-copy.test.ts` | §2（TC-PG-KRK-003-601〜603。新しい 3 文言を含む） |
-| `tests/unit/web/karaoke/s7b-static.test.ts` | §0 / §1 / §4 の静的検査（TC-DEV-WEB-001-701〜704） |
-| `tests/unit/web/karaoke/karaoke-slot-model.test.ts` | §3.2（TC-PG-KRK-003-611〜615） |
+| `tests/unit/web/karaoke/s7b-static.test.ts` | §0 / §1 / §4 の静的検査（TC-DEV-WEB-001-701〜704。TC-DEV-WEB-001-704 は B4c の「container が eligibility を読む／port 呼び出しの集合」も固定する） |
+| `tests/unit/web/karaoke/karaoke-slot-model.test.ts` | §3.2（TC-PG-KRK-003-611〜615。本人向け判定の適用と `karaokeEligibilityTarget` は TC-PG-KRK-003-616） |
 | `tests/unit/web/karaoke/karaoke-purchase-flow.test.ts` | §3.3（TC-PG-KRK-003-621〜623） |
 | `tests/unit/web/public/route-params-slot.test.ts` | §3.1（TC-PG-KRK-003-602） |
-| `tests/e2e/karaoke-slot-detail.spec.ts` | §4.1（E2E 5 / 28、TC-PG-KRK-003-641〜645） |
+| `tests/e2e/karaoke-slot-detail.spec.ts` | §4.1（E2E 5 / 28、TC-PG-KRK-003-641〜645。購入前の Purchase Limit・取得失敗・session を確定できない（scenario `auth.session: "unavailable"`。K-Q4）ときの fail closed は TC-PG-KRK-003-646、session 変化は TC-PG-KRK-003-647） |
 | `tests/e2e/karaoke-slot-purchase.spec.ts` | §4.2 / §4.3（E2E 3 / 7〜9 の Karaoke 側、TC-PG-KRK-003-651〜654） |
 | `tests/e2e/karaoke-slot-hold.spec.ts` | §4.3 / §4.4（E2E 13、TC-PG-KRK-003-661〜664） |
 | `tests/e2e/cart-session-isolation.spec.ts` | Guest handoffのCart recovery、Cart停止中のAuthenticated Karaoke purchase、storage取得不可時のAuthGate（TC-FR-CRT-012-005〜009、011） |
@@ -215,9 +233,10 @@ export type KaraokePurchasePhase =
 ## 8. 曖昧さ・仕様の不足についてテスト担当が決めたこと
 
 1. **HELD の表示**: SPEC-050 §13.3 表は「他の購入試行で確保中」。S1 / S4 の既存ラベルは「他の方が確保中」。→ `stateLabel` は既存の `presentSlot("HELD").label`（日 page と揃える）、「他の購入試行で確保中」は `disabledReason.HELD` に含める。
-2. **Purchase Limit の事前表示**: port の Karaoke 向けの read は閲覧者別の上限可否を返さない（本人別の上限可否は `API-PUR-ELG-001` として正本化されたが、Karaoke Slot への適用は未対応で、B4c の判断待ち。数値も創作しない）。→ 事前の無効化はできないため、`purchase_limit_exceeded` の結果を受けたあとに alert と無効化で示す（`karaoke-guide` の `purchaseLimit` 案内文は常時表示）。
+2. **Purchase Limit の事前表示（B4c で変更）**: `public.getKaraokeSlot` は閲覧者別の上限可否を返さないが、本人別の上限可否は `API-PUR-ELG-001`（SPEC-050 §12.1 「Goods／Karaokeの対象画面も同Operationを使用する」）で読める。→ verified の Authenticated User には購入開始の前に §4.1 で読み、上限なら `PURCHASE_LIMIT_EXCEEDED` の表示と無効化で示す（数値は創作しない）。Guest・未確認は公開の条件のみ（購入開始時に server が `auth_required` / `email_unverified` を返す）。購入開始時の `purchase_limit_exceeded` の扱い（alert と無効化）は、事前判定のあとに状態が変わった場合のために残す。`karaoke-guide` の `purchaseLimit` 案内文は常時表示。
 3. **Hold 失効後の「PG-KRK-002 へ戻す」**: 設計書は「示し、戻す」。自動遷移すると文言が見えなくなる。→ Slot 画面に留まって `failure.expired` と Link を出す（遷移は利用者の操作）。同様に競合も Link を出すだけで自動遷移しない。
 4. **Hold 失効の発生点**: `opportunity_expired` は `startCheckout` の結果（S2 実装済み）。Slot 画面は購入開始の一連の流れの中でだけこれを受ける。PG-XFN-001 側で `startCheckout` を再試行して失効した場合は S7a どおり `EXPIRED` の表示（「もう一度購入する」→ `/karaoke`）になる。
-5. **Guest の購入ボタン**: SPEC は「Guest: Login」。→ ラベルを `proceedGuest`（設計書 §6「ログインして購入手続きへ」）にし、押すと API を呼ばず Login へ。session が `loading` / `unavailable` のときは `proceed` を出し、server の結果に従う（S7a の `planProceed` と同じ）。
+5. **Guest の購入ボタン**: SPEC は「Guest: Login」。→ ラベルを `proceedGuest`（設計書 §6「ログインして購入手続きへ」）にし、押すと API を呼ばず Login へ。session が `loading` / `unavailable` のときは `proceed` を出し、server の結果に従う（S7a の `planProceed` と同じ）。【B4c / K-Q4】ただし session が `unavailable`（本人を確認できない）のときは、本人向け判定を読めないため fail closed にして購入 button を無効にする（`UNCONFIRMED`）。`loading` の間は判定を読まず、session が確定するまで待つ（`eligibilityMode` の `wait`。Entry と同じ）。
 6. **競合の再取得**: `slot_unavailable` のあと現在の状態を再取得する（古い「予約購入可能」のまま進めなくなるのを防ぐ。S7a の rejected 後の再取得と同じ考え方）。scenario `conflict` では Slot が実際には AVAILABLE のままのため、再取得後も ready（購入可）である。
 7. **Cart との関係**: Slot 画面に Cart 追加の操作は置かない。E2E 28 の「案内文」は Cart 画面（S5）が持つ。Slot 画面は `separateNote` で別の購入であることを示す。Cart の保存値は購入開始の前後で変わらない（Cart に Entry / Goods が入っていても影響しない）。
+8. **本人向け判定の表示文言（B4c）**: SPEC-050 §13.3 の表は Purchase Limit 超過を「Disabled + 理由」とするが、事前表示の文言は定めていない。→ `stateLabel` / `description` は Entry・Goods 詳細と同じ `presentAvailability` / `presentPurchaseReasons` の文言を再利用し（新しい文言を創らない）、button の理由（`aria-describedby`）だけ Slot 用の 2 件（`disabledReason.PURCHASE_LIMIT_EXCEEDED` / `UNCONFIRMED`）を `copy` に加える。購入開始後の alert の `failure.limit` とは別の文言にし、事前表示（alert なし）と購入開始後（alert あり）を区別できるようにした。取得失敗の alert は Entry・Goods 詳細と同じ `copy.pageState.unavailable(copy.entry.eligibilitySubject)` と retry を使う。

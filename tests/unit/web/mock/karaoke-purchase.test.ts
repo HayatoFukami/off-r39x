@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import type { Ref } from "../../../../apps/web/src/api-client/types.ts";
+import { cartLineKey } from "../../../../apps/web/src/api-client/cart-line-key.ts";
+import { eligibilityTargetKey } from "../../../../apps/web/src/api-client/eligibility-target-key.ts";
+import type {
+  CartLine,
+  EligibilityTarget,
+  PurchaseEligibility,
+  PurchaseReason,
+  Ref,
+} from "../../../../apps/web/src/api-client/types.ts";
 import type { ScenarioPatch } from "../../../harness/mock-backend.ts";
 import {
   type Backend,
@@ -7,7 +15,8 @@ import {
   dbFingerprint,
   okData,
 } from "../../../harness/mock-backend.ts";
-import { D1, EMAIL, GOODS, SLOT } from "../../../harness/mock-seed.ts";
+import { D1, EMAIL, GOODS, OFFERING, SLOT } from "../../../harness/mock-seed.ts";
+import { PURCHASE_REASONS } from "../../../harness/purchase-reasons.ts";
 
 async function freshBackend(patch: ScenarioPatch = {}): Promise<Backend> {
   const backend = createBackend();
@@ -273,5 +282,280 @@ describe("TC-PG-KRK-003-105 Karaoke payment outcome creates the Reservation only
     expect(okData(await backend.api.self.getOrder(orderRef)).state).toBe(state);
     expect(await slotState(backend, SLOT.d1_1000)).toBe(slot);
     expect(okData(await backend.api.self.listReservations())).toEqual([]);
+  });
+});
+
+describe("TC-PG-KRK-003-107 getPurchaseEligibility evaluates a KARAOKE target as the owner-scoped read-only pre-check of API-PUR-ELG-001 (FR-KRK-007, BR-KRK-003, KRK-AVL-003, AR-AZ-011, SEC-API-029, SPEC-050 12.1 / 13.3)", () => {
+  const karaoke = (slotRef: Ref<"slot">): EligibilityTarget => ({
+    kind: "KARAOKE",
+    slotRef,
+    quantity: 1,
+  });
+  const UNKNOWN_SLOT = "77777777-7777-4777-8777-777777777777" as Ref<"slot">;
+
+  async function eligible(
+    backend: Backend,
+    targets: readonly EligibilityTarget[],
+  ): Promise<readonly PurchaseEligibility[]> {
+    const read = await backend.api.purchase.getPurchaseEligibility(targets);
+    if (read.kind !== "ok") throw new Error(`expected an ok eligibility read but got ${read.kind}`);
+    return read.data;
+  }
+
+  async function one(backend: Backend, slot: Ref<"slot">): Promise<PurchaseEligibility> {
+    const [item] = await eligible(backend, [karaoke(slot)]);
+    if (item === undefined) throw new Error("expected one eligibility item");
+    return item;
+  }
+
+  async function demoBackend(patch: ScenarioPatch = {}): Promise<Backend> {
+    const backend = createBackend();
+    backend.setScenario(patch);
+    await backend.signInAs(EMAIL.demo);
+    return backend;
+  }
+
+  const allSlots = Object.values(SLOT);
+
+  /** Nothing is written, no id is drawn, no Slot changes and no idempotency record appears (SEC-API-029). */
+  async function expectReadOnly(backend: Backend, run: () => Promise<unknown>): Promise<void> {
+    // Prime the lazily seeded DB so that only the call under test can write.
+    okData(await backend.api.public.getKaraokeSlot(SLOT.d1_1000));
+    const before = dbFingerprint(backend);
+    const dump = backend.storage.dump();
+    const writes = backend.storage.writes.length;
+    const ids = backend.ids.count();
+    const states = await Promise.all(allSlots.map((slot) => slotState(backend, slot)));
+    await run();
+    expect(dbFingerprint(backend)).toBe(before);
+    expect(backend.storage.dump()).toEqual(dump);
+    expect(backend.storage.writes).toHaveLength(writes);
+    expect(backend.ids.count()).toBe(ids);
+    expect(await Promise.all(allSlots.map((slot) => slotState(backend, slot)))).toEqual(states);
+  }
+
+  it("(a) answers an AVAILABLE slot with purchasable, no reason and a maximum of 1, keyed KARAOKE:<slotRef>", async () => {
+    const backend = await demoBackend();
+    await expectReadOnly(backend, async () => {
+      expect(await eligible(backend, [karaoke(SLOT.d1_1000)])).toEqual([
+        {
+          lineKey: `KARAOKE:${SLOT.d1_1000}`,
+          purchasable: true,
+          reasons: [],
+          maxPurchasableQuantity: 1,
+        },
+      ]);
+    });
+  });
+
+  it.each([
+    ["HELD", SLOT.d1_1020],
+    ["SOLD", SLOT.d1_1040],
+    ["SALES_STOPPED", SLOT.d1_1200],
+  ] as const)(
+    "(b) answers a %s slot with SLOT_UNAVAILABLE and a maximum of 0",
+    async (_state, slot) => {
+      const backend = await demoBackend();
+      await expectReadOnly(backend, async () => {
+        expect(await eligible(backend, [karaoke(slot)])).toEqual([
+          {
+            lineKey: `KARAOKE:${slot}`,
+            purchasable: false,
+            reasons: ["SLOT_UNAVAILABLE"],
+            maxPurchasableQuantity: 0,
+          },
+        ]);
+      });
+    },
+  );
+
+  it.each([
+    ["BEFORE_SALES", "SALES_NOT_STARTED"],
+    ["SALES_ENDED", "SALES_CLOSED"],
+    ["SUSPENDED", "SALES_STOPPED"],
+  ] as const)("(c) answers %s Karaoke sales with %s and a maximum of 0", async (sales, reason) => {
+    const backend = await demoBackend({ karaokeSales: sales });
+    await expectReadOnly(backend, async () => {
+      expect(await one(backend, SLOT.d1_1000)).toEqual({
+        lineKey: `KARAOKE:${SLOT.d1_1000}`,
+        purchasable: false,
+        reasons: [reason],
+        maxPurchasableQuantity: 0,
+      });
+    });
+  });
+
+  it("(d) answers the scenario karaokeHold limit with PURCHASE_LIMIT_EXCEEDED, and conflict / expire_before_checkout (purchase-start-only scenarios) do not matter", async () => {
+    const limit = await demoBackend({ karaokeHold: "limit" });
+    await expectReadOnly(limit, async () => {
+      expect(await one(limit, SLOT.d1_1000)).toEqual({
+        lineKey: `KARAOKE:${SLOT.d1_1000}`,
+        purchasable: false,
+        reasons: ["PURCHASE_LIMIT_EXCEEDED"],
+        maxPurchasableQuantity: 0,
+      });
+    });
+    for (const hold of ["conflict", "expire_before_checkout"] as const) {
+      const backend = await demoBackend({ karaokeHold: hold });
+      await expectReadOnly(backend, async () => {
+        expect(await one(backend, SLOT.d1_1000), hold).toEqual({
+          lineKey: `KARAOKE:${SLOT.d1_1000}`,
+          purchasable: true,
+          reasons: [],
+          maxPurchasableQuantity: 1,
+        });
+      });
+    }
+  });
+
+  it("(e) lists co-occurring reasons in the canonical order without a duplicate", async () => {
+    const backend = await demoBackend({ karaokeSales: "SUSPENDED", karaokeHold: "limit" });
+    await expectReadOnly(backend, async () => {
+      expect(await one(backend, SLOT.d1_1020)).toEqual({
+        lineKey: `KARAOKE:${SLOT.d1_1020}`,
+        purchasable: false,
+        reasons: ["SALES_STOPPED", "PURCHASE_LIMIT_EXCEEDED", "SLOT_UNAVAILABLE"],
+        maxPurchasableQuantity: 0,
+      });
+    });
+  });
+
+  it("(f) answers an unknown slot with NOT_PUBLIC_OR_NOT_FOUND alone and a maximum of 0", async () => {
+    const backend = await demoBackend();
+    await expectReadOnly(backend, async () => {
+      expect(await one(backend, UNKNOWN_SLOT)).toEqual({
+        lineKey: `KARAOKE:${UNKNOWN_SLOT}`,
+        purchasable: false,
+        reasons: ["NOT_PUBLIC_OR_NOT_FOUND"],
+        maxPurchasableQuantity: 0,
+      });
+    });
+  });
+
+  it("(g) never produces PAYMENT_WINDOW_TOO_SHORT (the mock has no payment window) and always holds the canonical order, purchasable === no reason, and a maximum of 0 or 1", async () => {
+    for (const sales of ["ON_SALE", "BEFORE_SALES", "SALES_ENDED", "SUSPENDED"] as const) {
+      for (const hold of ["ok", "conflict", "limit", "expire_before_checkout"] as const) {
+        const backend = await demoBackend({ karaokeSales: sales, karaokeHold: hold });
+        const data = await eligible(backend, [...allSlots, UNKNOWN_SLOT].map(karaoke));
+        expect(data).toHaveLength(allSlots.length + 1);
+        for (const item of data) {
+          const where = `${sales}/${hold}/${item.lineKey}`;
+          expect(item.reasons as readonly PurchaseReason[], where).not.toContain(
+            "PAYMENT_WINDOW_TOO_SHORT",
+          );
+          expect(new Set(item.reasons).size, where).toBe(item.reasons.length);
+          const ranks = item.reasons.map((reason) => PURCHASE_REASONS.indexOf(reason));
+          expect(ranks, where).toEqual([...ranks].sort((a, b) => a - b));
+          expect(item.purchasable, where).toBe(item.reasons.length === 0);
+          expect(item.maxPurchasableQuantity, where).toBe(item.purchasable ? 1 : 0);
+        }
+      }
+    }
+  });
+
+  it("(h) answers a mixed input of ENTRY, KARAOKE and GOODS in input order with each key", async () => {
+    const backend = await demoBackend();
+    const entry: CartLine = { kind: "ENTRY_TICKET", offeringRef: OFFERING.regular, quantity: 1 };
+    const goods: CartLine = { kind: "GOODS", goodsRef: GOODS.tshirt, quantity: 1 };
+    await expectReadOnly(backend, async () => {
+      const data = await eligible(backend, [entry, karaoke(SLOT.d1_1000), goods]);
+      expect(data.map((item) => item.lineKey)).toEqual([
+        cartLineKey(entry),
+        `KARAOKE:${SLOT.d1_1000}`,
+        cartLineKey(goods),
+      ]);
+      expect(data.map((item) => item.purchasable)).toEqual([true, true, true]);
+      expect(eligibilityTargetKey(karaoke(SLOT.d1_1000))).toBe(data[1]?.lineKey);
+    });
+  });
+
+  it.each([
+    ["quantity 2", [{ kind: "KARAOKE", slotRef: SLOT.d1_1000, quantity: 2 }]],
+    ["quantity 0", [{ kind: "KARAOKE", slotRef: SLOT.d1_1000, quantity: 0 }]],
+    ["quantity 1.5", [{ kind: "KARAOKE", slotRef: SLOT.d1_1000, quantity: 1.5 }]],
+    [
+      "the same slot twice",
+      [
+        { kind: "KARAOKE", slotRef: SLOT.d1_1000, quantity: 1 },
+        { kind: "KARAOKE", slotRef: SLOT.d1_1000, quantity: 1 },
+      ],
+    ],
+    ["no target", []],
+  ])(
+    "(i) rejects the promise for %s without changing state (programmer error)",
+    async (_name, targets) => {
+      const backend = await demoBackend();
+      await expectReadOnly(backend, async () => {
+        await expect(
+          backend.api.purchase.getPurchaseEligibility(targets as readonly EligibilityTarget[]),
+        ).rejects.toThrow(RangeError);
+      });
+    },
+  );
+
+  it("(i) accepts two different slots in one read", async () => {
+    const backend = await demoBackend();
+    const data = await eligible(backend, [karaoke(SLOT.d1_1000), karaoke(SLOT.d1_1020)]);
+    expect(data.map((item) => item.lineKey)).toEqual([
+      `KARAOKE:${SLOT.d1_1000}`,
+      `KARAOKE:${SLOT.d1_1020}`,
+    ]);
+    expect(data.map((item) => item.purchasable)).toEqual([true, false]);
+  });
+
+  it("(j) is not a reservation: reading draws no id and creates no Order or Hold, and the slot stays AVAILABLE", async () => {
+    const backend = await demoBackend();
+    // The demo user already has seeded Orders: the read must leave exactly the same list (no Order is added).
+    const ordersBefore = okData(await backend.api.self.listOrders());
+    await expectReadOnly(backend, async () => {
+      await eligible(backend, [karaoke(SLOT.d1_1000)]);
+      await eligible(backend, [karaoke(SLOT.d1_1000)]);
+    });
+    expect(backend.ids.count()).toBe(0);
+    expect(await slotState(backend, SLOT.d1_1000)).toBe("AVAILABLE");
+    const ordersAfter = okData(await backend.api.self.listOrders());
+    expect(ordersAfter).toHaveLength(ordersBefore.length);
+    expect(ordersAfter).toEqual(ordersBefore);
+  });
+
+  it("(k) answers a guest with auth_required and an unverified user with email_unverified, and changes nothing", async () => {
+    const guest = createBackend();
+    await expectReadOnly(guest, async () => {
+      expect(await guest.api.purchase.getPurchaseEligibility([karaoke(SLOT.d1_1000)])).toEqual({
+        kind: "auth_required",
+      });
+    });
+    const unverified = createBackend();
+    await unverified.signInAs(EMAIL.unverified);
+    await expectReadOnly(unverified, async () => {
+      expect(await unverified.api.purchase.getPurchaseEligibility([karaoke(SLOT.d1_1000)])).toEqual(
+        { kind: "email_unverified" },
+      );
+    });
+  });
+
+  it("(k) scenario cart.state eligibility_fail makes a verified user's KARAOKE read unavailable (every target) while the public slot read still works", async () => {
+    const backend = await demoBackend();
+    backend.setScenario({ cart: { state: "eligibility_fail" as const } });
+    await expectReadOnly(backend, async () => {
+      expect(await backend.api.purchase.getPurchaseEligibility([karaoke(SLOT.d1_1000)])).toEqual({
+        kind: "unavailable",
+      });
+      expect(
+        await backend.api.purchase.getPurchaseEligibility([
+          { kind: "GOODS", goodsRef: GOODS.tshirt, quantity: 1 },
+          karaoke(SLOT.d1_1000),
+        ]),
+      ).toEqual({ kind: "unavailable" });
+    });
+    expect(okData(await backend.api.public.getKaraokeSlot(SLOT.d1_1000)).purchasable).toBe(true);
+  });
+
+  it("(k) checks authentication before the eligibility_fail scenario (a guest never sees unavailable)", async () => {
+    const guest = createBackend();
+    guest.setScenario({ cart: { state: "eligibility_fail" as const } });
+    expect(await guest.api.purchase.getPurchaseEligibility([karaoke(SLOT.d1_1000)])).toEqual({
+      kind: "auth_required",
+    });
   });
 });
