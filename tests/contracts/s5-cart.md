@@ -400,7 +400,7 @@ focus 順は DOM 順と一致させる。Entry / Goods では**数量入力の�
 | `tests/unit/web/cart/s5-copy.test.ts` | §1 |
 | `tests/unit/web/cart/s5-static.test.ts` | §0 と静的検査（構成、page 殻、直書き、Karaoke 不在、購入開始不在、Cart本体の単一 schema。FR-CRT-012の別由来metadataは独立したruntime schemaを許す） |
 | `tests/e2e/entry-sales.spec.ts` | §5.1（本人向け判定は TC-PG-TKT-001-511。途中表示（latency long）も TC-PG-TKT-001-511） |
-| `tests/e2e/goods-detail.spec.ts` | §5.2（本人向け判定は TC-PG-GDS-002-507、途中表示（latency long）は TC-PG-GDS-002-508） |
+| `tests/e2e/goods-detail.spec.ts` | §5.2（本人向け判定は TC-PG-GDS-002-507。session を確定できない（scenario `auth.session: "unavailable"`）ときの fail closed もここで確認する。途中表示（latency long）は TC-PG-GDS-002-508） |
 | `tests/e2e/cart-page.spec.ts` | §5.3（本人向け判定は TC-PG-CRT-001-514。途中表示（latency long）も TC-PG-CRT-001-514） |
 | `tests/e2e/cart-store.spec.ts` | 永続、Header の即時更新、他 tab、壊れた保存内容、FR-CRT-012 |
 | `tests/e2e/cart-session-isolation.spec.ts` | TC-FR-CRT-012-011: lifecycle停止中も販売Pageを表示し、Cart追加を無効にする |

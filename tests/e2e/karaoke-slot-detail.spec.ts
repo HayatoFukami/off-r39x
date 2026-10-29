@@ -1,7 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import { copy } from "../../apps/web/src/presentation/copy/ja.ts";
 import { formatBusinessDate } from "../../apps/web/src/presentation/format/datetime.ts";
-import { unverifiedSession } from "../harness/browser/auth.ts";
+import { authScenario, unverifiedSession } from "../harness/browser/auth.ts";
 import {
   describedText,
   FORBIDDEN_ELIGIBILITY_IN_STORAGE,
@@ -231,6 +231,36 @@ test.describe("TC-PG-KRK-003-646 a verified user sees the Purchase Limit before 
     await expect(infoRegion(page)).toContainText(d.purchasableLabel);
     await expect(purchaseButton(page)).toBeEnabled();
     expect(await newOrders(page)).toHaveLength(0);
+  });
+
+  test("a session that cannot be determined (auth.session unavailable) fails closed (K-Q4): the button disabled with the unconfirmed reason, one alert with retry, nothing created", async ({
+    page,
+  }) => {
+    await openAs(page, slotRoute(SLOT.d1_1000), {
+      extra: authScenario({ session: "unavailable" }),
+    });
+    await expect(eligibilityAlert(page)).toHaveCount(1);
+    await expect(eligibilityAlert(page)).toContainText(
+      copy.pageState.unavailable(copy.entry.eligibilitySubject),
+    );
+    await expect(retryIn(page)).toBeVisible();
+    const info = infoRegion(page);
+    await expect(info).toContainText(availability.label.UNAVAILABLE);
+    await expect(info).not.toContainText(d.purchasableLabel);
+    await expect(purchaseButton(page)).toBeDisabled();
+    expect(await describedText(purchaseButton(page))).toContain(d.disabledReason.UNCONFIRMED);
+    // The facts of the public read stay shown.
+    await expect(info).toContainText("10:00-10:15");
+    await expect(info).toContainText("¥1,000");
+
+    // Even a forced press starts nothing: no Order, no Hold, the mock database and the slot are untouched.
+    const dbBefore = await readDbRaw(page);
+    await purchaseButton(page).click({ force: true });
+    await expect(eligibilityAlert(page)).toHaveCount(1);
+    expect(await newOrders(page)).toHaveLength(0);
+    expect(await slotStateInDb(page, SLOT.d1_1000)).toBe("AVAILABLE");
+    expect(await readDbRaw(page)).toBe(dbBefore);
+    expect(await storedText(page, [KEYS.scenario])).not.toMatch(FORBIDDEN_ELIGIBILITY_IN_STORAGE);
   });
 
   test("a Guest and an unverified user do not see the failure of the eligibility (it is not read)", async ({

@@ -2,6 +2,7 @@ import { expect, type Page, test } from "@playwright/test";
 import { copy } from "../../apps/web/src/presentation/copy/ja.ts";
 import { formatJstDateTime } from "../../apps/web/src/presentation/format/datetime.ts";
 import { formatMoney, multiplyMoney } from "../../apps/web/src/presentation/format/money.ts";
+import { authScenario } from "../harness/browser/auth.ts";
 import {
   addButton,
   describedText,
@@ -447,6 +448,34 @@ test.describe("TC-PG-GDS-002-507 a verified owner whose eligibility cannot be re
     await retryOf(page).click();
     await expect(alertOf(page)).toHaveCount(1);
     await expect(addButton(main(page))).toBeDisabled();
+    expect(await readCartRaw(page)).toBeNull();
+    expect(await readDbRaw(page)).toBe(dbBefore);
+    expect(await storedText(page, [KEYS.scenario])).not.toMatch(FORBIDDEN_ELIGIBILITY_IN_STORAGE);
+  });
+
+  test("a session that cannot be determined (auth.session unavailable) fails closed (K-Q4): Add disabled with the reason attached, one alert with retry; a forced press writes nothing", async ({
+    page,
+  }) => {
+    const goods = detail(GOODS.tshirt);
+    await openReady(page, GOODS.tshirt, authScenario({ session: "unavailable" }));
+    await expect(alertOf(page)).toHaveCount(1);
+    await expect(alertOf(page)).toContainText(
+      copy.pageState.unavailable(copy.entry.eligibilitySubject),
+    );
+    await expect(retryOf(page)).toBeVisible();
+    await expect(statusOf(page)).toContainText(label().UNAVAILABLE);
+    await expect(statusOf(page)).not.toContainText(label().ON_SALE);
+    await expect(addButton(main(page))).toBeDisabled();
+    expect(await describedText(addButton(main(page)))).toContain(description().UNAVAILABLE);
+    await expect(main(page)).not.toContainText(copy.quantity.guidance(20));
+    // The facts of the public read are still shown.
+    await expect(h1(page)).toHaveText(goods.name);
+    await expect(main(page)).toContainText(formatMoney(goods.unitPrice));
+
+    // Even a forced press stores nothing: the Cart and the mock database are untouched.
+    const dbBefore = await readDbRaw(page);
+    await addButton(main(page)).click({ force: true });
+    await expect(alertOf(page)).toHaveCount(1);
     expect(await readCartRaw(page)).toBeNull();
     expect(await readDbRaw(page)).toBe(dbBefore);
     expect(await storedText(page, [KEYS.scenario])).not.toMatch(FORBIDDEN_ELIGIBILITY_IN_STORAGE);

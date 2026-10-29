@@ -6964,7 +6964,8 @@
       "expected_domain_postconditions": [
         "a verified user whose eligibility cannot be read sees 'cannot confirm' (not on sale) with Add disabled and the reason attached, no quantity guidance, one alert naming the purchase conditions with a retry button, while the name, description, price and period stay; retrying only reads (Cart, mock DB and storage keys unchanged, nothing owner-specific stored)",
         "a retry with a working eligibility recovers without a reload: on sale, Add enabled, the maximum announced again; a verified user with a working eligibility sees and adds as before",
-        "a Guest and an unverified user get the public state only (the eligibility is not read, so its failure is invisible); a Goods that is not on sale publicly keeps its public state even when the eligibility fails"
+        "a Guest and an unverified user get the public state only (the eligibility is not read, so its failure is invisible); a Goods that is not on sale publicly keeps its public state even when the eligibility fails",
+        "a session that cannot be determined (scenario auth.session unavailable, K-Q4) fails closed: 'cannot confirm', Add disabled with the reason attached, no quantity guidance, one alert naming the purchase conditions with a retry button, the facts of the public read stay; a forced press of Add stores nothing (Cart empty, mock DB unchanged, nothing owner-specific stored)"
       ]
     },
     {
@@ -10867,7 +10868,8 @@
       "expected_domain_postconditions": [
         "a verified user at the limit sees the purchase-limit label and description before any purchase start, with the button disabled and described by the limit reason (not the purchase-start failure text), no alert, no status, no Order, the slot AVAILABLE and the mock DB unchanged; the date, time, price and the generic limit guidance stay",
         "a Guest and an unverified user at the same scenario get the public state (purchasable label, action enabled, no alert): the eligibility is not read",
-        "a verified user whose eligibility cannot be read sees 'cannot confirm' with the button disabled and the unconfirmed reason and one alert with retry; no Order; a retry with a working eligibility recovers; a Guest and an unverified user do not see the failure; a slot that is not purchasable publicly keeps its public state; nothing owner-specific is stored"
+        "a verified user whose eligibility cannot be read sees 'cannot confirm' with the button disabled and the unconfirmed reason and one alert with retry; no Order; a retry with a working eligibility recovers; a Guest and an unverified user do not see the failure; a slot that is not purchasable publicly keeps its public state; nothing owner-specific is stored",
+        "a session that cannot be determined (scenario auth.session unavailable, K-Q4) fails closed: 'cannot confirm', the button disabled with the unconfirmed reason attached, one alert with retry, the facts of the public read stay; a forced press starts nothing (no Order or Hold, the slot AVAILABLE, the mock DB unchanged, nothing owner-specific stored)"
       ]
     },
     {

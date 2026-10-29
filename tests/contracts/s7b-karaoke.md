@@ -225,7 +225,7 @@ export type KaraokePurchasePhase =
 | `tests/unit/web/karaoke/karaoke-slot-model.test.ts` | §3.2（TC-PG-KRK-003-611〜615。本人向け判定の適用と `karaokeEligibilityTarget` は TC-PG-KRK-003-616） |
 | `tests/unit/web/karaoke/karaoke-purchase-flow.test.ts` | §3.3（TC-PG-KRK-003-621〜623） |
 | `tests/unit/web/public/route-params-slot.test.ts` | §3.1（TC-PG-KRK-003-602） |
-| `tests/e2e/karaoke-slot-detail.spec.ts` | §4.1（E2E 5 / 28、TC-PG-KRK-003-641〜645。購入前の Purchase Limit・取得失敗は TC-PG-KRK-003-646、session 変化は TC-PG-KRK-003-647） |
+| `tests/e2e/karaoke-slot-detail.spec.ts` | §4.1（E2E 5 / 28、TC-PG-KRK-003-641〜645。購入前の Purchase Limit・取得失敗・session を確定できない（scenario `auth.session: "unavailable"`。K-Q4）ときの fail closed は TC-PG-KRK-003-646、session 変化は TC-PG-KRK-003-647） |
 | `tests/e2e/karaoke-slot-purchase.spec.ts` | §4.2 / §4.3（E2E 3 / 7〜9 の Karaoke 側、TC-PG-KRK-003-651〜654） |
 | `tests/e2e/karaoke-slot-hold.spec.ts` | §4.3 / §4.4（E2E 13、TC-PG-KRK-003-661〜664） |
 | `tests/e2e/cart-session-isolation.spec.ts` | Guest handoffのCart recovery、Cart停止中のAuthenticated Karaoke purchase、storage取得不可時のAuthGate（TC-FR-CRT-012-005〜009、011） |
