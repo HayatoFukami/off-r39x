@@ -1,11 +1,26 @@
 import { expect, type Page, test } from "@playwright/test";
 import { copy } from "../../apps/web/src/presentation/copy/ja.ts";
 import {
+  chooseMethod,
   field,
+  formOf,
+  googleStartButton,
   loginWith,
   MARKER_PROTECTED_TEXT,
+  MOCK_GOOGLE_PATH,
+  magicSendButton,
+  OTP_CODE,
+  otpButton,
+  otpCodeField,
+  readCartLifecycle,
+  readCartLifecycleRaw,
   readSession,
+  sendOtp,
+  standInButton,
+  statusesIn,
   submitButton,
+  submitOtpCode,
+  watchDocumentRequests,
 } from "../harness/browser/auth.ts";
 import {
   addButton,
@@ -26,7 +41,7 @@ import {
   removeButton,
   rowByHeading,
 } from "../harness/browser/cart.ts";
-import { gotoHydrated } from "../harness/browser/hydration.ts";
+import { gotoHydrated, reloadHydrated, waitForHydration } from "../harness/browser/hydration.ts";
 import { guestButton, slotRoute, slotStateInDb } from "../harness/browser/karaoke-purchase.ts";
 import { fixClock } from "../harness/browser/public.ts";
 import { newOrders, openAs } from "../harness/browser/purchase.ts";
@@ -410,5 +425,390 @@ test.describe("TC-PG-CRT-001-543 a Cart store that cannot be read stops Cart add
     expect(await sessionWrites(page)).toBe(0);
     expect(await readSession(page)).toEqual({ kind: "guest" });
     expect(await cartKeyStored(page)).toBe(false);
+  });
+
+  // ---- B5 C1: Email OTP crosses into Auth too, so the same Q-1 stop applies ----------------------------------------
+  // Submits the form that contains the given control without its (disabled) button.
+  const forceSubmitOf = (control: ReturnType<typeof field>) =>
+    formOf(control).evaluate((form) => (form as HTMLFormElement).requestSubmit());
+
+  /** An unreadable Cart key that the page can switch on and off (a flag in sessionStorage; off by default). */
+  async function cartReadFaultSwitch(page: Page): Promise<void> {
+    await page.addInitScript((key: string) => {
+      const original = Storage.prototype.getItem;
+      Storage.prototype.getItem = function getItem(this: Storage, name: string) {
+        if (name === key && window.sessionStorage.getItem("test-only-cart-read-fault") === "on")
+          throw new DOMException("blocked", "SecurityError");
+        return original.call(this, name);
+      };
+    }, KEYS.cart);
+  }
+  const setCartReadFault = (page: Page, on: boolean) =>
+    page.evaluate(
+      (value) => window.sessionStorage.setItem("test-only-cart-read-fault", value),
+      on ? "on" : "off",
+    );
+
+  test("Email OTP with guest metadata and an unreadable Cart: the recovery is shown, the code request is disabled, a forced request makes no authentication call and no code step appears; after recovery OTP Login works", async ({
+    page,
+  }) => {
+    await fixClock(page);
+    await seedLocalStorage(page, lifecycleSeed("guest"));
+    await failCartReadsUntilEnabled(page);
+    await countSessionWrites(page);
+    await gotoHydrated(page, "/account/login");
+    const urls = watchNavigation(page);
+    await expect(recoveryAlert(page)).toBeVisible();
+    await chooseMethod(page, copy.auth.method.emailOtp);
+    await expect(otpButton(page, copy.auth.otp.send)).toBeDisabled();
+    await expect(recoveryAlert(page)).toBeVisible();
+    const email = field(page, copy.auth.field.email.label);
+    await email.fill(EMAIL.other);
+    await forceSubmitOf(email);
+    // Stopped in the lifecycle port: no sent status, no code step, no failure text of a raw call.
+    await expect(recoveryAlert(page)).toBeVisible();
+    await expect(main(page)).not.toContainText(copy.auth.otp.sent);
+    await expect(main(page)).not.toContainText(copy.auth.otp.unavailable);
+    await expect(otpCodeField(page)).toHaveCount(0);
+    await expect(page).toHaveURL(/\/account\/login$/);
+    expect(urls.filter((url) => !url.startsWith("/account/login"))).toEqual([]);
+    expect(await sessionWrites(page)).toBe(0);
+    expect(await readSession(page)).toEqual({ kind: "guest" });
+    expect(await cartKeyStored(page)).toBe(false);
+
+    // After the Cart can be read again, the explicit recovery lifts the stop and the OTP Login proceeds.
+    await enableCartReads(page);
+    await recoverButton(page).click();
+    await expect(recoverButton(page)).toHaveCount(0);
+    await expect(otpButton(page, copy.auth.otp.send)).toBeEnabled();
+    await sendOtp(page, EMAIL.other);
+    await expect(statusesIn(page)).toHaveText(copy.auth.otp.sent);
+    await submitOtpCode(page, OTP_CODE, copy.auth.otp.submitLogin);
+    await expect(page).toHaveURL(/\/mypage$/);
+    await expect(main(page)).toContainText(EMAIL.other);
+  });
+
+  test("Email OTP whose Cart becomes unreadable after the code request: the code submit is cart_blocked, the buttons are natively disabled, nothing is written; after recovery the code signs in", async ({
+    page,
+  }) => {
+    await fixClock(page);
+    await seedLocalStorage(page, lifecycleSeed("guest"));
+    await cartReadFaultSwitch(page);
+    await countSessionWrites(page);
+    await gotoHydrated(page, "/account/login");
+    await chooseMethod(page, copy.auth.method.emailOtp);
+    await sendOtp(page, EMAIL.other);
+    await expect(statusesIn(page)).toHaveText(copy.auth.otp.sent);
+    await expect(otpCodeField(page)).toBeVisible();
+
+    await setCartReadFault(page, true);
+    await otpCodeField(page).fill(OTP_CODE);
+    await forceSubmitOf(otpCodeField(page));
+    await expect(recoveryAlert(page)).toBeVisible();
+    await expect(otpButton(page, copy.auth.otp.submitLogin)).toBeDisabled();
+    await expect(main(page)).not.toContainText(copy.auth.otp.codeInvalid);
+    await expect(main(page)).not.toContainText(copy.auth.otp.codeExpired);
+    await expect(main(page)).not.toContainText(copy.auth.otp.unavailable);
+    await expect(page).toHaveURL(/\/account\/login$/);
+    expect(await sessionWrites(page)).toBe(0);
+    expect(await readSession(page)).toEqual({ kind: "guest" });
+
+    await setCartReadFault(page, false);
+    await recoverButton(page).click();
+    await expect(recoverButton(page)).toHaveCount(0);
+    await expect(otpButton(page, copy.auth.otp.submitLogin)).toBeEnabled();
+    await submitOtpCode(page, OTP_CODE, copy.auth.otp.submitLogin);
+    await expect(page).toHaveURL(/\/mypage$/);
+    expect(await readSession(page)).toEqual({
+      kind: "authenticated",
+      email: EMAIL.other,
+      emailVerified: true,
+    });
+  });
+
+  test("Email OTP registration with guest metadata and an unreadable Cart is stopped the same way: recovery shown, send disabled, a forced request makes no authentication call", async ({
+    page,
+  }) => {
+    await fixClock(page);
+    await seedLocalStorage(page, lifecycleSeed("guest"));
+    await failCartReadsUntilEnabled(page);
+    await countSessionWrites(page);
+    await gotoHydrated(page, "/account/register");
+    await expect(recoveryAlert(page)).toBeVisible();
+    await chooseMethod(page, copy.auth.method.emailOtp);
+    await expect(otpButton(page, copy.auth.otp.send)).toBeDisabled();
+    const email = field(page, copy.auth.field.email.label);
+    await email.fill("b5-otp-new@example.com");
+    await forceSubmitOf(email);
+    await expect(recoveryAlert(page)).toBeVisible();
+    await expect(main(page)).not.toContainText(copy.auth.otp.sent);
+    await expect(otpCodeField(page)).toHaveCount(0);
+    await expect(page).toHaveURL(/\/account\/register$/);
+    expect(await sessionWrites(page)).toBe(0);
+    expect(await readSession(page)).toEqual({ kind: "guest" });
+  });
+});
+
+// ---- B5 C2: Google crosses into Auth through an external service, so the same Q-1 stop applies ---------------------------
+// FR-CRT-012 external-completion rule step 2: an unreadable Cart key stops the start (nothing is recorded, nobody leaves
+// the page); a Browser storage that cannot be obtained at all does not stop it and creates no record.
+test.describe("TC-FR-CRT-012-018 Google is not started while the Cart key cannot be read (Q-1, external-completion rule step 2), and is started without a record when the Browser storage cannot be obtained at all (SPEC-050 15.0 / 15.3, FR-CRT-012)", () => {
+  const recoverButton = (page: Page) =>
+    main(page).getByRole("button", { name: copy.cart.lifecycleBlocked.retry, exact: true });
+  const recoveryAlert = (page: Page) =>
+    main(page).getByRole("alert").filter({ hasText: copy.cart.lifecycleBlocked.title });
+  const isStandIn = (url: URL) => url.pathname === MOCK_GOOGLE_PATH;
+
+  /** An unreadable Cart key that the page can switch back on (a flag in sessionStorage). */
+  async function failCartReadsUntilEnabled(page: Page): Promise<void> {
+    await page.addInitScript((key: string) => {
+      const original = Storage.prototype.getItem;
+      Storage.prototype.getItem = function getItem(this: Storage, name: string) {
+        if (name === key && window.sessionStorage.getItem("test-only-cart-read-enabled") !== "yes")
+          throw new DOMException("blocked", "SecurityError");
+        return original.call(this, name);
+      };
+    }, KEYS.cart);
+  }
+
+  /** Counts the writes to the mock session key: a raw call would write it, a stopped one never does. */
+  async function countSessionWrites(page: Page): Promise<void> {
+    await page.addInitScript((key: string) => {
+      const w = window as unknown as { __sessionWrites: number };
+      w.__sessionWrites = 0;
+      const original = Storage.prototype.setItem;
+      Storage.prototype.setItem = function setItem(this: Storage, name: string, value: string) {
+        if (name === key) w.__sessionWrites += 1;
+        return original.call(this, name, value);
+      };
+    }, KEYS.session);
+  }
+  const sessionWrites = (page: Page) =>
+    page.evaluate(() => (window as unknown as { __sessionWrites: number }).__sessionWrites);
+
+  function watchNavigation(page: Page): string[] {
+    const urls: string[] = [];
+    page.on("framenavigated", (frame) => {
+      if (frame !== page.mainFrame()) return;
+      const url = new URL(frame.url());
+      urls.push(url.pathname + url.search);
+    });
+    return urls;
+  }
+
+  for (const name of ["login", "register"] as const) {
+    test(`${name} with guest metadata and an unreadable Cart: the start is disabled, a forced press goes nowhere and records nothing, the recovery is shown; after recovery the start reaches the stand-in with a pending record`, async ({
+      page,
+    }) => {
+      const seeded = lifecycleSeed("guest");
+      await fixClock(page);
+      await seedLocalStorage(page, seeded);
+      await failCartReadsUntilEnabled(page);
+      await countSessionWrites(page);
+      await gotoHydrated(page, `/account/${name}`);
+      const urls = watchNavigation(page);
+      const documents = watchDocumentRequests(page);
+      await expect(recoveryAlert(page)).toBeVisible();
+      await chooseMethod(page, copy.auth.method.google);
+      await expect(googleStartButton(page, name)).toBeDisabled();
+      await expect(googleStartButton(page, name)).toHaveJSProperty("disabled", true);
+
+      // Something presses it anyway: the lifecycle port stops it before the request.
+      await googleStartButton(page, name).evaluate((button) => {
+        (button as HTMLButtonElement).disabled = false;
+        (button as HTMLButtonElement).click();
+      });
+      await expect(recoveryAlert(page)).toBeVisible();
+      await expect(main(page)).not.toContainText(copy.auth.google.unavailable);
+      await expect(main(page)).not.toContainText(copy.auth.google.failed);
+      await expect(page).toHaveURL(new RegExp(`/account/${name}$`));
+      expect(urls.filter((url) => !url.startsWith(`/account/${name}`))).toEqual([]);
+      expect(documents.filter((url) => url.startsWith("/dev/"))).toEqual([]);
+      expect(await sessionWrites(page)).toBe(0);
+      expect(await readSession(page)).toEqual({ kind: "guest" });
+      expect(await cartKeyStored(page)).toBe(false);
+      // No record: the metadata is exactly what was seeded (it has no external field).
+      expect(await readCartLifecycleRaw(page)).toBe(seeded[KEYS.cartLifecycle]);
+
+      // After the Cart can be read again, the explicit recovery lifts the stop and the start goes to the stand-in.
+      await page.evaluate(() =>
+        window.sessionStorage.setItem("test-only-cart-read-enabled", "yes"),
+      );
+      await recoverButton(page).click();
+      await expect(recoverButton(page)).toHaveCount(0);
+      await expect(googleStartButton(page, name)).toBeEnabled();
+      await googleStartButton(page, name).click();
+      await page.waitForURL(isStandIn);
+      await waitForHydration(page);
+      expect((await readCartLifecycle(page))?.external).toBe("pending");
+      expect(await readSession(page)).toEqual({ kind: "guest" });
+    });
+  }
+
+  test("a Guest whose Browser storage cannot be obtained at all can start Google: the stand-in is reached, no Cart metadata is written, and once the storage is available the allow reaches Mypage without a pending record", async ({
+    page,
+  }) => {
+    await fixClock(page);
+    await page.addInitScript((metadataKey: string) => {
+      const storage = window.localStorage;
+      // Remember (in sessionStorage, which stays available) that the Cart lifecycle metadata was ever written.
+      const original = Storage.prototype.setItem;
+      Storage.prototype.setItem = function setItem(this: Storage, name: string, value: string) {
+        if (name === metadataKey)
+          original.call(window.sessionStorage, "test-only-metadata-written", "yes");
+        return original.call(this, name, value);
+      };
+      Object.defineProperty(window, "localStorage", {
+        configurable: true,
+        get() {
+          if (window.sessionStorage.getItem("test-only-storage-enabled") !== "yes")
+            throw new DOMException("test-only storage denial", "SecurityError");
+          return storage;
+        },
+      });
+    }, KEYS.cartLifecycle);
+    await gotoHydrated(page, "/account/login");
+    // Only the Cart is stopped; the sign-in screen works.
+    await expect(recoverButton(page)).toBeVisible();
+    await chooseMethod(page, copy.auth.method.google);
+    await expect(googleStartButton(page, "login")).toBeEnabled();
+    await googleStartButton(page, "login").click();
+    await page.waitForURL(isStandIn);
+    await waitForHydration(page);
+    await expect(standInButton(page, "allowNew")).toBeEnabled();
+    // Nothing was recorded: the metadata key was never written by the start.
+    expect(
+      await page.evaluate(() => window.sessionStorage.getItem("test-only-metadata-written")),
+    ).toBeNull();
+
+    // The storage is available again (the stand-in is reloaded so that it can keep the Session), then it is allowed.
+    await page.evaluate(() => window.sessionStorage.setItem("test-only-storage-enabled", "yes"));
+    await reloadHydrated(page);
+    await standInButton(page, "allowNew").click();
+    await expect(page).toHaveURL(/\/mypage$/);
+    expect(await readSession(page)).toEqual({
+      kind: "authenticated",
+      email: "google.new@example.com",
+      emailVerified: true,
+    });
+    expect((await readCartLifecycle(page))?.external).toBeUndefined();
+  });
+});
+
+// ---- B5 C3: Magic Link is the second external-completion method, so the same Q-1 stop applies --------------------------
+// FR-CRT-012 external-completion rule step 2 (the same ID as the Google block above: one rule, two methods).
+test.describe("TC-FR-CRT-012-018 Magic Link is not sent while the Cart key cannot be read (Q-1, external-completion rule step 2), and is sent without a record when the Browser storage cannot be obtained at all (SPEC-050 15.0 / 15.3, FR-CRT-012)", () => {
+  const recoverButton = (page: Page) =>
+    main(page).getByRole("button", { name: copy.cart.lifecycleBlocked.retry, exact: true });
+  const recoveryAlert = (page: Page) =>
+    main(page).getByRole("alert").filter({ hasText: copy.cart.lifecycleBlocked.title });
+
+  async function failCartReadsUntilEnabled(page: Page): Promise<void> {
+    await page.addInitScript((key: string) => {
+      const original = Storage.prototype.getItem;
+      Storage.prototype.getItem = function getItem(this: Storage, name: string) {
+        if (name === key && window.sessionStorage.getItem("test-only-cart-read-enabled") !== "yes")
+          throw new DOMException("blocked", "SecurityError");
+        return original.call(this, name);
+      };
+    }, KEYS.cart);
+  }
+
+  async function countSessionWrites(page: Page): Promise<void> {
+    await page.addInitScript((key: string) => {
+      const w = window as unknown as { __sessionWrites: number };
+      w.__sessionWrites = 0;
+      const original = Storage.prototype.setItem;
+      Storage.prototype.setItem = function setItem(this: Storage, name: string, value: string) {
+        if (name === key) w.__sessionWrites += 1;
+        return original.call(this, name, value);
+      };
+    }, KEYS.session);
+  }
+  const sessionWrites = (page: Page) =>
+    page.evaluate(() => (window as unknown as { __sessionWrites: number }).__sessionWrites);
+
+  for (const name of ["login", "register"] as const) {
+    test(`${name} with guest metadata and an unreadable Cart: the send is disabled, a forced press goes nowhere and records nothing, the recovery is shown; after recovery the send shows the sent state with a pending record`, async ({
+      page,
+    }) => {
+      const seeded = lifecycleSeed("guest");
+      await fixClock(page);
+      await seedLocalStorage(page, seeded);
+      await failCartReadsUntilEnabled(page);
+      await countSessionWrites(page);
+      await gotoHydrated(page, `/account/${name}`);
+      const documents = watchDocumentRequests(page);
+      await expect(recoveryAlert(page)).toBeVisible();
+      await chooseMethod(page, copy.auth.method.magicLink);
+      await expect(magicSendButton(page)).toBeDisabled();
+      await expect(magicSendButton(page)).toHaveJSProperty("disabled", true);
+
+      // Something presses it anyway: the lifecycle port stops it before the request.
+      await field(page, copy.auth.field.email.label).fill(EMAIL.demo);
+      await magicSendButton(page).evaluate((button) => {
+        (button as HTMLButtonElement).disabled = false;
+        (button as HTMLButtonElement).click();
+      });
+      await expect(recoveryAlert(page)).toBeVisible();
+      await expect(statusesIn(page)).toHaveCount(0);
+      await expect(main(page)).not.toContainText(copy.auth.magicLink.unavailable);
+      await expect(main(page)).not.toContainText(copy.auth.magicLink.failed);
+      await expect(page).toHaveURL(new RegExp(`/account/${name}$`));
+      expect(documents.filter((url) => url.startsWith("/dev/"))).toEqual([]);
+      expect(await sessionWrites(page)).toBe(0);
+      expect(await readSession(page)).toEqual({ kind: "guest" });
+      expect(await cartKeyStored(page)).toBe(false);
+      // No record: the metadata is exactly what was seeded (it has no external field).
+      expect(await readCartLifecycleRaw(page)).toBe(seeded[KEYS.cartLifecycle]);
+
+      // After the Cart can be read again, the explicit recovery lifts the stop and the send works.
+      await page.evaluate(() =>
+        window.sessionStorage.setItem("test-only-cart-read-enabled", "yes"),
+      );
+      await recoverButton(page).click();
+      await expect(recoverButton(page)).toHaveCount(0);
+      await expect(magicSendButton(page)).toBeEnabled();
+      await magicSendButton(page).click();
+      await expect(statusesIn(page)).toHaveText(copy.auth.magicLink.sent);
+      expect((await readCartLifecycle(page))?.external).toBe("pending");
+      expect(await readSession(page)).toEqual({ kind: "guest" });
+    });
+  }
+
+  test("a Guest whose Browser storage cannot be obtained at all can send the link: the sent state is shown, no Cart metadata is written, and the page stays", async ({
+    page,
+  }) => {
+    await fixClock(page);
+    await page.addInitScript((metadataKey: string) => {
+      const storage = window.localStorage;
+      const original = Storage.prototype.setItem;
+      Storage.prototype.setItem = function setItem(this: Storage, name: string, value: string) {
+        if (name === metadataKey)
+          original.call(window.sessionStorage, "test-only-metadata-written", "yes");
+        return original.call(this, name, value);
+      };
+      Object.defineProperty(window, "localStorage", {
+        configurable: true,
+        get() {
+          if (window.sessionStorage.getItem("test-only-storage-enabled") !== "yes")
+            throw new DOMException("test-only storage denial", "SecurityError");
+          return storage;
+        },
+      });
+    }, KEYS.cartLifecycle);
+    await gotoHydrated(page, "/account/login");
+    // Only the Cart is stopped; the sign-in screen works.
+    await expect(recoverButton(page)).toBeVisible();
+    await chooseMethod(page, copy.auth.method.magicLink);
+    await expect(magicSendButton(page)).toBeEnabled();
+    await field(page, copy.auth.field.email.label).fill(EMAIL.demo);
+    await magicSendButton(page).click();
+    await expect(statusesIn(page)).toHaveText(copy.auth.magicLink.sent);
+    await expect(page).toHaveURL(/\/account\/login$/);
+    // Nothing was recorded: the metadata key was never written by the send.
+    expect(
+      await page.evaluate(() => window.sessionStorage.getItem("test-only-metadata-written")),
+    ).toBeNull();
   });
 });

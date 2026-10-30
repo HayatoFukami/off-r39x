@@ -10,6 +10,7 @@ export function FormField({
   label,
   type,
   autoComplete,
+  inputMode,
   value,
   onChange,
   hint,
@@ -19,6 +20,7 @@ export function FormField({
   label: string;
   type: "email" | "password" | "text";
   autoComplete: string;
+  inputMode?: "numeric";
   value: string;
   onChange: (value: string) => void;
   hint?: string;
@@ -45,6 +47,7 @@ export function FormField({
         id={id}
         type={type}
         autoComplete={autoComplete}
+        inputMode={inputMode}
         value={value}
         onChange={(event: ChangeEvent<HTMLInputElement>) => onChange(event.target.value)}
         aria-invalid={hasError ? true : undefined}

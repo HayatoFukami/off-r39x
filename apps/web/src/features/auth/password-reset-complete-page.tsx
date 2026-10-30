@@ -44,7 +44,7 @@ function ResetCompleteForm() {
   const [context] = useState<string | null>(() => readContext(searchParams.get(CONTEXT_PARAM)));
 
   const baseId = useId();
-  const ids: Record<Exclude<FieldName, "email">, string> = {
+  const ids: Record<Exclude<FieldName, "email" | "code">, string> = {
     password: `${baseId}-password`,
     passwordConfirm: `${baseId}-confirm`,
   };

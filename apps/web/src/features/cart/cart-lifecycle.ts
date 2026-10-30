@@ -17,12 +17,28 @@ const READY: CartLifecycleSnapshot = { kind: "ready" };
 const BUSY: CartLifecycleSnapshot = { kind: "busy" };
 const BLOCKED: CartLifecycleSnapshot = { kind: "blocked" };
 
+// FR-CRT-012 external-completion record: `pending` from the start of an external sign-in, `superseded`
+// once another method established a Session while it was pending. It holds no Account information. The record
+// also rides on a Cart of unknown provenance, and only then is a non-transition `provenance: "unknown"` stored.
+const externalSchema = z.enum(["pending", "superseded"]);
+type ExternalRecord = z.infer<typeof externalSchema>;
+
 const metadataSchema = z.union([
-  z.strictObject({ version: z.literal(1), provenance: z.enum(["guest", "authenticated"]) }),
+  z.strictObject({
+    version: z.literal(1),
+    provenance: z.enum(["guest", "authenticated"]),
+    external: externalSchema.optional(),
+  }),
+  z.strictObject({
+    version: z.literal(1),
+    provenance: z.literal("unknown"),
+    external: externalSchema,
+  }),
   z.strictObject({
     version: z.literal(1),
     provenance: z.enum(["guest", "authenticated", "unknown"]),
     transitioning: z.literal(true),
+    external: externalSchema.optional(),
   }),
 ]);
 type Metadata = z.infer<typeof metadataSchema>;
@@ -43,6 +59,16 @@ export interface CartLifecycle {
   recover(provenance: CartProvenance): Promise<CartRecoveryResult>;
   subscribe(listener: () => void): () => void;
   getSnapshot(): CartLifecycleSnapshot;
+  /**
+   * The start of an external-completion sign-in (FR-CRT-012 external completion rule steps 2-4): cleans
+   * the Cart by provenance, then records `pending`. It is not a transition: nothing stays in flight.
+   */
+  beginExternalAuthentication(lockAcquired?: boolean): CartLifecycleSnapshot;
+  /**
+   * The screen shown by the return of an external sign-in received a Session (steps 6 and 9). Decides on
+   * the metadata read when this lifecycle was created, once. Never throws.
+   */
+  completeExternalAuthentication(): void;
 }
 
 function parseMetadata(raw: string | null): Metadata | null {
@@ -71,6 +97,15 @@ export function createCartLifecycle(
   let releaseCoordinator: (() => void) | null = null;
   let cachedMetadata: { raw: string | null; value: Metadata | null } | null = null;
   let transitionProbe: Promise<void> | null = null;
+  // Steps 6 and 9 decide on the metadata as it was when this document's lifecycle was created, not on
+  // what a later Session observation wrote. An unreadable or invalid value is of unknown provenance.
+  let initialMetadata: Metadata | null = null;
+  try {
+    initialMetadata = parseMetadata(storage.getItem(CART_LIFECYCLE_STORAGE_KEY));
+  } catch {
+    initialMetadata = null;
+  }
+  let externalCompleted = false;
 
   const notify = (): void => {
     for (const listener of [...listeners]) listener();
@@ -82,8 +117,12 @@ export function createCartLifecycle(
     cachedMetadata = { raw, value };
     return value;
   };
-  const write = (provenance: CartProvenance, transitioning = false): void => {
-    if (provenance === "unknown" && !transitioning) {
+  const write = (
+    provenance: CartProvenance,
+    options: { transitioning?: boolean; external?: ExternalRecord | undefined } = {},
+  ): void => {
+    const { transitioning = false, external } = options;
+    if (provenance === "unknown" && !transitioning && external === undefined) {
       storage.removeItem(CART_LIFECYCLE_STORAGE_KEY);
     } else {
       storage.setItem(
@@ -92,11 +131,20 @@ export function createCartLifecycle(
           version: 1,
           provenance,
           ...(transitioning ? { transitioning: true } : {}),
+          ...(external === undefined ? {} : { external }),
         }),
       );
     }
     cachedMetadata = null;
     notify();
+  };
+  // The record that is stored now; a metadata that cannot be read has none to keep.
+  const currentExternal = (): ExternalRecord | undefined => {
+    try {
+      return readMetadata()?.external;
+    } catch {
+      return undefined;
+    }
   };
   const clearCart = (): void => {
     if (cart.clear().kind !== "ok") throw new Error("Cart storage unavailable");
@@ -155,15 +203,34 @@ export function createCartLifecycle(
       });
   };
 
+  // Only the record becomes `superseded`; the current provenance and any transition marker are kept, so
+  // another Tab's stop is not released. Metadata that cannot be read or written records nothing.
+  const supersedeRecord = (): void => {
+    try {
+      const metadata = readMetadata();
+      if (metadata?.external === undefined) return;
+      write(metadata.provenance, {
+        transitioning: isTransitioning(metadata),
+        external: "superseded",
+      });
+    } catch {
+      // The caller keeps its own outcome.
+    }
+  };
+
   return {
     initializeGuestIfEmpty() {
       if (blocked) return;
       try {
         assertCartReadable();
-        if (readMetadata() !== null) return;
+        const metadata = readMetadata();
+        // The non-transition unknown form (it only carries a record) is read like a missing key.
+        const unknownForm =
+          metadata !== null && metadata.provenance === "unknown" && !isTransitioning(metadata);
+        if (metadata !== null && !unknownForm) return;
         const rawCart = storage.getItem(CART_STORAGE_KEY);
         if (rawCart !== null) return;
-        write("guest");
+        write("guest", { external: metadata?.external });
       } catch {
         blocked = true;
         notify();
@@ -180,7 +247,8 @@ export function createCartLifecycle(
         }
         if (metadata?.provenance === "authenticated") return;
         if (metadata?.provenance !== "guest") clearCart();
-        write("authenticated");
+        // An observation never resolves the external-completion record (steps 6 and 9).
+        write("authenticated", { external: metadata?.external });
       } catch {
         blocked = true;
         notify();
@@ -211,7 +279,8 @@ export function createCartLifecycle(
         externalTransition = false;
         orphanedTransition = false;
         // Without Web Locks, transition ownership is intentionally memory-only.
-        if (coordinator.crossTab) write(provenance, true);
+        if (coordinator.crossTab)
+          write(provenance, { transitioning: true, external: metadata?.external });
         else notify();
         return { kind: "ready", provenance };
       } catch {
@@ -222,10 +291,16 @@ export function createCartLifecycle(
       }
     },
     finishLogin(provenance) {
-      if (blocked) return;
+      // Step 5: while a record exists, another method's success turns it into `superseded`, even when the
+      // Cart cannot be cleared or the lifecycle is already stopped (the result is then judged by it).
+      if (blocked) {
+        supersedeRecord();
+        return;
+      }
       try {
+        const recorded = currentExternal();
         if (provenance !== "guest") clearCart();
-        write("authenticated");
+        write("authenticated", { external: recorded === undefined ? undefined : "superseded" });
         localTransition = false;
         externalTransition = false;
         orphanedTransition = false;
@@ -233,6 +308,7 @@ export function createCartLifecycle(
       } catch (error) {
         blocked = true;
         localTransition = false;
+        supersedeRecord();
         notify();
         throw error;
       }
@@ -240,7 +316,7 @@ export function createCartLifecycle(
     abortTransition(provenance) {
       if (blocked) return;
       try {
-        write(provenance);
+        write(provenance, { external: currentExternal() });
         localTransition = false;
         externalTransition = false;
         orphanedTransition = false;
@@ -277,12 +353,64 @@ export function createCartLifecycle(
         }
         if (metadata?.provenance === "guest") return "done";
         clearCart();
-        write("guest");
+        write("guest", { external: metadata?.external });
         return "done";
       } catch {
         blocked = true;
         notify();
         return "blocked";
+      }
+    },
+    beginExternalAuthentication(lockAcquired = false) {
+      if (blocked || orphanedTransition) return BLOCKED;
+      if (localTransition || externalTransition) return BUSY;
+      try {
+        assertCartReadable();
+        const metadata = readMetadata();
+        if (isTransitioning(metadata)) {
+          if (lockAcquired) {
+            orphanedTransition = true;
+            notify();
+            return BLOCKED;
+          }
+          if (coordinator.crossTab) {
+            reconcileTransition();
+            return BUSY;
+          }
+          orphanedTransition = true;
+          notify();
+          return BLOCKED;
+        }
+        // Step 2: a Cart of unknown or authenticated provenance is cleared first; a Guest Cart is kept.
+        // Step 3: only after that, and before the request, the record is written (replacing any record).
+        if (metadata?.provenance !== "guest") clearCart();
+        write("guest", { external: "pending" });
+        return READY;
+      } catch {
+        blocked = true;
+        notify();
+        return BLOCKED;
+      }
+    },
+    completeExternalAuthentication() {
+      // One receipt per return: the lifecycle of one document is created once per return.
+      if (externalCompleted) return;
+      externalCompleted = true;
+      if (blocked || orphanedTransition) return;
+      try {
+        const external = initialMetadata?.external;
+        // Step 6: with a record, `superseded` (another method succeeded) clears and `pending` keeps.
+        // Step 9: without one, the provenance before this return decides.
+        // An unknown provenance is cleared whatever the record says, and that resolves the record.
+        const keep =
+          external === undefined
+            ? initialMetadata?.provenance === "guest"
+            : initialMetadata?.provenance !== "unknown" && external === "pending";
+        if (!keep) clearCart();
+        write("authenticated");
+      } catch {
+        blocked = true;
+        notify();
       }
     },
     block() {
@@ -295,8 +423,9 @@ export function createCartLifecycle(
       if (lock.kind === "unavailable") return "failed";
       try {
         if (localTransition || externalTransition) return "busy";
+        const recorded = currentExternal();
         clearCart();
-        write(provenance);
+        write(provenance, { external: recorded });
         assertCartReadable();
         blocked = false;
         localTransition = false;

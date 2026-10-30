@@ -3,33 +3,59 @@ import { copy } from "../../apps/web/src/presentation/copy/ja.ts";
 import {
   alertsIn,
   authScenario,
+  chooseMethod,
   describedText,
   dumpStorage,
+  expectMethodRadios,
   field,
   focused,
+  googleRadio,
+  googleStartButton,
   headerLogin,
   headerMypage,
   heading1,
   linkIn,
   loginWith,
   MARKER_PROTECTED_TEXT,
+  magicRadio,
+  magicSendButton,
   mainOf,
+  methodGroup,
+  methodRadio,
+  OTP_CODE,
+  otpButton,
+  otpCodeField,
   readSession,
+  readUsers,
+  SENTINEL_OTP_CODE,
   SENTINEL_PASSWORD,
+  sendOtp,
+  setAuthScenario,
   statusesIn,
   submitButton,
+  submitOtpCode,
   urlOf,
 } from "../harness/browser/auth.ts";
 import {
   addButton,
+  cartEntries,
+  entryLine,
+  goodsLine,
   headerCartLink,
   offeringName,
   quantityInput,
   readCartRaw,
+  readDbRaw,
 } from "../harness/browser/cart.ts";
 import { gotoHydrated } from "../harness/browser/hydration.ts";
 import { fixClock } from "../harness/browser/public.ts";
-import { ORIGIN_HOST, seedLocalStorage, watchRequestHosts } from "../harness/browser/shell.ts";
+import {
+  KEYS,
+  ORIGIN_HOST,
+  seedLocalStorage,
+  watchRequestHosts,
+  watchRuntimeErrors,
+} from "../harness/browser/shell.ts";
 import { EMAIL, GOODS, OFFERING, SLOT } from "../harness/mock-seed.ts";
 
 // UI mock suite (TST-E2E-004: auxiliary, not G8). Contract: tests/contracts/s6-auth.md sections 2, 6.1, 7.
@@ -323,5 +349,386 @@ test.describe("TC-PG-AUTH-003-304 form validation: error summary, focus and aria
     await field(page, copy.auth.field.password.label).fill("short");
     await submitButton(page, copy.auth.login.submit).click();
     await expect(page).toHaveURL(/\/mypage$/);
+  });
+});
+
+// ---- B5 C1: method selection and Email OTP (tests/contracts/s6-auth.md sections 6.1A, 6.1B) ------------------
+// SPEC-050 15.0 / 15.3 / 25, SPEC-060 AR-AUTH-008 / AR-CONT-001, SPEC-040 UF-AUTH-002, SPEC-140 SEC-API-027 /
+// SEC-AUTH-018, SPEC-020 FR-CRT-012. The mock never compares a code; scenarios auth.login / auth.verify decide.
+
+const otp = () => copy.auth.otp;
+const method = () => copy.auth.method;
+
+test.describe("TC-PG-AUTH-003-305 Login offers a method selection that starts on Email+Password, keeps the Continuation and the existing form, and offers no other provider (SPEC-050 15.0 / 15.3, AR-CONT-001)", () => {
+  test("the radio group is named by its legend, lists the methods in the specified order, and the existing form is shown unchanged with Email+Password checked", async ({
+    page,
+  }) => {
+    await openLogin(page, "?continue=cart");
+    const group = methodGroup(page, method().legendLogin);
+    await expect(group).toBeVisible();
+    // The specified order (SPEC-050 15.0): Email+Password, Google, Email OTP, Magic Link - exactly these four.
+    await expectMethodRadios(group);
+    // The existing Email+Password form: same labels, same submit, no OTP control.
+    await expect(field(page, copy.auth.field.email.label)).toBeVisible();
+    await expect(field(page, copy.auth.field.password.label)).toBeVisible();
+    await expect(submitButton(page, copy.auth.login.submit)).toBeVisible();
+    await expect(otpButton(page, otp().send)).toHaveCount(0);
+    await expect(otpCodeField(page)).toHaveCount(0);
+    // Continuation notice and the register / reset / cancel links are kept.
+    await expect(mainOf(page)).toContainText(copy.auth.continuation.notice);
+    await expect(linkIn(page, copy.auth.login.toRegister)).toBeVisible();
+    // No other provider and no alert or status on a fresh page.
+    await expect(mainOf(page)).not.toContainText(/GitHub|Discord/i);
+    await expect(alertsIn(page)).toHaveCount(0);
+    await expect(statusesIn(page)).toHaveCount(0);
+  });
+
+  test("choosing Email OTP swaps the password form for the code request without changing the URL, the Session or the focus; choosing Email+Password again restores an empty password field", async ({
+    page,
+  }) => {
+    await openLogin(page, "?continue=cart");
+    const url = page.url();
+    await field(page, copy.auth.field.password.label).fill(SENTINEL_PASSWORD);
+
+    await chooseMethod(page, method().emailOtp);
+    await expect(methodRadio(page, method().emailOtp)).toBeChecked();
+    await expect(methodRadio(page, method().emailOtp)).toBeFocused();
+    await expect(field(page, copy.auth.field.password.label)).toHaveCount(0);
+    await expect(submitButton(page, copy.auth.login.submit)).toHaveCount(0);
+    await expect(field(page, copy.auth.field.email.label)).toBeVisible();
+    await expect(otpButton(page, otp().send)).toBeVisible();
+    await expect(otpCodeField(page)).toHaveCount(0);
+    expect(page.url()).toBe(url);
+    await expect(mainOf(page)).toContainText(copy.auth.continuation.notice);
+    await expect(alertsIn(page)).toHaveCount(0);
+    expect(await readSession(page)).toEqual({ kind: "guest" });
+
+    await chooseMethod(page, method().password);
+    await expect(field(page, copy.auth.field.password.label)).toBeVisible();
+    await expect(field(page, copy.auth.field.password.label)).toHaveValue("");
+    await expect(otpButton(page, otp().send)).toHaveCount(0);
+    expect(page.url()).toBe(url);
+    expect(await dumpStorage(page)).not.toContain(SENTINEL_PASSWORD);
+  });
+
+  test("the method radio group is operable with the keyboard alone (arrow keys select, no navigation)", async ({
+    page,
+  }) => {
+    await openLogin(page);
+    await methodRadio(page, method().password).focus();
+    // Email+Password, Google, Email OTP, Magic Link: the arrow keys walk the specified order (B5 C3: four methods).
+    await page.keyboard.press("ArrowDown");
+    await expect(googleRadio(page)).toBeChecked();
+    await expect(googleStartButton(page, "login")).toBeVisible();
+    await page.keyboard.press("ArrowDown");
+    await expect(methodRadio(page, method().emailOtp)).toBeChecked();
+    await expect(otpButton(page, otp().send)).toBeVisible();
+    await page.keyboard.press("ArrowDown");
+    await expect(magicRadio(page)).toBeChecked();
+    await expect(magicSendButton(page)).toBeVisible();
+    await expect(otpButton(page, otp().send)).toHaveCount(0);
+    await page.keyboard.press("ArrowUp");
+    await expect(methodRadio(page, method().emailOtp)).toBeChecked();
+    await expect(otpButton(page, otp().send)).toBeVisible();
+    await expect(magicSendButton(page)).toHaveCount(0);
+    await page.keyboard.press("ArrowUp");
+    await expect(googleRadio(page)).toBeChecked();
+    await page.keyboard.press("ArrowUp");
+    await expect(methodRadio(page, method().password)).toBeChecked();
+    await expect(submitButton(page, copy.auth.login.submit)).toBeVisible();
+    await expect(page).toHaveURL(/\/account\/login$/);
+  });
+});
+
+test.describe("TC-PG-AUTH-003-306 Email OTP Login: send the code, enter it, and arrive at the destination as a verified user with the Cart handled like Login (SPEC-050 15.0 / 15.3, AR-AUTH-008, FR-CRT-012, SEC-API-027)", () => {
+  const goToCodeStep = async (page: import("@playwright/test").Page, email: string) => {
+    await chooseMethod(page, method().emailOtp);
+    await sendOtp(page, email);
+    await expect(statusesIn(page)).toHaveCount(1);
+    await expect(statusesIn(page)).toHaveText(otp().sent);
+  };
+
+  test("send then verify: the code step appears with its status, resend and change-email controls; the code signs in and goes to Mypage", async ({
+    page,
+  }) => {
+    const runtime = watchRuntimeErrors(page);
+    const seen = watchRequestHosts(page);
+    await openLogin(page);
+    await goToCodeStep(page, EMAIL.demo);
+    await expect(otpCodeField(page)).toBeVisible();
+    await expect(otpCodeField(page)).toHaveAttribute("autocomplete", "one-time-code");
+    await expect(otpCodeField(page)).toHaveAttribute("inputmode", "numeric");
+    await expect(otpCodeField(page)).not.toHaveAttribute("maxlength");
+    await expect(otpButton(page, otp().submitLogin)).toBeEnabled();
+    await expect(otpButton(page, otp().resend)).toBeEnabled();
+    await expect(otpButton(page, otp().changeEmail)).toBeEnabled();
+    await expect(otpButton(page, otp().submitRegister)).toHaveCount(0);
+    await expect(alertsIn(page)).toHaveCount(0);
+    expect(await readSession(page)).toEqual({ kind: "guest" });
+
+    await submitOtpCode(page, OTP_CODE, otp().submitLogin);
+    await expect(page).toHaveURL(/\/mypage$/);
+    await expect(heading1(page)).toHaveText(copy.mypage.heading);
+    await expect(mainOf(page)).toContainText(MARKER_PROTECTED_TEXT);
+    expect(await readSession(page)).toEqual({
+      kind: "authenticated",
+      email: EMAIL.demo,
+      emailVerified: true,
+    });
+    await expect(headerMypage(page)).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    expect(runtime.errors).toEqual([]);
+    expect([...seen.hosts]).toEqual([ORIGIN_HOST]);
+  });
+
+  test("change email returns to the first step; resend keeps the code step with a fresh sent status", async ({
+    page,
+  }) => {
+    await openLogin(page);
+    await goToCodeStep(page, EMAIL.demo);
+    await otpButton(page, otp().resend).click();
+    await expect(statusesIn(page)).toHaveCount(1);
+    await expect(statusesIn(page)).toHaveText(otp().sent);
+    await expect(otpCodeField(page)).toBeVisible();
+    await expect(alertsIn(page)).toHaveCount(0);
+
+    await otpButton(page, otp().changeEmail).click();
+    await expect(otpCodeField(page)).toHaveCount(0);
+    await expect(otpButton(page, otp().send)).toBeVisible();
+    await expect(statusesIn(page)).toHaveCount(0);
+    await expect(alertsIn(page)).toHaveCount(0);
+    expect(await readSession(page)).toEqual({ kind: "guest" });
+  });
+
+  // I-1: the control that had the focus (the send button, the change-email button) leaves the DOM at a step change, which
+  // would drop the focus onto the body. The step that appears receives it (SPEC-050 25: keyboard operation and a logical focus order).
+  test("the focus follows the step: the code field after the code is requested, the email field after changing the email", async ({
+    page,
+  }) => {
+    await openLogin(page);
+    await goToCodeStep(page, EMAIL.demo);
+    await expect(otpCodeField(page)).toBeFocused();
+    expect((await focused(page)).tag).toBe("input");
+
+    // Back to the first step: the email field receives the focus.
+    await otpButton(page, otp().changeEmail).click();
+    await expect(otpCodeField(page)).toHaveCount(0);
+    await expect(field(page, copy.auth.field.email.label)).toBeFocused();
+    expect((await focused(page)).tag).toBe("input");
+
+    // Going forward again moves the focus to the code field again.
+    await otpButton(page, otp().send).click();
+    await expect(statusesIn(page)).toHaveText(otp().sent);
+    await expect(otpCodeField(page)).toBeFocused();
+  });
+
+  test("continue=cart with a Guest Cart: the Cart is kept byte-identical, its provenance becomes authenticated, and /cart shows the lines", async ({
+    page,
+  }) => {
+    const lines = [entryLine(OFFERING.regular, 2), goodsLine(GOODS.tshirt, 1)];
+    await openLogin(page, "?continue=cart", cartEntries(lines, "guest"));
+    await expect(headerCartLink(page, 3)).toBeVisible();
+    const before = await readCartRaw(page);
+    await goToCodeStep(page, EMAIL.demo);
+    await submitOtpCode(page, OTP_CODE, otp().submitLogin);
+    await expect(page).toHaveURL(/\/cart$/);
+    await expect(heading1(page)).toHaveText(copy.cart.heading);
+    await expect(mainOf(page).getByRole("listitem")).toHaveCount(2);
+    await expect(headerCartLink(page, 3)).toBeVisible();
+    expect(await readCartRaw(page)).toBe(before);
+    const lifecycle = await page.evaluate(
+      (key) => window.localStorage.getItem(key),
+      KEYS.cartLifecycle,
+    );
+    expect(JSON.parse(lifecycle ?? "null")).toEqual({ version: 1, provenance: "authenticated" });
+    expect(await readSession(page)).toEqual({
+      kind: "authenticated",
+      email: EMAIL.demo,
+      emailVerified: true,
+    });
+  });
+
+  test("a Cart of authenticated provenance left in this Browser is cleared by an OTP Login, exactly like a password Login", async ({
+    page,
+  }) => {
+    const lines = [entryLine(OFFERING.regular, 2)];
+    await openLogin(page, "?continue=cart", cartEntries(lines, "authenticated"));
+    expect(await readCartRaw(page)).not.toBeNull();
+    await goToCodeStep(page, EMAIL.other);
+    await submitOtpCode(page, OTP_CODE, otp().submitLogin);
+    await expect(page).toHaveURL(/\/cart$/);
+    await expect.poll(() => readCartRaw(page)).toBeNull();
+    await expect(mainOf(page)).toContainText(copy.cart.empty);
+    await expect(headerCartLink(page, null)).toBeVisible();
+  });
+
+  test("an unverified user is verified by the code (the mailbox is proven): Login goes to the destination, the stored user and Session are verified", async ({
+    page,
+  }) => {
+    await openLogin(page, "?continue=cart");
+    await goToCodeStep(page, EMAIL.unverified);
+    await submitOtpCode(page, OTP_CODE, otp().submitLogin);
+    await expect(page).toHaveURL(/\/cart$/);
+    expect(await readSession(page)).toEqual({
+      kind: "authenticated",
+      email: EMAIL.unverified,
+      emailVerified: true,
+    });
+    const users = (await readUsers(page)) ?? [];
+    expect(users.find((u) => u.email === EMAIL.unverified)?.emailVerified).toBe(true);
+  });
+
+  test("the answer to the code request is the same for a registered and an unregistered email, and nothing about the account is stored (SEC-API-027)", async ({
+    page,
+  }) => {
+    const unknown = "nobody-otp@example.com";
+    await openLogin(page);
+    const observed: { text: string; buttons: string[] }[] = [];
+    for (const email of [EMAIL.demo, unknown]) {
+      await gotoHydrated(page, "/account/login");
+      await chooseMethod(page, method().emailOtp);
+      const dbBefore = await readDbRaw(page);
+      await sendOtp(page, email);
+      await expect(statusesIn(page)).toHaveText(otp().sent);
+      const text = (await mainOf(page).innerText()).replaceAll(email, "<email>");
+      const buttons = await mainOf(page).getByRole("button").allInnerTexts();
+      observed.push({ text, buttons });
+      await expect(alertsIn(page)).toHaveCount(0);
+      expect(await readDbRaw(page)).toBe(dbBefore);
+      expect(await readSession(page)).toEqual({ kind: "guest" });
+    }
+    expect(observed[1]).toEqual(observed[0]);
+    expect(await dumpStorage(page)).not.toContain(unknown);
+    expect((await readUsers(page))?.some((u) => u.email === unknown) ?? false).toBe(false);
+  });
+});
+
+test.describe("TC-PG-AUTH-003-307 Email OTP failures leave the visitor a Guest on the same page, say what to do next, and never authenticate (SPEC-050 15.0 / 15.3, AR-AUTH-008, AR-FAIL-001, UF-AUTH-002)", () => {
+  const goToCodeStep = async (page: import("@playwright/test").Page, email = EMAIL.demo) => {
+    await chooseMethod(page, method().emailOtp);
+    await sendOtp(page, email);
+    await expect(statusesIn(page)).toHaveText(otp().sent);
+  };
+
+  test("a wrong code: one alert asks to enter it again, the code field stays (emptied), nothing changes; a correct code afterwards signs in", async ({
+    page,
+  }) => {
+    await openLogin(page, "?continue=cart", authScenario({ login: "credential_failure" }));
+    const url = page.url();
+    await goToCodeStep(page);
+    const dbBefore = await readDbRaw(page);
+    await submitOtpCode(page, OTP_CODE, otp().submitLogin);
+    await expect(alertsIn(page)).toHaveCount(1);
+    await expect(alertsIn(page)).toHaveText(otp().codeInvalid);
+    await expect(mainOf(page)).not.toContainText(copy.auth.login.credentialFailure);
+    await expect(otpCodeField(page)).toBeVisible();
+    await expect(otpCodeField(page)).toHaveValue("");
+    await expect(otpButton(page, otp().resend)).toBeVisible();
+    expect(page.url()).toBe(url);
+    expect(await readSession(page)).toEqual({ kind: "guest" });
+    expect(await readDbRaw(page)).toBe(dbBefore);
+    await expect(headerLogin(page)).toBeVisible();
+    await expect(headerMypage(page)).toHaveCount(0);
+
+    await setAuthScenario(page, { login: "ok" });
+    await submitOtpCode(page, OTP_CODE, otp().submitLogin);
+    await expect(page).toHaveURL(/\/cart$/);
+    expect((await readSession(page)).kind).toBe("authenticated");
+  });
+
+  test("an expired or exhausted code: one alert asks for a new code, resend is offered and brings a fresh sent status; a new code then signs in", async ({
+    page,
+  }) => {
+    await openLogin(page, "", authScenario({ verify: "invalid_or_expired" }));
+    await goToCodeStep(page);
+    const dbBefore = await readDbRaw(page);
+    await submitOtpCode(page, OTP_CODE, otp().submitLogin);
+    await expect(alertsIn(page)).toHaveCount(1);
+    await expect(alertsIn(page)).toHaveText(otp().codeExpired);
+    await expect(alertsIn(page)).not.toHaveText(otp().codeInvalid);
+    await expect(otpButton(page, otp().resend)).toBeEnabled();
+    expect(await readSession(page)).toEqual({ kind: "guest" });
+    expect(await readDbRaw(page)).toBe(dbBefore);
+
+    await otpButton(page, otp().resend).click();
+    await expect(statusesIn(page)).toHaveText(otp().sent);
+    await expect(alertsIn(page)).toHaveCount(0);
+
+    await setAuthScenario(page, { verify: "ok" });
+    await submitOtpCode(page, OTP_CODE, otp().submitLogin);
+    await expect(page).toHaveURL(/\/mypage$/);
+    expect((await readSession(page)).kind).toBe("authenticated");
+  });
+
+  test("the service is unavailable when the code is requested: one alert, still the first step, no code field, still a Guest", async ({
+    page,
+  }) => {
+    await openLogin(page, "?continue=cart", authScenario({ login: "unavailable" }));
+    await chooseMethod(page, method().emailOtp);
+    await sendOtp(page, EMAIL.demo);
+    await expect(alertsIn(page)).toHaveCount(1);
+    await expect(alertsIn(page)).toHaveText(otp().unavailable);
+    await expect(statusesIn(page)).toHaveCount(0);
+    await expect(otpCodeField(page)).toHaveCount(0);
+    await expect(otpButton(page, otp().send)).toBeEnabled();
+    await expect(page).toHaveURL(/\/account\/login\?continue=cart$/);
+    expect(await readSession(page)).toEqual({ kind: "guest" });
+  });
+
+  test("the service becomes unavailable at the code step: one alert, the code field stays, still a Guest; the code is never stored", async ({
+    page,
+  }) => {
+    await openLogin(page);
+    await goToCodeStep(page);
+    await setAuthScenario(page, { login: "unavailable" });
+    await submitOtpCode(page, SENTINEL_OTP_CODE, otp().submitLogin);
+    await expect(alertsIn(page)).toHaveCount(1);
+    await expect(alertsIn(page)).toHaveText(otp().unavailable);
+    await expect(otpCodeField(page)).toBeVisible();
+    await expect(otpCodeField(page)).toHaveValue("");
+    expect(await readSession(page)).toEqual({ kind: "guest" });
+    expect(await dumpStorage(page)).not.toContain(SENTINEL_OTP_CODE);
+  });
+
+  test("an empty or malformed email never reaches the port: the error summary takes focus, names the field, and the outage scenario's alert does not appear", async ({
+    page,
+  }) => {
+    await openLogin(page, "", authScenario({ login: "unavailable" }));
+    await chooseMethod(page, method().emailOtp);
+    await otpButton(page, otp().send).click();
+    await expect(alertsIn(page)).toHaveCount(1);
+    await expect(alertsIn(page)).toContainText(copy.auth.form.errorSummaryTitle);
+    await expect(
+      alertsIn(page).getByRole("link", { name: copy.auth.field.email.required }),
+    ).toBeVisible();
+    expect((await focused(page)).role).toBe("alert");
+    await expect(field(page, copy.auth.field.email.label)).toHaveAttribute("aria-invalid", "true");
+    await expect(mainOf(page)).not.toContainText(otp().unavailable);
+
+    await field(page, copy.auth.field.email.label).fill("not-an-email");
+    await otpButton(page, otp().send).click();
+    await expect(alertsIn(page)).toContainText(copy.auth.field.email.invalidFormat);
+    await expect(mainOf(page)).not.toContainText(otp().unavailable);
+    await expect(otpCodeField(page)).toHaveCount(0);
+  });
+
+  test("an empty code never reaches the port: the error summary links to the code field, which is invalid and described", async ({
+    page,
+  }) => {
+    await openLogin(page);
+    await goToCodeStep(page);
+    await setAuthScenario(page, { login: "unavailable" });
+    await otpButton(page, otp().submitLogin).click();
+    await expect(alertsIn(page)).toHaveCount(1);
+    await expect(alertsIn(page)).toContainText(copy.auth.form.errorSummaryTitle);
+    const link = alertsIn(page).getByRole("link", { name: copy.auth.field.otpCode.required });
+    await expect(link).toBeVisible();
+    expect((await focused(page)).role).toBe("alert");
+    await expect(otpCodeField(page)).toHaveAttribute("aria-invalid", "true");
+    expect(await describedText(otpCodeField(page))).toContain(copy.auth.field.otpCode.required);
+    await expect(mainOf(page)).not.toContainText(otp().unavailable);
+    await link.click();
+    await expect(otpCodeField(page)).toBeFocused();
+    expect(await readSession(page)).toEqual({ kind: "guest" });
   });
 });

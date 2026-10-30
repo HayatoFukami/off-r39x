@@ -3,13 +3,26 @@ import { copy } from "../../apps/web/src/presentation/copy/ja.ts";
 import {
   authScenario,
   CONTEXT_VALUE,
+  chooseMethod,
   dumpStorage,
   field,
   heading1,
   loginWith,
+  magicResendButton,
+  magicSendButton,
   mainOf,
+  methodGroup,
+  otpButton,
+  otpCodeField,
+  readSession,
+  SENTINEL_OTP_CODE,
   SENTINEL_PASSWORD,
+  sendMagicLink,
+  sendOtp,
+  setAuthScenario,
+  statusesIn,
   submitButton,
+  submitOtpCode,
   urlOf,
   watchConsole,
 } from "../harness/browser/auth.ts";
@@ -171,6 +184,67 @@ test.describe("TC-PG-AUTH-003-504 no horizontal scroll at 390px (SPEC-050 24.1)"
     await expect(submitButton(page, copy.auth.register.submit)).toBeInViewport();
     expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
   });
+
+  // B5 C1: the method group and both Email OTP steps fit a 390px viewport on Login and Registration.
+  for (const route of ["/account/login?continue=cart", "/account/register?continue=cart"]) {
+    test(`${route.split("?")[0]} with Email OTP: the method group, the email step and the code step stay inside the viewport`, async ({
+      page,
+    }) => {
+      const register = route.startsWith("/account/register");
+      await page.setViewportSize({ width: 390, height: 844 });
+      await fixClock(page);
+      await seedLocalStorage(page, {});
+      await gotoHydrated(page, route);
+      const legend = register ? copy.auth.method.legendRegister : copy.auth.method.legendLogin;
+      await methodGroup(page, legend).scrollIntoViewIfNeeded();
+      await expect(methodGroup(page, legend)).toBeInViewport();
+      expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
+
+      await chooseMethod(page, copy.auth.method.emailOtp);
+      await otpButton(page, copy.auth.otp.send).scrollIntoViewIfNeeded();
+      await expect(otpButton(page, copy.auth.otp.send)).toBeInViewport();
+      expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
+
+      await sendOtp(page, EMAIL.demo);
+      await expect(statusesIn(page)).toHaveText(copy.auth.otp.sent);
+      const submitName = register ? copy.auth.otp.submitRegister : copy.auth.otp.submitLogin;
+      for (const control of [
+        otpCodeField(page),
+        otpButton(page, submitName),
+        otpButton(page, copy.auth.otp.resend),
+        otpButton(page, copy.auth.otp.changeEmail),
+      ]) {
+        await control.scrollIntoViewIfNeeded();
+        await expect(control).toBeInViewport();
+      }
+      expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
+    });
+  }
+
+  // B5 C3: the Magic Link address step and the sent state fit a 390px viewport on Login and Registration.
+  for (const route of ["/account/login?continue=cart", "/account/register?continue=cart"]) {
+    test(`${route.split("?")[0]} with Magic Link: the address field, the send button and the sent state stay inside the viewport`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await fixClock(page);
+      await seedLocalStorage(page, {});
+      await gotoHydrated(page, route);
+      await chooseMethod(page, copy.auth.method.magicLink);
+      for (const control of [field(page, copy.auth.field.email.label), magicSendButton(page)]) {
+        await control.scrollIntoViewIfNeeded();
+        await expect(control).toBeInViewport();
+      }
+      expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
+
+      await sendMagicLink(page, EMAIL.demo);
+      for (const control of [statusesIn(page), magicResendButton(page)]) {
+        await control.scrollIntoViewIfNeeded();
+        await expect(control).toBeInViewport();
+      }
+      expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
+    });
+  }
 });
 
 test.describe("TC-SEC-WEB-009-701 the real protected and account pages answer 200 with no-store, private, Pragma (SEC-WEB-009, G5 header check)", () => {
@@ -264,5 +338,61 @@ test.describe("TC-SEC-AUTH-018-701 Password and verification context never reach
     expect(await mainOf(page).innerText()).not.toContain(SENTINEL_PASSWORD);
     expect(page.url()).not.toContain(SENTINEL_PASSWORD);
     expect(console_.messages.filter((m) => m.includes(SENTINEL_PASSWORD))).toEqual([]);
+  });
+});
+
+test.describe("TC-SEC-AUTH-018-702 the one-time code never reaches the URL, storage, DOM text or console, on a wrong code, an expired code, an outage and a success (SEC-AUTH-018, SEC-AUTH-007)", () => {
+  test("Email OTP with a sentinel code through every outcome leaves no trace of the code", async ({
+    page,
+  }) => {
+    const console_ = watchConsole(page);
+    await fixClock(page);
+    await seedLocalStorage(page, authScenario({ login: "credential_failure" }));
+    const seenUrls: string[] = [];
+    page.on("framenavigated", (frame) => {
+      if (frame === page.mainFrame()) seenUrls.push(frame.url());
+    });
+    const expectNoTrace = async (): Promise<void> => {
+      expect(await dumpStorage(page)).not.toContain(SENTINEL_OTP_CODE);
+      expect(urlOf(page).href).not.toContain(SENTINEL_OTP_CODE);
+      expect(await mainOf(page).innerText()).not.toContain(SENTINEL_OTP_CODE);
+      expect(await page.locator("body").innerText()).not.toContain(SENTINEL_OTP_CODE);
+      expect(seenUrls.filter((u) => u.includes(SENTINEL_OTP_CODE))).toEqual([]);
+      expect(console_.messages.filter((m) => m.includes(SENTINEL_OTP_CODE))).toEqual([]);
+    };
+
+    await gotoHydrated(page, "/account/login");
+    await chooseMethod(page, copy.auth.method.emailOtp);
+    await sendOtp(page, EMAIL.demo);
+    await expect(statusesIn(page)).toHaveText(copy.auth.otp.sent);
+
+    // Wrong code. The field keeps no value after the attempt.
+    await submitOtpCode(page, SENTINEL_OTP_CODE, copy.auth.otp.submitLogin);
+    await expect(mainOf(page)).toContainText(copy.auth.otp.codeInvalid);
+    await expect(otpCodeField(page)).toHaveValue("");
+    await expectNoTrace();
+
+    // Expired or exhausted code.
+    await setAuthScenario(page, { verify: "invalid_or_expired", login: "ok" });
+    await submitOtpCode(page, SENTINEL_OTP_CODE, copy.auth.otp.submitLogin);
+    await expect(mainOf(page)).toContainText(copy.auth.otp.codeExpired);
+    await expect(otpCodeField(page)).toHaveValue("");
+    await expectNoTrace();
+
+    // Outage.
+    await setAuthScenario(page, { login: "unavailable" });
+    await submitOtpCode(page, SENTINEL_OTP_CODE, copy.auth.otp.submitLogin);
+    await expect(mainOf(page)).toContainText(copy.auth.otp.unavailable);
+    await expect(otpCodeField(page)).toHaveValue("");
+    expect(await readSession(page)).toEqual({ kind: "guest" });
+    await expectNoTrace();
+
+    // Success.
+    await setAuthScenario(page, {});
+    await submitOtpCode(page, SENTINEL_OTP_CODE, copy.auth.otp.submitLogin);
+    await expect(page).toHaveURL(/\/mypage$/);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(copy.mypage.heading);
+    await page.waitForLoadState("networkidle");
+    await expectNoTrace();
   });
 });
