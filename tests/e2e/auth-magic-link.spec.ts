@@ -914,6 +914,8 @@ test.describe("TC-PG-AUTH-003-313 a signed-in visitor (verified or not) cannot s
     await expect(magicSendButton(page)).toBeEnabled();
     expect(await describedText(magicSendButton(page))).not.toContain(copy.auth.magicLink.signedIn);
     await expect(mainOf(page)).not.toContainText(copy.auth.magicLink.signedIn);
+    // A Session that can be confirmed gives no reason for a disabled send (there is none).
+    await expect(mainOf(page)).not.toContainText(copy.auth.magicLink.sessionUnavailable);
   });
 
   test("a Session that becomes valid in another Tab disables the send on the open page, in the sent state too (the link was opened elsewhere)", async ({
@@ -948,6 +950,48 @@ test.describe("TC-PG-AUTH-003-313 a signed-in visitor (verified or not) cannot s
     expect(await describedText(magicSendButton(page))).toContain(copy.auth.magicLink.signedIn);
     await second.close();
   });
+});
+
+// F-4: SPEC-050 25 "a disabled Action gives its reason in text around it". A Session that cannot be confirmed is not a Guest,
+// so the send is disabled (FR-CRT-012 step 1); the visitor is told why, in text attached to the button.
+test.describe("TC-PG-AUTH-003-313 a visitor whose Session cannot be confirmed cannot send a Magic Link: the button is disabled, the reason is shown in text around it and attached to it, and a press sends and records nothing (SPEC-050 15.0 / 25, FR-CRT-012 external-completion rule step 1)", () => {
+  for (const name of PAGES) {
+    test(`${name} with a Session that cannot be confirmed: the send is natively disabled and described by the reason, which is visible in main and is not the signed-in hint`, async ({
+      page,
+    }) => {
+      const documents = watchDocumentRequests(page);
+      await openAuthPage(page, name, "", authScenario({ session: "unavailable" }));
+      await chooseMethod(page, copy.auth.method.magicLink);
+      const send = magicSendButton(page);
+      await expect(send).toBeDisabled();
+      await expect(send).toHaveJSProperty("disabled", true);
+
+      const reason = mainOf(page).getByText(copy.auth.magicLink.sessionUnavailable, {
+        exact: true,
+      });
+      await expect(reason).toHaveCount(1);
+      await expect(reason).toBeVisible();
+      expect(await describedText(send)).toContain(copy.auth.magicLink.sessionUnavailable);
+      // It is the reason of this state, not the Logout hint of a signed-in visitor.
+      expect(await describedText(send)).not.toContain(copy.auth.magicLink.signedIn);
+      await expect(mainOf(page)).not.toContainText(copy.auth.magicLink.signedIn);
+      // Text around the button, not a failure of an attempt: no alert and no status.
+      await expect(alertsIn(page)).toHaveCount(0);
+      await expect(statusesIn(page)).toHaveCount(0);
+
+      const before = page.url();
+      await field(page, copy.auth.field.email.label).fill(EMAIL.demo);
+      await send.click({ force: true });
+      await page.waitForLoadState("networkidle");
+      expect(page.url()).toBe(before);
+      await expect(statusesIn(page)).toHaveCount(0);
+      await expect(alertsIn(page)).toHaveCount(0);
+      expect(documents.filter((url) => url.startsWith("/dev/"))).toEqual([]);
+      // Refused before anything is recorded: no pending record is written.
+      expect((await lifecycleOf(page))?.external).toBeUndefined();
+      expect(await readSession(page)).toEqual({ kind: "guest" });
+    });
+  }
 });
 
 test.describe("TC-FR-CRT-012-020 the screens: a link that arrives after another method signed in is received as a different Account's Cart boundary, a failed link keeps the Cart, a link opened in another Tab or from another Browser is judged by what the lifecycle recorded, and a send without another login keeps the Guest Cart (FR-CRT-012 external-completion rule steps 5 to 7, 9)", () => {

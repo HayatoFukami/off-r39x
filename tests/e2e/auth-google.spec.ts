@@ -667,6 +667,8 @@ test.describe("TC-PG-AUTH-003-313 a signed-in visitor (verified or not) cannot s
       copy.auth.google.signedIn,
     );
     await expect(mainOf(page)).not.toContainText(copy.auth.google.signedIn);
+    // A Session that can be confirmed gives no reason for a disabled start (there is none).
+    await expect(mainOf(page)).not.toContainText(copy.auth.google.sessionUnavailable);
   });
 
   test("a Session that becomes valid in another tab disables the start on the open page", async ({
@@ -685,6 +687,43 @@ test.describe("TC-PG-AUTH-003-313 a signed-in visitor (verified or not) cannot s
       copy.auth.google.signedIn,
     );
   });
+});
+
+// F-4: SPEC-050 25 "a disabled Action gives its reason in text around it". A Session that cannot be confirmed is not a Guest,
+// so the start is disabled (FR-CRT-012 step 1); the visitor is told why, in text attached to the button.
+test.describe("TC-PG-AUTH-003-313 a visitor whose Session cannot be confirmed cannot start Google: the button is disabled, the reason is shown in text around it and attached to it, and a press goes nowhere (SPEC-050 15.0 / 25, FR-CRT-012 external-completion rule step 1)", () => {
+  for (const name of PAGES) {
+    test(`${name} with a Session that cannot be confirmed: the Google start is natively disabled and described by the reason, which is visible in main and is not the signed-in hint`, async ({
+      page,
+    }) => {
+      const documents = watchDocumentRequests(page);
+      await openAuthPage(page, name, "", authScenario({ session: "unavailable" }));
+      await chooseMethod(page, copy.auth.method.google);
+      const start = googleStartButton(page, name);
+      await expect(start).toBeDisabled();
+      await expect(start).toHaveJSProperty("disabled", true);
+
+      const reason = mainOf(page).getByText(copy.auth.google.sessionUnavailable, { exact: true });
+      await expect(reason).toHaveCount(1);
+      await expect(reason).toBeVisible();
+      expect(await describedText(start)).toContain(copy.auth.google.sessionUnavailable);
+      // It is the reason of this state, not the Logout hint of a signed-in visitor.
+      expect(await describedText(start)).not.toContain(copy.auth.google.signedIn);
+      await expect(mainOf(page)).not.toContainText(copy.auth.google.signedIn);
+      // Text around the button, not a failure of an attempt: no alert and no status.
+      await expect(alertsIn(page)).toHaveCount(0);
+      await expect(statusesIn(page)).toHaveCount(0);
+
+      const before = page.url();
+      await start.click({ force: true });
+      await page.waitForLoadState("networkidle");
+      expect(page.url()).toBe(before);
+      expect(documents.filter((url) => url.startsWith("/dev/"))).toEqual([]);
+      // Refused before anything is recorded: no pending record is written.
+      expect((await lifecycleOf(page))?.external).toBeUndefined();
+      expect(await readSession(page)).toEqual({ kind: "guest" });
+    });
+  }
 });
 
 test.describe("TC-FR-CRT-012-020 the screens: a result that arrives after another method signed in is received as a different Account's Cart boundary, a failed return keeps the Cart, and a start without another login keeps the Guest Cart (FR-CRT-012 external-completion rule steps 5 to 7)", () => {

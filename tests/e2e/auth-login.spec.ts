@@ -500,6 +500,28 @@ test.describe("TC-PG-AUTH-003-306 Email OTP Login: send the code, enter it, and 
     expect(await readSession(page)).toEqual({ kind: "guest" });
   });
 
+  // I-1: the control that had the focus (the send button, the change-email button) leaves the DOM at a step change, which
+  // would drop the focus onto the body. The step that appears receives it (SPEC-050 25: keyboard operation and a logical focus order).
+  test("the focus follows the step: the code field after the code is requested, the email field after changing the email", async ({
+    page,
+  }) => {
+    await openLogin(page);
+    await goToCodeStep(page, EMAIL.demo);
+    await expect(otpCodeField(page)).toBeFocused();
+    expect((await focused(page)).tag).toBe("input");
+
+    // Back to the first step: the email field receives the focus.
+    await otpButton(page, otp().changeEmail).click();
+    await expect(otpCodeField(page)).toHaveCount(0);
+    await expect(field(page, copy.auth.field.email.label)).toBeFocused();
+    expect((await focused(page)).tag).toBe("input");
+
+    // Going forward again moves the focus to the code field again.
+    await otpButton(page, otp().send).click();
+    await expect(statusesIn(page)).toHaveText(otp().sent);
+    await expect(otpCodeField(page)).toBeFocused();
+  });
+
   test("continue=cart with a Guest Cart: the Cart is kept byte-identical, its provenance becomes authenticated, and /cart shows the lines", async ({
     page,
   }) => {

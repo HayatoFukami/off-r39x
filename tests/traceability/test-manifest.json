@@ -16552,7 +16552,8 @@
         "SEC-API-027",
         "PG-AUTH-003",
         "TST-UNT-004",
-        "SEC-AUTH-018"
+        "SEC-AUTH-018",
+        "SPEC-050-25"
       ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
@@ -16573,7 +16574,8 @@
         "the sent wording never mentions registration or existence; no OTP wording contains an expiry time or an attempt count (those are provider values checked at the Production gate)",
         "B5 C2: the Google method label, the start actions (Googleでログイン / Googleで登録), the failure, outage and signed-in wording and the stand-in screen wording are pinned: they name no account existence and no number, the signed-in hint names Logout, and the stand-in says it is a stand-in",
         "a wrong code and an expired or exhausted code are separate messages (the second asks for a resend); the new button names are distinct from each other and from the existing submit names",
-        "B5 C3: the Magic Link method label, the send and re-send actions, the sent wording (it states the 5 minute validity of the link, which is the Provider value the specification gives for the link, and never mentions registration or existence), the failure, outage and signed-in wording and the stand-in screen wording are pinned; the failure wording does not say whether the link was expired or used; the stand-in says it is a stand-in and sends no mail"
+        "B5 C3: the Magic Link method label, the send and re-send actions, the sent wording (it states the 5 minute validity of the link, which is the Provider value the specification gives for the link, and never mentions registration or existence), the failure, outage and signed-in wording and the stand-in screen wording are pinned; the failure wording does not say whether the link was expired or used; the stand-in says it is a stand-in and sends no mail",
+        "F-4: the reason wording for a disabled Google start and a disabled Magic Link send while the Session cannot be confirmed is pinned (cause and next step, no Logout hint, no number, no account existence, distinct from every other message of the two methods)"
       ]
     },
     {
@@ -16612,7 +16614,8 @@
         "SPEC-050-15.0",
         "SPEC-050-25",
         "SEC-AUTH-018",
-        "DEV-WEB-012"
+        "DEV-WEB-012",
+        "SEC-WEB-013"
       ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
@@ -16633,7 +16636,9 @@
         "Login and Register show the selector with their own legend and start on the default method; the Email OTP steps call both port methods, validate first and use the contracted wording",
         "B5 C2: the Google start is a client container that calls only startGoogleSignIn through useAuth(), builds both paths with auth-return, hands off with window.location.assign and shows the contracted wording; Login and Register read the return once and remove it with history.replaceState; only the auth screens receive the result through completeExternalAuthentication; the stand-in route and screen are dev-only and keep copy in ja.ts",
         "the code field is autoComplete one-time-code, numeric and has no maxLength; the code never reaches a URL, a navigation target, a storage or the console; the steps follow the Cart stop rule",
-        "B5 C3: the Magic Link form is a client container that calls only requestMagicLink through useAuth(), builds both paths with auth-return, validates and normalises the address first, never navigates by itself and shows the contracted wording; the decorator writes the pending record before the raw call; Login and Register use the form; completeExternalAuthentication is called only from the auth screens; the stand-in route and screen are dev-only, thin, keep copy in ja.ts, hand off by window.location.assign after the safe-path check and are referenced by no feature"
+        "B5 C3: the Magic Link form is a client container that calls only requestMagicLink through useAuth(), builds both paths with auth-return, validates and normalises the address first, never navigates by itself and shows the contracted wording; the decorator writes the pending record before the raw call; Login and Register use the form; completeExternalAuthentication is called only from the auth screens; the stand-in route and screen are dev-only, thin, keep copy in ja.ts, hand off by window.location.assign after the safe-path check and are referenced by no feature",
+        "F-1: the Google start calls isSafeCheckoutUrl (imported from the purchase flow, not copied) on the URL the port returned before window.location.assign and hands off the very value that was checked",
+        "F-4: the Google start and the Magic Link form name their Session-unavailable reason copy and attach descriptions with aria-describedby"
       ]
     },
     {
@@ -16679,7 +16684,8 @@
         "FR-CRT-012",
         "SEC-API-027",
         "TST-E2E-003",
-        "TST-E2E-004"
+        "TST-E2E-004",
+        "SPEC-050-25"
       ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
@@ -16700,7 +16706,8 @@
         "change email returns to the first step; resend keeps the code step with a fresh sent status",
         "continue=cart with a Guest Cart keeps the Cart byte-identical and records the authenticated provenance; a Cart of authenticated provenance is cleared like a password Login",
         "an unverified user is verified by the code (stored user and Session verified)",
-        "the answer to the code request (text and buttons) is the same for a registered and an unregistered email, the DB is unchanged and the typed unknown email is stored nowhere"
+        "the answer to the code request (text and buttons) is the same for a registered and an unregistered email, the DB is unchanged and the typed unknown email is stored nowhere",
+        "I-1: the focus follows the Email OTP step: the code field after the code is requested, the email field after changing the email, the code field again after requesting once more"
       ]
     },
     {
@@ -16749,7 +16756,8 @@
         "SPEC-030-9.2",
         "SEC-API-027",
         "TST-E2E-003",
-        "TST-E2E-004"
+        "TST-E2E-004",
+        "SPEC-050-25"
       ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
@@ -16769,7 +16777,8 @@
         "the registration legend names the same method radio group (exactly Email+Password, Google, Email OTP, Magic Link in the specified order) starting on Email+Password with the existing registration form; Email OTP swaps it without changing the URL",
         "a new email registers by code: Mypage, a verified Session, exactly one new user with displayName null shown as 未設定; continue=cart reaches /cart",
         "an already registered email signs in with no 'already registered' answer and no user is added",
-        "a wrong code and an outage on the registration code step leave a Guest and create no user"
+        "a wrong code and an outage on the registration code step leave a Guest and create no user",
+        "I-1: on Registration the focus follows the Email OTP step: the code field after the code is requested, the email field after changing the email"
       ]
     },
     {
@@ -16891,7 +16900,8 @@
         "the decorator writes the pending record and clears the Cart before the raw startGoogleSignIn call; a raw unavailable or a throw keeps the record and does not bring the cleared Cart back; a start replaces a superseded record",
         "finishLogin turns pending into superseded; completeExternalAuthentication keeps the Cart for pending and clears it for superseded, removes the record and records the authenticated provenance, judges a missing record by the provenance read when the document's lifecycle was created, receives once per return, and is never reached by another document's session observation",
         "cancelled returns never resolve the record; finishLogout removes it; expireAuthenticatedCart and recover keep it; stored values without the external field still read unchanged",
-        "the decorator answers already_signed_in (the raw port is not called, nothing is written) for a verified and for an Email-unverified session, unavailable when the session cannot be read, cart_busy for a lifecycle transition, another tab's Web Lock and its own in-flight sign-in, and cart_blocked for an unreadable Cart key, a stopped lifecycle, an abandoned record and an unavailable coordinator"
+        "the decorator answers already_signed_in (the raw port is not called, nothing is written) for a verified and for an Email-unverified session, unavailable when the session cannot be read, cart_busy for a lifecycle transition, another tab's Web Lock and its own in-flight sign-in, and cart_blocked for an unreadable Cart key, a stopped lifecycle, an abandoned record and an unavailable coordinator",
+        "step 7: abortTransition(\"unknown\") of a memory-only transition keeps a record written meanwhile; the non-transition unknown form requires the record, is read like a missing key (empty Cart becomes Guest-provenance on a Guest observation, cleared on a Session observation) and keeps the record; { version: 1, provenance: \"unknown\" } without a record stays invalid"
       ]
     },
     {
@@ -16919,7 +16929,9 @@
         "a cancelled return does not resolve the record, a second start replaces it, and a raw unavailable keeps it",
         "the step 10 limit (a session of another email observed before the return is shown) is pinned as the specified limit: the lifecycle clears nothing, with and without a record, until the return is received or a Logout happens; this fixes the limit and is no proof that another account's Cart is never shown",
         "a second return after a receipt is judged by the provenance as a re-login (cleared); a document of another browser with no record keeps a Guest-provenance Cart",
-        "B5 C3: every step above is repeated with requestMagicLink as the starting method: the record is written before the raw call, a cleared or unreadable Cart is handled alike, a re-send replaces the record, and already_signed_in, cart_busy and cart_blocked are returned before anything is recorded; the address never enters the metadata"
+        "B5 C3: every step above is repeated with requestMagicLink as the starting method: the record is written before the raw call, a cleared or unreadable Cart is handled alike, a re-send replaces the record, and already_signed_in, cart_busy and cart_blocked are returned before anything is recorded; the address never enters the metadata",
+        "step 7: a recovery while the Session is not confirmed (recover(\"unknown\")) clears the Cart and keeps the record as { version: 1, provenance: \"unknown\", external }; a later Guest observation makes the empty Cart Guest-provenance with the record kept, and the later return is judged by the record (superseded clears); another document's Session observation clears an unknown-provenance Cart and keeps the record",
+        "F-2, step 5: when the success of another method must clear a Cart of authenticated provenance and the clear fails, the record still becomes superseded (the authentication stays, the Cart stops); a recovery keeps the record, and the return received after it clears the Cart added meanwhile (Google and Magic Link)"
       ]
     },
     {
@@ -17008,7 +17020,8 @@
         "SPEC-050-15.0",
         "FR-CRT-012",
         "TST-E2E-003",
-        "TST-E2E-004"
+        "TST-E2E-004",
+        "SPEC-050-25"
       ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
@@ -17027,7 +17040,8 @@
       "expected_domain_postconditions": [
         "with either Session the Google start is natively disabled and described by the Logout hint; pressing it goes nowhere, no /dev document is requested and no pending record is written; the Email+Password form stays available",
         "a Guest sees the start enabled without the hint; a Session that becomes valid in another tab disables the start on the open page",
-        "B5 C3: with either Session the Magic Link send is natively disabled and described by the Logout hint, a forced press goes nowhere and writes no pending record, and the Email+Password form stays available; a Session that becomes valid in another Tab disables the send, in the sent state too"
+        "B5 C3: with either Session the Magic Link send is natively disabled and described by the Logout hint, a forced press goes nowhere and writes no pending record, and the Email+Password form stays available; a Session that becomes valid in another Tab disables the send, in the sent state too",
+        "F-4: with a Session that cannot be confirmed (scenario auth.session unavailable) the Google start and the Magic Link send, on Login and Registration, are natively disabled; the reason is visible text in main attached with aria-describedby (not the signed-in hint, no alert, no status); a forced press goes nowhere, requests no /dev document, shows no status and writes no pending record; a Guest with a confirmed Session sees no reason"
       ]
     },
     {

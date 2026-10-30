@@ -6,6 +6,7 @@ import { useAuth } from "../../auth/use-auth";
 import { useSession } from "../../auth/use-session";
 import { Button } from "../../presentation/components/ui/button";
 import { copy } from "../../presentation/copy/ja";
+import { isSafeCheckoutUrl } from "../purchase/cart-purchase-flow";
 import { externalFailurePath, externalReturnPath } from "./auth-return";
 import { ServiceFailure } from "./service-failure";
 
@@ -37,6 +38,13 @@ export function GoogleSignIn({
   // A Session that cannot be confirmed is not a Guest; an Email-unverified Session is not either.
   const signedIn = signedInSeen || (state.status === "ready" && state.session.kind !== "guest");
   const canStart = state.status === "ready" && !signedIn && !cartBlocked && !starting;
+  // The reason of a disabled start is text around it (SPEC-050 25). `loading` is brief, so it gives none.
+  const sessionUnavailable = state.status === "unavailable";
+  const hint = sessionUnavailable
+    ? copy.auth.google.sessionUnavailable
+    : signedIn
+      ? copy.auth.google.signedIn
+      : null;
 
   const start = async (): Promise<void> => {
     if (startingRef.current) return;
@@ -49,12 +57,13 @@ export function GoogleSignIn({
         successPath: externalReturnPath("google", page, intent),
         failurePath: externalFailurePath("google", page, intent),
       });
-      if (result.kind === "redirect") {
+      // The URL is checked again at the last moment (SEC-WEB-013); one that does not pass is never followed.
+      if (result.kind === "redirect" && isSafeCheckoutUrl(result.url)) {
         // A full-page navigation: the button stays unavailable until the page is left.
         window.location.assign(result.url);
         return;
       }
-      if (result.kind === "unavailable") setUnavailable(true);
+      if (result.kind === "redirect" || result.kind === "unavailable") setUnavailable(true);
       else if (result.kind === "already_signed_in") setSignedInSeen(true);
       else onCartFailure(result.kind);
     } catch {
@@ -67,16 +76,16 @@ export function GoogleSignIn({
   return (
     <div className="flex flex-col gap-3">
       {unavailable ? <ServiceFailure message={copy.auth.google.unavailable} /> : null}
-      {signedIn ? (
+      {hint !== null ? (
         <p id={hintId} className="text-sm">
-          {copy.auth.google.signedIn}
+          {hint}
         </p>
       ) : null}
       <div>
         <Button
           type="button"
           disabled={!canStart}
-          aria-describedby={signedIn ? hintId : undefined}
+          aria-describedby={hint !== null ? hintId : undefined}
           onClick={() => void start()}
         >
           {starting

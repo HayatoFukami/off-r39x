@@ -172,8 +172,16 @@ describe("TC-PG-AUTH-003-403 the method selection and Email OTP wording is the c
       "ログイン中は Google でのログインを使えません。別のアカウントで利用するには、ログアウトしてください",
     );
     expect(g.unavailable).toMatch(/できません/);
+    // The reason shown beside the disabled start while the Session cannot be confirmed (SPEC-050 25) is the sixth key.
     expect(googleCopyKeys().google).toEqual(
-      ["failed", "signedIn", "startLogin", "startRegister", "unavailable"].sort(),
+      [
+        "failed",
+        "sessionUnavailable",
+        "signedIn",
+        "startLogin",
+        "startRegister",
+        "unavailable",
+      ].sort(),
     );
   });
 
@@ -355,9 +363,51 @@ describe("TC-PG-AUTH-003-403 the method selection and Email OTP wording is the c
     expect(m.auth.magicLink.signedIn).toBe(
       "ログイン中はログインリンクを使えません。別のアカウントで利用するには、ログアウトしてください",
     );
+    // The reason shown beside the disabled send while the Session cannot be confirmed (SPEC-050 25) is the seventh key.
     expect(Object.keys(m.auth.magicLink).sort()).toEqual(
-      ["failed", "resend", "send", "sent", "signedIn", "unavailable"].sort(),
+      ["failed", "resend", "send", "sent", "sessionUnavailable", "signedIn", "unavailable"].sort(),
     );
+  });
+
+  // F-4 (tests/contracts/s6-auth.md section 1, 6.1C, 6.1D): SPEC-050 25 "a disabled Action gives its reason in text
+  // around it". While the Session cannot be confirmed the start / send is disabled, and this is the reason.
+  it("has the reason for a disabled Google start and a disabled Magic Link send while the Session cannot be confirmed literally", () => {
+    expect(copy.auth.google.sessionUnavailable).toBe(
+      "ログイン状態を確認できないため、Google でのログインを開始できません。ページを再読み込みするか、時間をおいて、もう一度お試しください",
+    );
+    expect(copy.auth.magicLink.sessionUnavailable).toBe(
+      "ログイン状態を確認できないため、ログインリンクを送信できません。ページを再読み込みするか、時間をおいて、もう一度お試しください",
+    );
+  });
+
+  it("the Session-unavailable reasons name the cause and the next step, claim neither a Logout nor an account, and differ from every other message of the two methods (SPEC-050 25, SEC-API-027)", () => {
+    // Widened to string[]: `copy` is `as const`, so the literal types would reject `includes` below.
+    const reasons: string[] = [
+      copy.auth.google.sessionUnavailable,
+      copy.auth.magicLink.sessionUnavailable,
+    ];
+    for (const value of reasons) {
+      expect(value, value).toBe(value.trim());
+      expect(value, value).toMatch(/ログイン状態を確認できない/);
+      expect(value, value).toMatch(/再読み込み/);
+      // The visitor is not known to be signed in: the Logout hint belongs to the signed-in message.
+      expect(value, value).not.toMatch(/ログアウト/);
+      expect(value, value).not.toMatch(/[<>]/);
+      expect(value, value).not.toMatch(/[0-9０-９]/);
+      expect(value, value).not.toMatch(
+        /登録されていません|存在しません|見つかりません|登録されている/,
+      );
+      expect(value, value).not.toMatch(/github|discord|\bline\b|\bapple\b/i);
+    }
+    const everyMessage = [
+      ...reasons,
+      ...stringLeaves(copy.auth.google).filter((value) => !reasons.includes(value)),
+      ...stringLeaves(copy.auth.magicLink).filter((value) => !reasons.includes(value)),
+      ...stringLeaves(copy.auth.otp),
+      copy.auth.login.unavailable,
+      copy.auth.register.unavailable,
+    ];
+    expect(new Set(everyMessage).size).toBe(everyMessage.length);
   });
 
   it("the Magic Link wording states the 5 minute validity only in the sent status, discloses no account, names how to continue and the Logout (SPEC-050 15.0, SEC-API-027)", () => {

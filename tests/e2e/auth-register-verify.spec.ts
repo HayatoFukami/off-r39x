@@ -330,6 +330,20 @@ test.describe("TC-PG-AUTH-001-305 Registration offers the same method selection,
     ).toHaveText(`${copy.mypage.overview.displayNameLabel} 未設定`);
   });
 
+  test("the focus follows the step: the code field after the code is requested, the email field after changing the email (I-1)", async ({
+    page,
+  }) => {
+    await openRegister(page);
+    await chooseMethod(page, method().emailOtp);
+    await sendOtp(page, "otp-newcomer4@example.com");
+    await expect(statusesIn(page)).toHaveText(otp().sent);
+    await expect(otpButton(page, otp().submitRegister)).toBeVisible();
+    await expect(field(page, copy.auth.field.otpCode.label)).toBeFocused();
+
+    await otpButton(page, otp().changeEmail).click();
+    await expect(field(page, copy.auth.field.email.label)).toBeFocused();
+  });
+
   test("the destination is kept: continue=cart registers by code and arrives at /cart", async ({
     page,
   }) => {

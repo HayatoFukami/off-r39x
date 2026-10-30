@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useId, useRef, useState } from "react";
+import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 import { accountPath, type ContinuationIntent, continuationPath } from "../../auth/continuation";
 import { useAuth } from "../../auth/use-auth";
 import { ErrorSummary } from "../../presentation/components/error-summary";
@@ -59,6 +59,15 @@ export function EmailOtpForm({
   const [pending, setPending] = useState<Pending>(null);
   const pendingRef = useRef(false);
   const { summaryRef, requestFocus } = useErrorSummaryFocus();
+  const shownStep = useRef<Step>(step);
+
+  // The control that held the focus leaves the DOM when the step changes, so the step that appears takes
+  // it, once and only on a change (not at the first display, not on a resend that stays in the step).
+  useEffect(() => {
+    if (shownStep.current === step) return;
+    shownStep.current = step;
+    document.getElementById(step === "code" ? codeId : emailId)?.focus();
+  }, [step, codeId, emailId]);
 
   const errorOf = (field: FieldError["field"]): string | null => {
     const found = errors.find((error) => error.field === field);

@@ -56,6 +56,13 @@ export function MagicLinkForm({
   // A Session that cannot be confirmed is not a Guest; an Email-unverified Session is not either.
   const signedIn = signedInSeen || (state.status === "ready" && state.session.kind !== "guest");
   const canSend = state.status === "ready" && !signedIn && !cartBlocked && !pending;
+  // The reason of a disabled send is text around it (SPEC-050 25). `loading` is brief, so it gives none.
+  const hint =
+    state.status === "unavailable"
+      ? copy.auth.magicLink.sessionUnavailable
+      : signedIn
+        ? copy.auth.magicLink.signedIn
+        : null;
 
   const send = async (): Promise<void> => {
     if (pendingRef.current) return;
@@ -108,9 +115,9 @@ export function MagicLinkForm({
     <div className="flex flex-col gap-4">
       {unavailable ? <ServiceFailure message={copy.auth.magicLink.unavailable} /> : null}
       {errors.length > 0 ? <ErrorSummary items={summaryItems} summaryRef={summaryRef} /> : null}
-      {signedIn ? (
+      {hint !== null ? (
         <p id={hintId} className="text-sm">
-          {copy.auth.magicLink.signedIn}
+          {hint}
         </p>
       ) : null}
       <form
@@ -137,7 +144,7 @@ export function MagicLinkForm({
           <Button
             type="submit"
             disabled={!canSend}
-            aria-describedby={signedIn ? hintId : undefined}
+            aria-describedby={hint !== null ? hintId : undefined}
           >
             {pending
               ? copy.auth.form.submitting

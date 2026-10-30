@@ -421,12 +421,37 @@ describe("TC-PG-AUTH-003-512 Google is wired as contracted: the start through us
     expect(start).toMatch(/copy\.auth\.google\.startRegister\b/);
     expect(start).toMatch(/copy\.auth\.google\.signedIn\b/);
     expect(start).toMatch(/copy\.auth\.google\.unavailable\b/);
+    // F-4: the reason for a start that is disabled because the Session cannot be confirmed (SPEC-050 25).
+    expect(start).toMatch(/copy\.auth\.google\.sessionUnavailable\b/);
     expect(start).toMatch(/aria-describedby/);
     expect(start).toMatch(/disabled=/);
     expect(start).toMatch(/cart_busy/);
     expect(start).toMatch(/cart_blocked/);
     expect(start).not.toMatch(/router\.(push|replace)\s*\(/);
     expect(start).not.toMatch(/\b(fetch|XMLHttpRequest|WebSocket)\b/);
+  });
+
+  // F-1 (tests/contracts/s6-auth.md section 6.1C; SPEC-140 SEC-WEB-013): the URL the port answers is checked again at the
+  // last moment, with the same condition as isSafeCheckoutUrl (a same-origin relative path or an https URL without
+  // credentials). A value that does not pass is never followed and is shown as the unavailable alert.
+  it("the Google start checks the URL the port returned with isSafeCheckoutUrl before window.location.assign and hands off exactly the checked value", () => {
+    const start = code("src/features/auth/google-sign-in.tsx");
+    const assign = start.search(/window\.location\.assign\s*\(/);
+    expect(assign, "window.location.assign must be called").toBeGreaterThan(-1);
+    const guard = start.match(/\bisSafeCheckoutUrl\s*\(\s*result\.url\s*\)/);
+    expect(guard, "isSafeCheckoutUrl(result.url) must be called").not.toBeNull();
+    expect(
+      guard?.index ?? Number.POSITIVE_INFINITY,
+      "the check comes before the hand-off",
+    ).toBeLessThan(assign);
+    // Imported (the condition is not copied), and the hand-off takes the very value that was checked.
+    expect(start).toMatch(
+      /import[^;]*\bisSafeCheckoutUrl\b[^;]*from\s*["'][^"']*cart-purchase-flow["']/,
+    );
+    expect(start).toMatch(/window\.location\.assign\s*\(\s*result\.url\s*\)/);
+    // The alert for a URL that does not pass is the contracted one; its display is covered by the contract (6.1C)
+    // and by review: no suite has a DOM or a mock path that makes the port answer an unsafe URL.
+    expect(start).toMatch(/copy\.auth\.google\.unavailable\b/);
   });
 
   it("auth-return.ts is pure data and functions: it names returned / notice, builds on accountPath and keeps the Continuation", () => {
@@ -538,6 +563,8 @@ describe("TC-PG-AUTH-003-512 Magic Link is wired as contracted: the send through
     expect(form).toMatch(/copy\.auth\.magicLink\.sent\b/);
     expect(form).toMatch(/copy\.auth\.magicLink\.unavailable\b/);
     expect(form).toMatch(/copy\.auth\.magicLink\.signedIn\b/);
+    // F-4: the reason for a send that is disabled because the Session cannot be confirmed (SPEC-050 25).
+    expect(form).toMatch(/copy\.auth\.magicLink\.sessionUnavailable\b/);
     expect(form).toMatch(/aria-describedby/);
     expect(form).toMatch(/cart_busy/);
     expect(form).toMatch(/cart_blocked/);

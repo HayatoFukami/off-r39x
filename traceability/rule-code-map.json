@@ -2754,6 +2754,7 @@
         "apps/web/src/config/purchase-routes.ts",
         "apps/web/src/features/purchase/cart-purchase-flow.ts",
         "apps/web/src/features/auth/auth-return.ts",
+        "apps/web/src/features/auth/google-sign-in.tsx",
         "apps/web/src/mock/dev-ui/mock-google-screen.tsx",
         "apps/web/src/mock/dev-ui/mock-magic-link-screen.tsx"
       ],
@@ -2767,7 +2768,8 @@
         "TC-PG-AUTH-003-308",
         "TC-PG-AUTH-003-310",
         "TC-PG-AUTH-003-105",
-        "TC-PG-AUTH-003-309"
+        "TC-PG-AUTH-003-309",
+        "TC-PG-AUTH-003-512"
       ],
       "notes": "implementation mapping only: S6 authentication (UI mock, not API/DB/provider coverage)"
     },
@@ -2956,11 +2958,21 @@
       "code_paths": [
         "apps/web/src/features/auth/email-otp-form.tsx",
         "apps/web/src/features/auth/form-validation.ts",
+        "apps/web/src/features/auth/google-sign-in.tsx",
         "apps/web/src/features/auth/login-page.tsx",
+        "apps/web/src/features/auth/magic-link-form.tsx",
         "apps/web/src/features/auth/register-page.tsx",
         "apps/web/src/presentation/copy/ja.ts"
       ],
-      "test_case_ids": ["TC-PG-AUTH-003-202", "TC-PG-AUTH-003-512", "TC-PG-AUTH-003-307"],
+      "test_case_ids": [
+        "TC-PG-AUTH-003-202",
+        "TC-PG-AUTH-003-512",
+        "TC-PG-AUTH-003-307",
+        "TC-PG-AUTH-003-403",
+        "TC-PG-AUTH-003-313",
+        "TC-PG-AUTH-003-306",
+        "TC-PG-AUTH-001-305"
+      ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {

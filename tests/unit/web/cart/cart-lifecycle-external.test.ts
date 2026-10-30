@@ -28,6 +28,11 @@ const OTHER_CART = JSON.stringify({
 const PENDING = { version: 1, provenance: "guest", external: "pending" };
 const AUTHENTICATED = { version: 1, provenance: "authenticated" };
 const SUPERSEDED = { version: 1, provenance: "authenticated", external: "superseded" };
+// A Cart of unknown provenance that has a record (tests/contracts/s6-auth.md section 10A, "the unknown form"): the
+// record is not lost when the provenance is unknown. Written with JSON.stringify because the harness helpers take
+// only the provenances guest and authenticated.
+const UNKNOWN_PENDING = { version: 1, provenance: "unknown", external: "pending" };
+const UNKNOWN_SUPERSEDED = { version: 1, provenance: "unknown", external: "superseded" };
 const GOOGLE = {
   successPath: "/account/login?returned=google",
   failurePath: "/account/login?notice=google-failed",
@@ -231,6 +236,56 @@ describe("TC-FR-CRT-012-017 beginExternalAuthentication is the authentication tr
       expectEmpty(s);
     }
   });
+
+  // F-3: the unknown-provenance form with a record. The record has to survive a recovery that cannot confirm the
+  // Session (step 7), so a non-transition value with provenance "unknown" is valid when it carries `external`.
+  it("the unknown-provenance form with a record is valid and is read like a missing metadata key; without a record it stays invalid", () => {
+    const withRecord = (external: "pending" | "superseded") =>
+      JSON.stringify({ version: 1, provenance: "unknown", external });
+
+    // A Cart is present: a Guest observation does not change it (the Cart is not Guest-provenance), a Session
+    // observation clears it like a missing key does, and the record is kept.
+    const kept = setup(withRecord("pending"));
+    kept.lifecycle.initializeGuestIfEmpty();
+    expect(kept.data.get(CART_STORAGE_KEY)).toBe(CART);
+    expect(stored(kept)).toEqual(UNKNOWN_PENDING);
+    kept.lifecycle.markAuthenticated();
+    expectEmpty(kept);
+    expect(stored(kept)).toEqual({ version: 1, provenance: "authenticated", external: "pending" });
+
+    // No Cart: a Guest observation makes the empty Cart Guest-provenance (as a missing key does) and keeps the record.
+    const empty = setup(withRecord("pending"));
+    empty.data.delete(CART_STORAGE_KEY);
+    empty.lifecycle.initializeGuestIfEmpty();
+    expect(stored(empty)).toEqual(PENDING);
+    const emptySuperseded = setup(withRecord("superseded"));
+    emptySuperseded.data.delete(CART_STORAGE_KEY);
+    emptySuperseded.lifecycle.initializeGuestIfEmpty();
+    expect(stored(emptySuperseded)).toEqual({
+      version: 1,
+      provenance: "guest",
+      external: "superseded",
+    });
+
+    // The document of a return judges by the record (step 6): superseded clears.
+    const superseded = setup(withRecord("superseded"));
+    const returned = superseded.newDocument();
+    returned.completeExternalAuthentication();
+    expectEmpty(superseded);
+    expect(stored(superseded)).toEqual(AUTHENTICATED);
+
+    // Without a record the form stays invalid: the Cart is of unknown provenance and nothing is kept.
+    for (const raw of [
+      { version: 1, provenance: "unknown" },
+      { version: 1, provenance: "unknown", external: "done" },
+      { version: 1, provenance: "unknown", external: "pending", accountId: "x" },
+    ]) {
+      const s = setup(JSON.stringify(raw));
+      s.lifecycle.markAuthenticated();
+      expectEmpty(s);
+      expect(stored(s), JSON.stringify(raw)).toEqual(AUTHENTICATED);
+    }
+  });
 });
 
 describe("TC-FR-CRT-012-017 completeExternalAuthentication decides on the metadata read when the screen shown by the return was created, once (FR-CRT-012 external completion rule steps 6, 7, 8, 9)", () => {
@@ -328,6 +383,20 @@ describe("TC-FR-CRT-012-017 completeExternalAuthentication decides on the metada
     loggedOut.lifecycle.finishLogout();
     expectEmpty(loggedOut);
     expect(stored(loggedOut)).toEqual({ version: 1, provenance: "guest" });
+  });
+
+  it("step 7: aborting a memory-only transition of unknown provenance keeps a record another Tab wrote meanwhile", () => {
+    // No metadata, the default memory-only coordinator: the transition is held in memory and writes no metadata.
+    const s = setup(null);
+    expect(s.lifecycle.beginTransition()).toEqual({ kind: "ready", provenance: "unknown" });
+    expect(stored(s)).toBeUndefined();
+    // Another Tab starts an external sign-in meanwhile (it clears the Cart of unknown provenance, writes pending).
+    expect(s.newDocument().beginExternalAuthentication()).toEqual({ kind: "ready" });
+    expect(stored(s)).toEqual(PENDING);
+    s.lifecycle.abortTransition("unknown");
+    expect(stored(s)).toEqual(UNKNOWN_PENDING);
+    expectEmpty(s);
+    expect(s.lifecycle.getSnapshot()).toEqual({ kind: "ready" });
   });
 
   it("step 8: the Cart cleared at the start is not restored by a failed return", () => {
@@ -483,6 +552,78 @@ for (const starter of STARTERS) {
       await s.port.signOut();
       expectEmpty(s);
       expect(stored(s)).toEqual({ version: 1, provenance: "guest" });
+    });
+
+    it("step 5: when the Cart of another provenance cannot be cleared at the success of another method, the success is still recorded as superseded, and after a recovery the later result clears the Cart", async () => {
+      const s = await started();
+      // Another document observes the new Session first: the provenance becomes authenticated, the record stays pending.
+      s.newDocument().markAuthenticated();
+      expect(stored(s)).toEqual({ version: 1, provenance: "authenticated", external: "pending" });
+      // The Cart of authenticated provenance has to be cleared at the success, and the clear fails.
+      s.faults.clear = true;
+      await expect(s.port.signIn(input)).resolves.toMatchObject({ kind: "signed_in" });
+      expect(s.lifecycle.getSnapshot()).toEqual({ kind: "blocked" });
+      expect(stored(s)).toEqual(SUPERSEDED);
+      // Recovery keeps the record; the Cart added afterwards is judged by it at the result (step 6).
+      s.faults.clear = false;
+      await expect(s.lifecycle.recover("authenticated")).resolves.toBe("recovered");
+      expectEmpty(s);
+      expect(stored(s)).toEqual(SUPERSEDED);
+      s.data.set(CART_STORAGE_KEY, OTHER_CART);
+      s.newDocument().completeExternalAuthentication();
+      expectEmpty(s);
+      expect(stored(s)).toEqual(AUTHENTICATED);
+    });
+
+    it('step 7: a recovery while the Session is not confirmed (recover("unknown"), as CartRecovery does) keeps a superseded record, and a later result is still judged by it (step 6)', async () => {
+      const s = await started();
+      await s.port.signIn(input);
+      expect(stored(s)).toEqual(SUPERSEDED);
+      s.lifecycle.block();
+
+      await expect(s.lifecycle.recover("unknown")).resolves.toBe("recovered");
+      expectEmpty(s);
+      expect(stored(s)).toEqual(UNKNOWN_SUPERSEDED);
+      expect(s.lifecycle.getSnapshot()).toEqual({ kind: "ready" });
+      expect(s.data.get(CART_LIFECYCLE_STORAGE_KEY)).not.toMatch(
+        /@|email|account|subject|role|token/i,
+      );
+
+      // The Session turns out to be a Guest's: the empty Cart is Guest-provenance and the record stays.
+      s.lifecycle.initializeGuestIfEmpty();
+      expect(stored(s)).toEqual({ version: 1, provenance: "guest", external: "superseded" });
+
+      // A Guest then makes a Cart; the result that arrives later is judged by the record: superseded clears.
+      s.data.set(CART_STORAGE_KEY, OTHER_CART);
+      const returned = s.newDocument();
+      returned.markAuthenticated();
+      returned.completeExternalAuthentication();
+      expectEmpty(s);
+      expect(stored(s)).toEqual(AUTHENTICATED);
+    });
+
+    it('step 7: with a pending record, recover("unknown") keeps it; another document\'s Session observation clears only the Cart of unknown provenance and keeps the record; the return resolves it', async () => {
+      const s = await started();
+      s.lifecycle.block();
+
+      await expect(s.lifecycle.recover("unknown")).resolves.toBe("recovered");
+      expectEmpty(s);
+      expect(stored(s)).toEqual(UNKNOWN_PENDING);
+
+      // A Cart made before the Session is observed is of unknown provenance: a Session observation of a screen that
+      // is not the return clears it (the unknown-provenance rule of FR-CRT-012; contract section 9, item 15) and keeps
+      // the record (step 7).
+      s.data.set(CART_STORAGE_KEY, OTHER_CART);
+      s.newDocument().markAuthenticated();
+      expectEmpty(s);
+      expect(stored(s)).toEqual({ version: 1, provenance: "authenticated", external: "pending" });
+
+      // The screen shown by the return resolves the record (step 6) and has nothing left to keep or clear.
+      const returned = s.newDocument();
+      returned.markAuthenticated();
+      returned.completeExternalAuthentication();
+      expect(stored(s)).toEqual(AUTHENTICATED);
+      expectEmpty(s);
     });
 
     it("step 3: a request that is unavailable or throws keeps the pending record, and a second start (a re-send for Magic Link) replaces it", async () => {
