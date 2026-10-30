@@ -203,6 +203,21 @@ export function createCartLifecycle(
       });
   };
 
+  // Only the record becomes `superseded`; the current provenance and any transition marker are kept, so
+  // another Tab's stop is not released. Metadata that cannot be read or written records nothing.
+  const supersedeRecord = (): void => {
+    try {
+      const metadata = readMetadata();
+      if (metadata?.external === undefined) return;
+      write(metadata.provenance, {
+        transitioning: isTransitioning(metadata),
+        external: "superseded",
+      });
+    } catch {
+      // The caller keeps its own outcome.
+    }
+  };
+
   return {
     initializeGuestIfEmpty() {
       if (blocked) return;
@@ -279,22 +294,11 @@ export function createCartLifecycle(
       // Step 5: while a record exists, another method's success turns it into `superseded`, even when the
       // Cart cannot be cleared or the lifecycle is already stopped (the result is then judged by it).
       if (blocked) {
-        try {
-          const metadata = readMetadata();
-          if (metadata?.external !== undefined) {
-            write(metadata.provenance, {
-              transitioning: isTransitioning(metadata),
-              external: "superseded",
-            });
-          }
-        } catch {
-          // Metadata that cannot be written cannot record anything; the lifecycle stays stopped.
-        }
+        supersedeRecord();
         return;
       }
-      let recorded: ExternalRecord | undefined;
       try {
-        recorded = currentExternal();
+        const recorded = currentExternal();
         if (provenance !== "guest") clearCart();
         write("authenticated", { external: recorded === undefined ? undefined : "superseded" });
         localTransition = false;
@@ -304,13 +308,7 @@ export function createCartLifecycle(
       } catch (error) {
         blocked = true;
         localTransition = false;
-        if (recorded !== undefined) {
-          try {
-            write(provenance, { external: "superseded" });
-          } catch {
-            // The original error is the one reported.
-          }
-        }
+        supersedeRecord();
         notify();
         throw error;
       }
@@ -403,8 +401,11 @@ export function createCartLifecycle(
         const external = initialMetadata?.external;
         // Step 6: with a record, `superseded` (another method succeeded) clears and `pending` keeps.
         // Step 9: without one, the provenance before this return decides.
+        // An unknown provenance is cleared whatever the record says, and that resolves the record.
         const keep =
-          external === undefined ? initialMetadata?.provenance === "guest" : external === "pending";
+          external === undefined
+            ? initialMetadata?.provenance === "guest"
+            : initialMetadata?.provenance !== "unknown" && external === "pending";
         if (!keep) clearCart();
         write("authenticated");
       } catch {

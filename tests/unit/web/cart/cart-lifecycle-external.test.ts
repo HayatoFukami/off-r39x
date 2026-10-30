@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { CART_STORAGE_KEY } from "../../../../apps/web/src/features/cart/cart-count.ts";
-import { CART_LIFECYCLE_STORAGE_KEY } from "../../../../apps/web/src/features/cart/cart-lifecycle.ts";
+import {
+  CART_LIFECYCLE_STORAGE_KEY,
+  type CartLifecycle,
+} from "../../../../apps/web/src/features/cart/cart-lifecycle.ts";
 import { createWebCartTransitionCoordinator } from "../../../../apps/web/src/features/cart/cart-transition-lock.ts";
 import {
   CART,
@@ -42,6 +45,15 @@ const stored = (s: Setup): unknown => {
   const raw = s.data.get(CART_LIFECYCLE_STORAGE_KEY);
   return raw === undefined ? undefined : JSON.parse(raw);
 };
+
+/** What the Cart screen may show: the same gate as use-cart.ts (a lifecycle that is not ready hides the rows). */
+function shown(lifecycle: CartLifecycle, s: Setup) {
+  const gate = lifecycle.getSnapshot();
+  return gate.kind === "ready" ? s.store.getSnapshot() : gate;
+}
+
+/** Lets the lock probe of an instance (a promise chain over the test lock manager) settle. */
+const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
 function expectEmpty(s: Setup) {
   expect(s.data.has(CART_STORAGE_KEY)).toBe(false);
@@ -574,6 +586,127 @@ for (const starter of STARTERS) {
       expectEmpty(s);
       expect(stored(s)).toEqual(AUTHENTICATED);
     });
+
+    // R-1 (B5 re-review). With Web Locks the transition is written to the metadata. A Cart that cannot be cleared at the
+    // success of another method must keep that transition marker (provenance and "transitioning" unchanged, only the
+    // record changes), so that another Tab does not read a non-transition value and show the previous Account's Cart.
+    it.each([
+      ["a Cart of authenticated provenance", "authenticated"],
+      ["a Cart of unknown provenance", "unknown"],
+    ] as const)(
+      "step 5 (R-1, with Web Locks): when %s cannot be cleared at the success of another method, the transition marker stays with the record superseded; another instance is stopped, not ready, and a recovery then the later result clear the Cart",
+      async (_name, provenance) => {
+        const s = setup(
+          metadata("guest"),
+          createWebCartTransitionCoordinator(new TestLockManager()),
+        );
+        await expect(starter.start(s)).resolves.toMatchObject(starter.accepted);
+        expect(stored(s)).toEqual(PENDING);
+        // The start's lock is released asynchronously; the sign-in below needs it free.
+        await settle();
+        if (provenance === "authenticated") {
+          // Another document observes the new Session first.
+          s.newDocument().markAuthenticated();
+          expect(stored(s)).toEqual({ version: 1, provenance, external: "pending" });
+        } else {
+          // A recovery that could not confirm the Session left a Cart of unknown provenance with the record.
+          s.data.set(CART_LIFECYCLE_STORAGE_KEY, JSON.stringify(UNKNOWN_PENDING));
+        }
+
+        s.faults.clear = true;
+        await expect(s.port.signIn(input)).resolves.toMatchObject({ kind: "signed_in" });
+
+        // The transition marker is kept: provenance and "transitioning" as the transition wrote them.
+        expect(stored(s)).toEqual({
+          version: 1,
+          provenance,
+          transitioning: true,
+          external: "superseded",
+        });
+        expect(s.lifecycle.getSnapshot()).toEqual({ kind: "blocked" });
+        // The previous Account's Cart could not be cleared and is still in storage.
+        expect(s.data.get(CART_STORAGE_KEY)).toBe(CART);
+
+        // The lock is released after the sign-in; no transition is in flight.
+        await expect(s.coordinator.isHeld()).resolves.toBe(false);
+
+        // Another instance (another Tab) that never subscribed does not read a ready Cart ...
+        expect(s.newDocument().getSnapshot().kind).not.toBe("ready");
+        // ... and one that subscribes finds the transition marker without its lock: stopped, rows hidden.
+        const otherTab = s.newDocument();
+        const stop = otherTab.subscribe(() => undefined);
+        await settle();
+        expect(otherTab.getSnapshot()).toEqual({ kind: "blocked" });
+        expect(shown(otherTab, s)).toEqual({ kind: "blocked" });
+        expect(s.data.get(CART_STORAGE_KEY)).toBe(CART);
+
+        // The recovery (the sending Tab, which is stopped too) keeps the record and ends the transition marker; the
+        // Cart added afterwards is judged by the record (step 6). The other Tab leaves its stop once it re-reads.
+        s.faults.clear = false;
+        await expect(s.lifecycle.recover("authenticated")).resolves.toBe("recovered");
+        expectEmpty(s);
+        expect(stored(s)).toEqual(SUPERSEDED);
+        await settle();
+        expect(otherTab.getSnapshot()).toEqual({ kind: "ready" });
+        s.data.set(CART_STORAGE_KEY, OTHER_CART);
+        s.newDocument().completeExternalAuthentication();
+        expectEmpty(s);
+        expect(stored(s)).toEqual(AUTHENTICATED);
+        stop();
+      },
+    );
+
+    it("step 5 (R-1, consistency guard, with Web Locks): a lifecycle that was already stopped keeps the transition marker the same way when another method succeeds", async () => {
+      const s = setup(metadata("guest"), createWebCartTransitionCoordinator(new TestLockManager()));
+      await starter.start(s);
+      await settle();
+      s.newDocument().markAuthenticated();
+      // The lifecycle of the sending Tab is stopped while its sign-in is in flight.
+      s.raw.signIn = vi.fn(async () => {
+        s.lifecycle.block();
+        return { kind: "signed_in", emailVerified: true } as const;
+      });
+      await expect(s.port.signIn(input)).resolves.toMatchObject({ kind: "signed_in" });
+      expect(stored(s)).toEqual({
+        version: 1,
+        provenance: "authenticated",
+        transitioning: true,
+        external: "superseded",
+      });
+      const otherTab = s.newDocument();
+      const stop = otherTab.subscribe(() => undefined);
+      await settle();
+      expect(otherTab.getSnapshot()).toEqual({ kind: "blocked" });
+      expect(shown(otherTab, s)).toEqual({ kind: "blocked" });
+      stop();
+    });
+
+    // I-b. A record is not a reason to keep a Cart of unknown provenance: the rule of the cell (a Cart of unknown
+    // provenance is cleared when the Session is confirmed) takes precedence over `pending`. The contract does not rely
+    // on a Session observation having cleared it first.
+    it.each(["pending", "superseded"] as const)(
+      "step 6 (I-b): completeExternalAuthentication alone, from a Cart of unknown provenance with the record %s, clears the Cart and resolves the record",
+      async (record) => {
+        const s = await started();
+        if (record === "superseded") await s.port.signIn(input);
+        expect(stored(s)).toEqual(record === "pending" ? PENDING : SUPERSEDED);
+        s.lifecycle.block();
+        await expect(s.lifecycle.recover("unknown")).resolves.toBe("recovered");
+        expect(stored(s)).toEqual(record === "pending" ? UNKNOWN_PENDING : UNKNOWN_SUPERSEDED);
+
+        // A Cart made before any Session observation; no markAuthenticated runs before the receipt.
+        s.data.set(CART_STORAGE_KEY, OTHER_CART);
+        const returned = s.newDocument();
+        returned.completeExternalAuthentication();
+        expectEmpty(s);
+        expect(stored(s)).toEqual(AUTHENTICATED);
+        expect(returned.getSnapshot()).toEqual({ kind: "ready" });
+        // One receipt per return: the Cart added afterwards is not touched by a second call.
+        s.data.set(CART_STORAGE_KEY, OTHER_CART);
+        returned.completeExternalAuthentication();
+        expect(s.data.get(CART_STORAGE_KEY)).toBe(OTHER_CART);
+      },
+    );
 
     it('step 7: a recovery while the Session is not confirmed (recover("unknown"), as CartRecovery does) keeps a superseded record, and a later result is still judged by it (step 6)', async () => {
       const s = await started();
