@@ -111,6 +111,40 @@ export function createCartLifecycleAuthPort(
     }
   }
 
+  // FR-CRT-012 external-completion rule, shared by every method whose sign-in completes outside the
+  // page (Google, Magic Link). Step 1: only a Guest starts; a Session that cannot be confirmed is not
+  // assumed to be a Guest, and an Email-unverified Session is not a Guest. The check reads the raw
+  // Session so that it observes nothing and writes nothing.
+  async function startExternal<T extends { kind: string }>(
+    request: () => Promise<T>,
+  ): Promise<T | { kind: "unavailable" | "already_signed_in" | "cart_busy" | "cart_blocked" }> {
+    const current = await rawAuth.getSession();
+    if (current.kind !== "ok") return { kind: "unavailable" };
+    if (current.session.kind !== "guest") return { kind: "already_signed_in" };
+    // The answer is immediate: a transition in flight, another Tab's lock or a stopped Cart
+    // (Q-1) is never waited for, and the request is not made.
+    if (transition !== null) return { kind: "cart_busy" };
+    transition = new Promise<void>((resolve) => {
+      settleTransition = resolve;
+    });
+    let release: () => void = () => undefined;
+    try {
+      const lock = await coordinator.acquire(false);
+      if (lock.kind === "busy") return { kind: "cart_busy" };
+      if (lock.kind === "unavailable") return { kind: "cart_blocked" };
+      release = lock.release;
+      // Steps 2 and 3: the Cart is cleaned and the pending record written before the request.
+      const begun = lifecycle.beginExternalAuthentication(true);
+      if (begun.kind === "busy") return { kind: "cart_busy" };
+      if (begun.kind === "blocked") return { kind: "cart_blocked" };
+      // Step 3 and 7: whatever the request answers or throws, the record stays and the Cart that
+      // was cleaned is not restored. Step 4: nothing stays in flight once the request is over.
+      return await request();
+    } finally {
+      completeTransition(release);
+    }
+  }
+
   return {
     async getSession() {
       while (true) {
@@ -189,36 +223,9 @@ export function createCartLifecycleAuthPort(
         (result) => result.kind === "signed_in",
       );
     },
-    async startGoogleSignIn(input) {
-      // FR-CRT-012 external-completion rule. Step 1: only a Guest starts; a Session that cannot be
-      // confirmed is not assumed to be a Guest, and an Email-unverified Session is not a Guest. The
-      // check reads the raw Session so that it observes nothing and writes nothing.
-      const current = await rawAuth.getSession();
-      if (current.kind !== "ok") return { kind: "unavailable" };
-      if (current.session.kind !== "guest") return { kind: "already_signed_in" };
-      // The answer is immediate: a transition in flight, another Tab's lock or a stopped Cart
-      // (Q-1) is never waited for, and the request is not made.
-      if (transition !== null) return { kind: "cart_busy" };
-      transition = new Promise<void>((resolve) => {
-        settleTransition = resolve;
-      });
-      let release: () => void = () => undefined;
-      try {
-        const lock = await coordinator.acquire(false);
-        if (lock.kind === "busy") return { kind: "cart_busy" };
-        if (lock.kind === "unavailable") return { kind: "cart_blocked" };
-        release = lock.release;
-        // Steps 2 and 3: the Cart is cleaned and the pending record written before the request.
-        const begun = lifecycle.beginExternalAuthentication(true);
-        if (begun.kind === "busy") return { kind: "cart_busy" };
-        if (begun.kind === "blocked") return { kind: "cart_blocked" };
-        // Step 3 and 7: whatever the request answers or throws, the record stays and the Cart that
-        // was cleaned is not restored. Step 4: nothing stays in flight once the request is over.
-        return await rawAuth.startGoogleSignIn(input);
-      } finally {
-        completeTransition(release);
-      }
-    },
+    startGoogleSignIn: (input) => startExternal(() => rawAuth.startGoogleSignIn(input)),
+    // A resend is a new start: the same steps run again and the record is replaced (step 3).
+    requestMagicLink: (input) => startExternal(() => rawAuth.requestMagicLink(input)),
     requestPasswordReset: (input) => rawAuth.requestPasswordReset(input),
     completePasswordReset: (input) => rawAuth.completePasswordReset(input),
   };

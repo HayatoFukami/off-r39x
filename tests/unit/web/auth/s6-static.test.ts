@@ -48,6 +48,7 @@ const CONTAINERS = [
   "src/features/auth/password-reset-complete-page.tsx",
   "src/features/auth/email-otp-form.tsx", // B5 C1: the Email OTP steps; calls the port through useAuth()
   "src/features/auth/google-sign-in.tsx", // B5 C2: the Google start button; calls the port through useAuth()
+  "src/features/auth/magic-link-form.tsx", // B5 C3: the Magic Link send form; calls the port through useAuth()
 ] as const;
 
 const MODULES = [
@@ -506,6 +507,113 @@ describe("TC-PG-AUTH-003-512 Google is wired as contracted: the start through us
     for (const file of walk(abs("src/features")).filter((f) => /\.(ts|tsx)$/.test(f))) {
       expect(readFileSync(file, "utf8"), rel(file)).not.toMatch(
         /mock-google-screen|allowMockGoogleSignIn/,
+      );
+    }
+  });
+});
+
+// B5 C3 (tests/contracts/s6-auth.md sections 0, 3C, 5B, 6.1D, 6.2C, 6.10, 10A): Magic Link, the second external-completion
+// method. The link is opened outside the page (in another Tab or on another device), so the form never navigates.
+describe("TC-PG-AUTH-003-512 Magic Link is wired as contracted: the send through useAuth() without any navigation, the return read once by the screen shown by the return, the Cart lifecycle shared with Google, and a dev-only stand-in for opening the link (SPEC-050 15.0, FR-CRT-012, DEV-WEB-012, SEC-WEB-013)", () => {
+  const code = (path: string): string => stripComments(read(path));
+  const authSources = (): string =>
+    walk(abs("src/features/auth"))
+      .filter((f) => /\.(ts|tsx)$/.test(f))
+      .map((f) => stripComments(readFileSync(f, "utf8")))
+      .join("\n");
+
+  it("the Magic Link form is a client container that calls only requestMagicLink through useAuth(), builds both paths with auth-return, validates the email first and never navigates", () => {
+    const form = code("src/features/auth/magic-link-form.tsx");
+    expect(form, "magic-link-form.tsx must exist and not be empty").not.toBe("");
+    expect(form).toMatch(/\.requestMagicLink\s*\(/);
+    expect(form).toMatch(/externalReturnPath\s*\(\s*["']magic-link["']/);
+    expect(form).toMatch(/externalFailurePath\s*\(\s*["']magic-link["']/);
+    expect(form).toMatch(/validateResetRequestForm/);
+    expect(form).toMatch(/normalizeEmail/);
+    expect(form).toMatch(/noValidate/);
+    expect(form).toMatch(/aria-busy/);
+    expect(form).toMatch(/ErrorSummary/);
+    expect(form).toMatch(/copy\.auth\.magicLink\.send\b/);
+    expect(form).toMatch(/copy\.auth\.magicLink\.resend\b/);
+    expect(form).toMatch(/copy\.auth\.magicLink\.sent\b/);
+    expect(form).toMatch(/copy\.auth\.magicLink\.unavailable\b/);
+    expect(form).toMatch(/copy\.auth\.magicLink\.signedIn\b/);
+    expect(form).toMatch(/aria-describedby/);
+    expect(form).toMatch(/cart_busy/);
+    expect(form).toMatch(/cart_blocked/);
+    expect(form).toMatch(/already_signed_in/);
+    // The link is opened elsewhere: sending moves nobody (no hand-off, no router, no fetch, no link).
+    expect(form).not.toMatch(/window\.location|location\.(assign|replace|href)/);
+    expect(form).not.toMatch(/router\.(push|replace)\s*\(/);
+    expect(form).not.toMatch(/\b(fetch|XMLHttpRequest|WebSocket)\b/);
+    expect(form).not.toMatch(/<a\b|\bhref\s*=/);
+  });
+
+  it("auth-return.ts names the Magic Link marker words and the Cart lifecycle decorator covers requestMagicLink with the same external-completion start as Google", () => {
+    const pure = code("src/features/auth/auth-return.ts");
+    expect(pure).toMatch(/["']magic-link["']/);
+    expect(pure).toMatch(/["']link-failed["']/);
+    expect(pure).toMatch(/["']google-failed["']/);
+    const decorator = code("src/features/shell/cart-lifecycle-auth-port.ts");
+    expect(decorator).toMatch(/requestMagicLink/);
+    expect(decorator).toMatch(/beginExternalAuthentication/);
+    expect(decorator).toMatch(/already_signed_in/);
+  });
+
+  it("Login and Register show the Magic Link form, read the return and report a failed link with the contracted alert", () => {
+    for (const name of ["login-page", "register-page"]) {
+      const page = code(`src/features/auth/${name}.tsx`);
+      expect(page, name).toMatch(/\bMagicLinkForm\b/);
+      expect(page, name).toMatch(/\bparseReturned\b/);
+      expect(page, name).toMatch(/\bparseFailureNotice\b/);
+    }
+    expect(authSources()).toMatch(/copy\.auth\.magicLink\.failed\b/);
+  });
+
+  it("the result of a Magic Link is received through the Cart lifecycle by the auth screens only, as Google's is (R11: no navigation inside the SPA opens a returned URL)", () => {
+    const callers = walk(abs("src"))
+      .filter((f) => /\.(ts|tsx)$/.test(f))
+      .filter((f) =>
+        /\.completeExternalAuthentication\s*\(/.test(stripComments(readFileSync(f, "utf8"))),
+      )
+      .map(rel);
+    expect(callers.length).toBeGreaterThan(0);
+    for (const caller of callers) expect(caller, caller).toMatch(/^src\/features\/auth\//);
+    // No router call builds a returned URL.
+    for (const file of walk(abs("src/features")).filter((f) => /\.(ts|tsx)$/.test(f))) {
+      expect(stripComments(readFileSync(file, "utf8")), rel(file)).not.toMatch(
+        /(router\.(push|replace)|navigate)\s*\(\s*externalReturnPath/,
+      );
+    }
+  });
+
+  it("the stand-in route and screen exist, are dev-only (a thin route, the screen under mock/dev-ui), keep the address out of the URL and keep copy in ja.ts", () => {
+    const route = code("src/routes/dev/mock-magic-link.tsx");
+    expect(route, "routes/dev/mock-magic-link.tsx must exist").not.toBe("");
+    expect(route).toMatch(/mock\/dev-ui\/mock-magic-link-screen/);
+    expect(route).toMatch(/export\s+const\s+handle/);
+    expect(route).toMatch(/copy\.mockMagicLink\.pageTitle/);
+    expect(route).not.toMatch(/<main[\s>]/);
+    const screen = code("src/mock/dev-ui/mock-magic-link-screen.tsx");
+    expect(screen, "mock/dev-ui/mock-magic-link-screen.tsx must exist").not.toBe("");
+    expect(screen).toMatch(/openMockMagicLink/);
+    expect(screen).toMatch(/window\.location\.assign\s*\(/);
+    expect(screen).toMatch(/isSafeRelativePath/);
+    expect(screen).toMatch(/copy\.mockMagicLink\.openValid\b/);
+    expect(screen).toMatch(/copy\.mockMagicLink\.openExpired\b/);
+    expect(screen).toMatch(/copy\.mockMagicLink\.emailLabel\b/);
+    expect(screen).toMatch(/type=["']email["']/);
+    // The address is typed into a field and goes to the mock backend call only: never into a URL or a form submission.
+    expect(screen).not.toMatch(/searchParams\.set|history\.(push|replace)State/);
+    expect(screen).not.toMatch(/<form\b/);
+    expect(screen).not.toMatch(/\bconsole\s*\./);
+    expect(screen).not.toMatch(/\b(fetch|XMLHttpRequest|WebSocket)\b/);
+    const japanese = /[぀-ヿ㐀-䶿一-鿿ｦ-ﾟ]/;
+    expect(screen.split("\n").find((line) => japanese.test(line)) ?? null).toBeNull();
+    // Nothing outside the dev area, the mock and the ports may reach the stand-in.
+    for (const file of walk(abs("src/features")).filter((f) => /\.(ts|tsx)$/.test(f))) {
+      expect(readFileSync(file, "utf8"), rel(file)).not.toMatch(
+        /mock-magic-link-screen|openMockMagicLink|\/dev\/mock-magic-link/,
       );
     }
   });

@@ -77,7 +77,9 @@
         "apps/web/src/routes/dev/mock-checkout.tsx",
         "apps/web/src/routes/dev",
         "apps/web/src/mock/dev-ui/mock-google-screen.tsx",
-        "apps/web/src/routes/dev/mock-google.tsx"
+        "apps/web/src/mock/dev-ui/mock-magic-link-screen.tsx",
+        "apps/web/src/routes/dev/mock-google.tsx",
+        "apps/web/src/routes/dev/mock-magic-link.tsx"
       ],
       "test_case_ids": [
         "TC-DEV-WEB-012-001",
@@ -96,7 +98,8 @@
         "TC-PAY-BRW-001-601",
         "TC-PAY-BRW-001-611",
         "TC-DEV-WEB-012-611",
-        "TC-PG-AUTH-003-308"
+        "TC-PG-AUTH-003-308",
+        "TC-PG-AUTH-003-309"
       ],
       "notes": "implementation mapping only: mock-allowlist"
     },
@@ -1084,7 +1087,8 @@
         "apps/web/src/routes/dev",
         "apps/web/src/config/browser-storage.ts",
         "apps/web/public/mock/sponsors",
-        "apps/web/src/mock/dev-ui/mock-google-screen.tsx"
+        "apps/web/src/mock/dev-ui/mock-google-screen.tsx",
+        "apps/web/src/mock/dev-ui/mock-magic-link-screen.tsx"
       ],
       "test_case_ids": [
         "TC-SEC-AUTH-018-101",
@@ -1108,7 +1112,8 @@
         "TC-DEV-WEB-013-204",
         "TC-PG-PUB-001-231",
         "TC-PG-AUTH-003-104",
-        "TC-PG-AUTH-003-308"
+        "TC-PG-AUTH-003-308",
+        "TC-PG-AUTH-003-105"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
@@ -1913,6 +1918,7 @@
         "apps/web/src/presentation/copy/ja.ts",
         "apps/web/src/features/auth/auth-return.ts",
         "apps/web/src/features/auth/google-sign-in.tsx",
+        "apps/web/src/features/auth/magic-link-form.tsx",
         "apps/web/src/features/auth/use-external-return.ts"
       ],
       "test_case_ids": [
@@ -1930,7 +1936,9 @@
         "TC-PG-AUTH-003-213",
         "TC-PG-AUTH-003-308",
         "TC-PG-AUTH-003-310",
-        "TC-PG-AUTH-003-313"
+        "TC-PG-AUTH-003-313",
+        "TC-PG-AUTH-003-105",
+        "TC-PG-AUTH-003-309"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
@@ -1967,6 +1975,7 @@
         "apps/web/src/presentation/copy/ja.ts",
         "apps/web/src/features/auth/auth-return.ts",
         "apps/web/src/features/auth/google-sign-in.tsx",
+        "apps/web/src/features/auth/magic-link-form.tsx",
         "apps/web/src/features/auth/use-external-return.ts"
       ],
       "test_case_ids": [
@@ -1998,7 +2007,9 @@
         "TC-PG-AUTH-003-213",
         "TC-PG-AUTH-003-308",
         "TC-PG-AUTH-003-310",
-        "TC-PG-AUTH-003-313"
+        "TC-PG-AUTH-003-313",
+        "TC-PG-AUTH-003-105",
+        "TC-PG-AUTH-003-309"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
@@ -2050,7 +2061,11 @@
         "TC-PG-AUTH-003-102",
         "TC-PG-AUTH-003-403",
         "TC-PG-AUTH-003-306",
-        "TC-PG-AUTH-001-305"
+        "TC-PG-AUTH-001-305",
+        "TC-PG-AUTH-003-105",
+        "TC-PG-AUTH-003-309",
+        "TC-SEC-AUTH-018-702",
+        "TC-PG-AUTH-003-310"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
@@ -2105,7 +2120,9 @@
         "TC-STACK-008-306",
         "TC-PG-AUTH-003-202",
         "TC-PG-AUTH-003-512",
-        "TC-SEC-AUTH-018-702"
+        "TC-SEC-AUTH-018-702",
+        "TC-PG-AUTH-003-105",
+        "TC-PG-AUTH-003-309"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
@@ -2603,6 +2620,7 @@
         "apps/web/src/features/auth/login-page.tsx",
         "apps/web/src/features/auth/register-page.tsx",
         "apps/web/src/features/auth/google-sign-in.tsx",
+        "apps/web/src/features/auth/magic-link-form.tsx",
         "apps/web/src/features/auth/use-external-return.ts"
       ],
       "test_case_ids": [
@@ -2638,7 +2656,8 @@
         "TC-FR-CRT-012-020",
         "TC-PG-AUTH-003-308",
         "TC-PG-AUTH-003-310",
-        "TC-PG-AUTH-003-313"
+        "TC-PG-AUTH-003-313",
+        "TC-PG-AUTH-003-309"
       ],
       "notes": "Browser Cart isolation across authentication and protected boundaries; real CartStore unit faults and UI mock E2E only, not API/DB/provider coverage."
     },
@@ -2735,7 +2754,8 @@
         "apps/web/src/config/purchase-routes.ts",
         "apps/web/src/features/purchase/cart-purchase-flow.ts",
         "apps/web/src/features/auth/auth-return.ts",
-        "apps/web/src/mock/dev-ui/mock-google-screen.tsx"
+        "apps/web/src/mock/dev-ui/mock-google-screen.tsx",
+        "apps/web/src/mock/dev-ui/mock-magic-link-screen.tsx"
       ],
       "test_case_ids": [
         "TC-SEC-WEB-013-101",
@@ -2745,7 +2765,9 @@
         "TC-PG-AUTH-003-104",
         "TC-PG-AUTH-003-213",
         "TC-PG-AUTH-003-308",
-        "TC-PG-AUTH-003-310"
+        "TC-PG-AUTH-003-310",
+        "TC-PG-AUTH-003-105",
+        "TC-PG-AUTH-003-309"
       ],
       "notes": "implementation mapping only: S6 authentication (UI mock, not API/DB/provider coverage)"
     },
@@ -2899,9 +2921,12 @@
         "apps/web/src/presentation/copy/ja.ts",
         "apps/web/src/features/auth/auth-return.ts",
         "apps/web/src/features/auth/google-sign-in.tsx",
+        "apps/web/src/features/auth/magic-link-form.tsx",
         "apps/web/src/features/auth/use-external-return.ts",
         "apps/web/src/mock/dev-ui/mock-google-screen.tsx",
-        "apps/web/src/routes/dev/mock-google.tsx"
+        "apps/web/src/mock/dev-ui/mock-magic-link-screen.tsx",
+        "apps/web/src/routes/dev/mock-google.tsx",
+        "apps/web/src/routes/dev/mock-magic-link.tsx"
       ],
       "test_case_ids": [
         "TC-PG-AUTH-003-102",
@@ -2920,7 +2945,9 @@
         "TC-FR-CRT-012-017",
         "TC-FR-CRT-012-018",
         "TC-FR-CRT-012-019",
-        "TC-FR-CRT-012-020"
+        "TC-FR-CRT-012-020",
+        "TC-PG-AUTH-003-105",
+        "TC-PG-AUTH-003-309"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },

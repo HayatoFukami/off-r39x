@@ -272,7 +272,7 @@ test.describe("TC-PG-AUTH-001-305 Registration offers the same method selection,
   }) => {
     await openRegister(page, "?continue=cart");
     const url = page.url();
-    // The specified order (SPEC-050 15.0): Email+Password, Google, Email OTP (and Magic Link last once it exists).
+    // The specified order (SPEC-050 15.0): Email+Password, Google, Email OTP, Magic Link - exactly these four.
     await expectMethodRadios(methodGroup(page, method().legendRegister));
     for (const label of [
       copy.auth.field.email.label,

@@ -17,6 +17,8 @@ import {
   linkIn,
   loginWith,
   MARKER_PROTECTED_TEXT,
+  magicRadio,
+  magicSendButton,
   mainOf,
   methodGroup,
   methodRadio,
@@ -364,7 +366,7 @@ test.describe("TC-PG-AUTH-003-305 Login offers a method selection that starts on
     await openLogin(page, "?continue=cart");
     const group = methodGroup(page, method().legendLogin);
     await expect(group).toBeVisible();
-    // The specified order (SPEC-050 15.0): Email+Password, Google, Email OTP (and Magic Link last once it exists).
+    // The specified order (SPEC-050 15.0): Email+Password, Google, Email OTP, Magic Link - exactly these four.
     await expectMethodRadios(group);
     // The existing Email+Password form: same labels, same submit, no OTP control.
     await expect(field(page, copy.auth.field.email.label)).toBeVisible();
@@ -414,13 +416,21 @@ test.describe("TC-PG-AUTH-003-305 Login offers a method selection that starts on
   }) => {
     await openLogin(page);
     await methodRadio(page, method().password).focus();
-    // Email+Password, Google, Email OTP: the arrow keys walk the specified order.
+    // Email+Password, Google, Email OTP, Magic Link: the arrow keys walk the specified order (B5 C3: four methods).
     await page.keyboard.press("ArrowDown");
     await expect(googleRadio(page)).toBeChecked();
     await expect(googleStartButton(page, "login")).toBeVisible();
     await page.keyboard.press("ArrowDown");
     await expect(methodRadio(page, method().emailOtp)).toBeChecked();
     await expect(otpButton(page, otp().send)).toBeVisible();
+    await page.keyboard.press("ArrowDown");
+    await expect(magicRadio(page)).toBeChecked();
+    await expect(magicSendButton(page)).toBeVisible();
+    await expect(otpButton(page, otp().send)).toHaveCount(0);
+    await page.keyboard.press("ArrowUp");
+    await expect(methodRadio(page, method().emailOtp)).toBeChecked();
+    await expect(otpButton(page, otp().send)).toBeVisible();
+    await expect(magicSendButton(page)).toHaveCount(0);
     await page.keyboard.press("ArrowUp");
     await expect(googleRadio(page)).toBeChecked();
     await page.keyboard.press("ArrowUp");

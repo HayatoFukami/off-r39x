@@ -372,6 +372,14 @@ export const copy = {
     allowNew: "新しいアカウント（google.new@example.com）として許可",
     cancel: "キャンセル",
   },
+  mockMagicLink: {
+    pageTitle: "ログインリンク（モック）",
+    heading: "ログインリンクの代替モック。実際のメールは送信されません",
+    note: "ここで開くリンクは実際のメールのリンクではありません。選んだ結果に従って、元の画面へ戻ります",
+    emailLabel: "リンクを開く利用者のメールアドレス",
+    openValid: "有効なリンクとして開く",
+    openExpired: "期限切れのリンクとして開く",
+  },
   quantity: {
     label: "数量",
     invalid: "数量は1以上の整数で入力してください",
@@ -510,6 +518,7 @@ export const copy = {
       password: "メールアドレスとパスワード",
       emailOtp: "メールで届く確認コード",
       google: "Google",
+      magicLink: "メールで届くログインリンク",
     },
     google: {
       startLogin: "Googleでログイン",
@@ -519,6 +528,16 @@ export const copy = {
       unavailable: "Googleでの認証を開始できません。時間をおいて、もう一度お試しください",
       signedIn:
         "ログイン中は Google でのログインを使えません。別のアカウントで利用するには、ログアウトしてください",
+    },
+    magicLink: {
+      send: "ログインリンクを送る",
+      resend: "ログインリンクを再送する",
+      sent: "ログインリンクを送信しました。メールに記載されたリンクを開いてください。リンクの有効期限は5分です",
+      failed:
+        "ログインリンクでの認証は完了しませんでした。リンクが無効か、期限が切れた可能性があります。ログインリンクを再送するか、別の方法を選んでください",
+      unavailable: "ログインリンクを送信できません。時間をおいて、もう一度お試しください",
+      signedIn:
+        "ログイン中はログインリンクを使えません。別のアカウントで利用するには、ログアウトしてください",
     },
     otp: {
       send: "確認コードを送る",

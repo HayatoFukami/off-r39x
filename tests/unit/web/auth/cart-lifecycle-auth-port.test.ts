@@ -29,8 +29,9 @@ function rawAuth(overrides: Partial<AuthPort> = {}): AuthPort {
     requestEmailOtp: vi.fn(async () => ({ kind: "sent" }) as const),
     signInWithEmailOtp: vi.fn(async () => ({ kind: "signed_in", emailVerified: true }) as const),
     startGoogleSignIn: vi.fn(async () => ({ kind: "redirect", url: "/dev/mock-google" }) as const),
+    requestMagicLink: vi.fn(async () => ({ kind: "sent" }) as const),
     ...overrides,
-  };
+  } as AuthPort;
 }
 
 function lifecycle(overrides: Partial<Lifecycle> = {}): Lifecycle {
@@ -597,6 +598,266 @@ describe("TC-FR-CRT-012-017 startGoogleSignIn is an authentication transition of
     const port = createCartLifecycleAuthPort(noLock.raw, noLock.lifecycle, unavailableCoordinator);
     await expect(port.startGoogleSignIn(start)).resolves.toEqual({ kind: "cart_blocked" });
     expect(noLock.raw.startGoogleSignIn).not.toHaveBeenCalled();
+    expect(noLock.data.get(CART_LIFECYCLE_STORAGE_KEY)).toBe(metadata("guest"));
+  });
+});
+
+// ---- B5 C3: requestMagicLink is the second external-completion start (FR-CRT-012 external-completion rule steps 1-4, 7) ------
+// The start is the same lifecycle transition as Google's (beginExternalAuthentication); only the raw call differs. The
+// address is passed to the raw port and never to the lifecycle metadata (the record holds no Account information).
+
+describe("TC-FR-CRT-012-019 requestMagicLink is an authentication transition of an external-completion method: only a Guest sends it, the Cart is cleaned and the pending record written before the request, nothing is left behind, and the address never reaches the record (FR-CRT-012 external completion rule steps 1-4, 7, Q-1)", () => {
+  const SENT = { kind: "sent" } as const;
+  const send = {
+    email: "magic.sentinel@example.com",
+    successPath: "/account/login?returned=magic-link",
+    failurePath: "/account/login?notice=link-failed",
+  };
+  const PENDING = { version: 1, provenance: "guest", external: "pending" };
+  type Setup = ReturnType<typeof setupCartLifecycle>;
+
+  class TestLockManager {
+    private held = false;
+
+    async request<T>(
+      name: string,
+      options: { mode: "exclusive"; ifAvailable?: boolean },
+      callback: (lock: { name: string } | null) => T | Promise<T>,
+    ): Promise<T> {
+      if (this.held) {
+        if (options.ifAvailable) return callback(null);
+        throw new Error("test lock request would wait");
+      }
+      this.held = true;
+      try {
+        return await callback({ name });
+      } finally {
+        this.held = false;
+      }
+    }
+  }
+
+  const link = (s: Setup) => s.port;
+  const rawLink = (s: Setup) => s.raw;
+  const rawCalls = (s: Setup) => rawLink(s).requestMagicLink as unknown as ReturnType<typeof vi.fn>;
+  const storedMetadata = (s: Setup): unknown => {
+    const raw = s.data.get(CART_LIFECYCLE_STORAGE_KEY);
+    return raw === undefined ? undefined : JSON.parse(raw);
+  };
+  const asSession = (emailVerified: boolean) =>
+    vi.fn(
+      async () =>
+        ({
+          kind: "ok",
+          session: { kind: "authenticated", email: "demo@example.com", emailVerified },
+        }) as const,
+    );
+
+  it("step 3: the Guest Cart is kept and the pending record exists before the request is made; the raw result is returned unchanged and nothing is left in flight", async () => {
+    const s = setupCartLifecycle(metadata("guest"));
+    const seen: { metadata: unknown; cart: string | undefined }[] = [];
+    rawLink(s).requestMagicLink = vi.fn(async () => {
+      seen.push({ metadata: storedMetadata(s), cart: s.data.get(CART_STORAGE_KEY) });
+      return SENT;
+    });
+    await expect(link(s).requestMagicLink(send)).resolves.toEqual(SENT);
+    expect(rawCalls(s)).toHaveBeenCalledTimes(1);
+    expect(rawCalls(s)).toHaveBeenCalledWith(send);
+    expect(seen).toEqual([{ metadata: PENDING, cart: CART }]);
+    expect(storedMetadata(s)).toEqual(PENDING);
+    expect(s.lifecycle.getSnapshot()).toEqual({ kind: "ready" });
+    // step 4: no transition and no Lock remain; the next authentication starts at once.
+    const lock = await s.coordinator.acquire(false);
+    expect(lock.kind).toBe("acquired");
+    if (lock.kind === "acquired") lock.release();
+    await expect(
+      s.port.signIn({ email: "new@example.com", password: "test-only" }),
+    ).resolves.toMatchObject({ kind: "signed_in" });
+  });
+
+  it("the record holds only the version, the provenance and the pending state: the address, the paths and the raw result are in no storage entry", async () => {
+    const s = setupCartLifecycle(metadata("guest"));
+    await link(s).requestMagicLink(send);
+    const everything = JSON.stringify([...s.data.entries()]);
+    expect(everything).not.toContain(send.email);
+    expect(everything).not.toContain("magic-link");
+    expect(everything).not.toContain("link-failed");
+    expect(Object.keys(storedMetadata(s) as object).sort()).toEqual(
+      ["external", "provenance", "version"].sort(),
+    );
+  });
+
+  it.each([null, metadata("authenticated"), "invalid"])(
+    "step 2: a Cart of unknown or authenticated provenance (%s) is already cleared when the request is made",
+    async (marker) => {
+      const s = setupCartLifecycle(marker);
+      const seen: { metadata: unknown; cart: string | undefined }[] = [];
+      rawLink(s).requestMagicLink = vi.fn(async () => {
+        seen.push({ metadata: storedMetadata(s), cart: s.data.get(CART_STORAGE_KEY) });
+        return SENT;
+      });
+      await link(s).requestMagicLink(send);
+      expect(seen).toEqual([{ metadata: PENDING, cart: undefined }]);
+      expect(s.data.has(CART_STORAGE_KEY)).toBe(false);
+    },
+  );
+
+  it("step 3 and 7: a request that is unavailable or throws leaves the pending record, and the Cart cleared at the start is not restored", async () => {
+    const unavailable = setupCartLifecycle(null);
+    rawLink(unavailable).requestMagicLink = vi.fn(async () => ({ kind: "unavailable" }) as const);
+    await expect(link(unavailable).requestMagicLink(send)).resolves.toEqual({
+      kind: "unavailable",
+    });
+    expect(storedMetadata(unavailable)).toEqual(PENDING);
+    expect(unavailable.data.has(CART_STORAGE_KEY)).toBe(false);
+    expect(unavailable.lifecycle.getSnapshot()).toEqual({ kind: "ready" });
+
+    const thrown = setupCartLifecycle(metadata("authenticated"));
+    rawLink(thrown).requestMagicLink = vi.fn(async () => {
+      throw new Error("test-only provider failure");
+    });
+    await expect(link(thrown).requestMagicLink(send)).rejects.toThrow("test-only provider failure");
+    expect(storedMetadata(thrown)).toEqual(PENDING);
+    expect(thrown.data.has(CART_STORAGE_KEY)).toBe(false);
+    expect(thrown.lifecycle.getSnapshot()).toEqual({ kind: "ready" });
+    const lock = await thrown.coordinator.acquire(false);
+    expect(lock.kind).toBe("acquired");
+    if (lock.kind === "acquired") lock.release();
+  });
+
+  it("step 3: a send while a record exists replaces it with a pending record, a re-send included", async () => {
+    const superseded = setupCartLifecycle(
+      JSON.stringify({ version: 1, provenance: "guest", external: "superseded" }),
+    );
+    await link(superseded).requestMagicLink(send);
+    expect(storedMetadata(superseded)).toEqual(PENDING);
+    expect(superseded.data.get(CART_STORAGE_KEY)).toBe(CART);
+
+    const resend = setupCartLifecycle(metadata("guest"));
+    await link(resend).requestMagicLink(send);
+    await link(resend).requestMagicLink({ ...send, email: "other.sentinel@example.com" });
+    expect(rawCalls(resend)).toHaveBeenCalledTimes(2);
+    expect(storedMetadata(resend)).toEqual(PENDING);
+    expect(resend.data.get(CART_STORAGE_KEY)).toBe(CART);
+  });
+
+  it("step 3: a Cart that cannot be cleared stops the send: cart_blocked, no record, the raw request is not made", async () => {
+    const s = setupCartLifecycle(metadata("authenticated"));
+    s.faults.clear = true;
+    await expect(link(s).requestMagicLink(send)).resolves.toEqual({ kind: "cart_blocked" });
+    expect(rawCalls(s)).not.toHaveBeenCalled();
+    expect(s.data.get(CART_STORAGE_KEY)).toBe(CART);
+    expect(s.data.get(CART_LIFECYCLE_STORAGE_KEY)).toBe(metadata("authenticated"));
+  });
+
+  it.each([
+    ["verified", true],
+    ["unverified", false],
+  ] as const)(
+    "step 1: an authenticated Session (%s) is already_signed_in: no request, no clear, no record",
+    async (_name, verified) => {
+      const s = setupCartLifecycle(metadata("authenticated"));
+      s.raw.getSession = asSession(verified);
+      const before = new Map(s.data);
+      await expect(link(s).requestMagicLink(send)).resolves.toEqual({ kind: "already_signed_in" });
+      expect(rawCalls(s)).not.toHaveBeenCalled();
+      expect(new Map(s.data)).toEqual(before);
+      expect(s.lifecycle.getSnapshot()).toEqual({ kind: "ready" });
+    },
+  );
+
+  it("step 1: a Session that cannot be confirmed is unavailable: no request, nothing written (a Guest is not assumed)", async () => {
+    const s = setupCartLifecycle(metadata("authenticated"));
+    s.raw.getSession = vi.fn(async () => ({ kind: "unavailable" }) as const);
+    const before = new Map(s.data);
+    await expect(link(s).requestMagicLink(send)).resolves.toEqual({ kind: "unavailable" });
+    expect(rawCalls(s)).not.toHaveBeenCalled();
+    expect(new Map(s.data)).toEqual(before);
+  });
+
+  it("is cart_busy while another transition is active (lifecycle, another Tab's Web Lock, this port's own sign-in), without a request or a write", async () => {
+    const lifecycleBusy = setupCartLifecycle(metadata("guest"));
+    const started = lifecycleBusy.lifecycle.beginTransition();
+    expect(started).toMatchObject({ kind: "ready" });
+    const before = new Map(lifecycleBusy.data);
+    await expect(link(lifecycleBusy).requestMagicLink(send)).resolves.toEqual({
+      kind: "cart_busy",
+    });
+    expect(rawCalls(lifecycleBusy)).not.toHaveBeenCalled();
+    expect(new Map(lifecycleBusy.data)).toEqual(before);
+    if (started.kind === "ready") lifecycleBusy.lifecycle.abortTransition(started.provenance);
+
+    const locks = new TestLockManager();
+    const otherTab = createWebCartTransitionCoordinator(locks);
+    const lease = await otherTab.acquire();
+    expect(lease.kind).toBe("acquired");
+    if (lease.kind !== "acquired") return;
+    const locked = setupCartLifecycle(metadata("guest"), createWebCartTransitionCoordinator(locks));
+    await expect(link(locked).requestMagicLink(send)).resolves.toEqual({ kind: "cart_busy" });
+    expect(rawCalls(locked)).not.toHaveBeenCalled();
+    expect(locked.data.get(CART_LIFECYCLE_STORAGE_KEY)).toBe(metadata("guest"));
+    lease.release();
+
+    const own = setupCartLifecycle(metadata("guest"));
+    let finish: () => void = () => undefined;
+    own.raw.signIn = vi.fn(
+      () =>
+        new Promise<{ kind: "credential_failure" }>((resolve) => {
+          finish = () => resolve({ kind: "credential_failure" });
+        }),
+    );
+    const inFlight = own.port.signIn({ email: "new@example.com", password: "test-only" });
+    await vi.waitFor(() => expect(own.raw.signIn).toHaveBeenCalledTimes(1));
+    const settled = vi.fn();
+    const attempt = link(own)
+      .requestMagicLink(send)
+      .then((result) => {
+        settled();
+        return result;
+      });
+    try {
+      await vi.waitFor(() => expect(settled).toHaveBeenCalled(), { timeout: 500 });
+    } finally {
+      finish();
+    }
+    await expect(attempt).resolves.toEqual({ kind: "cart_busy" });
+    await expect(inFlight).resolves.toEqual({ kind: "credential_failure" });
+    expect(rawCalls(own)).not.toHaveBeenCalled();
+  });
+
+  it("is cart_blocked (Q-1) when the Cart key cannot be read, the lifecycle is stopped, a transition record is abandoned or the lock cannot be taken: no request, nothing written", async () => {
+    for (const arrange of [
+      (s: Setup) => {
+        s.faults.cartRead = true;
+      },
+      (s: Setup) => s.lifecycle.block(),
+    ]) {
+      const s = setupCartLifecycle(metadata("guest"));
+      arrange(s);
+      const before = new Map(s.data);
+      await expect(link(s).requestMagicLink(send)).resolves.toEqual({ kind: "cart_blocked" });
+      expect(rawCalls(s)).not.toHaveBeenCalled();
+      expect(new Map(s.data)).toEqual(before);
+      expect(s.lifecycle.getSnapshot()).toEqual({ kind: "blocked" });
+    }
+    const abandoned = setupCartLifecycle(
+      JSON.stringify({ version: 1, provenance: "guest", transitioning: true }),
+    );
+    await expect(link(abandoned).requestMagicLink(send)).resolves.toEqual({
+      kind: "cart_blocked",
+    });
+    expect(rawCalls(abandoned)).not.toHaveBeenCalled();
+
+    const noLock = setupCartLifecycle(metadata("guest"));
+    const unavailableCoordinator: CartTransitionCoordinator = {
+      crossTab: false,
+      acquire: async () => ({ kind: "unavailable" }),
+      isHeld: async () => false,
+      subscribe: () => () => undefined,
+    };
+    const port = createCartLifecycleAuthPort(noLock.raw, noLock.lifecycle, unavailableCoordinator);
+    await expect(port.requestMagicLink(send)).resolves.toEqual({ kind: "cart_blocked" });
+    expect(rawCalls(noLock)).not.toHaveBeenCalled();
     expect(noLock.data.get(CART_LIFECYCLE_STORAGE_KEY)).toBe(metadata("guest"));
   });
 });

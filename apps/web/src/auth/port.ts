@@ -82,4 +82,23 @@ export interface AuthPort {
     | { kind: "cart_busy" }
     | { kind: "cart_blocked" }
   >;
+  /**
+   * Sends a login link to the email. A Neon Auth transport (SPEC-110 section 23.1): it has no business
+   * Operation ID. `sent` never reveals whether the email is registered (SEC-API-027). The link is opened
+   * outside the page (in the mail, in another Tab or on another device), so the outcome of the sign-in
+   * is not this promise's result: the screen shown by opening the link decides it. `successPath` and
+   * `failurePath` are same origin relative paths of PG-AUTH-003 / PG-AUTH-001 only (AR-CONT-001,
+   * SEC-WEB-013); they carry no value.
+   */
+  requestMagicLink(i: {
+    email: string;
+    successPath: string;
+    failurePath: string;
+  }): Promise<
+    | { kind: "sent" }
+    | { kind: "unavailable" }
+    | { kind: "already_signed_in" }
+    | { kind: "cart_busy" }
+    | { kind: "cart_blocked" }
+  >;
 }

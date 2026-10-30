@@ -249,18 +249,16 @@ export async function setAuthScenario(page: Page, auth: Record<string, string>):
 // ---- B5 C2: Google (tests/contracts/s6-auth.md sections 5B, 6.1C, 6.2B, 7, 10A; s2-mock-backend.md section 14.2) -------
 
 /**
- * The method radios in the specified order (SPEC-050 15.0): Email+Password, Google, Email OTP, Magic Link.
- * Magic Link arrives with C3: when `copy.auth.method.magicLink` exists it must be the last radio. Email+Password is
- * the default and the only checked radio.
+ * The method radios in the specified order (SPEC-050 15.0): Email+Password, Google, Email OTP, Magic Link - exactly
+ * these four. Email+Password is the default and the only checked radio.
  */
 export async function expectMethodRadios(group: Locator): Promise<void> {
   const labels: string[] = [
     copy.auth.method.password,
     copy.auth.method.google,
     copy.auth.method.emailOtp,
+    copy.auth.method.magicLink,
   ];
-  const magicLink = (copy.auth.method as Record<string, string | undefined>).magicLink;
-  if (magicLink !== undefined) labels.push(magicLink);
   const radios = group.getByRole("radio");
   await expect(radios).toHaveCount(labels.length);
   for (const [index, label] of labels.entries()) {
@@ -391,4 +389,75 @@ export function cartEntriesWithExternal(
 /** A stored session for the given user (verified by default). */
 export function sessionEntry(email: string, emailVerified = true): Record<string, string> {
   return { [KEYS.session]: sessionJson({ kind: "authenticated", email, emailVerified }) };
+}
+
+// ---- B5 C3: Magic Link (tests/contracts/s6-auth.md sections 5B, 6.1D, 6.2C, 6.10, 7, 10A; s2-mock-backend.md section 14.3) --
+
+export const magicRadio = (page: Page): Locator => methodRadio(page, copy.auth.method.magicLink);
+/** The send button of the Magic Link method: "ログインリンクを送る" before a send, "ログインリンクを再送する" after one. */
+export const magicSendButton = (page: Page): Locator =>
+  mainOf(page).getByRole("button", { name: copy.auth.magicLink.send, exact: true });
+export const magicResendButton = (page: Page): Locator =>
+  mainOf(page).getByRole("button", { name: copy.auth.magicLink.resend, exact: true });
+/** The stand-in's address field and its two actions (the stand-in is the developer's replacement for the mailbox). */
+export const standInEmailField = (page: Page): Locator =>
+  mainOf(page).getByLabel(copy.mockMagicLink.emailLabel, { exact: true });
+export const standInLinkButton = (page: Page, which: "openValid" | "openExpired"): Locator =>
+  mainOf(page).getByRole("button", { name: copy.mockMagicLink[which], exact: true });
+
+/** The paths of the contract (s6-auth.md section 5B) written out literally, like the Google ones. */
+export const magicReturnPath = (name: AuthPageName, continueValue: string | null = null): string =>
+  `/account/${name}${accountQuery(continueValue, "returned=magic-link")}`;
+export const magicFailurePath = (name: AuthPageName, continueValue: string | null = null): string =>
+  `/account/${name}${accountQuery(continueValue, "notice=link-failed")}`;
+
+export const MOCK_MAGIC_LINK_PATH = "/dev/mock-magic-link";
+
+/** The stand-in screen's URL (s2-mock-backend.md section 14.3): both paths are percent-encoded query values. */
+export function mockMagicLinkUrl(
+  name: AuthPageName,
+  continueValue: string | null = null,
+  override: { success?: string; failure?: string } = {},
+): string {
+  const success = override.success ?? magicReturnPath(name, continueValue);
+  const failure = override.failure ?? magicFailurePath(name, continueValue);
+  return `${MOCK_MAGIC_LINK_PATH}?success=${encodeURIComponent(success)}&failure=${encodeURIComponent(failure)}`;
+}
+
+/** Opens the stand-in directly (a full page load: the developer opening the link) and waits for its heading. */
+export async function openMockMagicLink(
+  page: Page,
+  name: AuthPageName,
+  continueValue: string | null = null,
+  override: { success?: string; failure?: string } = {},
+): Promise<void> {
+  await gotoHydrated(page, mockMagicLinkUrl(name, continueValue, override));
+  await expect(heading1(page)).toHaveText(copy.mockMagicLink.heading);
+}
+
+/**
+ * On the open Login / Registration page: chooses Magic Link, types the address and presses the send button, then
+ * waits for the sent status. Nothing navigates.
+ */
+export async function sendMagicLink(page: Page, email: string): Promise<void> {
+  await chooseMethod(page, copy.auth.method.magicLink);
+  await field(page, copy.auth.field.email.label).fill(email);
+  await magicSendButton(page).click();
+  await expect(statusesIn(page)).toHaveText(copy.auth.magicLink.sent);
+}
+
+/**
+ * Opens the link the way the developer does (the stand-in), as the owner of `email`: a full page load of the stand-in,
+ * the address typed into its field, then "有効なリンクとして開く". Returns once the full-page hand-off to the return path
+ * has started; the caller waits for the destination.
+ */
+export async function openValidLink(
+  page: Page,
+  name: AuthPageName,
+  email: string,
+  continueValue: string | null = null,
+): Promise<void> {
+  await openMockMagicLink(page, name, continueValue);
+  await standInEmailField(page).fill(email);
+  await standInLinkButton(page, "openValid").click();
 }

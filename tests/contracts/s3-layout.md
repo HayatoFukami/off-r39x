@@ -45,7 +45,7 @@
 | `apps/web/src/main.tsx` | entry | §13（`createRoot` + `RouterProvider`。mock を import しない） |
 | `apps/web/src/config/build-env.ts` | config | §13（`import.meta.env` を読む唯一の場所） |
 | `apps/web/src/routing/{link.tsx,navigation.ts}` | adapter | §13（`Link`、`usePathname`、`useRouter`、`useSearchParams`） |
-| `apps/web/src/routes/route-table.tsx` | route 表 | §13（32 path + `*`。B5 C2 で `/dev/mock-google` を足した） |
+| `apps/web/src/routes/route-table.tsx` | route 表 | §13（33 path + `*`。B5 C2 で `/dev/mock-google`、B5 C3 で `/dev/mock-magic-link` を足した） |
 | `apps/web/src/routes/document-title.ts` | title | §4.1（`formatDocumentTitle`） |
 | `apps/web/src/routes/root-layout.tsx` | route | §3 |
 | `apps/web/src/styles/globals.css` | token | §9 |
@@ -55,6 +55,7 @@
 | `apps/web/src/routes/dev/scenarios.tsx` | route | §8 |
 | `apps/web/src/routes/dev/error-probe.tsx` | route（dev 専用・テスト支援） | §6.3 |
 | `apps/web/src/routes/dev/mock-google.tsx` | route（dev 専用。B5 C2） | `s6-auth.md` §6.9（`/dev/mock-google`。Google の代わりの画面。`/dev/mock-checkout` と同じ位置づけ） |
+| `apps/web/src/routes/dev/mock-magic-link.tsx` | route（dev 専用。B5 C3） | `s6-auth.md` §6.10（`/dev/mock-magic-link`。Magic Link の受信箱の代わりの画面。`/dev/mock-google` と同じ位置づけ） |
 | `apps/web/src/mock/dev-ui/scenario-panel.tsx` | client | `ScenarioPanel` |
 | `apps/web/src/mock/dev-ui/mock-mode-badge.tsx` | server / client | `MockModeBadge` |
 | `apps/web/public/mock/sponsors/{alpha,bravo,charlie}.svg` | asset | §7.4 |
@@ -511,10 +512,10 @@ CSS・source のどこにも外部 origin（`http://`、`https://`、`//host`）
 ### 13.1 route 表（`src/routes/route-table.tsx`。TC-STACK-008-002）
 
 - React Router の data router（`createBrowserRouter` + `RouterProvider`、`src/main.tsx` が `createRoot` で描画）。`export const routes: RouteObject[]`。
-- 全 page の `path` は絶対 path の literal（32 個、動的 segment は `:announcementRef`・`:date`・`:slotRef`・`:goodsRef`・`:orderRef`・`:ticketRef`・`:reservationRef`・`:goodsItemRef`）+ `"*"`。layout は pathless route。
-- 構造: `RootLayout`（`errorElement: <RootError/>`）> pathless（`errorElement: <RouteError/>`）> { 公開 10 + account 5、`SelfLayout`（`AuthGate` + `Outlet`）> { `/purchase/orders/:orderRef`、`MypageLayout`（`MypageNav` + `Outlet`）> { Mypage 12 } }、`DevLayout` > { `/dev/scenarios`、`/dev/mock-checkout/:orderRef`、`/dev/error-probe`、`/dev/mock-google` }、`*` → `NotFoundView` }。
+- 全 page の `path` は絶対 path の literal（33 個、動的 segment は `:announcementRef`・`:date`・`:slotRef`・`:goodsRef`・`:orderRef`・`:ticketRef`・`:reservationRef`・`:goodsItemRef`）+ `"*"`。layout は pathless route。
+- 構造: `RootLayout`（`errorElement: <RootError/>`）> pathless（`errorElement: <RouteError/>`）> { 公開 10 + account 5、`SelfLayout`（`AuthGate` + `Outlet`）> { `/purchase/orders/:orderRef`、`MypageLayout`（`MypageNav` + `Outlet`）> { Mypage 12 } }、`DevLayout` > { `/dev/scenarios`、`/dev/mock-checkout/:orderRef`、`/dev/error-probe`、`/dev/mock-google`、`/dev/mock-magic-link` }、`*` → `NotFoundView` }。
 - 動的 route は `useParams()` の値を現行と同じ parse 関数で検査する。不正な値: 公開系（announcement / karaoke day / slot / goods / dev mock-checkout）は `NotFoundView`、Mypage・purchase は `AccessDeniedView`（同じ props）。正常な値は feature container に `key={生の param}` を付けて描画する（param が変わったら再マウント。TC-STACK-008-307）。
-- 照合は大文字小文字を区別する。`"*"` 以外の path を持つ全 route（32 個）は `caseSensitive: true`（移行前の Next と同じ。`dist/_headers` の照合とも一致する）。pathless の layout と `"*"` には付けない。大文字小文字だけが異なる URL（`/MYPAGE`、`/GOODS` など）は `"*"` の Not Found（AuthGate の外。ゲストでも login へ redirect しない）になる。動的 param の値の大文字小文字は、従来どおり各 parse 関数が判定する（`/goods/<大文字の UUID>` は `/goods/:goodsRef` に一致し、`parseGoodsRef` が拒否して Not Found になる）。検査: TC-STACK-008-002（静的）、TC-STACK-008-302（E2E）。
+- 照合は大文字小文字を区別する。`"*"` 以外の path を持つ全 route（33 個）は `caseSensitive: true`（移行前の Next と同じ。`dist/_headers` の照合とも一致する）。pathless の layout と `"*"` には付けない。大文字小文字だけが異なる URL（`/MYPAGE`、`/GOODS` など）は `"*"` の Not Found（AuthGate の外。ゲストでも login へ redirect しない）になる。動的 param の値の大文字小文字は、従来どおり各 parse 関数が判定する（`/goods/<大文字の UUID>` は `/goods/:goodsRef` に一致し、`parseGoodsRef` が拒否して Not Found になる）。検査: TC-STACK-008-002（静的）、TC-STACK-008-302（E2E）。
 - `react-router` を import してよいのは `src/routing/**`・`src/routes/**`・`src/main.tsx` だけ。`next` の import・依存・`next.config.*`・`app/` は無い（TC-STACK-008-001）。`import.meta.env` を読むのは `src/config/build-env.ts` だけ（TC-STACK-008-003）。
 - CSP（SEC-WEB-003）に `unsafe-eval` が無いため、Zod は `src/config/zod-jitless.ts` の `z.config({ jitless: true })` で eval を試さない。`src/main.tsx` はこれを最初の JS import（`globals.css` を除く）にし、Zod の schema を定義するモジュール（`src/features/**`・`src/mock/**`）より前に評価させる（TC-STACK-008-005。実ブラウザでの違反なしは TC-STACK-008-306）。
 

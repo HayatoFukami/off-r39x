@@ -1502,7 +1502,8 @@
         "TST-UNT-004",
         "API-PUR-CART-001",
         "API-PUR-ELG-001",
-        "PG-KRK-003"
+        "PG-KRK-003",
+        "SEC-API-027"
       ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
@@ -1521,7 +1522,9 @@
         "B5 C1: AuthPort also exposes exactly requestEmailOtp and signInWithEmailOtp; both return promises; the result kinds are sent | unavailable | cart_busy | cart_blocked and signed_in { emailVerified } | code_invalid | code_expired | unavailable | cart_busy | cart_blocked (expectTypeOf)",
         "B5 C2: AuthPort also exposes startGoogleSignIn (11 methods); it returns a promise whose result kinds are redirect { url } | unavailable | already_signed_in | cart_busy | cart_blocked (expectTypeOf)",
         "B5 C2: auth/port.ts annotates startGoogleSignIn as a Neon Auth transport with no business Operation ID and no API ID, whose outcome is decided by the screen shown by the return, with a same-origin redirect URL (AR-CONT-001, SEC-WEB-013)",
-        "B5 C1: auth/port.ts annotates both methods as a Neon Auth transport (SPEC-110 23.1) with no business Operation ID, the request as never disclosing the account (SEC-API-027) and the sign-in as never keeping the code (SEC-AUTH-018) with code_expired covering an expired or exhausted code"
+        "B5 C1: auth/port.ts annotates both methods as a Neon Auth transport (SPEC-110 23.1) with no business Operation ID, the request as never disclosing the account (SEC-API-027) and the sign-in as never keeping the code (SEC-AUTH-018) with code_expired covering an expired or exhausted code",
+        "B5 C3: AuthPort also exposes requestMagicLink (12 methods); it returns a promise whose result kinds are sent | unavailable | already_signed_in | cart_busy | cart_blocked and whose input is the address and both return paths (expectTypeOf)",
+        "B5 C3: auth/port.ts annotates requestMagicLink as a Neon Auth transport with no business Operation ID and no API ID, whose answer never discloses the account, whose link is opened outside the page and whose outcome is decided by the screen shown by that opening (AR-CONT-001, SEC-WEB-013, SEC-API-027)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -8354,7 +8357,8 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "forms are noValidate with error summary, aria-busy; validators used",
-        "B5 C1: the Email OTP steps are forms too: noValidate, error summary, aria-busy; the OTP forms validate through validateResetRequestForm (email) and validateOtpCodeForm (code)"
+        "B5 C1: the Email OTP steps are forms too: noValidate, error summary, aria-busy; the OTP forms validate through validateResetRequestForm (email) and validateOtpCodeForm (code)",
+        "B5 C3: the Magic Link form is a form too: noValidate, error summary, aria-busy; it validates the address through validateResetRequestForm before the port"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -8870,7 +8874,8 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "no horizontal overflow; register form controls inside the viewport",
-        "B5 C1: on Login and Registration at 390px the method group, the Email OTP email step and the code step (field, submit, resend, change email) stay inside the viewport with no horizontal scroll"
+        "B5 C1: on Login and Registration at 390px the method group, the Email OTP email step and the code step (field, submit, resend, change email) stay inside the viewport with no horizontal scroll",
+        "B5 C3: on Login and Registration at 390px the Magic Link address field, the send button, the sent status and the re-send button stay inside the viewport with no horizontal scroll"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -15512,9 +15517,9 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "route-table.tsx has the 32 absolute paths once each plus the catch-all, no other path literal, two errorElements (root and pathless)",
-        "purchase route is under SelfLayout, the 12 Mypage routes under MypageLayout, the 4 dev routes under DevLayout (scenarios, mock-checkout, error-probe, mock-google); the catch-all renders NotFoundView outside SelfLayout",
-        "every route with a path except the catch-all has caseSensitive: true (32 occurrences, none false, none on the catch-all or the pathless layouts), so URLs differing only in letter case fall to the catch-all"
+        "route-table.tsx has the 33 absolute paths once each plus the catch-all, no other path literal, two errorElements (root and pathless)",
+        "purchase route is under SelfLayout, the 12 Mypage routes under MypageLayout, the 5 dev routes under DevLayout (scenarios, mock-checkout, error-probe, mock-google, mock-magic-link); the catch-all renders NotFoundView outside SelfLayout",
+        "every route with a path except the catch-all has caseSensitive: true (33 occurrences, none false, none on the catch-all or the pathless layouts), so URLs differing only in letter case fall to the catch-all"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -16531,18 +16536,24 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": false,
-      "preconditions": "Pure method list (tests/contracts/s6-auth.md section 5A); C2 adds Google and C3 adds Magic Link to the specified four-method order",
+      "preconditions": "Pure method list (tests/contracts/s6-auth.md section 5A); C2 added Google and C3 adds Magic Link: the list is exactly the specified four-method order",
       "clock_instant": null,
       "expected_domain_postconditions": [
-        "AUTH_METHODS follows the specified order password, google, email-otp (and magic-link last once it exists) with password as the default",
-        "authMethodLabel returns the method copy and the labels are distinct; no GitHub / Discord / LINE / Apple method exists"
+        "B5 C3: AUTH_METHODS is exactly password, google, email-otp, magic-link in that order with password as the default",
+        "authMethodLabel returns the method copy and the four labels are distinct (the Magic Link label is the contracted wording); no GitHub / Discord / LINE / Apple method exists"
       ]
     },
     {
       "test_case_id": "TC-PG-AUTH-003-403",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["SPEC-050-15.0", "SEC-API-027", "PG-AUTH-003", "TST-UNT-004"],
+      "upstream_rule_ids": [
+        "SPEC-050-15.0",
+        "SEC-API-027",
+        "PG-AUTH-003",
+        "TST-UNT-004",
+        "SEC-AUTH-018"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -16561,7 +16572,8 @@
         "the method legends and labels, the code field label and required message, and the OTP action and result wording are the contracted strings",
         "the sent wording never mentions registration or existence; no OTP wording contains an expiry time or an attempt count (those are provider values checked at the Production gate)",
         "B5 C2: the Google method label, the start actions (Googleでログイン / Googleで登録), the failure, outage and signed-in wording and the stand-in screen wording are pinned: they name no account existence and no number, the signed-in hint names Logout, and the stand-in says it is a stand-in",
-        "a wrong code and an expired or exhausted code are separate messages (the second asks for a resend); the new button names are distinct from each other and from the existing submit names"
+        "a wrong code and an expired or exhausted code are separate messages (the second asks for a resend); the new button names are distinct from each other and from the existing submit names",
+        "B5 C3: the Magic Link method label, the send and re-send actions, the sent wording (it states the 5 minute validity of the link, which is the Provider value the specification gives for the link, and never mentions registration or existence), the failure, outage and signed-in wording and the stand-in screen wording are pinned; the failure wording does not say whether the link was expired or used; the stand-in says it is a stand-in and sends no mail"
       ]
     },
     {
@@ -16620,7 +16632,8 @@
         "the method selector is a fieldset with a legend and labelled radio inputs, moves no focus and does not use the port",
         "Login and Register show the selector with their own legend and start on the default method; the Email OTP steps call both port methods, validate first and use the contracted wording",
         "B5 C2: the Google start is a client container that calls only startGoogleSignIn through useAuth(), builds both paths with auth-return, hands off with window.location.assign and shows the contracted wording; Login and Register read the return once and remove it with history.replaceState; only the auth screens receive the result through completeExternalAuthentication; the stand-in route and screen are dev-only and keep copy in ja.ts",
-        "the code field is autoComplete one-time-code, numeric and has no maxLength; the code never reaches a URL, a navigation target, a storage or the console; the steps follow the Cart stop rule"
+        "the code field is autoComplete one-time-code, numeric and has no maxLength; the code never reaches a URL, a navigation target, a storage or the console; the steps follow the Cart stop rule",
+        "B5 C3: the Magic Link form is a client container that calls only requestMagicLink through useAuth(), builds both paths with auth-return, validates and normalises the address first, never navigates by itself and shows the contracted wording; the decorator writes the pending record before the raw call; Login and Register use the form; completeExternalAuthentication is called only from the auth screens; the stand-in route and screen are dev-only, thin, keep copy in ja.ts, hand off by window.location.assign after the safe-path check and are referenced by no feature"
       ]
     },
     {
@@ -16632,7 +16645,8 @@
         "SPEC-050-15.0",
         "AR-CONT-001",
         "TST-E2E-003",
-        "TST-E2E-004"
+        "TST-E2E-004",
+        "SEC-API-027"
       ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
@@ -16646,12 +16660,12 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": false,
-      "preconditions": "Mock mode; /account/login with and without continue=cart; tests/contracts/s6-auth.md section 6.1A",
+      "preconditions": "Mock mode; /account/login with and without continue=cart; tests/contracts/s6-auth.md section 6.1A; B5 C3 adds the fourth method",
       "clock_instant": "2027-03-01T03:00:00Z",
       "expected_domain_postconditions": [
-        "a radio group named by the Login legend lists Email+Password, Google, then Email OTP (and Magic Link last once it exists) with Email+Password checked and the existing email / password form, submit and links unchanged; no GitHub or Discord text",
+        "a radio group named by the Login legend lists exactly Email+Password, Google, Email OTP, then Magic Link with Email+Password checked and the existing email / password form, submit and links unchanged; no GitHub or Discord text",
         "choosing Email OTP swaps the password form for the code request without changing the URL (continue kept), the Session or the focus (the radio keeps it); choosing Email+Password again restores an empty password field and the password is never stored",
-        "the radio group is operable with the arrow keys alone and walks the specified order"
+        "the radio group is operable with the arrow keys alone: ArrowDown walks Email+Password, Google, Email OTP, Magic Link and ArrowUp walks back, each showing its own controls, with no navigation"
       ]
     },
     {
@@ -16752,7 +16766,7 @@
       "preconditions": "Mock mode; /account/register; tests/contracts/s6-auth.md section 6.2A",
       "clock_instant": "2027-03-01T03:00:00Z",
       "expected_domain_postconditions": [
-        "the registration legend names the same method radio group (Email+Password, Google, Email OTP in the specified order) starting on Email+Password with the existing registration form; Email OTP swaps it without changing the URL",
+        "the registration legend names the same method radio group (exactly Email+Password, Google, Email OTP, Magic Link in the specified order) starting on Email+Password with the existing registration form; Email OTP swaps it without changing the URL",
         "a new email registers by code: Mypage, a verified Session, exactly one new user with displayName null shown as 未設定; continue=cart reaches /cart",
         "an already registered email signs in with no 'already registered' answer and no user is added",
         "a wrong code and an outage on the registration code step leave a Guest and create no user"
@@ -16762,7 +16776,13 @@
       "test_case_id": "TC-SEC-AUTH-018-702",
       "level": "E2E",
       "suite": "e2e-ui-mock",
-      "upstream_rule_ids": ["SEC-AUTH-018", "SEC-AUTH-007", "TST-E2E-003", "TST-E2E-004"],
+      "upstream_rule_ids": [
+        "SEC-AUTH-018",
+        "SEC-AUTH-007",
+        "TST-E2E-003",
+        "TST-E2E-004",
+        "SEC-API-027"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -16775,10 +16795,11 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": false,
-      "preconditions": "Mock mode; sentinel one-time code that is no seed value",
+      "preconditions": "Mock mode; sentinel one-time code that is no seed value; B5 C3 adds the Magic Link address that is typed to send and to open a link",
       "clock_instant": "2027-03-01T03:00:00Z",
       "expected_domain_postconditions": [
-        "across a wrong code, an expired code, an outage and a success there is no trace of the code in any URL, storage entry, DOM text or console message, and the code field is emptied after every attempt"
+        "across a wrong code, an expired code, an outage and a success there is no trace of the code in any URL, storage entry, DOM text or console message, and the code field is emptied after every attempt",
+        "B5 C3: across a send, a re-send, an outage, a failed return and a valid link the address that sent the link appears in no URL, storage entry, DOM text or console message, and the stand-in's address appears in no URL, request or text (the valid link writes that user's record on purpose and nothing else)"
       ]
     },
     {
@@ -16842,7 +16863,8 @@
       "clock_instant": null,
       "expected_domain_postconditions": [
         "the return and failure paths for Login and Registration are accountPath plus returned=google or notice=google-failed, pass isSafeRelativePath, keep the Continuation exactly and carry no email, token, code or identifier",
-        "parseReturned recognises only the exact value google and parseFailureNotice only google-failed; every other value, including the password-updated notice, is ignored (null)"
+        "parseReturned recognises only the exact values google and magic-link and parseFailureNotice only google-failed and link-failed; every other value (including near misses and the password-updated notice) is ignored (null)",
+        "B5 C3: the Magic Link return and failure paths are accountPath plus returned=magic-link or notice=link-failed, pass isSafeRelativePath, keep the Continuation exactly and carry no email, token or identifier; the Google paths are unchanged"
       ]
     },
     {
@@ -16896,7 +16918,8 @@
         "the return after a supersede clears the Cart added meanwhile, removes the record and records the authenticated provenance; the return without another sign-in keeps the Guest Cart; a Logout removes the record and the Cart",
         "a cancelled return does not resolve the record, a second start replaces it, and a raw unavailable keeps it",
         "the step 10 limit (a session of another email observed before the return is shown) is pinned as the specified limit: the lifecycle clears nothing, with and without a record, until the return is received or a Logout happens; this fixes the limit and is no proof that another account's Cart is never shown",
-        "a second return after a receipt is judged by the provenance as a re-login (cleared); a document of another browser with no record keeps a Guest-provenance Cart"
+        "a second return after a receipt is judged by the provenance as a re-login (cleared); a document of another browser with no record keeps a Guest-provenance Cart",
+        "B5 C3: every step above is repeated with requestMagicLink as the starting method: the record is written before the raw call, a cleared or unreadable Cart is handled alike, a re-send replaces the record, and already_signed_in, cart_busy and cart_blocked are returned before anything is recorded; the address never enters the metadata"
       ]
     },
     {
@@ -16949,7 +16972,8 @@
         "FR-CRT-012",
         "SEC-WEB-013",
         "TST-E2E-003",
-        "TST-E2E-004"
+        "TST-E2E-004",
+        "SEC-API-027"
       ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
@@ -16963,13 +16987,15 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": false,
-      "preconditions": "Mock mode; the returned=google and notice=google-failed URLs opened as document loads with seeded Session, Cart and pending or superseded records; tests/contracts/s6-auth.md sections 6.1C, 6.2B, 10A",
+      "preconditions": "Mock mode; the returned=google and notice=google-failed URLs opened as document loads with seeded Session, Cart and pending or superseded records; tests/contracts/s6-auth.md sections 6.1C, 6.2B, 10A; B5 C3 repeats it for returned=magic-link and notice=link-failed",
       "clock_instant": "2027-03-01T03:00:00Z",
       "expected_domain_postconditions": [
         "a verified Session on Login or Registration goes to the Continuation (Mypage without one) after the result is received: a pending record keeps the Cart, a superseded one clears it, and the record is gone",
         "an Email-unverified Session goes to PG-AUTH-002 with the Continuation kept and the result received",
         "a Guest that opens the returned URL (opened on another device) sees one failure alert, keeps the Cart and the pending record, and returned leaves the URL; notice=google-failed does the same; unknown values are ignored",
-        "a reload, back and forward never decide again; an ordinary visit of /cart, /account/login or /mypage with a signed-in Session never receives the result and keeps the pending record"
+        "a reload, back and forward never decide again; an ordinary visit of /cart, /account/login or /mypage with a signed-in Session never receives the result and keeps the pending record",
+        "B5 C3: the same decisions hold for returned=magic-link and notice=link-failed on Login and Registration: a verified Session goes on to the Continuation, an Email-unverified one to PG-AUTH-002, a Guest sees one link failure alert with the Cart and the pending record kept, and the Google and Magic Link wordings are not mixed up",
+        "B5 C3: a link opened in another Tab is received only by the document that navigation shows; the Tab that sent the link stays on its sent state, decides nothing, shows no failure and a reload decides nothing either"
       ]
     },
     {
@@ -17000,7 +17026,8 @@
       "clock_instant": "2027-03-01T03:00:00Z",
       "expected_domain_postconditions": [
         "with either Session the Google start is natively disabled and described by the Logout hint; pressing it goes nowhere, no /dev document is requested and no pending record is written; the Email+Password form stays available",
-        "a Guest sees the start enabled without the hint; a Session that becomes valid in another tab disables the start on the open page"
+        "a Guest sees the start enabled without the hint; a Session that becomes valid in another tab disables the start on the open page",
+        "B5 C3: with either Session the Magic Link send is natively disabled and described by the Logout hint, a forced press goes nowhere and writes no pending record, and the Email+Password form stays available; a Session that becomes valid in another Tab disables the send, in the sent state too"
       ]
     },
     {
@@ -17030,7 +17057,8 @@
       "clock_instant": "2027-03-01T03:00:00Z",
       "expected_domain_postconditions": [
         "an unreadable Cart key stops the Google start on Login and Registration: the start is natively disabled, a forced press makes no navigation, no session write and no pending record, the Cart recovery is shown; after the recovery the start reaches the stand-in with a pending record",
-        "a Browser storage that cannot be obtained does not stop the start: the stand-in is reached and no Cart metadata is written; once the storage is available the allow reaches Mypage with no pending record (the Cart stays unavailable only while the storage is)"
+        "a Browser storage that cannot be obtained does not stop the start: the stand-in is reached and no Cart metadata is written; once the storage is available the allow reaches Mypage with no pending record (the Cart stays unavailable only while the storage is)",
+        "B5 C3: the same holds for the Magic Link send: an unreadable Cart key makes the send natively disabled, a forced press makes no session write and no pending record and shows the Cart recovery, after which the send shows the sent state with a pending record; a Browser storage that cannot be obtained at all does not stop the send, which shows the sent state and writes no Cart metadata"
       ]
     },
     {
@@ -17055,7 +17083,87 @@
       "expected_domain_postconditions": [
         "start with a Guest Cart, another page signs in as demo@example.com and adds an Entry, then Google succeeds for google.new@example.com: the Cart is empty, the header shows no count and the record is gone",
         "a failed return of the same start keeps the signed-in Cart and the superseded record; a later success received through the stand-in clears the Cart",
-        "comparison: a start with no other login keeps the Guest Cart; a Logout between the start and the result removes the record and the Cart"
+        "comparison: a start with no other login keeps the Guest Cart; a Logout between the start and the result removes the record and the Cart",
+        "B5 C3: send a link with a Guest Cart, another method signs in as demo@example.com and adds an Entry, then a valid link of other@example.com is opened: the Cart is empty, the header shows no count and the record is gone; an expired link first keeps the signed-in Cart and the superseded record",
+        "B5 C3: a link opened in another Tab keeps the Guest Cart when no other login happened and is received by that Tab only; a Logout between the send and the link removes the record and the Cart; a link opened with no record while another account is signed in clears the Cart of that account (step 9)"
+      ]
+    },
+    {
+      "test_case_id": "TC-PG-AUTH-003-105",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "PG-AUTH-003",
+        "PG-AUTH-001",
+        "SPEC-050-15.0",
+        "SEC-API-027",
+        "SEC-AUTH-018",
+        "DEV-WEB-013",
+        "SEC-WEB-013",
+        "TST-UNT-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "fixture_ids": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Mock auth on an in-memory storage with a fixed clock and deterministic ids (tests/contracts/s2-mock-backend.md section 14.2); UI mock test double, not Provider coverage",
+      "clock_instant": null,
+      "expected_domain_postconditions": [
+        "requestMagicLink answers sent alike for a registered, an Email-unverified and an unknown address, writes no storage entry, keeps no address, link or token anywhere and calls no listener",
+        "a success or failure path that is not a safe relative path or whose pathname is not /account/login or /account/register is rejected with a RangeError, and a malformed address is rejected with a RangeError; nothing changes",
+        "auth.login unavailable and a corrupted scenario give unavailable; credential_failure and the verify scenario do not decide this method",
+        "openMockMagicLink signs an existing user in with the DB unchanged, verifies an Email-unverified user (opening the link proves the mailbox, like Email OTP), creates a new verified user with displayName null exactly once, replaces another user's session, rejects a malformed address with a RangeError and writes only the DB and session keys",
+        "openMockMagicLink on a corrupted DB or session is unavailable with no write"
+      ]
+    },
+    {
+      "test_case_id": "TC-PG-AUTH-003-309",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-AUTH-001",
+        "PG-AUTH-003",
+        "SPEC-050-15.0",
+        "SPEC-050-15.1",
+        "SPEC-050-15.3",
+        "FR-CRT-012",
+        "AR-CONT-001",
+        "DEV-WEB-012",
+        "SEC-WEB-013",
+        "SEC-API-027",
+        "SEC-AUTH-018",
+        "TST-E2E-003",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "fixture_ids": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Mock mode; /account/login and /account/register with and without continue=cart and a Guest Cart; the dev stand-in /dev/mock-magic-link replaces the mailbox; tests/contracts/s6-auth.md sections 5B, 6.1D, 6.2C and s2-mock-backend.md section 14.3",
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "expected_domain_postconditions": [
+        "sending from Login: one status that states the 5 minute validity, a re-send button instead of the send button, no navigation, no Session or user change and no Cart change, and the pending record written; a registered, an Email-unverified and an unknown address get the identical sent state that says nothing about existence",
+        "a valid link opened through the stand-in is a document load of the returned=magic-link URL, then Mypage as the link's owner: an existing account adds no user, an Email-unverified account becomes verified, a new account creates exactly one verified user with displayName null shown as 未設定; Registration behaves the same, with no 'already registered' answer",
+        "a Guest Cart with continue=cart is kept byte-identical after the valid link (/cart shows the lines, authenticated provenance, no pending record); an expired link returns to the same screen with exactly one failure alert, a Guest Session, no user, the Cart and the pending record kept, and the link can be sent again or another method chosen",
+        "an unavailable sign-in service shows one alert and no status, stays and keeps the pending record; an empty or malformed address is refused before the port with an error summary and no lifecycle change",
+        "the send is a button (no link, no /dev, /admin or /staff href, no stand-in request); the form is natively submitted with browser validation off",
+        "the stand-in disables both actions for a missing or untrustworthy success or failure path and follows nothing; an empty or malformed address opened as a valid link does nothing; an expired link needs no address and changes nothing; the typed address reaches no URL; it says it is a stand-in and changes nothing by being opened"
       ]
     }
   ]

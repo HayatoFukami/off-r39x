@@ -94,6 +94,11 @@ export function setupCartLifecycle(
         url: "/dev/mock-google?success=%2Faccount%2Flogin&failure=%2Faccount%2Flogin",
       }),
     ),
+    requestMagicLink: vi.fn(
+      async (
+        _input: Parameters<AuthPort["requestMagicLink"]>[0],
+      ): ReturnType<AuthPort["requestMagicLink"]> => ({ kind: "sent" }),
+    ),
   } as AuthPort;
   return {
     data,

@@ -8,9 +8,13 @@ import { getBrowserCartLifecycle } from "../cart/cart-lifecycle";
 import { RETURNED_PARAM } from "./auth-return";
 import { NOTICE_PARAM } from "./login-notice";
 
-// The return of an external-completion sign-in (SPEC-050 15.0, FR-CRT-012 external-completion rule). Used by
-// PG-AUTH-003 and PG-AUTH-001, the only screens that receive the result. The query is read once and
+// The return of an external-completion sign-in (Google, Magic Link; SPEC-050 15.0, FR-CRT-012
+// external-completion rule). Used by PG-AUTH-003 and PG-AUTH-001, the only screens that receive the
+// result: the screen the return opened, never the screen that started it. The query is read once and
 // removed from the address bar at once; it carries fixed words only (SEC-AUTH-018).
+
+/** The methods whose sign-in completes outside the page. */
+export type ExternalReturnMethod = "google" | "magic-link";
 
 /** `returned` always goes; `notice` goes only when it is the failure notice (password-updated stays). */
 function removeReturnFromUrl(removeNotice: boolean): void {
@@ -26,14 +30,14 @@ export function useExternalReturn({
   intent,
 }: {
   /** `parseReturned` of the `returned` query: the sign-in succeeded at the service. */
-  returned: "google" | null;
+  returned: ExternalReturnMethod | null;
   /** `parseFailureNotice` of the `notice` query: the sign-in was cancelled or failed. */
-  failed: "google" | null;
+  failed: ExternalReturnMethod | null;
   intent: ContinuationIntent | null;
-}): { googleFailed: boolean; clearGoogleFailed: () => void } {
+}): { failedMethod: ExternalReturnMethod | null; clearFailed: () => void } {
   const { state } = useSession();
   const router = useRouter();
-  const [googleFailed, setGoogleFailed] = useState(failed !== null);
+  const [failedMethod, setFailedMethod] = useState<ExternalReturnMethod | null>(failed);
   const urlCleaned = useRef(false);
   const received = useRef(false);
 
@@ -61,9 +65,9 @@ export function useExternalReturn({
       return;
     }
     // A Guest or an unconfirmable Session: nothing was received, the record stays.
-    setGoogleFailed(true);
+    setFailedMethod(returned);
   }, [returned, state, intent, router]);
 
-  const clearGoogleFailed = useCallback((): void => setGoogleFailed(false), []);
-  return { googleFailed, clearGoogleFailed };
+  const clearFailed = useCallback((): void => setFailedMethod(null), []);
+  return { failedMethod, clearFailed };
 }

@@ -8,6 +8,8 @@ import {
   field,
   heading1,
   loginWith,
+  magicResendButton,
+  magicSendButton,
   mainOf,
   methodGroup,
   otpButton,
@@ -15,6 +17,7 @@ import {
   readSession,
   SENTINEL_OTP_CODE,
   SENTINEL_PASSWORD,
+  sendMagicLink,
   sendOtp,
   setAuthScenario,
   statusesIn,
@@ -211,6 +214,31 @@ test.describe("TC-PG-AUTH-003-504 no horizontal scroll at 390px (SPEC-050 24.1)"
         otpButton(page, copy.auth.otp.resend),
         otpButton(page, copy.auth.otp.changeEmail),
       ]) {
+        await control.scrollIntoViewIfNeeded();
+        await expect(control).toBeInViewport();
+      }
+      expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
+    });
+  }
+
+  // B5 C3: the Magic Link address step and the sent state fit a 390px viewport on Login and Registration.
+  for (const route of ["/account/login?continue=cart", "/account/register?continue=cart"]) {
+    test(`${route.split("?")[0]} with Magic Link: the address field, the send button and the sent state stay inside the viewport`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await fixClock(page);
+      await seedLocalStorage(page, {});
+      await gotoHydrated(page, route);
+      await chooseMethod(page, copy.auth.method.magicLink);
+      for (const control of [field(page, copy.auth.field.email.label), magicSendButton(page)]) {
+        await control.scrollIntoViewIfNeeded();
+        await expect(control).toBeInViewport();
+      }
+      expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
+
+      await sendMagicLink(page, EMAIL.demo);
+      for (const control of [statusesIn(page), magicResendButton(page)]) {
         await control.scrollIntoViewIfNeeded();
         await expect(control).toBeInViewport();
       }

@@ -30,6 +30,7 @@ import {
 } from "./form-validation";
 import { GoogleSignIn } from "./google-sign-in";
 import { NOTICE_PARAM, PASSWORD_UPDATED_NOTICE } from "./login-notice";
+import { MagicLinkForm } from "./magic-link-form";
 import { MethodSelector } from "./method-selector";
 import { ServiceFailure } from "./service-failure";
 import { useErrorSummaryFocus } from "./use-error-summary-focus";
@@ -51,8 +52,8 @@ function LoginForm() {
   const intent = parseContinuation(searchParams.get(CONTINUATION_PARAM));
   const notice = describeContinuation(intent);
   const showUpdated = searchParams.get(NOTICE_PARAM) === PASSWORD_UPDATED_NOTICE;
-  // A return from Google is read here, once, by the screen the user comes back to (SPEC-050 15.0).
-  const { googleFailed, clearGoogleFailed } = useExternalReturn({
+  // A return from Google or a login link is read here, once, by the screen the user comes back to (SPEC-050 15.0).
+  const { failedMethod, clearFailed } = useExternalReturn({
     returned: parseReturned(searchParams.get(RETURNED_PARAM)),
     failed: parseFailureNotice(searchParams.get(NOTICE_PARAM)),
     intent,
@@ -80,7 +81,7 @@ function LoginForm() {
 
   // Switching method drops the password and every message of the other method.
   const onMethodChange = (next: AuthMethod): void => {
-    clearGoogleFailed();
+    clearFailed();
     setMethod(next);
     setPassword("");
     setErrors([]);
@@ -90,7 +91,7 @@ function LoginForm() {
   const onSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     if (submittingRef.current) return;
-    clearGoogleFailed();
+    clearFailed();
     const validation = validateLoginForm({ email, password });
     if (!validation.ok) {
       setErrors(validation.errors);
@@ -143,7 +144,10 @@ function LoginForm() {
         onChange={onMethodChange}
         disabled={submitting}
       />
-      {googleFailed ? <ServiceFailure message={copy.auth.google.failed} /> : null}
+      {failedMethod === "google" ? <ServiceFailure message={copy.auth.google.failed} /> : null}
+      {failedMethod === "magic-link" ? (
+        <ServiceFailure message={copy.auth.magicLink.failed} />
+      ) : null}
       {method === "password" ? (
         <>
           {errors.length > 0 ? <ErrorSummary items={summaryItems} summaryRef={summaryRef} /> : null}
@@ -163,7 +167,7 @@ function LoginForm() {
           intent={intent}
           cartBlocked={cartBlocked}
           onCartFailure={setFailure}
-          onAttempt={clearGoogleFailed}
+          onAttempt={clearFailed}
         />
       ) : null}
       {method === "password" ? (
@@ -197,6 +201,15 @@ function LoginForm() {
             </Button>
           </div>
         </form>
+      ) : null}
+      {method === "magic-link" ? (
+        <MagicLinkForm
+          page="login"
+          intent={intent}
+          cartBlocked={cartBlocked}
+          onCartFailure={setFailure}
+          onAttempt={clearFailed}
+        />
       ) : null}
       {method === "email-otp" ? (
         <EmailOtpForm

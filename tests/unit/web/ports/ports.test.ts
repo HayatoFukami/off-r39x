@@ -119,6 +119,7 @@ describe("TC-DEV-WEB-010-102 ApiPort and AuthPort have the documented shape (des
         "getSession",
         "onSessionChange",
         "requestEmailOtp",
+        "requestMagicLink",
         "requestPasswordReset",
         "signIn",
         "signInWithEmailOtp",
@@ -174,6 +175,42 @@ describe("TC-DEV-WEB-010-102 ApiPort and AuthPort have the documented shape (des
     expect(annotation).not.toMatch(/API-[A-Z]+(?:-[A-Z]+)*-\d{3}/);
     expect(annotation).not.toMatch(/UCR-/);
     // The result of the sign-in is not known from this Promise; the paths are the same origin's PG-AUTH pages.
+    expect(annotation).toMatch(/outcome/i);
+    expect(annotation).toMatch(/same origin/i);
+    expect(annotation).toContain("AR-CONT-001");
+    expect(annotation).toContain("SEC-WEB-013");
+  });
+
+  it("returns a promise from requestMagicLink and answers with the documented kinds (B5 C3)", async () => {
+    const link = createBackend().auth;
+    const requested = link.requestMagicLink({
+      email: "demo@example.com",
+      successPath: "/account/login?returned=magic-link",
+      failurePath: "/account/login?notice=link-failed",
+    });
+    expect(requested).toBeInstanceOf(Promise);
+    expect((await requested).kind).toBe("sent");
+  });
+
+  it("documents requestMagicLink in auth/port.ts: a Neon Auth transport without a business Operation ID, an answer that never discloses the account, a link opened outside the page whose outcome the Promise does not report, same-origin PG-AUTH paths (B5 C3, SPEC-110 23.1, SEC-API-027, AR-CONT-001, SEC-WEB-013)", () => {
+    const lines = read(join(webDir, "src/auth/port.ts")).split("\n");
+    const index = lines.findIndex((line) => /^\s*requestMagicLink\(/.test(line));
+    expect(index, "requestMagicLink must be declared in auth/port.ts").toBeGreaterThanOrEqual(0);
+    const block: string[] = [];
+    for (let i = index - 1; i >= 0; i -= 1) {
+      const text = (lines[i] ?? "").trim();
+      if (!/^(\/\*|\*|\/\/)/.test(text)) break;
+      block.unshift(text);
+    }
+    const annotation = block.join("\n");
+    expect(annotation).toMatch(/Neon Auth/);
+    expect(annotation).toContain("23.1");
+    expect(annotation).toMatch(/Operation ID/);
+    expect(annotation).not.toMatch(/API-[A-Z]+(?:-[A-Z]+)*-\d{3}/);
+    expect(annotation).not.toMatch(/UCR-/);
+    // The answer never discloses the account, the link is opened elsewhere and its outcome is decided by the screen
+    // the user returns to; the paths are the same origin's PG-AUTH pages.
+    expect(annotation).toContain("SEC-API-027");
     expect(annotation).toMatch(/outcome/i);
     expect(annotation).toMatch(/same origin/i);
     expect(annotation).toContain("AR-CONT-001");
@@ -425,6 +462,19 @@ describe("TC-DEV-WEB-010-102 ApiPort and AuthPort have the documented shape (des
     >();
     expectTypeOf<AuthPort["startGoogleSignIn"]>().returns.resolves.toEqualTypeOf<
       | { kind: "redirect"; url: string }
+      | { kind: "unavailable" }
+      | { kind: "already_signed_in" }
+      | { kind: "cart_busy" }
+      | { kind: "cart_blocked" }
+    >();
+  });
+
+  it("types requestMagicLink (B5 C3): the address and both paths in, sent or one of the refusals out; the address of an account and the outcome of the link are not part of the result", () => {
+    expectTypeOf<AuthPort["requestMagicLink"]>().parameters.toEqualTypeOf<
+      [{ email: string; successPath: string; failurePath: string }]
+    >();
+    expectTypeOf<AuthPort["requestMagicLink"]>().returns.resolves.toEqualTypeOf<
+      | { kind: "sent" }
       | { kind: "unavailable" }
       | { kind: "already_signed_in" }
       | { kind: "cart_busy" }

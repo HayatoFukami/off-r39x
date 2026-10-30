@@ -9,6 +9,7 @@ import DevLayout from "./dev/dev-layout";
 import * as errorProbe from "./dev/error-probe";
 import * as mockCheckout from "./dev/mock-checkout";
 import * as mockGoogle from "./dev/mock-google";
+import * as mockMagicLink from "./dev/mock-magic-link";
 import * as scenarios from "./dev/scenarios";
 import * as announcementDetail from "./public/announcement-detail";
 import * as announcements from "./public/announcements";
@@ -230,6 +231,12 @@ export const routes: RouteObject[] = [
                 caseSensitive: true,
                 Component: mockGoogle.default,
                 handle: mockGoogle.handle,
+              },
+              {
+                path: "/dev/mock-magic-link",
+                caseSensitive: true,
+                Component: mockMagicLink.default,
+                handle: mockMagicLink.handle,
               },
               { path: "/dev/error-probe", caseSensitive: true, Component: errorProbe.default },
             ],

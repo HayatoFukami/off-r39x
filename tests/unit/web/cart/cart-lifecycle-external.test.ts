@@ -348,191 +348,226 @@ describe("TC-FR-CRT-012-017 completeExternalAuthentication decides on the metada
   });
 });
 
-describe("TC-FR-CRT-012-019 a result of an external-completion method after another method succeeded clears the Cart, and the guarantee ends where the specification says (FR-CRT-012 external completion rule steps 3, 5, 6, 7, 9, 10)", () => {
-  /** A Guest with a Cart starts the external method in the sending Tab (the pending record). */
-  async function started(marker: string | null = metadata("guest")) {
-    const s = setup(marker);
-    await expect(s.port.startGoogleSignIn(GOOGLE)).resolves.toMatchObject({ kind: "redirect" });
-    expect(stored(s)).toEqual(PENDING);
-    return s;
-  }
+// The two external-completion methods start through the same lifecycle transition; the journeys below are the same for
+// both (B5 C3 adds Magic Link: the link is opened in another Tab or on another device, and the result is received by
+// the screen the opening navigation shows). Each method runs every case.
+type Starter = {
+  readonly label: string;
+  /** The raw port method the decorator calls after the pending record is written. */
+  readonly rawKey: "startGoogleSignIn" | "requestMagicLink";
+  /** Starts through the decorator. */
+  readonly start: (s: Setup) => Promise<unknown>;
+  /** What the raw port answers when the request is accepted. */
+  readonly accepted: { readonly kind: string };
+};
+const MAGIC_LINK_INPUT = {
+  email: "magic.sentinel@example.com",
+  successPath: "/account/login?returned=magic-link",
+  failurePath: "/account/login?notice=link-failed",
+};
+const STARTERS: readonly Starter[] = [
+  {
+    label: "Google",
+    rawKey: "startGoogleSignIn",
+    start: (s) => s.port.startGoogleSignIn(GOOGLE),
+    accepted: { kind: "redirect" },
+  },
+  {
+    label: "Magic Link",
+    rawKey: "requestMagicLink",
+    start: (s) => s.port.requestMagicLink(MAGIC_LINK_INPUT),
+    accepted: { kind: "sent" },
+  },
+];
 
-  it("steps 5 and 6: Email+Password login while pending records the success; the later result clears the Cart and resolves the record", async () => {
-    const s = await started();
-    await expect(s.port.signIn(input)).resolves.toMatchObject({ kind: "signed_in" });
-    // The existing rule keeps the Guest Cart for the first login; only the record changes.
-    expect(s.data.get(CART_STORAGE_KEY)).toBe(CART);
-    expect(stored(s)).toEqual(SUPERSEDED);
-    s.data.set(CART_STORAGE_KEY, OTHER_CART);
-    const returned = s.newDocument();
-    returned.completeExternalAuthentication();
-    expectEmpty(s);
-    expect(stored(s)).toEqual(AUTHENTICATED);
-  });
+for (const starter of STARTERS) {
+  describe(`TC-FR-CRT-012-019 a result of an external-completion method after another method succeeded clears the Cart, and the guarantee ends where the specification says (FR-CRT-012 external completion rule steps 3, 5, 6, 7, 9, 10) - ${starter.label}`, () => {
+    /** A Guest with a Cart starts the external method in the sending Tab (the pending record). */
+    async function started(marker: string | null = metadata("guest")) {
+      const s = setup(marker);
+      await expect(starter.start(s)).resolves.toMatchObject(starter.accepted);
+      expect(stored(s)).toEqual(PENDING);
+      return s;
+    }
 
-  it.each([
-    ["signUp signed_in (a new registration)", "signUp", { kind: "signed_in" }],
-    [
-      "signIn signed_in with an unverified email",
-      "signIn",
-      { kind: "signed_in", emailVerified: false },
-    ],
-    [
-      "signInWithEmailOtp signed_in",
-      "signInWithEmailOtp",
-      { kind: "signed_in", emailVerified: true },
-    ],
-  ] as const)(
-    "step 5: %s records the success of another method (an established Session, verified or not)",
-    async (_name, method, result) => {
+    it("steps 5 and 6: Email+Password login while pending records the success; the later result clears the Cart and resolves the record", async () => {
       const s = await started();
-      (s.raw as unknown as Record<string, unknown>)[method] = vi.fn(async () => result);
-      const call =
-        method === "signInWithEmailOtp"
-          ? s.port.signInWithEmailOtp({ email: input.email, code: "246810" })
-          : s.port[method](input);
-      await expect(call).resolves.toMatchObject({ kind: "signed_in" });
+      await expect(s.port.signIn(input)).resolves.toMatchObject({ kind: "signed_in" });
+      // The existing rule keeps the Guest Cart for the first login; only the record changes.
+      expect(s.data.get(CART_STORAGE_KEY)).toBe(CART);
+      expect(stored(s)).toEqual(SUPERSEDED);
+      s.data.set(CART_STORAGE_KEY, OTHER_CART);
+      const returned = s.newDocument();
+      returned.completeExternalAuthentication();
+      expectEmpty(s);
+      expect(stored(s)).toEqual(AUTHENTICATED);
+    });
+
+    it.each([
+      ["signUp signed_in (a new registration)", "signUp", { kind: "signed_in" }],
+      [
+        "signIn signed_in with an unverified email",
+        "signIn",
+        { kind: "signed_in", emailVerified: false },
+      ],
+      [
+        "signInWithEmailOtp signed_in",
+        "signInWithEmailOtp",
+        { kind: "signed_in", emailVerified: true },
+      ],
+    ] as const)(
+      "step 5: %s records the success of another method (an established Session, verified or not)",
+      async (_name, method, result) => {
+        const s = await started();
+        (s.raw as unknown as Record<string, unknown>)[method] = vi.fn(async () => result);
+        const call =
+          method === "signInWithEmailOtp"
+            ? s.port.signInWithEmailOtp({ email: input.email, code: "246810" })
+            : s.port[method](input);
+        await expect(call).resolves.toMatchObject({ kind: "signed_in" });
+        expect(stored(s)).toEqual(SUPERSEDED);
+        s.newDocument().completeExternalAuthentication();
+        expectEmpty(s);
+      },
+    );
+
+    it("step 5: an attempt that does not establish a Session records nothing (confirmation_required, credential_failure, unavailable, a wrong code, a rejected call)", async () => {
+      const s = await started();
+      s.raw.signUp = vi.fn(async () => ({ kind: "confirmation_required" }) as const);
+      s.raw.signIn = vi.fn(async () => ({ kind: "credential_failure" }) as const);
+      await s.port.signUp(input);
+      await s.port.signIn(input);
+      expect(stored(s)).toEqual(PENDING);
+      s.raw.signIn = vi.fn(async () => ({ kind: "unavailable" }) as const);
+      await s.port.signIn(input);
+      s.raw.signInWithEmailOtp = vi.fn(async () => ({ kind: "code_invalid" }) as const);
+      await s.port.signInWithEmailOtp({ email: input.email, code: "000000" });
+      s.raw.signIn = vi.fn(async () => {
+        throw new Error("test-only provider failure");
+      });
+      await expect(s.port.signIn(input)).rejects.toThrow("test-only provider failure");
+      expect(stored(s)).toEqual(PENDING);
+      expect(s.data.get(CART_STORAGE_KEY)).toBe(CART);
+    });
+
+    it("step 6 (no other method succeeded): the Cart is kept at the result, with the session observation of the sending Tab in between", async () => {
+      const s = await started();
+      // Another Tab (the sending one) observes the new Session before the screen shown by the return does.
+      s.raw.getSession = authenticatedSession("google.new@example.com");
+      await s.port.getSession();
+      expect(stored(s)).toMatchObject({ provenance: "authenticated", external: "pending" });
+      const returned = s.newDocument();
+      returned.markAuthenticated();
+      returned.completeExternalAuthentication();
+      expect(s.data.get(CART_STORAGE_KEY)).toBe(CART);
+      expect(stored(s)).toEqual(AUTHENTICATED);
+      // The sending Tab observes the Session again: not a return, so nothing is cleared.
+      await s.port.getSession();
+      expect(s.data.get(CART_STORAGE_KEY)).toBe(CART);
+    });
+
+    it("step 7: a failed return does not resolve the record; a later login and a later result still clear the Cart", async () => {
+      const s = await started();
+      // A failed or expired return: the screen does not call completeExternalAuthentication.
+      s.newDocument().initializeGuestIfEmpty();
+      expect(stored(s)).toEqual(PENDING);
+      await s.port.signIn(input);
       expect(stored(s)).toEqual(SUPERSEDED);
       s.newDocument().completeExternalAuthentication();
       expectEmpty(s);
-    },
-  );
-
-  it("step 5: an attempt that does not establish a Session records nothing (confirmation_required, credential_failure, unavailable, a wrong code, a rejected call)", async () => {
-    const s = await started();
-    s.raw.signUp = vi.fn(async () => ({ kind: "confirmation_required" }) as const);
-    s.raw.signIn = vi.fn(async () => ({ kind: "credential_failure" }) as const);
-    await s.port.signUp(input);
-    await s.port.signIn(input);
-    expect(stored(s)).toEqual(PENDING);
-    s.raw.signIn = vi.fn(async () => ({ kind: "unavailable" }) as const);
-    await s.port.signIn(input);
-    s.raw.signInWithEmailOtp = vi.fn(async () => ({ kind: "code_invalid" }) as const);
-    await s.port.signInWithEmailOtp({ email: input.email, code: "000000" });
-    s.raw.signIn = vi.fn(async () => {
-      throw new Error("test-only provider failure");
     });
-    await expect(s.port.signIn(input)).rejects.toThrow("test-only provider failure");
-    expect(stored(s)).toEqual(PENDING);
-    expect(s.data.get(CART_STORAGE_KEY)).toBe(CART);
-  });
 
-  it("step 6 (no other method succeeded): the Cart is kept at the result, with the session observation of the sending Tab in between", async () => {
-    const s = await started();
-    // Another Tab (the sending one) observes the new Session before the screen shown by the return does.
-    s.raw.getSession = authenticatedSession("google.new@example.com");
-    await s.port.getSession();
-    expect(stored(s)).toMatchObject({ provenance: "authenticated", external: "pending" });
-    const returned = s.newDocument();
-    returned.markAuthenticated();
-    returned.completeExternalAuthentication();
-    expect(s.data.get(CART_STORAGE_KEY)).toBe(CART);
-    expect(stored(s)).toEqual(AUTHENTICATED);
-    // The sending Tab observes the Session again: not a return, so nothing is cleared.
-    await s.port.getSession();
-    expect(s.data.get(CART_STORAGE_KEY)).toBe(CART);
-  });
-
-  it("step 7: a failed return does not resolve the record; a later login and a later result still clear the Cart", async () => {
-    const s = await started();
-    // A failed or expired return: the screen does not call completeExternalAuthentication.
-    s.newDocument().initializeGuestIfEmpty();
-    expect(stored(s)).toEqual(PENDING);
-    await s.port.signIn(input);
-    expect(stored(s)).toEqual(SUPERSEDED);
-    s.newDocument().completeExternalAuthentication();
-    expectEmpty(s);
-  });
-
-  it("step 7: Logout resolves the record and clears the Cart", async () => {
-    const s = await started();
-    await s.port.signIn(input);
-    await s.port.signOut();
-    expectEmpty(s);
-    expect(stored(s)).toEqual({ version: 1, provenance: "guest" });
-  });
-
-  it("step 3: a request that is unavailable or throws keeps the pending record, and a second start replaces it", async () => {
-    const s = setup(metadata("guest"));
-    s.raw.startGoogleSignIn = vi.fn(async () => ({ kind: "unavailable" }) as const);
-    await expect(s.port.startGoogleSignIn(GOOGLE)).resolves.toEqual({ kind: "unavailable" });
-    expect(stored(s)).toEqual(PENDING);
-    s.raw.startGoogleSignIn = vi.fn(async () => {
-      throw new Error("test-only provider failure");
+    it("step 7: Logout resolves the record and clears the Cart", async () => {
+      const s = await started();
+      await s.port.signIn(input);
+      await s.port.signOut();
+      expectEmpty(s);
+      expect(stored(s)).toEqual({ version: 1, provenance: "guest" });
     });
-    await expect(s.port.startGoogleSignIn(GOOGLE)).rejects.toThrow("test-only provider failure");
-    expect(stored(s)).toEqual(PENDING);
-    // A success of another method, then a Logout-free restart is impossible for a Guest; a session that ended
-    // (expiry) leaves a superseded record that the next start replaces, after clearing the used Cart (step 2).
-    s.data.set(CART_LIFECYCLE_STORAGE_KEY, metadataWithExternal("authenticated", "superseded"));
-    s.raw.startGoogleSignIn = vi.fn(async () => ({ kind: "unavailable" }) as const);
-    await s.port.startGoogleSignIn(GOOGLE);
-    expect(stored(s)).toEqual(PENDING);
-    expectEmpty(s);
-  });
 
-  it("step 10 (limit, with a record): after another method succeeded and before the screen shown by the return exists, a changed Session is not distinguishable: nothing is cleared and the record stays", async () => {
-    const s = await started();
-    await s.port.signIn(input);
-    s.raw.getSession = authenticatedSession("other@example.com");
-    await s.port.getSession();
-    await s.port.getSession();
-    // This pins the specified limit (the lifecycle holds no Account information); it is not a proof that another
-    // Account's Cart is never shown.
-    expect(s.data.get(CART_STORAGE_KEY)).toBe(CART);
-    expect(stored(s)).toEqual(SUPERSEDED);
-    // The limit ends at the next screen shown by a return ...
-    s.newDocument().completeExternalAuthentication();
-    expectEmpty(s);
-    expect(stored(s)).toEqual(AUTHENTICATED);
-  });
+    it("step 3: a request that is unavailable or throws keeps the pending record, and a second start (a re-send for Magic Link) replaces it", async () => {
+      const s = setup(metadata("guest"));
+      const raw = s.raw as unknown as Record<string, unknown>;
+      raw[starter.rawKey] = vi.fn(async () => ({ kind: "unavailable" }) as const);
+      await expect(starter.start(s)).resolves.toEqual({ kind: "unavailable" });
+      expect(stored(s)).toEqual(PENDING);
+      raw[starter.rawKey] = vi.fn(async () => {
+        throw new Error("test-only provider failure");
+      });
+      await expect(starter.start(s)).rejects.toThrow("test-only provider failure");
+      expect(stored(s)).toEqual(PENDING);
+      // A success of another method, then a Logout-free restart is impossible for a Guest; a session that ended
+      // (expiry) leaves a superseded record that the next start replaces, after clearing the used Cart (step 2).
+      s.data.set(CART_LIFECYCLE_STORAGE_KEY, metadataWithExternal("authenticated", "superseded"));
+      raw[starter.rawKey] = vi.fn(async () => ({ kind: "unavailable" }) as const);
+      await starter.start(s);
+      expect(stored(s)).toEqual(PENDING);
+      expectEmpty(s);
+    });
 
-  it("step 10 (limit ends at Logout)", async () => {
-    const s = await started();
-    await s.port.signIn(input);
-    s.raw.getSession = authenticatedSession("other@example.com");
-    await s.port.getSession();
-    expect(stored(s)).toEqual(SUPERSEDED);
-    await s.port.signOut();
-    expectEmpty(s);
-    expect(stored(s)).toEqual({ version: 1, provenance: "guest" });
-  });
+    it("step 10 (limit, with a record): after another method succeeded and before the screen shown by the return exists, a changed Session is not distinguishable: nothing is cleared and the record stays", async () => {
+      const s = await started();
+      await s.port.signIn(input);
+      s.raw.getSession = authenticatedSession("other@example.com");
+      await s.port.getSession();
+      await s.port.getSession();
+      // This pins the specified limit (the lifecycle holds no Account information); it is not a proof that another
+      // Account's Cart is never shown.
+      expect(s.data.get(CART_STORAGE_KEY)).toBe(CART);
+      expect(stored(s)).toEqual(SUPERSEDED);
+      // The limit ends at the next screen shown by a return ...
+      s.newDocument().completeExternalAuthentication();
+      expectEmpty(s);
+      expect(stored(s)).toEqual(AUTHENTICATED);
+    });
 
-  it("step 10 (limit, without a record): a Session that changes with no screen shown by a return is not distinguishable; the next return clears the used Cart by step 9", async () => {
-    const s = setup(metadata("guest"));
-    await s.port.signIn(input);
-    expect(stored(s)).toEqual(AUTHENTICATED);
-    expect(s.data.get(CART_STORAGE_KEY)).toBe(CART);
-    s.raw.getSession = authenticatedSession("other@example.com");
-    await s.port.getSession();
-    expect(s.data.get(CART_STORAGE_KEY)).toBe(CART);
-    expect(stored(s)).toEqual(AUTHENTICATED);
-    s.newDocument().completeExternalAuthentication();
-    expectEmpty(s);
-    expect(stored(s)).toEqual(AUTHENTICATED);
-  });
+    it("step 10 (limit ends at Logout)", async () => {
+      const s = await started();
+      await s.port.signIn(input);
+      s.raw.getSession = authenticatedSession("other@example.com");
+      await s.port.getSession();
+      expect(stored(s)).toEqual(SUPERSEDED);
+      await s.port.signOut();
+      expectEmpty(s);
+      expect(stored(s)).toEqual({ version: 1, provenance: "guest" });
+    });
 
-  it("step 9 (a Link opened in another Browser or after Logout): a Guest Cart is kept at the return when it was never used by a Session", () => {
-    const s = setup(metadata("guest"));
-    s.lifecycle.initializeGuestIfEmpty();
-    const returned = s.newDocument();
-    returned.markAuthenticated();
-    returned.completeExternalAuthentication();
-    expect(s.data.get(CART_STORAGE_KEY)).toBe(CART);
-    expect(stored(s)).toEqual(AUTHENTICATED);
-  });
+    it("step 10 (limit, without a record): a Session that changes with no screen shown by a return is not distinguishable; the next return clears the used Cart by step 9", async () => {
+      const s = setup(metadata("guest"));
+      await s.port.signIn(input);
+      expect(stored(s)).toEqual(AUTHENTICATED);
+      expect(s.data.get(CART_STORAGE_KEY)).toBe(CART);
+      s.raw.getSession = authenticatedSession("other@example.com");
+      await s.port.getSession();
+      expect(s.data.get(CART_STORAGE_KEY)).toBe(CART);
+      expect(stored(s)).toEqual(AUTHENTICATED);
+      s.newDocument().completeExternalAuthentication();
+      expectEmpty(s);
+      expect(stored(s)).toEqual(AUTHENTICATED);
+    });
 
-  it("step 9 (the second return): after a first receipt, a second screen shown by a return treats the Cart as used and clears it, like a re-login", () => {
-    const s = setup(metadataWithExternal("guest", "pending"));
-    const first = s.newDocument();
-    first.markAuthenticated();
-    first.completeExternalAuthentication();
-    expect(s.data.get(CART_STORAGE_KEY)).toBe(CART);
-    expect(stored(s)).toEqual(AUTHENTICATED);
-    const second = s.newDocument();
-    second.markAuthenticated();
-    second.completeExternalAuthentication();
-    expectEmpty(s);
-    expect(stored(s)).toEqual(AUTHENTICATED);
+    it("step 9 (a Link opened in another Browser or after Logout): a Guest Cart is kept at the return when it was never used by a Session", () => {
+      const s = setup(metadata("guest"));
+      s.lifecycle.initializeGuestIfEmpty();
+      const returned = s.newDocument();
+      returned.markAuthenticated();
+      returned.completeExternalAuthentication();
+      expect(s.data.get(CART_STORAGE_KEY)).toBe(CART);
+      expect(stored(s)).toEqual(AUTHENTICATED);
+    });
+
+    it("step 9 (the second return): after a first receipt, a second screen shown by a return treats the Cart as used and clears it, like a re-login", () => {
+      const s = setup(metadataWithExternal("guest", "pending"));
+      const first = s.newDocument();
+      first.markAuthenticated();
+      first.completeExternalAuthentication();
+      expect(s.data.get(CART_STORAGE_KEY)).toBe(CART);
+      expect(stored(s)).toEqual(AUTHENTICATED);
+      const second = s.newDocument();
+      second.markAuthenticated();
+      second.completeExternalAuthentication();
+      expectEmpty(s);
+      expect(stored(s)).toEqual(AUTHENTICATED);
+    });
   });
-});
+}

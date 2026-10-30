@@ -23,13 +23,14 @@ const sameSession = (a: Session, b: Session): boolean =>
     ? a.kind === b.kind
     : a.email === b.email && a.emailVerified === b.emailVerified;
 
-// The only pages a Google sign-in may return to (PG-AUTH-003 / PG-AUTH-001, SEC-WEB-013).
-const GOOGLE_RETURN_PAGES: readonly string[] = ["/account/login", "/account/register"];
+// The only pages an external-completion sign-in (Google, Magic Link) may return to
+// (PG-AUTH-003 / PG-AUTH-001, SEC-WEB-013).
+const EXTERNAL_RETURN_PAGES: readonly string[] = ["/account/login", "/account/register"];
 
-const isGoogleReturnPath = (path: string): boolean => {
+const isExternalReturnPath = (path: string): boolean => {
   if (!isSafeRelativePath(path)) return false;
   const end = path.search(/[?#]/);
-  return GOOGLE_RETURN_PAGES.includes(end === -1 ? path : path.slice(0, end));
+  return EXTERNAL_RETURN_PAGES.includes(end === -1 ? path : path.slice(0, end));
 };
 
 /**
@@ -62,6 +63,44 @@ export async function allowMockGoogleSignIn(
   saveSessionState(storage, {
     ...sessionLoad.state,
     session: { kind: "authenticated", email: user.email, emailVerified: user.emailVerified },
+  });
+  return { kind: "signed_in" };
+}
+
+/**
+ * What the dev-only stand-in screen runs when the owner of a mailbox opens a valid login link. It is not
+ * an `AuthPort` method and only that screen calls it. Opening the link proves the mailbox, so an
+ * unverified user becomes verified (as with a one-time code); an unknown email is a first registration
+ * without a display name (never inferred from the email, SPEC-030 9.2). Only the DB and the session are
+ * written; no link, token or password is handled or kept (SEC-AUTH-018).
+ */
+export async function openMockMagicLink(
+  deps: MockAuthDeps,
+  email: string,
+): Promise<{ kind: "signed_in" } | { kind: "unavailable" }> {
+  if (!EMAIL_FORMAT.test(email)) {
+    throw new RangeError("The email of a login link is malformed");
+  }
+  const { storage, clock } = deps;
+  const db = createMockDb({ storage, clock });
+  // Reads first: a broken stored state is reported before anything (even the seed) is written.
+  const sessionLoad = loadSessionState(storage);
+  if (sessionLoad.kind === "corrupted") return { kind: "unavailable" };
+  const loaded = db.load();
+  if (loaded.kind === "corrupted") return { kind: "unavailable" };
+  const { state } = loaded;
+  let user = state.users.find((u) => u.email === email);
+  if (user === undefined) {
+    user = { email, displayName: null, emailVerified: true };
+    state.users.push(user);
+    db.save(state);
+  } else if (!user.emailVerified) {
+    user.emailVerified = true;
+    db.save(state);
+  }
+  saveSessionState(storage, {
+    ...sessionLoad.state,
+    session: { kind: "authenticated", email: user.email, emailVerified: true },
   });
   return { kind: "signed_in" };
 }
@@ -274,7 +313,7 @@ export function createMockAuth(deps: MockAuthDeps): AuthPort {
     },
 
     async startGoogleSignIn({ successPath, failurePath }) {
-      if (!isGoogleReturnPath(successPath) || !isGoogleReturnPath(failurePath)) {
+      if (!isExternalReturnPath(successPath) || !isExternalReturnPath(failurePath)) {
         throw new RangeError("A Google sign-in may only return to the Login or Registration page");
       }
       const scenario = readScenario();
@@ -286,6 +325,22 @@ export function createMockAuth(deps: MockAuthDeps): AuthPort {
         kind: "redirect",
         url: `/dev/mock-google?success=${encodeURIComponent(successPath)}&failure=${encodeURIComponent(failurePath)}`,
       };
+    },
+
+    async requestMagicLink({ email, successPath, failurePath }) {
+      if (!EMAIL_FORMAT.test(email)) {
+        throw new RangeError("The email for a login link is malformed");
+      }
+      if (!isExternalReturnPath(successPath) || !isExternalReturnPath(failurePath)) {
+        throw new RangeError("A login link may only return to the Login or Registration page");
+      }
+      const scenario = readScenario();
+      if (scenario === null || scenario.auth.login === "unavailable") {
+        return { kind: "unavailable" };
+      }
+      // Registered, unverified and unknown emails get the identical answer (SEC-API-027). Nothing is
+      // sent, kept or established: the link is opened through the dev stand-in screen.
+      return { kind: "sent" };
     },
 
     async completePasswordReset({ context, newPassword }) {
