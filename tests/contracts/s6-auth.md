@@ -29,6 +29,11 @@
 | `apps/web/src/features/auth/auth-methods.ts` | 純粋（B5 C1。§5A） | `AuthMethod`, `AUTH_METHODS`, `DEFAULT_AUTH_METHOD`, `authMethodLabel` |
 | `apps/web/src/features/auth/method-selector.tsx` | client（B5 C1。§5A） | `MethodSelector`（radio group） |
 | `apps/web/src/features/auth/email-otp-form.tsx` | client container（B5 C1。§6.1B） | `EmailOtpForm`（OTP の 2 step。Login / 登録で共用） |
+| `apps/web/src/features/auth/auth-return.ts` | 純粋（B5 C2。§5B。react / mock を import しない） | `RETURNED_PARAM`, `externalReturnPath`, `externalFailurePath`, `parseReturned`, `parseFailureNotice` |
+| `apps/web/src/features/auth/google-sign-in.tsx` | client container（B5 C2。§6.1C） | `GoogleSignIn`（Google の開始 button。Login / 登録で共用。port は `useAuth()` 経由だけ） |
+| `apps/web/src/features/auth/use-external-return.ts` | client hook（B5 C2） | 外部認証からの戻り（`returned` / `notice`）の処理。`completeExternalAuthentication` を呼び、`returned` を `replaceState` で除く |
+| `apps/web/src/mock/dev-ui/mock-google-screen.tsx` | dev 専用の代わりの画面（B5 C2。§6.9。s2-mock-backend.md §14.2） | `MockGoogleScreen`（`mock-auth.ts` の `allowMockGoogleSignIn` を呼ぶ唯一の画面） |
+| `apps/web/src/routes/dev/mock-google.tsx` | route（dev 専用。B5 C2） | `/dev/mock-google`。`handle.title = copy.mockGoogle.pageTitle`。薄い殻（`<main>` を描画しない）。route-table の `DevLayout` 配下に足す |
 | `apps/web/src/features/auth/login-page.tsx` | client container | `LoginPage` |
 | `apps/web/src/features/auth/register-page.tsx` | client container | `RegisterPage` |
 | `apps/web/src/features/auth/email-verification-page.tsx` | client container | `EmailVerificationPage` |
@@ -87,6 +92,14 @@ auth: {
     legendRegister: "登録方法",
     password: "メールアドレスとパスワード",
     emailOtp: "メールで届く確認コード",
+    google: "Google",                                 // B5 C2（Google の radio のラベル）
+  },
+  google: {                                           // B5 C2（Google。§6.1C / §6.2B）。数字・アカウントの有無を書かない
+    startLogin: "Googleでログイン",
+    startRegister: "Googleで登録",
+    failed: "Googleでの認証は完了しませんでした。もう一度お試しいただくか、別の方法を選んでください",
+    unavailable: "Googleでの認証を開始できません。時間をおいて、もう一度お試しください",
+    signedIn: "ログイン中は Google でのログインを使えません。別のアカウントで利用するには、ログアウトしてください",
   },
   otp: {                                              // B5 C1（Email OTP。§6.1B）。有効期限・試行回数の数値を書かない
     send: "確認コードを送る",
@@ -163,11 +176,20 @@ mypage: {
   heading: "マイページ",
   protectedMarker: "ログイン中の方だけに表示される内容です",   // S6 placeholder。S8 が置き換えてよい
 },
+mockGoogle: {                                         // B5 C2（dev 専用の代わりの画面。§6.9。copy.mockCheckout と同じ階層）
+  pageTitle: "Google認証（モック）",
+  heading: "Googleの代替モック。実際の認証は行われません",
+  note: "ここで押すボタンでは実際のGoogleアカウントは使われません。選んだ結果に従って、元の画面へ戻ります",
+  allowDemo: "demo@example.com として許可",
+  allowNew: "新しいアカウント（google.new@example.com）として許可",
+  cancel: "キャンセル",
+},
 ```
 
 - 既存 `copy.test.ts` の制約（全 leaf は trim 済みの非空 string か関数）を守る。上記の文字列は**そのまま**使う（`s6-copy.test.ts` が固定する）。
 - `copy.auth.login.credentialFailure` は「どの要素が一致したか」を示さない（SPEC-050 §15.3、SEC-API-027）。`copy.auth.reset.accepted` は Account の有無を断定せず「場合」を含む。`copy.auth.verify.invalid` は `copy.auth.verify.verified` の文字列を**含まない**（確認済みと誤読させない）。
 - `copy.pageState.unavailable` / `retry`（S1）は AuthGate の unavailable 表示で再利用する。
+- 【B5 C2】`copy.auth.method` の key は `legendLogin` / `legendRegister` / `password` / `emailOtp` / `google`（C3 が `magicLink` を足す）。`copy.auth.google` の key は `startLogin` / `startRegister` / `failed` / `unavailable` / `signedIn` の 5 つだけ。`startLogin` と `startRegister` は文字列そのまま（`s6-copy.test.ts` が固定）。`failed` は「もう一度」と「別の方法」を含み、`signedIn` は「ログアウト」を含み、`unavailable` は「できません」を含む。5 つと `copy.auth.method.google` は数字・`<` `>` を含まず、互いに異なり（`failed` / `unavailable` / `signedIn` / `startLogin` / `startRegister`）、Account の有無を示す語（「登録されていません」「存在しません」「見つかりません」「登録されている」）を含まない。`startLogin` / `startRegister` は他の button 名（`login.submit` / `register.submit` / `otp.*`）と異なる。`copy.mockGoogle` の key は `pageTitle` / `heading` / `note` / `allowDemo` / `allowNew` / `cancel` の 6 つだけ。`allowDemo` / `allowNew` / `cancel` は文字列そのまま。`pageTitle` と `heading` は「モック」または「代替」を含み、実在のメールアドレスは `@example.com` の 1 つだけ。
 - 【B5 C1】`copy.auth.otp.sent` は Account の有無（登録・存在・「場合」）に触れない（SEC-API-027）。`copy.auth.otp.*` は数字と「N分 / N秒 / N回 / N桁」を含まない（有効期限・試行回数は provider の値で、Production gate で確認する）。`codeInvalid` は「再送」を含まず、`codeExpired` は含む。`sent` / `codeInvalid` / `codeExpired` / `unavailable` と既存の `login.credentialFailure` / `login.unavailable` / `register.unavailable` は互いに異なる。新しい button 名（`send` / `submitLogin` / `submitRegister` / `resend` / `changeEmail`）は互いに、また `login.submit` / `register.submit` と異なる（`getByRole` の exact 照合が衝突しないため）。`copy.auth.method.*` に GitHub / Discord / LINE / Apple の語を置かない。
 
 ## 2. Continuation（`src/auth/continuation.ts`。純粋）
@@ -274,6 +296,31 @@ signInWithEmailOtp(input: { email: string; code: string }): Promise<
 - mock（`mock-auth.ts`）: `s2-mock-backend.md` §14。Cart lifecycle decorator（`createCartLifecycleAuthPort`）: `signInWithEmailOtp` は `signIn` と同じ規則（FR-CRT-012）で包む。成功（`signed_in`、`emailVerified` が false でも）で Guest Cart を維持して由来 `authenticated` を記録し、由来が `authenticated` / 不明の Cart を clear する。失敗（`code_invalid` / `code_expired` / `unavailable`）と raw の reject は Cart を変えない。遷移中（lifecycle、他 Tab の Web Lock、この port 自身の実行中）は `cart_busy`、Cart キーを読めないとき（Q-1）は `cart_blocked`。いずれも raw を呼ばず storage を変えない。`requestEmailOtp` は Cart が準備済みなら raw を 1 回呼んで結果をそのまま返し、Cart / metadata に書かない。busy / blocked では raw を呼ばない。raw の session 通知は Cart の cleanup のあとに公開する。
 - `useAuth()` は同じ instance を返す（新しい method も含む）。
 
+## 3B. AuthPort の Google（B5 C2。`src/auth/port.ts`、`cart-lifecycle-auth-port.ts`、`mock-auth.ts`）
+
+`AuthPort` に次の 1 method を**加える**（既存 10 method は変えない。合計 11。Neon Auth の transport であり、業務の Operation ID も API ID も無い。SPEC-110 §23.1。UCR を参照しない）。
+
+```ts
+startGoogleSignIn(input: { successPath: string; failurePath: string }): Promise<
+  | { kind: "redirect"; url: string }
+  | { kind: "unavailable" }
+  | { kind: "already_signed_in" }
+  | { kind: "cart_busy" }
+  | { kind: "cart_blocked" }>;
+```
+
+- `port.ts` の注釈（`startGoogleSignIn(` の宣言の直前に連続するコメント）に、Neon Auth の transport で業務 Operation ID を持たないこと（`SPEC-110 23.1`）、`redirect` の `url` は same origin の相対 path で、利用者はこの URL へ**ページ全体の遷移**で移ること、認証の成否（outcome）はこの promise の結果ではなく**戻った画面で判断する**こと、`successPath` / `failurePath` は PG-AUTH-003 / PG-AUTH-001 の path に限ること（`AR-CONT-001`、`SEC-WEB-013`）を書く。`ports.test.ts` は `Neon Auth`、`23.1`、`Operation ID`、`outcome`、`same origin`、`AR-CONT-001`、`SEC-WEB-013` の語を要求し、`API-<…>-NNN` 形式の ID と `UCR-` を禁じる。
+- 渡す 2 つの path は `auth-return.ts`（§5B）が作る。`successPath` は Google の成功の戻り（`returned=google`）、`failurePath` は取消・失敗の戻り（`notice=google-failed`）。
+- mock（`mock-auth.ts`）: `s2-mock-backend.md` §14.2。DB・session・storage を変えない（開始は何も成立させない）。
+- Cart lifecycle decorator（`createCartLifecycleAuthPort`）の規則（FR-CRT-012 の外部完了認証の規則。§10A の対応表）。順に判定する:
+  1. Session を確認できない（`getSession` が `unavailable`）→ `{ kind: "unavailable" }`。raw を呼ばず、何も書かない。
+  2. Session が `authenticated`（`emailVerified` が false でも）→ `{ kind: "already_signed_in" }`。raw を呼ばず、storage を変えない（手順 1。Email 未確認の Session を持つ利用者は Guest ではない）。
+  3. 遷移中（lifecycle の遷移、他 Tab の Web Lock、この port 自身の実行中の `signIn` 等）→ `{ kind: "cart_busy" }`。Cart キーを読めない・lifecycle が停止中・孤立した遷移記録・Lock を取れない → `{ kind: "cart_blocked" }`（Q-1）。いずれも raw を呼ばず、storage を変えない。**待たずに**返す。
+  4. それ以外は `lifecycle.beginExternalAuthentication()` を呼ぶ。`blocked` → `cart_blocked`、`busy` → `cart_busy`（raw を呼ばない）。`ready` なら、**raw の `startGoogleSignIn` を呼ぶ前に**、metadata の `external: "pending"` を書き、由来不明・`authenticated` の Cart を clear しておく（手順 2・3。Guest 由来の Cart は保持）。
+  5. raw の結果（`redirect` / `unavailable`）をそのまま返す。raw が `unavailable` を返しても、reject しても、`external` は `"pending"` のまま残り、clear した Cart は戻さない（手順 3、7）。
+- Browser storage 自体を取得できない場合は decorator を通らず（`createCartLifecycleAuthPort` が lifecycle を持たない）、記録を作らない。raw をそのまま呼ぶ（開始を妨げない。手順 2 の最後の文。TC-FR-CRT-012-018）。
+- `useAuth()` は同じ instance を返す（`startGoogleSignIn` も含む）。
+
 ## 4. フォーム検証（`features/auth/form-validation.ts`。純粋。U13）
 
 ```ts
@@ -312,15 +359,34 @@ export function describeContinuation(intent: ContinuationIntent | null): Continu
 ## 5A. 認証方式の一覧（B5 C1。`features/auth/auth-methods.ts`。純粋）
 
 ```ts
-export type AuthMethod = "password" | "email-otp";
-export const AUTH_METHODS: readonly AuthMethod[];        // C1: ["password", "email-otp"]（この順）
+export type AuthMethod = "password" | "google" | "email-otp";   // C3 が "magic-link" を最後に足す
+export const AUTH_METHODS: readonly AuthMethod[];        // C2: ["password", "google", "email-otp"]（この順。C1 は password と email-otp だけ）
 export const DEFAULT_AUTH_METHOD: AuthMethod;            // "password"（AUTH_METHODS[0]）
 export function authMethodLabel(method: AuthMethod): string;
 ```
 
 - `authMethodLabel("password")` = `copy.auth.method.password`、`"email-otp"` = `copy.auth.method.emailOtp`。ラベルは互いに異なる。GitHub / Discord / LINE / Apple の方式を持たない（SPEC-050 §15.0）。
-- 仕様の順序は Email+Password、Google、Email OTP、Magic Link（SPEC-050 §15.0）。C1 は画面内で完結する 2 方式だけを提供し、C2（Google）・C3（Magic Link）が一覧とこのテスト（TC-PG-AUTH-003-212）を 4 方式の順序へ更新する。
+- 仕様の順序は Email+Password、Google、Email OTP、Magic Link（SPEC-050 §15.0）。【B5 C2】`AuthMethod` は `"password" | "google" | "email-otp"`、`AUTH_METHODS` は `["password", "google", "email-otp"]`（この順）、`authMethodLabel("google")` = `copy.auth.method.google`。C3（Magic Link）が `"magic-link"` を最後に足し、このテスト（TC-PG-AUTH-003-212）と E2E の `expectMethodRadios` はすでに「`copy.auth.method.magicLink` があれば 4 つ目、最後」を受け入れる。E2E の radio group は C2 で 3 つの radio（`password`、`google`、`emailOtp` の順）になる。矢印キーはこの順に進む。
 - `features/auth/method-selector.tsx`（client。`MethodSelector`）: `<fieldset>` + `<legend>`（props で受ける）+ `AUTH_METHODS` を `type="radio"` の `<input>` と `<label>` で描画する。`useId` で id を作る。focus を動かさない（`autoFocus` / `.focus()` を使わない）。port・`fetch`・storage・`console` を使わない。`features/auth/email-otp-form.tsx`（client。`EmailOtpForm`）は §6.1B の OTP 2 step を担い、port は `useAuth()` 経由だけで呼ぶ。
+
+## 5B. 外部完了認証の戻り path（B5 C2。`features/auth/auth-return.ts`。純粋）
+
+外部サービスで認証する方式（Google。C3 の Magic Link も同じ形）は、開始した PG-AUTH 画面と**同じ画面**へ、ページ全体の遷移で戻る（SPEC-050 §15.0）。戻り先は固定の語だけで作り、email・token・code・識別子を含めない（SEC-AUTH-018、SEC-WEB-013）。
+
+```ts
+export const RETURNED_PARAM = "returned";                      // 成功の戻りの query 名
+export function externalReturnPath(
+  method: "google", page: "login" | "register", intent: ContinuationIntent | null): string;
+export function externalFailurePath(
+  method: "google", page: "login" | "register", intent: ContinuationIntent | null): string;
+export function parseReturned(raw: string | null | undefined): "google" | null;
+export function parseFailureNotice(raw: string | null | undefined): "google" | null;
+```
+
+- `externalReturnPath("google", page, intent)` = `accountPath(page, intent)` + （`intent === null` なら `?`、そうでなければ `&`）+ `returned=google`。例: `/account/login?continue=cart&returned=google`、`/account/register?returned=google`。`externalFailurePath` は末尾が `notice=google-failed`（`returned` を付けない）。どちらも `isSafeRelativePath` を通り、pathname は `/account/login` または `/account/register`、`continue` は intent の `serializeContinuation` と同じ値のまま（`parseContinuation` で同じ intent に戻る）。query は `continue` と、`returned` または `notice` の 2 つだけ。`@` `token` `secret` `code=` `password` `session` `email` のどれも含まない。
+- `parseReturned(raw)`: 厳密に `"google"` のときだけ `"google"`。それ以外（`null`、`undefined`、空、大文字小文字違い、前後の空白、`google,google`、`google-failed`、未知の provider 名など）は `null`（無視）。
+- `parseFailureNotice(raw)`: 厳密に `"google-failed"` のときだけ `"google"`。`password-updated`（既存の通知）を含む他の値は `null`。
+- `RETURNED_PARAM` と `"google-failed"` の文字列は `auth-return.ts` だけが持つ。`returned=…` の URL を作るのは `auth-return.ts` の戻り path だけで、それを開くのは mock の代わりの画面（`window.location.assign`）と、実 Neon Auth の中継の redirect だけに限る。SPA 内の遷移（`router.push` / `Link`）で `returned=…` の URL を開く経路を作らない（§10A の R11）。
 
 ## 6. DOM 契約（E2E が検査する）
 
@@ -347,7 +413,7 @@ export function authMethodLabel(method: AuthMethod): string;
 
 ### 6.1A Login の方式選択（B5 C1。PG-AUTH-003。SPEC-050 §15.0）
 
-- `h1` の下（Continuation の案内の下）、フォームの上に、`role="group"` の `<fieldset>`（accessible name = `copy.auth.method.legendLogin`）を描画する。中に `role="radio"` が 2 つ、この順: `copy.auth.method.password`、`copy.auth.method.emailOtp`（accessible name は exact）。初期は `password` が checked。GitHub / Discord の語は出さない。
+- `h1` の下（Continuation の案内の下）、フォームの上に、`role="group"` の `<fieldset>`（accessible name = `copy.auth.method.legendLogin`）を描画する。中に `role="radio"` が【B5 C2】3 つ、この順: `copy.auth.method.password`、`copy.auth.method.google`、`copy.auth.method.emailOtp`（accessible name は exact。C3 が `magicLink` を 4 つ目に足す）。初期は `password` が checked。GitHub / Discord の語は出さない。矢印キーはこの順に進む（`password` → `google` → `email-otp`）。
 - `password` を選んでいるとき、既存の Login フォーム（§6.1）をそのまま表示する（email / password、submit `copy.auth.login.submit`、Links）。OTP の操作（`copy.auth.otp.send`、コード欄）は無い。初期表示に `role="alert"` / `role="status"` は無い。
 - `email-otp` を選ぶと、password の欄と `copy.auth.login.submit` が消え、email 欄と `copy.auth.otp.send` button が出る（コード欄はまだ無い）。URL（`continue` を含む）、Session、Continuation の案内は変わらない。**focus は選んだ radio に残る**（動かさない）。`password` に戻すと password 欄は**空**で現れ、入力済みの password はどこにも残らない（storage にも）。
 - 方式の radio group は矢印キーだけで操作でき（ネイティブの radio）、選択は navigation を起こさない。Links（登録へ、パスワードをお忘れの方、ログインせずに戻る）は両方式で `continue` を保つ。
@@ -371,6 +437,33 @@ export function authMethodLabel(method: AuthMethod): string;
   - `copy.auth.otp.resend` → `requestEmailOtp` を同じ email で呼び、`sent` なら新しい `copy.auth.otp.sent` の status を出して step 2 に留まる（前の alert は消える）。`copy.auth.otp.changeEmail` → step 1 へ戻る（status / alert を消し、コード欄を消す）。
 - 未確認 User も、コードで Login すると確認済みになる（mailbox の証明。stored user と Session が `emailVerified: true`）。
 
+### 6.1C Login の Google（B5 C2。PG-AUTH-003、SPEC-050 §15.0 / §15.3、FR-CRT-012 の外部完了認証の規則）
+
+Google は外部サービスで認証する方式である。開始は `AuthPort.startGoogleSignIn`（§3B）、成否は**戻った画面**が決める。`GoogleSignIn`（`features/auth/google-sign-in.tsx`）は Login と登録で共用する container で、props は `{ page: "login" | "register"; intent: ContinuationIntent | null; cartBlocked; onCartFailure; onAttempt? }`（`EmailOtpForm` と同じ形。Cart 停止時の `CartRecovery` は page が出す）。戻りの処理（`completeExternalAuthentication`）は `features/auth/use-external-return.ts` の hook にまとめ、login / register の各 page が呼ぶ。
+
+- **開始の画面**: radio `copy.auth.method.google` を選ぶと、password の欄と `copy.auth.login.submit`・OTP の操作が消え、`<button type="button">` 1 つが出る。accessible name は Login で `copy.auth.google.startLogin`、登録で `copy.auth.google.startRegister`（exact）。これは **button であり link ではない**（`<a>` を使わない。mock の代わりの画面への href を置かない。SEC-WEB-013、DEV-WEB-012）。URL・Session・Continuation の案内・focus（選んだ radio に残る）は変わらない。Links（登録へ、パスワードをお忘れの方、ログインせずに戻る）は `continue` を保つ。
+- **有効・無効**: button は、Session が `ready` で Guest、Cart が停止中でなく、開始中でないときだけ有効。それ以外は**ネイティブに `disabled`**（`aria-disabled` ではない）。
+  - Session が Authenticated（`emailVerified` が false でも）: 無効。`aria-describedby` が、`copy.auth.google.signedIn` を text とする要素を指す（Guest のときはその要素を描画しない）。押しても何も起きない（`/dev/*` へ移らず、記録も作らない）。Email+Password の form は選べば表示される（開始可否を仕様は定めない。現状の UI の挙動を固定するだけ）。Session が他の Tab で成立したときも、開いている page の button が無効になる（`SessionProvider` の購読）。
+  - Session が `loading` / `unavailable`: 無効（Session を確認できないとき開始しない）。
+  - Cart 停止中（Cart キーを読めない。Q-1）: 無効。`CartRecovery`（`role="alert"` に `copy.cart.lifecycleBlocked.title`、復旧 button）を page 経由で表示する（password Login・OTP と同じ。§10）。disabled を外して押された場合も `cart_blocked` になり、画面に留まる。
+- **押したとき**: 二重に押せない（開始中は無効）。`startGoogleSignIn({ successPath, failurePath })`（`externalReturnPath("google", page, intent)` と `externalFailurePath("google", page, intent)`）を呼ぶ。結果:
+  - `redirect` → `window.location.assign(url)`（ページ全体の遷移。`router.push` / `Link` を使わない。`fetch` を使わない）。
+  - `unavailable` → `role="alert"` + `copy.auth.google.unavailable`（`main` 内の alert は同時に 1 つ）。画面に留まり、button は有効のまま（再試行できる）。mock では scenario `auth.login = "unavailable"`。このとき lifecycle には `external: "pending"` が残る（手順 3、7）。
+  - `already_signed_in` → 無効の表示（上記）に切り替える。alert は出さない。
+  - `cart_busy` / `cart_blocked` → password Login と同じ扱い（`CartRecovery`。§10）。
+- **戻りの処理**（`LoginPage`。登録は §6.2B）: mount 後、`?returned=` と `?notice=` を **1 回だけ**読み、読んだ直後に `history.replaceState` で URL から `returned` と `notice` を除く（`continue` など他の query は残す）。
+  - `parseReturned(returned) === "google"`（成功の戻り）で、Session が `ready` になったら:
+    - `authenticated` かつ `emailVerified: true` → `getBrowserCartLifecycle()?.completeExternalAuthentication()` を **1 回**呼んでから `continuationPath(intent)`（`continue` が無ければ `/mypage`）へ遷移する。
+    - `authenticated` かつ `emailVerified: false` → `completeExternalAuthentication()` を呼んでから `accountPath("email-verification", intent)` へ遷移する（Authenticated として購入等へ進めない）。
+    - `guest`（Link を別の端末で開いた等）→ `role="alert"` + `copy.auth.google.failed`。`completeExternalAuthentication()` を**呼ばない**（記録は残す）。遷移しない。
+    - `unavailable` → 同じく `copy.auth.google.failed` の alert。`completeExternalAuthentication()` を呼ばない。
+  - `parseFailureNotice(notice) === "google"`（取消・失敗の戻り）→ `role="alert"` + `copy.auth.google.failed`（Session が何であっても）。`completeExternalAuthentication()` を呼ばない。Guest のまま、radio で別方式を選び直せる。
+  - 未知の `returned` / `notice` の値は無視する（alert も遷移も無い）。
+  - 上の alert が出ている間、`main` 内の他の `role="alert"` は無い。どの radio が checked かは規定しない（戻りの後に Google 以外を選べればよい）。
+  - **戻りの処理は、`returned=google` を持つ URL を文書の読み込みで開いた画面だけが行う**（§10A の R11）。同じ画面でも、`returned` を持たない通常の表示（再読込、戻る・進む、`/mypage` や `/cart` の通常の訪問、他の Tab の画面）は `completeExternalAuthentication()` を呼ばず、`external` の記録を変えない。
+  - 受領した後の `completeExternalAuthentication()` の結果は画面に出さない（失敗しても throw しない。Cart の機能だけが停止表示になる）。
+- 秘密の扱い: URL・storage・DOM・console に、email・token・code・Google の識別子を出さない（mock の代わりの画面の `success` / `failure` の path 以外）。`console.*` を使わない。
+
 ### 6.2A Registration の方式選択と Email OTP（B5 C1。PG-AUTH-001、FR-AUTH-001、SPEC-030 §9.2）
 
 - 登録画面にも §6.1A と同じ radio group を置く。legend は `copy.auth.method.legendRegister`、初期は `password`（既存の登録フォーム §6.2）。`email-otp` を選ぶと email 欄と `copy.auth.otp.send` に替わり、URL と Continuation の案内は変わらない。
@@ -390,6 +483,13 @@ export function authMethodLabel(method: AuthMethod): string;
   - `rejected` → `role="alert"` + `copy.auth.register.rejected`（登録未成立）。
   - `unavailable` → `role="alert"` + `copy.auth.register.unavailable`（購入等を認証済みとして進めない）。`rejected` と `unavailable` の文言は異なる。
   - いずれの失敗でも Session は guest のまま。
+
+### 6.2B Registration の Google（B5 C2。PG-AUTH-001、FR-AUTH-001、SPEC-030 §9.2、SPEC-050 §15.1）
+
+- radio group（legend は `copy.auth.method.legendRegister`）の `copy.auth.method.google` を選ぶと、§6.1C と同じ `GoogleSignIn`（`page="register"`）が出る。button の accessible name は `copy.auth.google.startRegister`。有効・無効、`already_signed_in`、`cart_busy` / `cart_blocked`、`unavailable` の扱いは §6.1C と同じ。
+- stand-in の `success` は `externalReturnPath("google", "register", intent)`（`/account/register?…&returned=google`）、`failure` は `externalFailurePath("google", "register", intent)`。
+- 戻りの処理は §6.1C と**同じ順序**（`RegisterPage` が行う）: verified → `completeExternalAuthentication()` の後に `continuationPath(intent)`（`continue` が無ければ `/mypage`）、未確認 → `completeExternalAuthentication()` の後に `accountPath("email-verification", intent)`、Guest → `copy.auth.google.failed` の alert（遷移しない、記録を残す）、`notice=google-failed` → 同じ alert。
+- 未知の email（`google.new@example.com`）の許可は初回登録になる: Session は `authenticated` + `emailVerified: true`、mock の user が**ちょうど 1 人**増え `{ displayName: null, emailVerified: true }`（Mypage の表示名は「未設定」。email から推測しない）。既に登録済みの email（`demo@example.com`）の許可でも「すでに登録されています」等の答えを出さない: Login と同じく signed_in になり user は増えない（SEC-API-027）。
 
 ### 6.3 `/account/email-verification`（PG-AUTH-002）
 
@@ -437,13 +537,30 @@ export function authMethodLabel(method: AuthMethod): string;
 
 - `/account/login`、`/account/register`、`/account/email-verification`、`/account/password-reset`、`/account/password-reset/complete`、`/mypage` の GET が **HTTP 200** で、`Cache-Control` が `no-store` と `private` を含み、`Pragma: no-cache`（SEC-WEB-009。`dist/_headers` の規則。静的 shell なので route が未実装でも 200 になる）。`/` の navigation 応答も `no-store, private, max-age=0`（公開 page も同じ。S4 / S5 と TC-SEC-WEB-009-701 の後半）。
 - 各ページは title = `${copy.<…>.pageTitle} | ${SITE_NAME}`、`h1` が 1 つ、`pageerror` / `console.error`（resource load 失敗を除く）が無く、外部 origin へ要求せず、`/admin` / `/staff` への href が無く、390px 幅で横 scroll が無い。
-- 認証フローの前後で、localStorage / sessionStorage の全内容（key と value）、URL、`main` のテキストに、入力した Password（テストの sentinel）と verification / reset の context が現れない（SEC-AUTH-018）。【B5 C1】Email OTP のコード（sentinel）も同様に、誤り・期限切れ・サービス失敗・成功のどの後でも、URL・storage・DOM のテキスト・console に現れず、コード欄は送信のたびに空になる（TC-SEC-AUTH-018-702）。390px 幅では方式の radio group、OTP の email step、コード step（欄・送信・再送・メール変更）が viewport 内に収まり横 scroll が無い（Login と登録。TC-PG-AUTH-003-504）。root layout の `<ScrollRestoration />` は `getKey` を渡さず既定の location key を使うので、sessionStorage の保存値に URL・query（`context` など）が入らない（`tests/e2e/static-hosting.spec.ts` TC-STACK-008-306）。
+- 認証フローの前後で、localStorage / sessionStorage の全内容（key と value）、URL、`main` のテキストに、入力した Password（テストの sentinel）と verification / reset の context が現れない（SEC-AUTH-018）。【B5 C1】Email OTP のコード（sentinel）も同様に、誤り・期限切れ・サービス失敗・成功のどの後でも、URL・storage・DOM のテキスト・console に現れず、コード欄は送信のたびに空になる（TC-SEC-AUTH-018-702）。390px 幅では方式の radio group、OTP の email step、コード step（欄・送信・再送・メール変更）が viewport 内に収まり横 scroll が無い（Login と登録。TC-PG-AUTH-003-504）。root layout の `<ScrollRestoration />` は `getKey` を渡さず既定の location key を使うので、sessionStorage の保存値に URL・query（`context` など）が入らない（`tests/e2e/static-hosting.spec.ts` TC-STACK-008-306）。【B5 C2】Google の開始・stand-in・戻りの前後で、URL・storage・DOM のテキスト・console に、email・token・code・Google の識別子が現れない（stand-in の URL の `success` / `failure` の path と、固定の `returned=google` / `notice=google-failed` の語は例外）。`/account/login` と `/account/register` の radio を Google にしても、`<a href>` に `/dev`・`/admin`・`/staff` が無く、外部 origin への要求（Google の画像・script を含む）が無い。390px 幅では Google の開始 button が viewport に収まり横 scroll が無い（TC-PG-AUTH-003-308）。`/dev/mock-google` の GET も `dist/_headers` の `/*` 規則で no-store（SEC-WEB-009）。
+
+### 6.9 `/dev/mock-google`（B5 C2。dev 専用。DEV-WEB-012 / 013。`mock/dev-ui/mock-google-screen.tsx` + `routes/dev/mock-google.tsx`）
+
+Stripe Checkout の代わりの画面（`/dev/mock-checkout`）と同じ位置づけの、Google の代わりの画面である。`DevLayout` の guard 配下にあるため、mock が無効なとき（`VITE_UI_MOCK` が `1` でない、または `APP_ENV=production`）は Not Found 表示になる。一般 Navigation・Footer・Drawer・Account menu・MockModeBadge・PG-AUTH 画面から **Link しない**（`<a href>` を置かない。開始は `window.location.assign`）。
+
+- query: `success` と `failure`（どちらも percent-encoded された相対 path。`startGoogleSignIn` の返す URL の形。`s2-mock-backend.md` §14.2）。画面は表示のたびに、**両方が**あり、それぞれ `isSafeRelativePath` を通り、pathname が `/account/login` または `/account/register` であることを検査する。1 つでも満たさない（欠落、重複して複数値、絶対 URL、`//`、backslash、dot segment、保護 path・`/dev`・`/admin`・`/`・PG-AUTH でも Login / 登録でもない path）場合は、**3 つの操作すべてが `disabled`**（ネイティブ）で、何も変更せず、何も辿らない（`window.location.assign` を呼ばない）。
+- 表示: `h1` = `copy.mockGoogle.heading`（代わりの画面で、実際の認証が行われないことを言う）、本文に `copy.mockGoogle.note`、title は `copy.mockGoogle.pageTitle`。`<main>` は layout のものだけ。入力欄を持たない（email を入力させない。URL にも storage にも email を出さない）。
+- 操作（`<button type="button">`、accessible name は exact）:
+  - `copy.mockGoogle.allowDemo`（"demo@example.com として許可"）: `allowMockGoogleSignIn(deps, "demo@example.com")`（既存 user の session を作る。DB 不変）を呼び、`signed_in` なら `window.location.assign(success)`。
+  - `copy.mockGoogle.allowNew`（"新しいアカウント（google.new@example.com）として許可"）: `allowMockGoogleSignIn(deps, "google.new@example.com")`（user が無ければ `displayName: null`、`emailVerified: true` で作り、session を `authenticated` にする）を呼び、`signed_in` なら `window.location.assign(success)`。
+  - `copy.mockGoogle.cancel`（"キャンセル"）: 何も変更せず `window.location.assign(failure)`。
+  - `allowMockGoogleSignIn` が `unavailable`（DB・session の破損）を返したら遷移せず、画面に留まる（表示は規定しない）。
+  - 画面を開いただけでは Session・DB・Cart・metadata を変えない。許可はこの画面が Session を直接書くため、Cart lifecycle の decorator を通らない（結果の受領は戻った PG-AUTH 画面の仕事。§10A）。
+- 「未確認 user として許可」の操作は置かない。未確認 Session の戻りは、`unverified@example.com` の Session を seed して `returned=google` の URL を直接開いて検査する（TC-PG-AUTH-003-310）。
+- `window.location.assign(success)` は、`auth-return.ts` が作る戻り path（`returned=google`）を**ページ全体の遷移**で開く唯一の経路である（§10A の R11）。
 
 ## 7. E2E の共通条件
 
 - 時刻は `page.clock.setFixedTime(NOW_ISO)`（`fixClock`）。状態の仕込みは `seedLocalStorage`（`KEYS.session` / `KEYS.scenario` / `KEYS.cart`）。ナビゲーションは `gotoHydrated` / `reloadHydrated`（`HydrationMarker` は S5 で実装済み）。
 - Seed の User: `demo@example.com`（確認済み）、`new@example.com`（確認済み）、`unverified@example.com`（未確認）、`other@example.com`（確認済み）。Password は mock が形だけ検査する（空でなければよい。`TEST_PASSWORD`）。メールアドレスは `example.com` だけ（TST-DAT-002）。
 - scenario の auth 切替（`scenarioJson({ auth: {...} })`、`tests/harness/browser/auth.ts` の `authScenario(patch)` が既定値へ合成する）: `login` / `signup` / `verify` / `reset` / `resetContext` / `session`。scenario の失敗は mock 内の切替であり SPEC-170 の Fault Point ではない（TST-GEN-006）。【B5 C1】Email OTP は新しい値を作らず、`login`（`unavailable` / `credential_failure`）と `verify`（`invalid_or_expired`）を再利用する（§9 の 12）。E2E は `auth.ts` の `setAuthScenario(page, patch)` で、画面を開いたまま scenario を切り替えられる（mock は呼び出しごとに scenario を読む）。コードの sentinel は `SENTINEL_OTP_CODE`、通常のコードは `OTP_CODE`。
+- 【B5 C2】Google の E2E の helper は `tests/harness/browser/auth.ts`: `expectMethodRadios(group)`（仕様の順の radio と、`copy.auth.method.magicLink` があれば最後の 4 つ目）、`openAuthPage(page, name, query?, entries?)`、`googleRadio` / `googleStartButton(page, "login" | "register")` / `standInButton(page, "allowDemo" | "allowNew" | "cancel")`、`googleReturnPath` / `googleFailurePath`（§5B の path を**文字どおり**に組む。production の builder に依存しない）、`mockGoogleUrl` / `openMockGoogle`（stand-in を直接開く）、`startGoogle(page, name)`（radio を選び、開始 button を押し、`/dev/mock-google` への全遷移と hydration を待つ）、`watchDocumentRequests(page)`（main frame の document 要求の path と query。`returned=google` が文書の読み込みで来たことを確かめる）、`readCartLifecycle` / `readCartLifecycleRaw`、`cartEntriesWithExternal(lines, "pending" | "superseded", provenance?)`、`sessionEntry(email, emailVerified?)`。Google の文言は `copy.auth.method.google` / `copy.auth.google.*` / `copy.mockGoogle.*` を直接読む。
+- 【B5 C2】Playwright は直列（`--workers=1`、`127.0.0.1:3100` を専有）。stand-in への遷移・戻りの文書は `page.waitForURL` で待ち、`waitForHydration` で hydration を確かめてから操作する。2 つ目の page は `openSecondTab(page.context())`（同じ localStorage を共有する）。
 
 ## 8. テストファイルと契約の対応
 
@@ -463,7 +580,12 @@ export function authMethodLabel(method: AuthMethod): string;
 | `tests/unit/web/auth/auth-methods.test.ts` | §5A（TC-PG-AUTH-003-212） |
 | `tests/unit/web/mock/mock-auth.test.ts` | s2-mock-backend.md §14（OTP。TC-PG-AUTH-003-102 / -103、TC-SEC-AUTH-018-101） |
 | `tests/unit/web/auth/cart-lifecycle-auth-port.test.ts` | §3A と §10（TC-FR-CRT-012-016） |
-| `tests/e2e/cart-failure-modes.spec.ts` | §10 の Q-1（OTP を含む。TC-PG-CRT-001-543） |
+| `tests/e2e/cart-failure-modes.spec.ts` | §10 の Q-1（OTP を含む。TC-PG-CRT-001-543）、Google の Q-1 と storage 取得不可（TC-FR-CRT-012-018） |
+| `tests/unit/web/auth/auth-return.test.ts` | §5B（B5 C2。TC-PG-AUTH-003-213） |
+| `tests/unit/web/cart/cart-lifecycle-external.test.ts` | §10A（lifecycle の `beginExternalAuthentication` / `completeExternalAuthentication`。TC-FR-CRT-012-017 / -019） |
+| `tests/e2e/auth-google.spec.ts` | §6.1C、§6.2B、§6.9、§10A（TC-PG-AUTH-003-308 / -310 / -313、TC-FR-CRT-012-020） |
+
+B5 C2 の対応: §1（`copy.auth.method.google` / `copy.auth.google` / `copy.mockGoogle`）は `s6-copy.test.ts`（TC-PG-AUTH-003-403）、§3B は `ports.test.ts`（TC-DEV-WEB-010-102）・`mock-auth.test.ts`（TC-PG-AUTH-003-104）・`cart-lifecycle-auth-port.test.ts`（TC-FR-CRT-012-017）、§5A は `auth-methods.test.ts`（TC-PG-AUTH-003-212）、§5B は `auth-return.test.ts`（TC-PG-AUTH-003-213）、§0 / §6.1C / §6.2B / §6.9 の構成は `s6-static.test.ts`（TC-PG-AUTH-003-512、TC-DEV-WEB-001-501 / -503）と `route-table-static.test.ts`（TC-STACK-008-002。`/dev/mock-google` を足して 32 path）、§6.1A の radio の順は `auth-login.spec.ts`（TC-PG-AUTH-003-305）と `auth-register-verify.spec.ts`（TC-PG-AUTH-001-305）、§6.1C / §6.2B / §6.9 / §10A の画面は `auth-google.spec.ts`。
 
 B5 C1 の対応: §1（`copy.auth.method` / `copy.auth.otp` / `copy.auth.field.otpCode`）は `s6-copy.test.ts`（TC-PG-AUTH-003-403）、§4 の `validateOtpCodeForm` は `form-validation.test.ts`（TC-PG-AUTH-003-202）、§0 / §5A / §6.1A / §6.1B / §6.2A の構成は `s6-static.test.ts`（TC-PG-AUTH-003-512）、§6.1A〜§6.1B は `auth-login.spec.ts`（TC-PG-AUTH-003-305 / -306 / -307）、§6.2A は `auth-register-verify.spec.ts`（TC-PG-AUTH-001-305）。
 
@@ -488,6 +610,15 @@ B5 C1 の対応: §1（`copy.auth.method` / `copy.auth.otp` / `copy.auth.field.o
     - 要求（`requestEmailOtp`）は、登録済み・未確認・未登録の email で同じ `{ kind: "sent" }` を返し、DB・session・storage を変えない（SEC-API-027）。未登録の email で user を作るのは `signInWithEmailOtp` だけ。
     - 方式の一覧は C1 では「Email+Password」「Email OTP」の 2 つである。C2 / C3 が SPEC-050 §15.0 の 4 方式の順序へ更新する。Google と Magic Link のテストは C1 に含まれない。
     - OTP の画面は Login / Registration の同じ route の中の状態で、URL を変えない（`continue` を保つ）。
+13. **【B5 C2】Google の mock の決定**（計画書 v4 の Q3 / D0。SPEC-050 §15.0、FR-CRT-012 の外部完了認証の規則）:
+    - 新しい scenario 値・storage key・API は作らない。開始の成否は既存の `auth.login = "unavailable"` を再利用する（`unavailable`）。取消・失敗は scenario ではなく、stand-in で `cancel` を押すこと。
+    - stand-in の操作は 3 つ（`allowDemo` / `allowNew` / `cancel`）。計画書は「許可（`unverified@example.com` として）」を TC-PG-AUTH-003-310 の例に挙げるが、操作を 3 つに固定するため、未確認 Session の戻りは seed した Session で `returned=google` の URL を直接開いて検査する（stand-in に未確認の操作を足さない）。
+    - stand-in の `success` / `failure` が欠落・不正のときは、3 つの操作をすべて `disabled` にして何も辿らない（計画書は「path は再度検査する」とだけ書く。不正のときの挙動を決めた）。
+    - 戻りで Session が `unavailable`、または `notice=google-failed` の戻り（Session が何であっても）は `copy.auth.google.failed` の alert とした。`notice` は URL に残してよい（`returned` と違い、再表示しても結果の受領は起きない）。E2E は `notice` の有無を assert しない。
+    - 戻りの画面でどの radio が checked かは規定しない。
+    - 受領の対象は未確認 Session も含む（手順 6 は「Email未確認のSessionを含む」）。未確認 Session の戻りでも `completeExternalAuthentication()` を呼んでから `PG-AUTH-002` へ遷移する。
+    - Browser storage 自体を取得できない Guest は開始できる（手順 2）。ただし stand-in の許可は Session を storage に書くため、storage が使えないまま許可しても Session は残らない。E2E（TC-FR-CRT-012-018）は、開始と記録の不作成を storage 取得不可の状態で確かめ、許可の確認は storage を使えるようにして stand-in を再読込してから行う（計画書の「Cart の機能だけが停止表示のまま」は、storage が使えない状態では Session も残らないため E2E では確かめられない）。
+    - 他の Tab で成立した Session によって開いている画面の Google の開始 button が無効になる（§6.1C）ことは、`SessionProvider` の既存の購読（`storage` event）に従う。
 
 ## 10. Issue #8 の Cart 分離回帰契約
 
@@ -506,6 +637,7 @@ B5 C1 の対応: §1（`copy.auth.method` / `copy.auth.otp` / `copy.auth.field.o
   3. Login / 登録の送信: `CartRecovery` を出し、submit button は disabled。disabled を迂回した送信（`form.requestSubmit()`）も `cart_blocked` になり、画面に留まる（Guest のまま、mock の session key への書き込み 0 回 = 認証の raw 呼び出しなし、credential / service の失敗文言なし）。
   4. Cart キーが再び読めるようになった後の復旧操作: 停止が解ける。保護ページは `/account/login?continue=mypage` へ redirect し、Karaoke の次の操作は `/account/login?continue=karaoke-slot...` へ handoff し（Order は作られない）、Login はサインインして `/mypage` に着く。
   5. 【B5 C1】Email OTP も同じ規則で止まる（§6.1B）。Cart キーを読めないとき、コード要求の button（`copy.auth.otp.send`）は disabled、`form.requestSubmit()` による迂回も `cart_blocked` で `sent` の status もコード入力も出さず、mock の session key への書き込みは 0 回。コード要求の後で Cart キーが読めなくなった場合も、コード送信（`submitLogin`）は disabled で、迂回しても `cart_blocked`。復旧操作のあとは OTP Login が成功する。Email OTP による登録（§6.2A）も同様に止まる。単体では `TC-FR-CRT-012-016`（`tests/unit/web/auth/cart-lifecycle-auth-port.test.ts`）が、`signInWithEmailOtp` の成功（Guest Cart 維持と由来 `authenticated` の記録、由来が `authenticated` / 不明の Cart の clear）、失敗（Cart 不変）、`cart_busy`（遷移中、他 Tab の Web Lock、自身の実行中）、`cart_blocked`（Cart キー不読）と、`requestEmailOtp` が Cart に書かないことを固定する。
+  6. 【B5 C2】Google も同じ規則で止まる（§6.1C、§6.2B、§10A の手順 2）。Cart キーを読めないとき、Google の開始 button は disabled、disabled を外して押されても `cart_blocked` で、`/dev/mock-google` へ移らず、mock の session key への書き込みは 0 回、metadata に `external` を作らない。復旧操作のあとは開始でき、stand-in に着いた時点で `external: "pending"` がある。Browser storage 自体を取得できない場合は、開始を妨げず記録を作らない。TC-FR-CRT-012-018（`cart-failure-modes.spec.ts`）が固定する。
   - 読めるが壊れた Cart 本体は停止ではなく `corrupted`（s5-cart.md §2.3）で、この規則の対象外。
 - `tests/e2e/auth-gate-logout.spec.ts` の既存Issue再現は、公開Login画面と失敗Loginで旧Cartの保存値が維持され、成功時に初めてclearされる順序をassertする。
 - `tests/e2e/cart-session-isolation.spec.ts` はAuthGateとCart / Guest KaraokeのLogin handoffで、必要なCart clear失敗中は遷移しないこと、AuthGateのstorage取得不可時はLoginへ進むことを検証する。Karaoke Slotは表示を保ち、Authenticated Userの購入開始がCart停止中も進むことを検証する。ActionはAPIで初めて期限切れが分かる場合と、UIが既にGuestを認識している場合の双方を検証する。【B4c】Karaoke Slotは購入開始の前に本人向け判定（`API-PUR-ELG-001`）を読むため、Karaokeの `api_expiry` ケース（TC-FR-CRT-012-006）は、期限切れにする前に購入 button が有効になる（事前判定の完了）ことを待つ。事前判定を期限切れ後のSessionで読むと、このケースが検証する「APIで初めて期限切れが分かる」前提が崩れるためである。期待値は変えない。
@@ -515,3 +647,35 @@ B5 C1 の対応: §1（`copy.auth.method` / `copy.auth.otp` / `copy.auth.field.o
 - 同じTabのLogin / Logoutが重なっても、それぞれのcleanupを順に完了してからSession照会・通知を公開する。認証成立後のmetadata保存失敗は、確認済みUserのMypage表示と未確認UserのEmail Verificationへの遷移を妨げず、Cartだけを停止する。
 
 これらはBrowser storage境界のUnitおよび補助UI mock suiteであり、production G8、API / DB / Provider coverageではない。mock業務データがclear前後で同一であることはBrowser suite内で比較する。runner retryは0のままとする。
+
+## 10A. 外部完了認証と Cart lifecycle（B5 C2。FR-CRT-012 の外部完了認証の規則 手順 1〜10）
+
+根拠は `FR-CRT-012` の表の直後の「FR-CRT-012 の外部完了認証の規則」（SPEC-020 2.1.0）と `SPEC-050` §15.0（2.2.0）である。UCR を参照しない。Google が最初の外部完了認証（C3 の Magic Link が同じ method を使う）。**外部完了認証の戻りで表示された画面** = `returned=…` を付けた URL を**文書の読み込み**で開いた PG-AUTH 画面（読んだ直後に URL から外す。§6.1C）。再読込、戻る・進む、開始した元の画面、他の Tab の画面、`returned` を持たない通常の訪問は、これに当たらない。
+
+### CartLifecycle の追加 method（`features/cart/cart-lifecycle.ts`）
+
+```ts
+beginExternalAuthentication(lockAcquired?: boolean): { kind: "ready" } | { kind: "busy" } | { kind: "blocked" };
+completeExternalAuthentication(): void;
+```
+
+metadata に任意 field `external?: "pending" | "superseded"` を 1 つ足す（storage key は `r39x.cart-lifecycle.v1` のまま。`external` の無い既存の保存値 `{ version: 1, provenance }` はそのまま有効）。metadata が持つのは `version` / `provenance`（と、認証遷移中の識別）/ `external` だけで、email・Account・Role・credential・それらの hash を持たない。値が `pending` / `superseded` 以外、または未知の field があれば不正（由来不明）。
+
+| 手順 | 内容 | 担当 | 検査 |
+|---|---|---|---|
+| 1 | Guest だけが開始できる（Email 未確認の Session を持つ利用者は Guest ではない） | decorator の `startGoogleSignIn`（`already_signed_in`。raw を呼ばない） | TC-FR-CRT-012-017（unit）、TC-PG-AUTH-003-313（E2E） |
+| 2 | 開始は認証遷移。要求の前に由来不明・`authenticated` の Cart を clear し、Guest 由来は保持。clear 後の Cart は Guest 由来。Cart / metadata を読み書き・clear できなければ開始しない（`blocked`）。storage 自体を取得できなければ開始を妨げず、記録を作らない | `beginExternalAuthentication`（`ready` / `busy` / `blocked`）。storage 取得不可は decorator を通らない | TC-FR-CRT-012-017、TC-FR-CRT-012-018（E2E） |
+| 3 | clear と metadata 更新が成功した後、**raw を呼ぶ前**に `external: "pending"` を作る。既にあれば置き換える。raw が `unavailable` でも reject しても残す | `beginExternalAuthentication` と decorator | TC-FR-CRT-012-017、-019 |
+| 4 | 要求を終えた時点で遷移記録を解消し、Lock を残さない。記録は Cart を停止しない（他の Tab から見ても `orphanedTransition` にならない） | `beginExternalAuthentication` | TC-FR-CRT-012-017 |
+| 5 | 記録がある間に別の方式（Email+Password、新規登録、Email OTP）で Session が成立したら（Email 未確認を含む）`external` を `"superseded"` にする。`confirmation_required` / `credential_failure` / `unavailable` / 誤ったコードは成立ではない | `finishLogin`（decorator の `signIn` / `signUp` / `signInWithEmailOtp` の成功） | TC-FR-CRT-012-019 |
+| 6 | 受領 = 記録がある Browser で、戻りで表示された画面が成立した Session を確認した時点（Email 未確認を含む）。1 回の戻りにつき 1 回。開始時点の由来（Guest 由来）と手順 5 の有無だけで判定: `pending` → Cart を保持、`superseded` → Cart を clear。記録後に Session の確認で付いた `authenticated` の由来は判定に使わない。戻りで表示された画面以外の確認は受領でも手順 9 でもなく、`external` を消さず Cart を clear しない | `completeExternalAuthentication`（戻りの画面だけが呼ぶ）。判定は lifecycle の作成時の metadata の写し（`initialMetadata`）で行う | TC-FR-CRT-012-017、-019、TC-PG-AUTH-003-310、TC-FR-CRT-012-020 |
+| 7 | 記録は受領と Logout でだけ解消する。中止・失敗・期限切れの戻り（`completeExternalAuthentication()` を呼ばない）では解消せず、開始時に clear した Cart も戻さない | 受領: `completeExternalAuthentication`。Logout: `finishLogout`。`expireAuthenticatedCart` / `recover` は記録を残す | TC-FR-CRT-012-017、-019、TC-PG-AUTH-003-310 |
+| 8 | 開始時に clear した Cart を失敗の戻りで復元しない | （clear は戻さない） | TC-FR-CRT-012-017 |
+| 9 | 記録が無い Browser で戻りで表示された画面が成立した Session を確認した場合（Link を別端末で開いた場合を含む）は、確認の直前の Cart の由来に従う: Guest 由来は保持、由来不明・`authenticated` は clear。1 回の戻りにつき 1 回。2 回目の戻り（受領の後は由来が `authenticated`）は有効 Session 中の再 Login と同じ扱い（clear） | `completeExternalAuthentication`（記録が無いとき）。`initialMetadata` の由来で判定 | TC-FR-CRT-012-017、-019 |
+| 10 | 有効な Session があり、別の Session が成立したが、戻りで表示された画面による確認（手順 6・9）が行われない場合は、記録の有無にかかわらず元の Session と区別できない。他者の Cart を表示しないことは、次の戻りで表示された画面による確認か Logout まで保証しない（**限界**） | （lifecycle は何も clear しない） | TC-FR-CRT-012-019 (10)(11)。限界の挙動を固定するだけで、他者の Cart を出さないことの証明ではない |
+
+- 「戻りの文書」は unit では、同じ storage の上に**新しい lifecycle instance を作る**ことで表す（作成時に `initialMetadata` を取る）。「元の Tab」は送信に使った instance、「他の Tab」は別の instance。`completeExternalAuthentication()` を呼ぶのは戻りの文書の instance だけ。
+- `completeExternalAuthentication()` は throw しない（storage の失敗は Cart の機能だけを停止し、認証は成立のまま。FR-CRT-012 の「認証処理自体は成立結果を維持」）。同じ instance で 2 回目に呼んでも metadata・Cart を変えない（1 回の戻りにつき 1 回）。
+- 受領後の metadata は `external` を持たず、provenance は `authenticated`。受領しない戻り（中止・失敗・Guest のままの戻り）の metadata は変わらない。
+- **R11（前提）**: 手順 6・9 の判定は文書の作成時の写しに結び付くので、`returned=…` を持つ URL は文書の読み込みで開くことを前提にする。SPA 内の遷移（`router.push` / `Link`）で `returned=…` を開く経路を作ると写しが古くなり判定を誤る。TC-PG-AUTH-003-310 の「再読込」「戻る・進む」と、TC-PG-AUTH-003-512 の静的検査（`completeExternalAuthentication` を auth 画面だけが呼ぶ）が、この前提を固定する。
+- Cart lifecycle decorator（§3B）の他の規則は §3A の `signIn` と同じ: 遷移中は `cart_busy`、Cart キーを読めない（Q-1）・停止中・孤立した遷移記録は `cart_blocked`。mock の stand-in が Session を直接書いても、結果の受領は戻った画面の仕事である。

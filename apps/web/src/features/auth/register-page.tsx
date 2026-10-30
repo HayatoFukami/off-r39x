@@ -17,6 +17,7 @@ import { useRouter, useSearchParams } from "../../routing/navigation";
 import { CartRecovery } from "../cart/cart-recovery";
 import { useCart } from "../cart/use-cart";
 import { type AuthMethod, DEFAULT_AUTH_METHOD } from "./auth-methods";
+import { parseFailureNotice, parseReturned, RETURNED_PARAM } from "./auth-return";
 import { ContinuationNoticeView } from "./continuation-notice";
 import { describeContinuation } from "./continuation-view";
 import { EmailOtpForm } from "./email-otp-form";
@@ -27,9 +28,12 @@ import {
   normalizeEmail,
   validateRegisterForm,
 } from "./form-validation";
+import { GoogleSignIn } from "./google-sign-in";
+import { NOTICE_PARAM } from "./login-notice";
 import { MethodSelector } from "./method-selector";
 import { ServiceFailure } from "./service-failure";
 import { useErrorSummaryFocus } from "./use-error-summary-focus";
+import { useExternalReturn } from "./use-external-return";
 
 const linkClass = "text-brand underline underline-offset-4";
 
@@ -44,6 +48,12 @@ function RegisterForm() {
   const searchParams = useSearchParams();
   const intent = parseContinuation(searchParams.get(CONTINUATION_PARAM));
   const notice = describeContinuation(intent);
+  // A return from Google is read here, once, by the screen the user comes back to (SPEC-050 15.0).
+  const { googleFailed, clearGoogleFailed } = useExternalReturn({
+    returned: parseReturned(searchParams.get(RETURNED_PARAM)),
+    failed: parseFailureNotice(searchParams.get(NOTICE_PARAM)),
+    intent,
+  });
 
   const baseId = useId();
   const ids: Record<FieldName, string> = {
@@ -72,6 +82,7 @@ function RegisterForm() {
 
   // Switching method drops the passwords and every message of the other method.
   const onMethodChange = (next: AuthMethod): void => {
+    clearGoogleFailed();
     setMethod(next);
     setPassword("");
     setPasswordConfirm("");
@@ -82,6 +93,7 @@ function RegisterForm() {
   const onSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     if (submittingRef.current) return;
+    clearGoogleFailed();
     const validation = validateRegisterForm({ email, password, passwordConfirm });
     if (!validation.ok) {
       setErrors(validation.errors);
@@ -132,6 +144,7 @@ function RegisterForm() {
         onChange={onMethodChange}
         disabled={submitting}
       />
+      {googleFailed ? <ServiceFailure message={copy.auth.google.failed} /> : null}
       {method === "password" ? (
         <>
           {errors.length > 0 ? <ErrorSummary items={summaryItems} summaryRef={summaryRef} /> : null}
@@ -143,6 +156,15 @@ function RegisterForm() {
       ) : null}
       {cartBusy ? <p role="status">{copy.auth.register.cartBusy}</p> : null}
       {cartNeedsRecovery ? <CartRecovery onRecovered={() => setFailure(null)} /> : null}
+      {method === "google" ? (
+        <GoogleSignIn
+          page="register"
+          intent={intent}
+          cartBlocked={cartBlocked}
+          onCartFailure={setFailure}
+          onAttempt={clearGoogleFailed}
+        />
+      ) : null}
       {method === "password" ? (
         <form
           noValidate
@@ -184,7 +206,8 @@ function RegisterForm() {
             </Button>
           </div>
         </form>
-      ) : (
+      ) : null}
+      {method === "email-otp" ? (
         <EmailOtpForm
           mode="register"
           intent={intent}
@@ -193,7 +216,7 @@ function RegisterForm() {
           cartBlocked={cartBlocked}
           onCartFailure={setFailure}
         />
-      )}
+      ) : null}
       <p className="text-sm">
         <Link href={accountPath("login", intent)} prefetch={false} className={linkClass}>
           {copy.auth.register.toLogin}

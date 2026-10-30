@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { isSafeRelativePath } from "../../../../apps/web/src/auth/continuation.ts";
 import { DB_STORAGE_KEY } from "../../../../apps/web/src/mock/backend/db.ts";
-import { SESSION_STORAGE_KEY as REEXPORTED_KEY } from "../../../../apps/web/src/mock/backend/mock-auth.ts";
+import {
+  allowMockGoogleSignIn as allowMockGoogle,
+  SESSION_STORAGE_KEY as REEXPORTED_KEY,
+} from "../../../../apps/web/src/mock/backend/mock-auth.ts";
 import { SCENARIO_STORAGE_KEY } from "../../../../apps/web/src/mock/backend/scenario.ts";
 import {
   loadSessionState,
@@ -921,3 +925,223 @@ describe("TC-PG-AUTH-003-103 signInWithEmailOtp signs in, verifies the email, re
     expect((await otp.signInWithEmailOtp({ email: NEW_EMAIL, code: CODE })).kind).toBe("signed_in");
   });
 });
+
+// ---- B5 C2: Google (tests/contracts/s2-mock-backend.md section 14.2) -----------------------------------------------------
+
+const GOOGLE_PATHS = {
+  successPath: "/account/login?continue=cart&returned=google",
+  failurePath: "/account/login?continue=cart&notice=google-failed",
+};
+const GOOGLE_UNSAFE_PATHS: readonly (readonly [string, string])[] = [
+  ["an absolute URL", "https://evil.example.com/account/login"],
+  ["a protocol-relative URL", "//evil.example.com/account/login"],
+  ["a backslash form", "/\\evil.example.com/account/login"],
+  ["a javascript: URL", "javascript:alert(1)"],
+  ["an empty path", ""],
+  ["a dot segment", "/account/../admin"],
+  ["a control character", "/account/login\n?returned=google"],
+  ["an encoded dot segment", "/account/%2e%2e/admin"],
+  ["a PG-AUTH page that is not Login or Registration", "/account/email-verification"],
+  ["the password reset page", "/account/password-reset"],
+  ["a protected page", "/mypage"],
+  ["a dev page", "/dev/scenarios"],
+  ["the admin area", "/admin"],
+  ["Home", "/"],
+];
+
+describe("TC-PG-AUTH-003-104 startGoogleSignIn returns the stand-in screen's URL without changing anything, refuses unsafe return paths, and follows the login scenario (SPEC-050 15.0, SEC-WEB-013, DEV-WEB-013)", () => {
+  const googleOf = (backend: ReturnType<typeof createBackend>) => backend.auth;
+
+  it("redirects to /dev/mock-google carrying both paths, and the URL is a safe same-origin path", async () => {
+    const backend = createBackend();
+    const result = await googleOf(backend).startGoogleSignIn(GOOGLE_PATHS);
+    expect(result.kind).toBe("redirect");
+    if (result.kind !== "redirect") return;
+    expect(result.url.startsWith("/dev/mock-google?")).toBe(true);
+    expect(isSafeRelativePath(result.url)).toBe(true);
+    const url = new URL(result.url, "http://127.0.0.1");
+    expect(url.pathname).toBe("/dev/mock-google");
+    expect([...url.searchParams.keys()].sort()).toEqual(["failure", "success"]);
+    expect(url.searchParams.get("success")).toBe(GOOGLE_PATHS.successPath);
+    expect(url.searchParams.get("failure")).toBe(GOOGLE_PATHS.failurePath);
+    // The query values are percent-encoded: no raw "&" or "?" of the inner paths leaks into the outer query.
+    expect(result.url).toBe(
+      `/dev/mock-google?success=${encodeURIComponent(GOOGLE_PATHS.successPath)}&failure=${encodeURIComponent(GOOGLE_PATHS.failurePath)}`,
+    );
+  });
+
+  it("also accepts the registration page", async () => {
+    const result = await googleOf(createBackend()).startGoogleSignIn({
+      successPath: "/account/register?returned=google",
+      failurePath: "/account/register?notice=google-failed",
+    });
+    expect(result.kind).toBe("redirect");
+  });
+
+  it.each([
+    ["Guest", false],
+    ["an authenticated session", true],
+  ])(
+    "%s: the DB, the session value, pendingVerificationEmail and every storage write stay as they were, and no listener is called",
+    async (_name, signedIn) => {
+      const backend = createBackend();
+      if (signedIn) await backend.signInAs(EMAIL.demo);
+      await backend.api.public.getEvent();
+      const listener = vi.fn();
+      backend.auth.onSessionChange(listener);
+      const dbBefore = dbFingerprint(backend);
+      const sessionBefore = backend.storage.getItem(SESSION_STORAGE_KEY);
+      const writesBefore = [...backend.storage.writes];
+
+      await googleOf(backend).startGoogleSignIn(GOOGLE_PATHS);
+
+      expect(dbFingerprint(backend)).toBe(dbBefore);
+      expect(backend.storage.getItem(SESSION_STORAGE_KEY)).toBe(sessionBefore);
+      expect(backend.storage.writes).toEqual(writesBefore);
+      expect(listener).not.toHaveBeenCalled();
+      expect(await backend.auth.getSession()).toEqual(
+        signedIn
+          ? {
+              kind: "ok",
+              session: { kind: "authenticated", email: EMAIL.demo, emailVerified: true },
+            }
+          : GUEST,
+      );
+    },
+  );
+
+  it.each(GOOGLE_UNSAFE_PATHS)(
+    "rejects the promise with a RangeError for %s as the success path and as the failure path, without changing anything",
+    async (_name, path) => {
+      for (const paths of [
+        { successPath: path, failurePath: GOOGLE_PATHS.failurePath },
+        { successPath: GOOGLE_PATHS.successPath, failurePath: path },
+      ]) {
+        const backend = createBackend();
+        await backend.api.public.getEvent();
+        const dbBefore = dbFingerprint(backend);
+        const writesBefore = [...backend.storage.writes];
+        const failing = googleOf(backend).startGoogleSignIn(paths);
+        await expect(failing).rejects.toBeInstanceOf(RangeError);
+        expect(dbFingerprint(backend)).toBe(dbBefore);
+        expect(backend.storage.writes).toEqual(writesBefore);
+        expect(await backend.auth.getSession()).toEqual(GUEST);
+      }
+    },
+  );
+
+  it("follows the login scenario for unavailable and ignores credential_failure and the verify scenario (they decide other methods)", async () => {
+    const backend = createBackend();
+    const google = googleOf(backend);
+    backend.setScenario({ auth: { login: "unavailable" } });
+    expect(await google.startGoogleSignIn(GOOGLE_PATHS)).toEqual({ kind: "unavailable" });
+    backend.setScenario({ auth: { login: "credential_failure" } });
+    expect((await google.startGoogleSignIn(GOOGLE_PATHS)).kind).toBe("redirect");
+    backend.setScenario({ auth: { login: "ok", verify: "invalid_or_expired" } });
+    expect((await google.startGoogleSignIn(GOOGLE_PATHS)).kind).toBe("redirect");
+    expect(await backend.auth.getSession()).toEqual(GUEST);
+  });
+
+  it("returns unavailable when the scenario storage is corrupted", async () => {
+    const backend = createBackend();
+    backend.storage.seedRaw(SCENARIO_STORAGE_KEY, "{oops");
+    expect(await googleOf(backend).startGoogleSignIn(GOOGLE_PATHS)).toEqual({
+      kind: "unavailable",
+    });
+  });
+
+  it("never puts an email, a token or a credential into the URL", async () => {
+    const result = await googleOf(createBackend()).startGoogleSignIn(GOOGLE_PATHS);
+    expect(JSON.stringify(result)).not.toMatch(/@|token|secret|password|code=/i);
+  });
+});
+
+describe("TC-PG-AUTH-003-104 the stand-in screen's allow function signs an existing user in or registers a new one, and refuses to run on broken state (DEV-WEB-013, SPEC-030 9.2)", () => {
+  const depsOf = (backend: ReturnType<typeof createBackend>) => ({
+    storage: backend.storage,
+    clock: backend.clock,
+    idGenerator: backend.ids,
+  });
+
+  it("an existing verified user: the session becomes that user's, the DB is unchanged", async () => {
+    const backend = createBackend();
+    await backend.api.public.getEvent();
+    const dbBefore = dbFingerprint(backend);
+    const result = await allowMockGoogle(depsOf(backend), EMAIL.demo);
+    expect(result).toEqual({ kind: "signed_in" });
+    expect(await backend.auth.getSession()).toEqual({
+      kind: "ok",
+      session: { kind: "authenticated", email: EMAIL.demo, emailVerified: true },
+    });
+    expect(dbFingerprint(backend)).toBe(dbBefore);
+  });
+
+  it("a new email: one verified user with no display name is created (never inferred from the email) and the session is theirs", async () => {
+    const backend = createBackend();
+    await backend.api.public.getEvent();
+    const before = okUsers(backend);
+    const result = await allowMockGoogle(depsOf(backend), "google.new@example.com");
+    expect(result).toEqual({ kind: "signed_in" });
+    const users = okUsers(backend);
+    expect(users).toHaveLength(before.length + 1);
+    expect(users.filter((u) => u.email === "google.new@example.com")).toEqual([
+      { email: "google.new@example.com", displayName: null, emailVerified: true },
+    ]);
+    expect(await backend.auth.getSession()).toEqual({
+      kind: "ok",
+      session: { kind: "authenticated", email: "google.new@example.com", emailVerified: true },
+    });
+  });
+
+  it("calling it again for the same new email does not create a second user", async () => {
+    const backend = createBackend();
+    await allowMockGoogle(depsOf(backend), "google.new@example.com");
+    const count = okUsers(backend).length;
+    await allowMockGoogle(depsOf(backend), "google.new@example.com");
+    expect(okUsers(backend)).toHaveLength(count);
+  });
+
+  it("replaces the session of another user (the result of a result opened after another login)", async () => {
+    const backend = createBackend();
+    await backend.signInAs(EMAIL.demo);
+    await allowMockGoogle(depsOf(backend), "google.new@example.com");
+    expect(await backend.auth.getSession()).toEqual({
+      kind: "ok",
+      session: { kind: "authenticated", email: "google.new@example.com", emailVerified: true },
+    });
+  });
+
+  it.each(["", "   ", "not-an-email", "a b@example.com", "@example.com"])(
+    "rejects a malformed email %j with a RangeError and changes nothing",
+    async (email) => {
+      const backend = createBackend();
+      await backend.api.public.getEvent();
+      const dbBefore = dbFingerprint(backend);
+      const writesBefore = [...backend.storage.writes];
+      await expect(allowMockGoogle(depsOf(backend), email)).rejects.toBeInstanceOf(RangeError);
+      expect(dbFingerprint(backend)).toBe(dbBefore);
+      expect(backend.storage.writes).toEqual(writesBefore);
+    },
+  );
+
+  it("is unavailable and writes nothing when the stored DB or session is corrupted", async () => {
+    const dbBroken = createBackend();
+    dbBroken.storage.seedRaw(DB_STORAGE_KEY, "{oops");
+    expect(await allowMockGoogle(depsOf(dbBroken), EMAIL.demo)).toEqual({ kind: "unavailable" });
+    expect(dbBroken.storage.getItem(SESSION_STORAGE_KEY)).toBeNull();
+
+    const sessionBroken = createBackend();
+    sessionBroken.storage.seedRaw(SESSION_STORAGE_KEY, "{oops");
+    const writesBefore = [...sessionBroken.storage.writes];
+    expect(await allowMockGoogle(depsOf(sessionBroken), EMAIL.demo)).toEqual({
+      kind: "unavailable",
+    });
+    expect(sessionBroken.storage.writes).toEqual(writesBefore);
+  });
+});
+
+function okUsers(backend: ReturnType<typeof createBackend>) {
+  const loaded = backend.db.load();
+  if (loaded.kind !== "ready") throw new Error("expected a ready DB");
+  return loaded.state.users;
+}

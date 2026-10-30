@@ -6,6 +6,7 @@ import {
   type CartLifecycle,
 } from "../../../../apps/web/src/features/cart/cart-lifecycle.ts";
 import {
+  type CartTransitionCoordinator,
   createMemoryCartTransitionCoordinator,
   createWebCartTransitionCoordinator,
 } from "../../../../apps/web/src/features/cart/cart-transition-lock.ts";
@@ -27,6 +28,7 @@ function rawAuth(overrides: Partial<AuthPort> = {}): AuthPort {
     completePasswordReset: vi.fn(async () => ({ kind: "updated" }) as const),
     requestEmailOtp: vi.fn(async () => ({ kind: "sent" }) as const),
     signInWithEmailOtp: vi.fn(async () => ({ kind: "signed_in", emailVerified: true }) as const),
+    startGoogleSignIn: vi.fn(async () => ({ kind: "redirect", url: "/dev/mock-google" }) as const),
     ...overrides,
   };
 }
@@ -44,6 +46,8 @@ function lifecycle(overrides: Partial<Lifecycle> = {}): Lifecycle {
     recover: async () => "recovered",
     subscribe: () => () => undefined,
     getSnapshot: () => ({ kind: "ready" }),
+    beginExternalAuthentication: () => ({ kind: "ready" }),
+    completeExternalAuthentication: () => undefined,
     ...overrides,
   };
 }
@@ -357,5 +361,242 @@ describe("TC-FR-CRT-012-016 Email OTP follows the Cart transition rules of Login
     });
     await s.port.signInWithEmailOtp(verify);
     expect(order).toEqual(["raw-sign-in", `published:${metadata("authenticated")}`]);
+  });
+});
+
+describe("TC-FR-CRT-012-017 startGoogleSignIn is an authentication transition of an external-completion method: only a Guest starts it, the Cart is cleaned and the pending record written before the request, nothing is left behind (FR-CRT-012 external completion rule steps 1-4, Q-1)", () => {
+  const start = {
+    successPath: "/account/login?returned=google",
+    failurePath: "/account/login?notice=google-failed",
+  };
+  const REDIRECT = { kind: "redirect", url: "/dev/mock-google?success=a&failure=b" } as const;
+  const PENDING = { version: 1, provenance: "guest", external: "pending" };
+
+  class TestLockManager {
+    private held = false;
+
+    async request<T>(
+      name: string,
+      options: { mode: "exclusive"; ifAvailable?: boolean },
+      callback: (lock: { name: string } | null) => T | Promise<T>,
+    ): Promise<T> {
+      if (this.held) {
+        if (options.ifAvailable) return callback(null);
+        throw new Error("test lock request would wait");
+      }
+      this.held = true;
+      try {
+        return await callback({ name });
+      } finally {
+        this.held = false;
+      }
+    }
+  }
+
+  const storedMetadata = (s: ReturnType<typeof setupCartLifecycle>): unknown => {
+    const raw = s.data.get(CART_LIFECYCLE_STORAGE_KEY);
+    return raw === undefined ? undefined : JSON.parse(raw);
+  };
+  const asSession = (emailVerified: boolean) =>
+    vi.fn(
+      async () =>
+        ({
+          kind: "ok",
+          session: { kind: "authenticated", email: "demo@example.com", emailVerified },
+        }) as const,
+    );
+
+  it("step 3: the Guest Cart is kept and the pending record exists before the request is made; the raw result is returned unchanged and nothing is left in flight", async () => {
+    const s = setupCartLifecycle(metadata("guest"));
+    const seen: { metadata: unknown; cart: string | undefined }[] = [];
+    s.raw.startGoogleSignIn = vi.fn(async () => {
+      seen.push({ metadata: storedMetadata(s), cart: s.data.get(CART_STORAGE_KEY) });
+      return REDIRECT;
+    });
+    await expect(s.port.startGoogleSignIn(start)).resolves.toEqual(REDIRECT);
+    expect(s.raw.startGoogleSignIn).toHaveBeenCalledTimes(1);
+    expect(s.raw.startGoogleSignIn).toHaveBeenCalledWith(start);
+    expect(seen).toEqual([{ metadata: PENDING, cart: CART }]);
+    expect(storedMetadata(s)).toEqual(PENDING);
+    expect(s.lifecycle.getSnapshot()).toEqual({ kind: "ready" });
+    // step 4: no transition and no Lock remain; the next authentication starts at once.
+    const lock = await s.coordinator.acquire(false);
+    expect(lock.kind).toBe("acquired");
+    if (lock.kind === "acquired") lock.release();
+    await expect(
+      s.port.signIn({ email: "new@example.com", password: "test-only" }),
+    ).resolves.toMatchObject({
+      kind: "signed_in",
+    });
+  });
+
+  it.each([null, metadata("authenticated"), "invalid"])(
+    "step 2: a Cart of unknown or authenticated provenance (%s) is already cleared when the request is made",
+    async (marker) => {
+      const s = setupCartLifecycle(marker);
+      const seen: { metadata: unknown; cart: string | undefined }[] = [];
+      s.raw.startGoogleSignIn = vi.fn(async () => {
+        seen.push({ metadata: storedMetadata(s), cart: s.data.get(CART_STORAGE_KEY) });
+        return REDIRECT;
+      });
+      await s.port.startGoogleSignIn(start);
+      expect(seen).toEqual([{ metadata: PENDING, cart: undefined }]);
+      expect(s.data.has(CART_STORAGE_KEY)).toBe(false);
+    },
+  );
+
+  it("step 3: a request that is unavailable or throws leaves the pending record, and the Cart cleared at the start is not restored", async () => {
+    const unavailable = setupCartLifecycle(null);
+    unavailable.raw.startGoogleSignIn = vi.fn(async () => ({ kind: "unavailable" }) as const);
+    await expect(unavailable.port.startGoogleSignIn(start)).resolves.toEqual({
+      kind: "unavailable",
+    });
+    expect(storedMetadata(unavailable)).toEqual(PENDING);
+    expect(unavailable.data.has(CART_STORAGE_KEY)).toBe(false);
+    expect(unavailable.lifecycle.getSnapshot()).toEqual({ kind: "ready" });
+
+    const thrown = setupCartLifecycle(metadata("authenticated"));
+    thrown.raw.startGoogleSignIn = vi.fn(async () => {
+      throw new Error("test-only provider failure");
+    });
+    await expect(thrown.port.startGoogleSignIn(start)).rejects.toThrow(
+      "test-only provider failure",
+    );
+    expect(storedMetadata(thrown)).toEqual(PENDING);
+    expect(thrown.data.has(CART_STORAGE_KEY)).toBe(false);
+    expect(thrown.lifecycle.getSnapshot()).toEqual({ kind: "ready" });
+    const lock = await thrown.coordinator.acquire(false);
+    expect(lock.kind).toBe("acquired");
+    if (lock.kind === "acquired") lock.release();
+  });
+
+  it("step 3: a start while a record exists replaces it with a pending record", async () => {
+    const s = setupCartLifecycle(
+      JSON.stringify({ version: 1, provenance: "guest", external: "superseded" }),
+    );
+    await s.port.startGoogleSignIn(start);
+    expect(storedMetadata(s)).toEqual(PENDING);
+    expect(s.data.get(CART_STORAGE_KEY)).toBe(CART);
+  });
+
+  it("step 3: a Cart that cannot be cleared stops the start: cart_blocked, no record, the raw request is not made", async () => {
+    const s = setupCartLifecycle(metadata("authenticated"));
+    s.faults.clear = true;
+    await expect(s.port.startGoogleSignIn(start)).resolves.toEqual({ kind: "cart_blocked" });
+    expect(s.raw.startGoogleSignIn).not.toHaveBeenCalled();
+    expect(s.data.get(CART_STORAGE_KEY)).toBe(CART);
+    expect(s.data.get(CART_LIFECYCLE_STORAGE_KEY)).toBe(metadata("authenticated"));
+  });
+
+  it.each([
+    ["verified", true],
+    ["unverified", false],
+  ] as const)(
+    "step 1: an authenticated Session (%s) is already_signed_in: no request, no clear, no record",
+    async (_name, verified) => {
+      const s = setupCartLifecycle(metadata("authenticated"));
+      s.raw.getSession = asSession(verified);
+      const before = new Map(s.data);
+      await expect(s.port.startGoogleSignIn(start)).resolves.toEqual({ kind: "already_signed_in" });
+      expect(s.raw.startGoogleSignIn).not.toHaveBeenCalled();
+      expect(new Map(s.data)).toEqual(before);
+      expect(s.lifecycle.getSnapshot()).toEqual({ kind: "ready" });
+    },
+  );
+
+  it("step 1: a Session that cannot be confirmed is unavailable: no request, nothing written (a Guest is not assumed)", async () => {
+    const s = setupCartLifecycle(metadata("authenticated"));
+    s.raw.getSession = vi.fn(async () => ({ kind: "unavailable" }) as const);
+    const before = new Map(s.data);
+    await expect(s.port.startGoogleSignIn(start)).resolves.toEqual({ kind: "unavailable" });
+    expect(s.raw.startGoogleSignIn).not.toHaveBeenCalled();
+    expect(new Map(s.data)).toEqual(before);
+  });
+
+  it("is cart_busy while another transition is active (lifecycle, another Tab's Web Lock, this port's own sign-in), without a request or a write", async () => {
+    // lifecycle transition
+    const lifecycleBusy = setupCartLifecycle(metadata("guest"));
+    const started = lifecycleBusy.lifecycle.beginTransition();
+    expect(started).toMatchObject({ kind: "ready" });
+    const before = new Map(lifecycleBusy.data);
+    await expect(lifecycleBusy.port.startGoogleSignIn(start)).resolves.toEqual({
+      kind: "cart_busy",
+    });
+    expect(lifecycleBusy.raw.startGoogleSignIn).not.toHaveBeenCalled();
+    expect(new Map(lifecycleBusy.data)).toEqual(before);
+    if (started.kind === "ready") lifecycleBusy.lifecycle.abortTransition(started.provenance);
+
+    // another Tab's Web Lock
+    const locks = new TestLockManager();
+    const otherTab = createWebCartTransitionCoordinator(locks);
+    const lease = await otherTab.acquire();
+    expect(lease.kind).toBe("acquired");
+    if (lease.kind !== "acquired") return;
+    const locked = setupCartLifecycle(metadata("guest"), createWebCartTransitionCoordinator(locks));
+    await expect(locked.port.startGoogleSignIn(start)).resolves.toEqual({ kind: "cart_busy" });
+    expect(locked.raw.startGoogleSignIn).not.toHaveBeenCalled();
+    expect(locked.data.get(CART_LIFECYCLE_STORAGE_KEY)).toBe(metadata("guest"));
+    lease.release();
+
+    // this port's own sign-in in flight
+    const own = setupCartLifecycle(metadata("guest"));
+    let finish: () => void = () => undefined;
+    own.raw.signIn = vi.fn(
+      () =>
+        new Promise<{ kind: "credential_failure" }>((resolve) => {
+          finish = () => resolve({ kind: "credential_failure" });
+        }),
+    );
+    const inFlight = own.port.signIn({ email: "new@example.com", password: "test-only" });
+    await vi.waitFor(() => expect(own.raw.signIn).toHaveBeenCalledTimes(1));
+    const settled = vi.fn();
+    const attempt = own.port.startGoogleSignIn(start).then((result) => {
+      settled();
+      return result;
+    });
+    try {
+      await vi.waitFor(() => expect(settled).toHaveBeenCalled(), { timeout: 500 });
+    } finally {
+      finish();
+    }
+    await expect(attempt).resolves.toEqual({ kind: "cart_busy" });
+    await expect(inFlight).resolves.toEqual({ kind: "credential_failure" });
+    expect(own.raw.startGoogleSignIn).not.toHaveBeenCalled();
+  });
+
+  it("is cart_blocked (Q-1) when the Cart key cannot be read, the lifecycle is stopped, a transition record is abandoned or the lock cannot be taken: no request, nothing written", async () => {
+    for (const arrange of [
+      (s: ReturnType<typeof setupCartLifecycle>) => {
+        s.faults.cartRead = true;
+      },
+      (s: ReturnType<typeof setupCartLifecycle>) => s.lifecycle.block(),
+    ]) {
+      const s = setupCartLifecycle(metadata("guest"));
+      arrange(s);
+      const before = new Map(s.data);
+      await expect(s.port.startGoogleSignIn(start)).resolves.toEqual({ kind: "cart_blocked" });
+      expect(s.raw.startGoogleSignIn).not.toHaveBeenCalled();
+      expect(new Map(s.data)).toEqual(before);
+      expect(s.lifecycle.getSnapshot()).toEqual({ kind: "blocked" });
+    }
+    const abandoned = setupCartLifecycle(
+      JSON.stringify({ version: 1, provenance: "guest", transitioning: true }),
+    );
+    await expect(abandoned.port.startGoogleSignIn(start)).resolves.toEqual({
+      kind: "cart_blocked",
+    });
+    expect(abandoned.raw.startGoogleSignIn).not.toHaveBeenCalled();
+
+    const noLock = setupCartLifecycle(metadata("guest"));
+    const unavailableCoordinator: CartTransitionCoordinator = {
+      crossTab: false,
+      acquire: async () => ({ kind: "unavailable" }),
+      isHeld: async () => false,
+      subscribe: () => () => undefined,
+    };
+    const port = createCartLifecycleAuthPort(noLock.raw, noLock.lifecycle, unavailableCoordinator);
+    await expect(port.startGoogleSignIn(start)).resolves.toEqual({ kind: "cart_blocked" });
+    expect(noLock.raw.startGoogleSignIn).not.toHaveBeenCalled();
+    expect(noLock.data.get(CART_LIFECYCLE_STORAGE_KEY)).toBe(metadata("guest"));
   });
 });

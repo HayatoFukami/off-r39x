@@ -6,8 +6,11 @@ import {
   chooseMethod,
   describedText,
   dumpStorage,
+  expectMethodRadios,
   field,
   focused,
+  googleRadio,
+  googleStartButton,
   headerLogin,
   headerMypage,
   heading1,
@@ -355,18 +358,14 @@ const otp = () => copy.auth.otp;
 const method = () => copy.auth.method;
 
 test.describe("TC-PG-AUTH-003-305 Login offers a method selection that starts on Email+Password, keeps the Continuation and the existing form, and offers no other provider (SPEC-050 15.0 / 15.3, AR-CONT-001)", () => {
-  test("the radio group is named by its legend, lists Email+Password then Email OTP, and the existing form is shown unchanged with Email+Password checked", async ({
+  test("the radio group is named by its legend, lists the methods in the specified order, and the existing form is shown unchanged with Email+Password checked", async ({
     page,
   }) => {
     await openLogin(page, "?continue=cart");
     const group = methodGroup(page, method().legendLogin);
     await expect(group).toBeVisible();
-    const radios = group.getByRole("radio");
-    await expect(radios).toHaveCount(2);
-    await expect(radios.nth(0)).toHaveAccessibleName(method().password);
-    await expect(radios.nth(1)).toHaveAccessibleName(method().emailOtp);
-    await expect(radios.nth(0)).toBeChecked();
-    await expect(radios.nth(1)).not.toBeChecked();
+    // The specified order (SPEC-050 15.0): Email+Password, Google, Email OTP (and Magic Link last once it exists).
+    await expectMethodRadios(group);
     // The existing Email+Password form: same labels, same submit, no OTP control.
     await expect(field(page, copy.auth.field.email.label)).toBeVisible();
     await expect(field(page, copy.auth.field.password.label)).toBeVisible();
@@ -415,9 +414,15 @@ test.describe("TC-PG-AUTH-003-305 Login offers a method selection that starts on
   }) => {
     await openLogin(page);
     await methodRadio(page, method().password).focus();
+    // Email+Password, Google, Email OTP: the arrow keys walk the specified order.
+    await page.keyboard.press("ArrowDown");
+    await expect(googleRadio(page)).toBeChecked();
+    await expect(googleStartButton(page, "login")).toBeVisible();
     await page.keyboard.press("ArrowDown");
     await expect(methodRadio(page, method().emailOtp)).toBeChecked();
     await expect(otpButton(page, otp().send)).toBeVisible();
+    await page.keyboard.press("ArrowUp");
+    await expect(googleRadio(page)).toBeChecked();
     await page.keyboard.press("ArrowUp");
     await expect(methodRadio(page, method().password)).toBeChecked();
     await expect(submitButton(page, copy.auth.login.submit)).toBeVisible();

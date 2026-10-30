@@ -1,3 +1,4 @@
+import { isSafeRelativePath } from "../../auth/continuation";
 import { validatePassword } from "../../auth/password-policy";
 import type { AuthPort, Session } from "../../auth/port";
 import type { Clock } from "./clock";
@@ -21,6 +22,49 @@ const sameSession = (a: Session, b: Session): boolean =>
   a.kind === "guest" || b.kind === "guest"
     ? a.kind === b.kind
     : a.email === b.email && a.emailVerified === b.emailVerified;
+
+// The only pages a Google sign-in may return to (PG-AUTH-003 / PG-AUTH-001, SEC-WEB-013).
+const GOOGLE_RETURN_PAGES: readonly string[] = ["/account/login", "/account/register"];
+
+const isGoogleReturnPath = (path: string): boolean => {
+  if (!isSafeRelativePath(path)) return false;
+  const end = path.search(/[?#]/);
+  return GOOGLE_RETURN_PAGES.includes(end === -1 ? path : path.slice(0, end));
+};
+
+/**
+ * What the dev-only stand-in screen runs when a Google sign-in is allowed. It is not an `AuthPort`
+ * method and only that screen calls it. An existing user keeps their data; an unknown email is a first
+ * registration without a display name (never inferred from the email, SPEC-030 9.2). Nothing but an
+ * email's shape is read from the caller; no password, code or token is handled.
+ */
+export async function allowMockGoogleSignIn(
+  deps: MockAuthDeps,
+  email: string,
+): Promise<{ kind: "signed_in" } | { kind: "unavailable" }> {
+  if (!EMAIL_FORMAT.test(email)) {
+    throw new RangeError("The email of a Google sign-in is malformed");
+  }
+  const { storage, clock } = deps;
+  const db = createMockDb({ storage, clock });
+  // Reads first: a broken stored state is reported before anything (even the seed) is written.
+  const sessionLoad = loadSessionState(storage);
+  if (sessionLoad.kind === "corrupted") return { kind: "unavailable" };
+  const loaded = db.load();
+  if (loaded.kind === "corrupted") return { kind: "unavailable" };
+  const { state } = loaded;
+  let user = state.users.find((u) => u.email === email);
+  if (user === undefined) {
+    user = { email, displayName: null, emailVerified: true };
+    state.users.push(user);
+    db.save(state);
+  }
+  saveSessionState(storage, {
+    ...sessionLoad.state,
+    session: { kind: "authenticated", email: user.email, emailVerified: user.emailVerified },
+  });
+  return { kind: "signed_in" };
+}
 
 /**
  * Mock of the Neon Auth boundary. Users live in the mock DB, the session in its own storage
@@ -227,6 +271,21 @@ export function createMockAuth(deps: MockAuthDeps): AuthPort {
       saveSessionState(storage, { ...sessionLoad.state, session });
       if (changed) notify();
       return { kind: "signed_in", emailVerified: true };
+    },
+
+    async startGoogleSignIn({ successPath, failurePath }) {
+      if (!isGoogleReturnPath(successPath) || !isGoogleReturnPath(failurePath)) {
+        throw new RangeError("A Google sign-in may only return to the Login or Registration page");
+      }
+      const scenario = readScenario();
+      if (scenario === null || scenario.auth.login === "unavailable") {
+        return { kind: "unavailable" };
+      }
+      // Starting establishes nothing: no session, no user, no write. The stand-in screen decides.
+      return {
+        kind: "redirect",
+        url: `/dev/mock-google?success=${encodeURIComponent(successPath)}&failure=${encodeURIComponent(failurePath)}`,
+      };
     },
 
     async completePasswordReset({ context, newPassword }) {

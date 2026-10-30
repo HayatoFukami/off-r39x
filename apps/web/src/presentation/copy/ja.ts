@@ -364,6 +364,14 @@ export const copy = {
     pay: "支払う（モック）",
     back: "戻る",
   },
+  mockGoogle: {
+    pageTitle: "Google認証（モック）",
+    heading: "Googleの代替モック。実際の認証は行われません",
+    note: "ここで押すボタンでは実際のGoogleアカウントは使われません。選んだ結果に従って、元の画面へ戻ります",
+    allowDemo: "demo@example.com として許可",
+    allowNew: "新しいアカウント（google.new@example.com）として許可",
+    cancel: "キャンセル",
+  },
   quantity: {
     label: "数量",
     invalid: "数量は1以上の整数で入力してください",
@@ -501,6 +509,16 @@ export const copy = {
       legendRegister: "登録方法",
       password: "メールアドレスとパスワード",
       emailOtp: "メールで届く確認コード",
+      google: "Google",
+    },
+    google: {
+      startLogin: "Googleでログイン",
+      startRegister: "Googleで登録",
+      failed:
+        "Googleでの認証は完了しませんでした。もう一度お試しいただくか、別の方法を選んでください",
+      unavailable: "Googleでの認証を開始できません。時間をおいて、もう一度お試しください",
+      signedIn:
+        "ログイン中は Google でのログインを使えません。別のアカウントで利用するには、ログアウトしてください",
     },
     otp: {
       send: "確認コードを送る",

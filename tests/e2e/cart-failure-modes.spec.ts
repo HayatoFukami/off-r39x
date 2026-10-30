@@ -4,16 +4,22 @@ import {
   chooseMethod,
   field,
   formOf,
+  googleStartButton,
   loginWith,
   MARKER_PROTECTED_TEXT,
+  MOCK_GOOGLE_PATH,
   OTP_CODE,
   otpButton,
   otpCodeField,
+  readCartLifecycle,
+  readCartLifecycleRaw,
   readSession,
   sendOtp,
+  standInButton,
   statusesIn,
   submitButton,
   submitOtpCode,
+  watchDocumentRequests,
 } from "../harness/browser/auth.ts";
 import {
   addButton,
@@ -34,7 +40,7 @@ import {
   removeButton,
   rowByHeading,
 } from "../harness/browser/cart.ts";
-import { gotoHydrated } from "../harness/browser/hydration.ts";
+import { gotoHydrated, reloadHydrated, waitForHydration } from "../harness/browser/hydration.ts";
 import { guestButton, slotRoute, slotStateInDb } from "../harness/browser/karaoke-purchase.ts";
 import { fixClock } from "../harness/browser/public.ts";
 import { newOrders, openAs } from "../harness/browser/purchase.ts";
@@ -539,5 +545,151 @@ test.describe("TC-PG-CRT-001-543 a Cart store that cannot be read stops Cart add
     await expect(page).toHaveURL(/\/account\/register$/);
     expect(await sessionWrites(page)).toBe(0);
     expect(await readSession(page)).toEqual({ kind: "guest" });
+  });
+});
+
+// ---- B5 C2: Google crosses into Auth through an external service, so the same Q-1 stop applies ---------------------------
+// FR-CRT-012 external-completion rule step 2: an unreadable Cart key stops the start (nothing is recorded, nobody leaves
+// the page); a Browser storage that cannot be obtained at all does not stop it and creates no record.
+test.describe("TC-FR-CRT-012-018 Google is not started while the Cart key cannot be read (Q-1, external-completion rule step 2), and is started without a record when the Browser storage cannot be obtained at all (SPEC-050 15.0 / 15.3, FR-CRT-012)", () => {
+  const recoverButton = (page: Page) =>
+    main(page).getByRole("button", { name: copy.cart.lifecycleBlocked.retry, exact: true });
+  const recoveryAlert = (page: Page) =>
+    main(page).getByRole("alert").filter({ hasText: copy.cart.lifecycleBlocked.title });
+  const isStandIn = (url: URL) => url.pathname === MOCK_GOOGLE_PATH;
+
+  /** An unreadable Cart key that the page can switch back on (a flag in sessionStorage). */
+  async function failCartReadsUntilEnabled(page: Page): Promise<void> {
+    await page.addInitScript((key: string) => {
+      const original = Storage.prototype.getItem;
+      Storage.prototype.getItem = function getItem(this: Storage, name: string) {
+        if (name === key && window.sessionStorage.getItem("test-only-cart-read-enabled") !== "yes")
+          throw new DOMException("blocked", "SecurityError");
+        return original.call(this, name);
+      };
+    }, KEYS.cart);
+  }
+
+  /** Counts the writes to the mock session key: a raw call would write it, a stopped one never does. */
+  async function countSessionWrites(page: Page): Promise<void> {
+    await page.addInitScript((key: string) => {
+      const w = window as unknown as { __sessionWrites: number };
+      w.__sessionWrites = 0;
+      const original = Storage.prototype.setItem;
+      Storage.prototype.setItem = function setItem(this: Storage, name: string, value: string) {
+        if (name === key) w.__sessionWrites += 1;
+        return original.call(this, name, value);
+      };
+    }, KEYS.session);
+  }
+  const sessionWrites = (page: Page) =>
+    page.evaluate(() => (window as unknown as { __sessionWrites: number }).__sessionWrites);
+
+  function watchNavigation(page: Page): string[] {
+    const urls: string[] = [];
+    page.on("framenavigated", (frame) => {
+      if (frame !== page.mainFrame()) return;
+      const url = new URL(frame.url());
+      urls.push(url.pathname + url.search);
+    });
+    return urls;
+  }
+
+  for (const name of ["login", "register"] as const) {
+    test(`${name} with guest metadata and an unreadable Cart: the start is disabled, a forced press goes nowhere and records nothing, the recovery is shown; after recovery the start reaches the stand-in with a pending record`, async ({
+      page,
+    }) => {
+      const seeded = lifecycleSeed("guest");
+      await fixClock(page);
+      await seedLocalStorage(page, seeded);
+      await failCartReadsUntilEnabled(page);
+      await countSessionWrites(page);
+      await gotoHydrated(page, `/account/${name}`);
+      const urls = watchNavigation(page);
+      const documents = watchDocumentRequests(page);
+      await expect(recoveryAlert(page)).toBeVisible();
+      await chooseMethod(page, copy.auth.method.google);
+      await expect(googleStartButton(page, name)).toBeDisabled();
+      await expect(googleStartButton(page, name)).toHaveJSProperty("disabled", true);
+
+      // Something presses it anyway: the lifecycle port stops it before the request.
+      await googleStartButton(page, name).evaluate((button) => {
+        (button as HTMLButtonElement).disabled = false;
+        (button as HTMLButtonElement).click();
+      });
+      await expect(recoveryAlert(page)).toBeVisible();
+      await expect(main(page)).not.toContainText(copy.auth.google.unavailable);
+      await expect(main(page)).not.toContainText(copy.auth.google.failed);
+      await expect(page).toHaveURL(new RegExp(`/account/${name}$`));
+      expect(urls.filter((url) => !url.startsWith(`/account/${name}`))).toEqual([]);
+      expect(documents.filter((url) => url.startsWith("/dev/"))).toEqual([]);
+      expect(await sessionWrites(page)).toBe(0);
+      expect(await readSession(page)).toEqual({ kind: "guest" });
+      expect(await cartKeyStored(page)).toBe(false);
+      // No record: the metadata is exactly what was seeded (it has no external field).
+      expect(await readCartLifecycleRaw(page)).toBe(seeded[KEYS.cartLifecycle]);
+
+      // After the Cart can be read again, the explicit recovery lifts the stop and the start goes to the stand-in.
+      await page.evaluate(() =>
+        window.sessionStorage.setItem("test-only-cart-read-enabled", "yes"),
+      );
+      await recoverButton(page).click();
+      await expect(recoverButton(page)).toHaveCount(0);
+      await expect(googleStartButton(page, name)).toBeEnabled();
+      await googleStartButton(page, name).click();
+      await page.waitForURL(isStandIn);
+      await waitForHydration(page);
+      expect((await readCartLifecycle(page))?.external).toBe("pending");
+      expect(await readSession(page)).toEqual({ kind: "guest" });
+    });
+  }
+
+  test("a Guest whose Browser storage cannot be obtained at all can start Google: the stand-in is reached, no Cart metadata is written, and once the storage is available the allow reaches Mypage without a pending record", async ({
+    page,
+  }) => {
+    await fixClock(page);
+    await page.addInitScript((metadataKey: string) => {
+      const storage = window.localStorage;
+      // Remember (in sessionStorage, which stays available) that the Cart lifecycle metadata was ever written.
+      const original = Storage.prototype.setItem;
+      Storage.prototype.setItem = function setItem(this: Storage, name: string, value: string) {
+        if (name === metadataKey)
+          original.call(window.sessionStorage, "test-only-metadata-written", "yes");
+        return original.call(this, name, value);
+      };
+      Object.defineProperty(window, "localStorage", {
+        configurable: true,
+        get() {
+          if (window.sessionStorage.getItem("test-only-storage-enabled") !== "yes")
+            throw new DOMException("test-only storage denial", "SecurityError");
+          return storage;
+        },
+      });
+    }, KEYS.cartLifecycle);
+    await gotoHydrated(page, "/account/login");
+    // Only the Cart is stopped; the sign-in screen works.
+    await expect(recoverButton(page)).toBeVisible();
+    await chooseMethod(page, copy.auth.method.google);
+    await expect(googleStartButton(page, "login")).toBeEnabled();
+    await googleStartButton(page, "login").click();
+    await page.waitForURL(isStandIn);
+    await waitForHydration(page);
+    await expect(standInButton(page, "allowNew")).toBeEnabled();
+    // Nothing was recorded: the metadata key was never written by the start.
+    expect(
+      await page.evaluate(() => window.sessionStorage.getItem("test-only-metadata-written")),
+    ).toBeNull();
+
+    // The storage is available again (the stand-in is reloaded so that it can keep the Session), then it is allowed.
+    await page.evaluate(() => window.sessionStorage.setItem("test-only-storage-enabled", "yes"));
+    await reloadHydrated(page);
+    await standInButton(page, "allowNew").click();
+    await expect(page).toHaveURL(/\/mypage$/);
+    expect(await readSession(page)).toEqual({
+      kind: "authenticated",
+      email: "google.new@example.com",
+      emailVerified: true,
+    });
+    expect((await readCartLifecycle(page))?.external).toBeUndefined();
   });
 });

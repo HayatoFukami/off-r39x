@@ -1,7 +1,10 @@
-import type { Locator, Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 import { copy } from "../../../apps/web/src/presentation/copy/ja.ts";
 import { TEST_PASSWORD } from "../mock-seed.ts";
-import { KEYS, scenarioJson } from "./shell.ts";
+import { cartEntries, type StoredLine } from "./cart.ts";
+import { gotoHydrated, waitForHydration } from "./hydration.ts";
+import { fixClock } from "./public.ts";
+import { KEYS, scenarioJson, seedLocalStorage, sessionJson } from "./shell.ts";
 
 // Browser-side helpers for the S6 authentication suite (tests/contracts/s6-auth.md section 7).
 // Test-only. All data is synthetic: example.com addresses and sentinel passwords that exist nowhere else,
@@ -241,4 +244,151 @@ export async function setAuthScenario(page: Page, auth: Record<string, string>):
     ([k, v]) => window.localStorage.setItem(k as string, v as string),
     [key, value],
   );
+}
+
+// ---- B5 C2: Google (tests/contracts/s6-auth.md sections 5B, 6.1C, 6.2B, 7, 10A; s2-mock-backend.md section 14.2) -------
+
+/**
+ * The method radios in the specified order (SPEC-050 15.0): Email+Password, Google, Email OTP, Magic Link.
+ * Magic Link arrives with C3: when `copy.auth.method.magicLink` exists it must be the last radio. Email+Password is
+ * the default and the only checked radio.
+ */
+export async function expectMethodRadios(group: Locator): Promise<void> {
+  const labels: string[] = [
+    copy.auth.method.password,
+    copy.auth.method.google,
+    copy.auth.method.emailOtp,
+  ];
+  const magicLink = (copy.auth.method as Record<string, string | undefined>).magicLink;
+  if (magicLink !== undefined) labels.push(magicLink);
+  const radios = group.getByRole("radio");
+  await expect(radios).toHaveCount(labels.length);
+  for (const [index, label] of labels.entries()) {
+    await expect(radios.nth(index)).toHaveAccessibleName(label);
+    if (index === 0) await expect(radios.nth(index)).toBeChecked();
+    else await expect(radios.nth(index)).not.toBeChecked();
+  }
+}
+
+export type AuthPageName = "login" | "register";
+
+/** Opens Login or Registration with a fixed clock and seeded storage. */
+export async function openAuthPage(
+  page: Page,
+  name: AuthPageName,
+  query = "",
+  entries: Record<string, string> = {},
+): Promise<void> {
+  await fixClock(page);
+  await seedLocalStorage(page, entries);
+  await gotoHydrated(page, `/account/${name}${query}`);
+  await expect(heading1(page)).toHaveText(
+    name === "login" ? copy.auth.login.heading : copy.auth.register.heading,
+  );
+}
+
+export const googleRadio = (page: Page): Locator => methodRadio(page, copy.auth.method.google);
+/** The start button of the Google method: "Googleでログイン" on Login, "Googleで登録" on Registration. */
+export const googleStartButton = (page: Page, name: AuthPageName): Locator =>
+  mainOf(page).getByRole("button", {
+    name: name === "login" ? copy.auth.google.startLogin : copy.auth.google.startRegister,
+    exact: true,
+  });
+export const standInButton = (page: Page, which: "allowDemo" | "allowNew" | "cancel"): Locator =>
+  mainOf(page).getByRole("button", { name: copy.mockGoogle[which], exact: true });
+
+/** `?continue=<value>` plus the given extra query, as accountPath builds it ("" when there is nothing). */
+function accountQuery(continueValue: string | null, extra: string): string {
+  const parts = [
+    ...(continueValue === null ? [] : [`continue=${encodeURIComponent(continueValue)}`]),
+    ...(extra === "" ? [] : [extra]),
+  ];
+  return parts.length === 0 ? "" : `?${parts.join("&")}`;
+}
+
+/**
+ * The paths of the contract (s6-auth.md section 5B), written out literally so that the E2E does not depend on the
+ * production builder that the unit test (TC-PG-AUTH-003-213) already pins.
+ */
+export const googleReturnPath = (name: AuthPageName, continueValue: string | null = null): string =>
+  `/account/${name}${accountQuery(continueValue, "returned=google")}`;
+export const googleFailurePath = (
+  name: AuthPageName,
+  continueValue: string | null = null,
+): string => `/account/${name}${accountQuery(continueValue, "notice=google-failed")}`;
+
+export const MOCK_GOOGLE_PATH = "/dev/mock-google";
+
+/** The stand-in screen's URL (s2-mock-backend.md section 14.2): both paths are percent-encoded query values. */
+export function mockGoogleUrl(
+  name: AuthPageName,
+  continueValue: string | null = null,
+  override: { success?: string; failure?: string } = {},
+): string {
+  const success = override.success ?? googleReturnPath(name, continueValue);
+  const failure = override.failure ?? googleFailurePath(name, continueValue);
+  return `${MOCK_GOOGLE_PATH}?success=${encodeURIComponent(success)}&failure=${encodeURIComponent(failure)}`;
+}
+
+/** Opens the stand-in directly (a full page load) and waits until it is hydrated and shows its heading. */
+export async function openMockGoogle(
+  page: Page,
+  name: AuthPageName,
+  continueValue: string | null = null,
+  override: { success?: string; failure?: string } = {},
+): Promise<void> {
+  await gotoHydrated(page, mockGoogleUrl(name, continueValue, override));
+  await expect(heading1(page)).toHaveText(copy.mockGoogle.heading);
+}
+
+/**
+ * Chooses Google on the open Login / Registration page, presses the start button and waits for the full-page
+ * transition to the stand-in screen (the mock returns its URL and the page hands off with window.location.assign).
+ */
+export async function startGoogle(page: Page, name: AuthPageName): Promise<void> {
+  await chooseMethod(page, copy.auth.method.google);
+  await googleStartButton(page, name).click();
+  await page.waitForURL((url) => url.pathname === MOCK_GOOGLE_PATH);
+  await waitForHydration(page);
+  await expect(heading1(page)).toHaveText(copy.mockGoogle.heading);
+}
+
+/** Every main-frame document request (path and query), in order. A full-page load of `returned=google` shows here. */
+export function watchDocumentRequests(page: Page): string[] {
+  const urls: string[] = [];
+  page.on("request", (request) => {
+    if (request.resourceType() !== "document") return;
+    if (request.frame() !== page.mainFrame()) return;
+    const url = new URL(request.url());
+    urls.push(url.pathname + url.search);
+  });
+  return urls;
+}
+
+/** The stored Cart lifecycle metadata, raw (null while the key is absent). Never goes through the Cart key. */
+export async function readCartLifecycleRaw(page: Page): Promise<string | null> {
+  return page.evaluate((key) => window.localStorage.getItem(key), KEYS.cartLifecycle);
+}
+
+/** The parsed Cart lifecycle metadata; null while absent. */
+export async function readCartLifecycle(page: Page): Promise<Record<string, unknown> | null> {
+  const raw = await readCartLifecycleRaw(page);
+  return raw === null ? null : (JSON.parse(raw) as Record<string, unknown>);
+}
+
+/** localStorage entries for a Cart plus lifecycle metadata that carries an external-completion record. */
+export function cartEntriesWithExternal(
+  lines: readonly StoredLine[],
+  external: "pending" | "superseded",
+  provenance: "guest" | "authenticated" = "guest",
+): Record<string, string> {
+  return {
+    ...cartEntries(lines, provenance),
+    [KEYS.cartLifecycle]: JSON.stringify({ version: 1, provenance, external }),
+  };
+}
+
+/** A stored session for the given user (verified by default). */
+export function sessionEntry(email: string, emailVerified = true): Record<string, string> {
+  return { [KEYS.session]: sessionJson({ kind: "authenticated", email, emailVerified }) };
 }

@@ -18,6 +18,7 @@ import { useRouter, useSearchParams } from "../../routing/navigation";
 import { CartRecovery } from "../cart/cart-recovery";
 import { useCart } from "../cart/use-cart";
 import { type AuthMethod, DEFAULT_AUTH_METHOD } from "./auth-methods";
+import { parseFailureNotice, parseReturned, RETURNED_PARAM } from "./auth-return";
 import { ContinuationNoticeView } from "./continuation-notice";
 import { describeContinuation } from "./continuation-view";
 import { EmailOtpForm } from "./email-otp-form";
@@ -27,10 +28,12 @@ import {
   normalizeEmail,
   validateLoginForm,
 } from "./form-validation";
+import { GoogleSignIn } from "./google-sign-in";
 import { NOTICE_PARAM, PASSWORD_UPDATED_NOTICE } from "./login-notice";
 import { MethodSelector } from "./method-selector";
 import { ServiceFailure } from "./service-failure";
 import { useErrorSummaryFocus } from "./use-error-summary-focus";
+import { useExternalReturn } from "./use-external-return";
 
 const linkClass = "text-brand underline underline-offset-4";
 // Named so the destination calls below read as page names, not as data.
@@ -48,6 +51,12 @@ function LoginForm() {
   const intent = parseContinuation(searchParams.get(CONTINUATION_PARAM));
   const notice = describeContinuation(intent);
   const showUpdated = searchParams.get(NOTICE_PARAM) === PASSWORD_UPDATED_NOTICE;
+  // A return from Google is read here, once, by the screen the user comes back to (SPEC-050 15.0).
+  const { googleFailed, clearGoogleFailed } = useExternalReturn({
+    returned: parseReturned(searchParams.get(RETURNED_PARAM)),
+    failed: parseFailureNotice(searchParams.get(NOTICE_PARAM)),
+    intent,
+  });
 
   const baseId = useId();
   const emailId = `${baseId}-email`;
@@ -71,6 +80,7 @@ function LoginForm() {
 
   // Switching method drops the password and every message of the other method.
   const onMethodChange = (next: AuthMethod): void => {
+    clearGoogleFailed();
     setMethod(next);
     setPassword("");
     setErrors([]);
@@ -80,6 +90,7 @@ function LoginForm() {
   const onSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     if (submittingRef.current) return;
+    clearGoogleFailed();
     const validation = validateLoginForm({ email, password });
     if (!validation.ok) {
       setErrors(validation.errors);
@@ -132,6 +143,7 @@ function LoginForm() {
         onChange={onMethodChange}
         disabled={submitting}
       />
+      {googleFailed ? <ServiceFailure message={copy.auth.google.failed} /> : null}
       {method === "password" ? (
         <>
           {errors.length > 0 ? <ErrorSummary items={summaryItems} summaryRef={summaryRef} /> : null}
@@ -145,6 +157,15 @@ function LoginForm() {
       ) : null}
       {cartBusy ? <p role="status">{copy.auth.login.cartBusy}</p> : null}
       {cartNeedsRecovery ? <CartRecovery onRecovered={() => setFailure(null)} /> : null}
+      {method === "google" ? (
+        <GoogleSignIn
+          page="login"
+          intent={intent}
+          cartBlocked={cartBlocked}
+          onCartFailure={setFailure}
+          onAttempt={clearGoogleFailed}
+        />
+      ) : null}
       {method === "password" ? (
         <form
           noValidate
@@ -176,7 +197,8 @@ function LoginForm() {
             </Button>
           </div>
         </form>
-      ) : (
+      ) : null}
+      {method === "email-otp" ? (
         <EmailOtpForm
           mode="login"
           intent={intent}
@@ -185,7 +207,7 @@ function LoginForm() {
           cartBlocked={cartBlocked}
           onCartFailure={setFailure}
         />
-      )}
+      ) : null}
       <ul className="flex flex-col gap-2 text-sm">
         <li>
           <Link href={accountPath(RESET_PAGE, intent)} prefetch={false} className={linkClass}>

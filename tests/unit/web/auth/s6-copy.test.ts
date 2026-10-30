@@ -4,6 +4,17 @@ import { stringLeaves } from "../../../harness/presentation.ts";
 
 // Contract: tests/contracts/s6-auth.md section 1 (SPEC-050 15, 25, SPEC-140 SEC-API-027, SPEC-060 AR-CONT-004).
 
+/** The Google wording as one object: the method label, copy.auth.google.* and the stand-in's copy.mockGoogle. */
+const googleCopy = () => ({
+  method: copy.auth.method.google,
+  ...copy.auth.google,
+  mock: copy.mockGoogle,
+});
+const googleCopyKeys = () => ({
+  google: Object.keys(copy.auth.google).sort(),
+  mock: Object.keys(copy.mockGoogle).sort(),
+});
+
 describe("TC-PG-AUTH-003-401 the S6 copy is the contracted wording (SPEC-050 15.1-15.5, 24.3)", () => {
   it("names the five Pages and the Mypage", () => {
     expect(copy.auth.register.heading).toBe("アカウント登録");
@@ -138,11 +149,95 @@ describe("TC-PG-AUTH-003-403 the method selection and Email OTP wording is the c
     expect(copy.auth.method.legendRegister).toBe("登録方法");
     expect(copy.auth.method.password).toBe("メールアドレスとパスワード");
     expect(copy.auth.method.emailOtp).toBe("メールで届く確認コード");
+    // C2 adds the Google method label (C3 adds the Magic Link label and updates this list).
     expect(Object.keys(copy.auth.method).sort()).toEqual(
-      ["emailOtp", "legendLogin", "legendRegister", "password"].sort(),
+      ["emailOtp", "google", "legendLogin", "legendRegister", "password"].sort(),
     );
     for (const value of stringLeaves(copy.auth.method)) {
       expect(value, value).not.toMatch(/github|discord|\bline\b|\bapple\b/i);
+    }
+  });
+
+  // B5 C2 (tests/contracts/s6-auth.md section 1): Google. The strings that the plan fixes are literal; the others are
+  // pinned by what they must be and must not say.
+  it("has the Google method label, the start actions and the result wording (SPEC-050 15.0)", () => {
+    const g = googleCopy();
+    expect(g.method).toContain("Google");
+    expect(g.startLogin).toBe("Googleでログイン");
+    expect(g.startRegister).toBe("Googleで登録");
+    expect(g.failed).toBe(
+      "Googleでの認証は完了しませんでした。もう一度お試しいただくか、別の方法を選んでください",
+    );
+    expect(g.signedIn).toBe(
+      "ログイン中は Google でのログインを使えません。別のアカウントで利用するには、ログアウトしてください",
+    );
+    expect(g.unavailable).toMatch(/できません/);
+    expect(googleCopyKeys().google).toEqual(
+      ["failed", "signedIn", "startLogin", "startRegister", "unavailable"].sort(),
+    );
+  });
+
+  it("the Google wording states how to continue, names no account existence and no number, and the signed-in hint names Logout (SPEC-050 15.0, SEC-API-027)", () => {
+    const g = googleCopy();
+    expect(g.failed).toMatch(/もう一度/);
+    expect(g.failed).toMatch(/別の方法/);
+    expect(g.signedIn).toMatch(/ログアウト/);
+    for (const value of [
+      g.method,
+      g.startLogin,
+      g.startRegister,
+      g.failed,
+      g.unavailable,
+      g.signedIn,
+    ]) {
+      expect(value, value).toBe(value.trim());
+      expect(value.length, value).toBeGreaterThan(0);
+      expect(value, value).not.toMatch(/[<>]/);
+      expect(value, value).not.toMatch(/[0-9０-９]/);
+      expect(value, value).not.toMatch(
+        /登録されていません|存在しません|見つかりません|登録されている/,
+      );
+      expect(value, value).not.toMatch(/github|discord|\bline\b|\bapple\b/i);
+    }
+    // The Google wordings are separate: a failure, an outage, the Logout hint and the two actions.
+    const distinct = [g.failed, g.unavailable, g.signedIn, g.startLogin, g.startRegister];
+    expect(new Set(distinct).size).toBe(distinct.length);
+    // The start button names do not collide with the existing action names (getByRole name matching is exact).
+    for (const other of [
+      copy.auth.login.submit,
+      copy.auth.register.submit,
+      copy.auth.otp.send,
+      copy.auth.otp.submitLogin,
+      copy.auth.otp.submitRegister,
+      copy.auth.otp.resend,
+      copy.auth.otp.changeEmail,
+    ]) {
+      expect([g.startLogin, g.startRegister]).not.toContain(other);
+    }
+  });
+
+  it("the dev stand-in screen names its three actions literally and says it is a stand-in (DEV-WEB-012, DEV-WEB-013)", () => {
+    const m = googleCopy().mock;
+    expect(m.allowDemo).toBe("demo@example.com として許可");
+    expect(m.allowNew).toBe("新しいアカウント（google.new@example.com）として許可");
+    expect(m.cancel).toBe("キャンセル");
+    expect(googleCopyKeys().mock).toEqual(
+      ["allowDemo", "allowNew", "cancel", "heading", "note", "pageTitle"].sort(),
+    );
+    for (const value of Object.values(m)) {
+      expect(value, value).toBe(value.trim());
+      expect(value.length, value).toBeGreaterThan(0);
+      expect(value, value).not.toMatch(/[<>]/);
+    }
+    // Like the Stripe Checkout stand-in: the heading says it is a stand-in and that nothing real happens.
+    expect(m.heading).toMatch(/モック|代替/);
+    expect(m.pageTitle).toMatch(/モック/);
+    expect(new Set([m.allowDemo, m.allowNew, m.cancel]).size).toBe(3);
+    // The addresses are reserved synthetic ones.
+    for (const value of [m.allowDemo, m.allowNew]) {
+      const emails = value.match(/[A-Za-z0-9._-]+@[A-Za-z0-9.-]+/g) ?? [];
+      expect(emails.length, value).toBe(1);
+      expect(emails[0], value).toMatch(/@example\.com$/);
     }
   });
 
@@ -221,7 +316,7 @@ describe("TC-PG-AUTH-003-403 the method selection and Email OTP wording is the c
       code: copy.auth.field.otpCode,
       otp: copy.auth.otp,
     });
-    expect(leaves).toHaveLength(4 + 2 + 9);
+    expect(leaves).toHaveLength(5 + 2 + 9);
     for (const value of leaves) {
       expect(value, value).toBe(value.trim());
       expect(value.length, value).toBeGreaterThan(0);

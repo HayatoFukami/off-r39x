@@ -37,6 +37,7 @@ const PURE = [
   "src/features/auth/form-validation.ts",
   "src/features/auth/continuation-view.ts",
   "src/features/auth/auth-methods.ts", // B5 C1
+  "src/features/auth/auth-return.ts", // B5 C2: the return and failure paths of an external-completion method
 ] as const;
 
 const CONTAINERS = [
@@ -46,6 +47,7 @@ const CONTAINERS = [
   "src/features/auth/password-reset-request-page.tsx",
   "src/features/auth/password-reset-complete-page.tsx",
   "src/features/auth/email-otp-form.tsx", // B5 C1: the Email OTP steps; calls the port through useAuth()
+  "src/features/auth/google-sign-in.tsx", // B5 C2: the Google start button; calls the port through useAuth()
 ] as const;
 
 const MODULES = [
@@ -261,10 +263,11 @@ describe("TC-DEV-WEB-001-505 S6 copy, colour and dependency direction (SPEC-050 
 });
 
 describe("TC-PG-AUTH-003-511 forms follow SPEC-050 25 (error summary, aria-invalid, no browser validation)", () => {
-  // PG-AUTH-002 has no input field (SPEC-050 15.2, contract 6.3), so it is not a form container.
-  const forms = CONTAINERS.filter((p) => !p.includes("email-verification")).map(
-    (p) => [p, stripComments(read(p))] as const,
-  );
+  // PG-AUTH-002 has no input field (SPEC-050 15.2, contract 6.3), so it is not a form container. The Google start
+  // (B5 C2) is a button with no input either.
+  const forms = CONTAINERS.filter(
+    (p) => !p.includes("email-verification") && !p.includes("google-sign-in"),
+  ).map((p) => [p, stripComments(read(p))] as const);
   it("every form is noValidate and links its error summary to the fields", () => {
     for (const [path, code] of forms) {
       expect(code, path).toMatch(/noValidate/);
@@ -393,6 +396,117 @@ describe("TC-PG-AUTH-003-512 the method selection and the Email OTP steps are wi
     for (const name of ["login-page", "register-page"]) {
       const page = code(`src/features/auth/${name}.tsx`);
       expect(page, name).toMatch(/CartRecovery/);
+    }
+  });
+});
+
+// B5 C2 (tests/contracts/s6-auth.md sections 0, 3B, 5B, 6.1C, 6.2B, 10A): Google, the first external-completion method.
+describe("TC-PG-AUTH-003-512 Google is wired as contracted: the start through useAuth(), the return read once and removed from the URL, the result received through the Cart lifecycle only by the screen shown by the return, and a dev-only stand-in (SPEC-050 15.0, FR-CRT-012, DEV-WEB-012, SEC-WEB-013)", () => {
+  const code = (path: string): string => stripComments(read(path));
+  const authSources = (): string =>
+    walk(abs("src/features/auth"))
+      .filter((f) => /\.(ts|tsx)$/.test(f))
+      .map((f) => stripComments(readFileSync(f, "utf8")))
+      .join("\n");
+
+  it("the Google start is a client container that calls only startGoogleSignIn through useAuth(), builds both paths with auth-return, hands off with window.location.assign and shows the contracted wording", () => {
+    const start = code("src/features/auth/google-sign-in.tsx");
+    expect(start, "google-sign-in.tsx must exist and not be empty").not.toBe("");
+    expect(start).toMatch(/\.startGoogleSignIn\s*\(/);
+    expect(start).toMatch(/externalReturnPath/);
+    expect(start).toMatch(/externalFailurePath/);
+    expect(start).toMatch(/window\.location\.assign\s*\(/);
+    expect(start).toMatch(/copy\.auth\.google\.startLogin\b/);
+    expect(start).toMatch(/copy\.auth\.google\.startRegister\b/);
+    expect(start).toMatch(/copy\.auth\.google\.signedIn\b/);
+    expect(start).toMatch(/copy\.auth\.google\.unavailable\b/);
+    expect(start).toMatch(/aria-describedby/);
+    expect(start).toMatch(/disabled=/);
+    expect(start).toMatch(/cart_busy/);
+    expect(start).toMatch(/cart_blocked/);
+    expect(start).not.toMatch(/router\.(push|replace)\s*\(/);
+    expect(start).not.toMatch(/\b(fetch|XMLHttpRequest|WebSocket)\b/);
+  });
+
+  it("auth-return.ts is pure data and functions: it names returned / notice, builds on accountPath and keeps the Continuation", () => {
+    const pure = code("src/features/auth/auth-return.ts");
+    expect(pure, "auth-return.ts must exist and not be empty").not.toBe("");
+    for (const name of [
+      "RETURNED_PARAM",
+      "externalReturnPath",
+      "externalFailurePath",
+      "parseReturned",
+      "parseFailureNotice",
+    ]) {
+      expect(pure, name).toMatch(new RegExp(`export\\s+(const|function)\\s+${name}\\b`));
+    }
+    expect(pure).toMatch(/accountPath/);
+    expect(pure).toMatch(/["']google-failed["']/);
+    expect(pure).toMatch(/["']returned["']/);
+  });
+
+  it("Login and Register pass the Google start their own page, read the return once, remove it from the URL with replaceState and report a failure with the contracted alert", () => {
+    for (const name of ["login-page", "register-page"]) {
+      const page = code(`src/features/auth/${name}.tsx`);
+      expect(page, name).toMatch(/\bGoogleSignIn\b/);
+      expect(page, name).toMatch(/\bparseReturned\b/);
+      expect(page, name).toMatch(/\bparseFailureNotice\b/);
+      expect(page, name).toMatch(/copy\.auth\.google\.failed\b/);
+    }
+    const all = authSources();
+    expect(all).toMatch(/history\.replaceState\s*\(/);
+  });
+
+  it("the result is received through the Cart lifecycle by the auth screens only (completeExternalAuthentication), and never by the session provider, the header or the cart features", () => {
+    expect(authSources()).toMatch(/\.completeExternalAuthentication\s*\(/);
+    expect(authSources()).toMatch(/\bgetBrowserCartLifecycle\b/);
+    for (const path of [
+      "src/auth/session-provider.tsx",
+      "src/auth/auth-gate.tsx",
+      "src/features/shell/site-header.tsx",
+      "src/features/cart/cart-page.tsx",
+      "src/features/cart/use-cart.ts",
+    ]) {
+      expect(code(path), path).not.toMatch(/completeExternalAuthentication/);
+    }
+  });
+
+  it("the Cart lifecycle and its Auth decorator define the external-completion methods", () => {
+    const lifecycle = code("src/features/cart/cart-lifecycle.ts");
+    expect(lifecycle).toMatch(/\bbeginExternalAuthentication\b/);
+    expect(lifecycle).toMatch(/\bcompleteExternalAuthentication\b/);
+    expect(lifecycle).toMatch(/["']pending["']/);
+    expect(lifecycle).toMatch(/["']superseded["']/);
+    const decorator = code("src/features/shell/cart-lifecycle-auth-port.ts");
+    expect(decorator).toMatch(/startGoogleSignIn/);
+    expect(decorator).toMatch(/beginExternalAuthentication/);
+    expect(decorator).toMatch(/already_signed_in/);
+  });
+
+  it("the stand-in route and screen exist, are dev-only (the route is a thin shell, the screen lives under mock/dev-ui) and keep copy in ja.ts", () => {
+    const route = code("src/routes/dev/mock-google.tsx");
+    expect(route, "routes/dev/mock-google.tsx must exist").not.toBe("");
+    expect(route).toMatch(/mock\/dev-ui\/mock-google-screen/);
+    expect(route).toMatch(/export\s+const\s+handle/);
+    expect(route).toMatch(/copy\.mockGoogle\.pageTitle/);
+    expect(route).not.toMatch(/<main[\s>]/);
+    const screen = code("src/mock/dev-ui/mock-google-screen.tsx");
+    expect(screen, "mock/dev-ui/mock-google-screen.tsx must exist").not.toBe("");
+    expect(screen).toMatch(/allowMockGoogleSignIn/);
+    expect(screen).toMatch(/window\.location\.assign\s*\(/);
+    expect(screen).toMatch(/isSafeRelativePath/);
+    expect(screen).toMatch(/copy\.mockGoogle\.allowDemo\b/);
+    expect(screen).toMatch(/copy\.mockGoogle\.allowNew\b/);
+    expect(screen).toMatch(/copy\.mockGoogle\.cancel\b/);
+    expect(screen).not.toMatch(/\bconsole\s*\./);
+    expect(screen).not.toMatch(/\b(fetch|XMLHttpRequest|WebSocket)\b/);
+    const japanese = /[぀-ヿ㐀-䶿一-鿿ｦ-ﾟ]/;
+    expect(screen.split("\n").find((line) => japanese.test(line)) ?? null).toBeNull();
+    // Nothing outside the dev area, the mock and the ports may reach the stand-in.
+    for (const file of walk(abs("src/features")).filter((f) => /\.(ts|tsx)$/.test(f))) {
+      expect(readFileSync(file, "utf8"), rel(file)).not.toMatch(
+        /mock-google-screen|allowMockGoogleSignIn/,
+      );
     }
   });
 });

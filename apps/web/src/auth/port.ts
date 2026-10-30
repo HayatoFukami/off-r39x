@@ -65,4 +65,21 @@ export interface AuthPort {
     | { kind: "cart_busy" }
     | { kind: "cart_blocked" }
   >;
+  /**
+   * Starts signing in (or registering) with Google. A Neon Auth transport (SPEC-110 section 23.1): it
+   * has no business Operation ID. A `redirect` carries a `url` on the same origin as a relative path;
+   * the user moves to it with a full-page navigation. The outcome of the sign-in is not this
+   * promise's result: the screen the user returns to decides it. `successPath` and `failurePath` are
+   * the paths of PG-AUTH-003 / PG-AUTH-001 only (AR-CONT-001, SEC-WEB-013); they carry no value.
+   */
+  startGoogleSignIn(i: {
+    successPath: string;
+    failurePath: string;
+  }): Promise<
+    | { kind: "redirect"; url: string }
+    | { kind: "unavailable" }
+    | { kind: "already_signed_in" }
+    | { kind: "cart_busy" }
+    | { kind: "cart_blocked" }
+  >;
 }
