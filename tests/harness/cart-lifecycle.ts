@@ -70,6 +70,8 @@ export function setupCartLifecycle(
     verifyEmail: vi.fn(async () => ({ kind: "verified" }) as const),
     requestPasswordReset: vi.fn(async () => ({ kind: "accepted" }) as const),
     completePasswordReset: vi.fn(async () => ({ kind: "updated" }) as const),
+    requestEmailOtp: vi.fn(async () => ({ kind: "sent" }) as const),
+    signInWithEmailOtp: vi.fn(async () => ({ kind: "signed_in", emailVerified: true }) as const),
   };
   return {
     data,

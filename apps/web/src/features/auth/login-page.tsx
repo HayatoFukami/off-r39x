@@ -17,8 +17,10 @@ import { Link } from "../../routing/link";
 import { useRouter, useSearchParams } from "../../routing/navigation";
 import { CartRecovery } from "../cart/cart-recovery";
 import { useCart } from "../cart/use-cart";
+import { type AuthMethod, DEFAULT_AUTH_METHOD } from "./auth-methods";
 import { ContinuationNoticeView } from "./continuation-notice";
 import { describeContinuation } from "./continuation-view";
+import { EmailOtpForm } from "./email-otp-form";
 import {
   type FieldError,
   fieldErrorMessage,
@@ -26,6 +28,7 @@ import {
   validateLoginForm,
 } from "./form-validation";
 import { NOTICE_PARAM, PASSWORD_UPDATED_NOTICE } from "./login-notice";
+import { MethodSelector } from "./method-selector";
 import { ServiceFailure } from "./service-failure";
 import { useErrorSummaryFocus } from "./use-error-summary-focus";
 
@@ -49,6 +52,7 @@ function LoginForm() {
   const baseId = useId();
   const emailId = `${baseId}-email`;
   const passwordId = `${baseId}-password`;
+  const [method, setMethod] = useState<AuthMethod>(DEFAULT_AUTH_METHOD);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState<readonly FieldError[]>([]);
@@ -63,6 +67,14 @@ function LoginForm() {
   const errorOf = (field: FieldError["field"]): string | null => {
     const found = errors.find((error) => error.field === field);
     return found === undefined ? null : fieldErrorMessage(found);
+  };
+
+  // Switching method drops the password and every message of the other method.
+  const onMethodChange = (next: AuthMethod): void => {
+    setMethod(next);
+    setPassword("");
+    setErrors([]);
+    setFailure(null);
   };
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
@@ -114,43 +126,66 @@ function LoginForm() {
           {copy.auth.login.passwordUpdated}
         </p>
       ) : null}
-      {errors.length > 0 ? <ErrorSummary items={summaryItems} summaryRef={summaryRef} /> : null}
-      {failure === "credential" ? (
-        <ServiceFailure message={copy.auth.login.credentialFailure} />
+      <MethodSelector
+        legend={copy.auth.method.legendLogin}
+        value={method}
+        onChange={onMethodChange}
+        disabled={submitting}
+      />
+      {method === "password" ? (
+        <>
+          {errors.length > 0 ? <ErrorSummary items={summaryItems} summaryRef={summaryRef} /> : null}
+          {failure === "credential" ? (
+            <ServiceFailure message={copy.auth.login.credentialFailure} />
+          ) : null}
+          {failure === "unavailable" ? (
+            <ServiceFailure message={copy.auth.login.unavailable} />
+          ) : null}
+        </>
       ) : null}
-      {failure === "unavailable" ? <ServiceFailure message={copy.auth.login.unavailable} /> : null}
       {cartBusy ? <p role="status">{copy.auth.login.cartBusy}</p> : null}
       {cartNeedsRecovery ? <CartRecovery onRecovered={() => setFailure(null)} /> : null}
-      <form
-        noValidate
-        onSubmit={onSubmit}
-        aria-busy={submitting ? true : undefined}
-        className="flex flex-col gap-4"
-      >
-        <FormField
-          id={emailId}
-          label={copy.auth.field.email.label}
-          type="email"
-          autoComplete="email"
-          value={email}
-          onChange={setEmail}
-          error={errorOf("email")}
+      {method === "password" ? (
+        <form
+          noValidate
+          onSubmit={onSubmit}
+          aria-busy={submitting ? true : undefined}
+          className="flex flex-col gap-4"
+        >
+          <FormField
+            id={emailId}
+            label={copy.auth.field.email.label}
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={setEmail}
+            error={errorOf("email")}
+          />
+          <FormField
+            id={passwordId}
+            label={copy.auth.field.password.label}
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={setPassword}
+            error={errorOf("password")}
+          />
+          <div>
+            <Button type="submit" disabled={submitting || cartBlocked}>
+              {submitting ? copy.auth.form.submitting : copy.auth.login.submit}
+            </Button>
+          </div>
+        </form>
+      ) : (
+        <EmailOtpForm
+          mode="login"
+          intent={intent}
+          email={email}
+          onEmailChange={setEmail}
+          cartBlocked={cartBlocked}
+          onCartFailure={setFailure}
         />
-        <FormField
-          id={passwordId}
-          label={copy.auth.field.password.label}
-          type="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={setPassword}
-          error={errorOf("password")}
-        />
-        <div>
-          <Button type="submit" disabled={submitting || cartBlocked}>
-            {submitting ? copy.auth.form.submitting : copy.auth.login.submit}
-          </Button>
-        </div>
-      </form>
+      )}
       <ul className="flex flex-col gap-2 text-sm">
         <li>
           <Link href={accountPath(RESET_PAGE, intent)} prefetch={false} className={linkClass}>

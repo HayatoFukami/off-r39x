@@ -24,8 +24,11 @@
 | `apps/web/src/auth/gate-decision.ts` | 純粋 | `GateDecision`, `decideGate` |
 | `apps/web/src/auth/auth-gate.tsx` | client | `AuthGate`（props `{ children: ReactNode }`） |
 | `apps/web/src/auth/use-auth.ts` | client hook | `useAuth(): AuthPort`（`SessionProvider` が保持する同じ `AuthPort` instance を返す。`SessionContextValue` に `auth: AuthPort` を**追加**する拡張。既存の `state` / `signOut` は変えない） |
-| `apps/web/src/features/auth/form-validation.ts` | 純粋 | `FieldName`, `FieldErrorCode`, `FieldError`, `FormValidation`, `normalizeEmail`, `validateLoginForm`, `validateRegisterForm`, `validateResetRequestForm`, `validateResetCompleteForm`, `fieldErrorMessage` |
+| `apps/web/src/features/auth/form-validation.ts` | 純粋 | `FieldName`, `FieldErrorCode`, `FieldError`, `FormValidation`, `normalizeEmail`, `validateLoginForm`, `validateRegisterForm`, `validateResetRequestForm`, `validateResetCompleteForm`, `fieldErrorMessage`、B5 C1 で `validateOtpCodeForm` を追加（§4） |
 | `apps/web/src/features/auth/continuation-view.ts` | 純粋 | `ContinuationNotice`, `describeContinuation` |
+| `apps/web/src/features/auth/auth-methods.ts` | 純粋（B5 C1。§5A） | `AuthMethod`, `AUTH_METHODS`, `DEFAULT_AUTH_METHOD`, `authMethodLabel` |
+| `apps/web/src/features/auth/method-selector.tsx` | client（B5 C1。§5A） | `MethodSelector`（radio group） |
+| `apps/web/src/features/auth/email-otp-form.tsx` | client container（B5 C1。§6.1B） | `EmailOtpForm`（OTP の 2 step。Login / 登録で共用） |
 | `apps/web/src/features/auth/login-page.tsx` | client container | `LoginPage` |
 | `apps/web/src/features/auth/register-page.tsx` | client container | `RegisterPage` |
 | `apps/web/src/features/auth/email-verification-page.tsx` | client container | `EmailVerificationPage` |
@@ -74,6 +77,27 @@ auth: {
     },
     newPassword: { label: "新しいパスワード" },
     newPasswordConfirm: { label: "新しいパスワード（確認）" },
+    otpCode: {                                        // B5 C1
+      label: "確認コード",
+      required: "確認コードを入力してください",
+    },
+  },
+  method: {                                           // B5 C1（方式選択。§5A / §6.1A）
+    legendLogin: "ログイン方法",
+    legendRegister: "登録方法",
+    password: "メールアドレスとパスワード",
+    emailOtp: "メールで届く確認コード",
+  },
+  otp: {                                              // B5 C1（Email OTP。§6.1B）。有効期限・試行回数の数値を書かない
+    send: "確認コードを送る",
+    sent: "確認コードを送信しました。メールに記載されたコードを入力してください",
+    submitLogin: "確認コードでログインする",
+    submitRegister: "確認コードで登録する",
+    resend: "確認コードを再送する",
+    changeEmail: "メールアドレスを変更する",
+    codeInvalid: "確認コードが正しくありません。もう一度入力してください",
+    codeExpired: "確認コードの有効期限が切れたか、入力できる回数を超えました。確認コードを再送してください",
+    unavailable: "確認コードを処理できません。時間をおいて、もう一度お試しください",
   },
   continuation: {
     notice: "この操作にはログインが必要です",
@@ -144,6 +168,7 @@ mypage: {
 - 既存 `copy.test.ts` の制約（全 leaf は trim 済みの非空 string か関数）を守る。上記の文字列は**そのまま**使う（`s6-copy.test.ts` が固定する）。
 - `copy.auth.login.credentialFailure` は「どの要素が一致したか」を示さない（SPEC-050 §15.3、SEC-API-027）。`copy.auth.reset.accepted` は Account の有無を断定せず「場合」を含む。`copy.auth.verify.invalid` は `copy.auth.verify.verified` の文字列を**含まない**（確認済みと誤読させない）。
 - `copy.pageState.unavailable` / `retry`（S1）は AuthGate の unavailable 表示で再利用する。
+- 【B5 C1】`copy.auth.otp.sent` は Account の有無（登録・存在・「場合」）に触れない（SEC-API-027）。`copy.auth.otp.*` は数字と「N分 / N秒 / N回 / N桁」を含まない（有効期限・試行回数は provider の値で、Production gate で確認する）。`codeInvalid` は「再送」を含まず、`codeExpired` は含む。`sent` / `codeInvalid` / `codeExpired` / `unavailable` と既存の `login.credentialFailure` / `login.unavailable` / `register.unavailable` は互いに異なる。新しい button 名（`send` / `submitLogin` / `submitRegister` / `resend` / `changeEmail`）は互いに、また `login.submit` / `register.submit` と異なる（`getByRole` の exact 照合が衝突しないため）。`copy.auth.method.*` に GitHub / Discord / LINE / Apple の語を置かない。
 
 ## 2. Continuation（`src/auth/continuation.ts`。純粋）
 
@@ -226,6 +251,29 @@ export function decideGate(state: SessionState, pathname: string): GateDecision;
 
 `useAuth()`: `SessionContext` の値に `auth: AuthPort` を足し、画面 container は `useAuth()` だけで port を得る。画面 container が `createAuthPort()` を直接呼ばない（`SessionProvider` と同じ instance を使う。`onSessionChange` が同じ listener 集合に届くため）。
 
+## 3A. AuthPort の Email OTP（B5 C1。`src/auth/port.ts`、`cart-lifecycle-auth-port.ts`、`mock-auth.ts`）
+
+`AuthPort` に次の 2 method を**加える**（既存 8 method は変えない。合計 10。Neon Auth の transport であり、業務の Operation ID は無い。SPEC-110 §23.1）。
+
+```ts
+requestEmailOtp(input: { email: string }): Promise<
+  | { kind: "sent" }
+  | { kind: "unavailable" }
+  | { kind: "cart_busy" }
+  | { kind: "cart_blocked" }>;
+signInWithEmailOtp(input: { email: string; code: string }): Promise<
+  | { kind: "signed_in"; emailVerified: boolean }
+  | { kind: "code_invalid" }
+  | { kind: "code_expired" }
+  | { kind: "unavailable" }
+  | { kind: "cart_busy" }
+  | { kind: "cart_blocked" }>;
+```
+
+- `port.ts` の注釈に、2 method が Neon Auth の transport で業務 Operation ID を持たないこと、`requestEmailOtp` は Account の有無を開示しないこと（SEC-API-027）、`signInWithEmailOtp` はコードを保持しないこと（SEC-AUTH-018）と `code_expired` が期限切れと試行回数超過を含むことを書く（`ports.test.ts` が固定）。
+- mock（`mock-auth.ts`）: `s2-mock-backend.md` §14。Cart lifecycle decorator（`createCartLifecycleAuthPort`）: `signInWithEmailOtp` は `signIn` と同じ規則（FR-CRT-012）で包む。成功（`signed_in`、`emailVerified` が false でも）で Guest Cart を維持して由来 `authenticated` を記録し、由来が `authenticated` / 不明の Cart を clear する。失敗（`code_invalid` / `code_expired` / `unavailable`）と raw の reject は Cart を変えない。遷移中（lifecycle、他 Tab の Web Lock、この port 自身の実行中）は `cart_busy`、Cart キーを読めないとき（Q-1）は `cart_blocked`。いずれも raw を呼ばず storage を変えない。`requestEmailOtp` は Cart が準備済みなら raw を 1 回呼んで結果をそのまま返し、Cart / metadata に書かない。busy / blocked では raw を呼ばない。raw の session 通知は Cart の cleanup のあとに公開する。
+- `useAuth()` は同じ instance を返す（新しい method も含む）。
+
 ## 4. フォーム検証（`features/auth/form-validation.ts`。純粋。U13）
 
 ```ts
@@ -247,6 +295,7 @@ export function fieldErrorMessage(error: FieldError): string;
 - **passwordConfirm**: `passwordConfirm !== password`（trim しない厳密比較）なら `mismatch`。両方空なら confirm のエラーは出さない（Password の `required` だけ）。
 - `errors` は **field の順（email → password → passwordConfirm）** で、1 field に 1 つまで。全て問題なければ `{ ok: true }`。入力を変更しない。
 - `fieldErrorMessage`: `email` の `required` / `invalid_format` → `copy.auth.field.email.required` / `.invalidFormat`、`password` の `required` / `too_short` / `too_long` → `copy.auth.field.password.required` / `.tooShort` / `.tooLong`、`passwordConfirm` の `mismatch` → `copy.auth.field.passwordConfirm.mismatch`。上記以外の組み合わせは `RangeError`。
+- 【B5 C1】`FieldName` に `"code"` を加える（`FieldErrorCode` は変えない）。`validateOtpCodeForm(i: { code: string }): FormValidation` を加える。code が空または空白だけ（空白・tab・全角空白・改行）なら `[{ field: "code", code: "required" }]`、それ以外は `{ ok: true }`。**桁数・数字・形式の規則を持たない**（provider の規則を複製しない）。入力を echo せず変更しない。`fieldErrorMessage({ field: "code", code: "required" })` は `copy.auth.field.otpCode.required`、`code` の他の `code` は `RangeError`。既存の対応は変えない。OTP の email step は `validateResetRequestForm` で検証する。
 
 ## 5. Continuation 表示（`features/auth/continuation-view.ts`。純粋）
 
@@ -259,6 +308,19 @@ export function describeContinuation(intent: ContinuationIntent | null): Continu
 
 - `null` → `null`（通常の Login / 登録。案内を出さない）。
 - それ以外 → `notice = copy.auth.continuation.notice`、`returnAfter = copy.auth.continuation.returnAfter`、`revalidate = copy.auth.continuation.revalidate`、`purposeLabel` は key で決める: `cart` → `purpose.cart`、`karaoke-slot` → `purpose.karaokeSlot`、`purchase-order` → `purpose.purchaseOrder`、`mypage*`（`mypage` で始まる 8 つ）→ `purpose.mypage`。価格・数量・Slot の日時など key 以外の情報を含めない（SPEC-050 §15.3「安全な一般名称」）。
+
+## 5A. 認証方式の一覧（B5 C1。`features/auth/auth-methods.ts`。純粋）
+
+```ts
+export type AuthMethod = "password" | "email-otp";
+export const AUTH_METHODS: readonly AuthMethod[];        // C1: ["password", "email-otp"]（この順）
+export const DEFAULT_AUTH_METHOD: AuthMethod;            // "password"（AUTH_METHODS[0]）
+export function authMethodLabel(method: AuthMethod): string;
+```
+
+- `authMethodLabel("password")` = `copy.auth.method.password`、`"email-otp"` = `copy.auth.method.emailOtp`。ラベルは互いに異なる。GitHub / Discord / LINE / Apple の方式を持たない（SPEC-050 §15.0）。
+- 仕様の順序は Email+Password、Google、Email OTP、Magic Link（SPEC-050 §15.0）。C1 は画面内で完結する 2 方式だけを提供し、C2（Google）・C3（Magic Link）が一覧とこのテスト（TC-PG-AUTH-003-212）を 4 方式の順序へ更新する。
+- `features/auth/method-selector.tsx`（client。`MethodSelector`）: `<fieldset>` + `<legend>`（props で受ける）+ `AUTH_METHODS` を `type="radio"` の `<input>` と `<label>` で描画する。`useId` で id を作る。focus を動かさない（`autoFocus` / `.focus()` を使わない）。port・`fetch`・storage・`console` を使わない。`features/auth/email-otp-form.tsx`（client。`EmailOtpForm`）は §6.1B の OTP 2 step を担い、port は `useAuth()` 経由だけで呼ぶ。
 
 ## 6. DOM 契約（E2E が検査する）
 
@@ -273,7 +335,7 @@ export function describeContinuation(intent: ContinuationIntent | null): Continu
 ### 6.1 `/account/login`（PG-AUTH-003）
 
 - `h1` = `copy.auth.login.heading`。Continuation Intent（`?continue=`。`parseContinuation`。**不正な値は mypage の intent として案内を出す**）があるとき、`h1` の下に `describeContinuation` の 4 文（`notice` / `purposeLabel` / `returnAfter` / `revalidate`）を表示する。intent が無ければ案内を出さない。
-- `?notice=password-updated`（これだけを認める。他の値は無視）のとき `role="status"` + `copy.auth.login.passwordUpdated`。それ以外では `main` に `role="status"` を出さない。
+- `?notice=password-updated`（これだけを認める。他の値は無視）のとき `role="status"` + `copy.auth.login.passwordUpdated`。それ以外では `main` に `role="status"` を出さない（例外: Email OTP のコード要求が `sent` のあとの `copy.auth.otp.sent`。§6.1B）。
 - Fields: `copy.auth.field.email.label`、`copy.auth.field.password.label`（hint なし）。submit `<button type="submit">` name = `copy.auth.login.submit`（exact）。
 - Links（`main` 内）: `copy.auth.login.toPasswordReset` → `accountPath("password-reset", intent)`（intent があれば `continue` を引き継ぐ。**ただし不正値は `mypage` へ正規化した intent を使う**）、`copy.auth.login.toRegister` → `accountPath("register", intent)`、`copy.auth.login.cancel` → `continuationCancelPath(intent)`（intent が無ければ `/`）。
 - 結果（`signIn`）:
@@ -282,6 +344,40 @@ export function describeContinuation(intent: ContinuationIntent | null): Continu
   - `credential_failure` → `role="alert"` + `copy.auth.login.credentialFailure`（email / password のどちらかを示さない。Session は guest のまま。Password 欄の値を URL・storage・DOM テキストへ出さない）。
   - `unavailable` → `role="alert"` + `copy.auth.login.unavailable`（未検証 User を Authenticated として扱わない。Session は guest のまま）。
 - 検証: `validateLoginForm`。
+
+### 6.1A Login の方式選択（B5 C1。PG-AUTH-003。SPEC-050 §15.0）
+
+- `h1` の下（Continuation の案内の下）、フォームの上に、`role="group"` の `<fieldset>`（accessible name = `copy.auth.method.legendLogin`）を描画する。中に `role="radio"` が 2 つ、この順: `copy.auth.method.password`、`copy.auth.method.emailOtp`（accessible name は exact）。初期は `password` が checked。GitHub / Discord の語は出さない。
+- `password` を選んでいるとき、既存の Login フォーム（§6.1）をそのまま表示する（email / password、submit `copy.auth.login.submit`、Links）。OTP の操作（`copy.auth.otp.send`、コード欄）は無い。初期表示に `role="alert"` / `role="status"` は無い。
+- `email-otp` を選ぶと、password の欄と `copy.auth.login.submit` が消え、email 欄と `copy.auth.otp.send` button が出る（コード欄はまだ無い）。URL（`continue` を含む）、Session、Continuation の案内は変わらない。**focus は選んだ radio に残る**（動かさない）。`password` に戻すと password 欄は**空**で現れ、入力済みの password はどこにも残らない（storage にも）。
+- 方式の radio group は矢印キーだけで操作でき（ネイティブの radio）、選択は navigation を起こさない。Links（登録へ、パスワードをお忘れの方、ログインせずに戻る）は両方式で `continue` を保つ。
+
+### 6.1B Login の Email OTP（B5 C1。PG-AUTH-003、UF-AUTH-002、AR-AUTH-008、SEC-API-027、FR-CRT-012）
+
+2 step。どちらも `<form noValidate>`、検証エラーと送信中の表示は §6 の共通（error summary、`aria-busy`、natively disabled）に従う。
+
+- **step 1（コード要求）**: email 欄（`copy.auth.field.email.label`、`type="email"`、`autoComplete="email"`）+ button `copy.auth.otp.send`。検証は `validateResetRequestForm`（email）で、通らなければ port を呼ばず error summary に focus を移す。通れば `requestEmailOtp({ email: normalizeEmail(email) })`。
+  - `sent` → step 2 へ進み、`role="status"` + `copy.auth.otp.sent`（**登録済みでも未登録でも同一の見た目・文言・button**。Account の有無を開示しない。SEC-API-027）。status は同時に 1 つ。
+  - `unavailable` → `role="alert"` + `copy.auth.otp.unavailable`、step 1 に留まる（status もコード欄も出さない）。
+  - `cart_busy` / `cart_blocked` → Password Login と同じ扱い（`CartRecovery` を page 経由で表示。§10）。button は Cart 停止中ネイティブに disabled。
+- **step 2（コード入力）**: コード欄（`copy.auth.field.otpCode.label`、`autoComplete="one-time-code"`、`inputMode="numeric"`、`maxLength` なし）+ submit `copy.auth.otp.submitLogin` + button `copy.auth.otp.resend` + button `copy.auth.otp.changeEmail`。コード欄は state にだけ保持し、URL・storage・console・navigation 先へ出さない（SEC-AUTH-018）。**送信のたびに空にする**（成功・失敗とも）。
+  - 空のコードは port を呼ばず、error summary（`copy.auth.field.otpCode.required`）に focus を移し、コード欄は `aria-invalid="true"` + `aria-describedby` にエラー文。summary のリンクはコード欄へ focus を移す。
+  - `signInWithEmailOtp({ email, code })` の結果:
+    - `signed_in` + `emailVerified: true` → `continuationPath(intent)`（無ければ `/mypage`）。`emailVerified: false` → `accountPath("email-verification", intent)`（§6.1 と同じ）。Cart は password Login と同じ規則（Guest Cart は維持され由来が `authenticated` になる。由来が `authenticated` / 不明の Cart は clear。§10）。
+    - `code_invalid` → `role="alert"` + `copy.auth.otp.codeInvalid`（入力し直す。`copy.auth.login.credentialFailure` を出さない）。コード欄と再送 button は残る。
+    - `code_expired` → `role="alert"` + `copy.auth.otp.codeExpired`（再送を促す。`codeInvalid` と別の文言）。再送 button は有効。
+    - `unavailable` → `role="alert"` + `copy.auth.otp.unavailable`。コード欄は残る。
+    - いずれの失敗でも Session は guest、URL と mock DB は不変。`main` 内の `role="alert"` は同時に 1 つ。
+  - `copy.auth.otp.resend` → `requestEmailOtp` を同じ email で呼び、`sent` なら新しい `copy.auth.otp.sent` の status を出して step 2 に留まる（前の alert は消える）。`copy.auth.otp.changeEmail` → step 1 へ戻る（status / alert を消し、コード欄を消す）。
+- 未確認 User も、コードで Login すると確認済みになる（mailbox の証明。stored user と Session が `emailVerified: true`）。
+
+### 6.2A Registration の方式選択と Email OTP（B5 C1。PG-AUTH-001、FR-AUTH-001、SPEC-030 §9.2）
+
+- 登録画面にも §6.1A と同じ radio group を置く。legend は `copy.auth.method.legendRegister`、初期は `password`（既存の登録フォーム §6.2）。`email-otp` を選ぶと email 欄と `copy.auth.otp.send` に替わり、URL と Continuation の案内は変わらない。
+- Email OTP の step 1 / step 2 は §6.1B と同じだが、step 2 の submit は `copy.auth.otp.submitRegister`（`submitLogin` は無い）。Links は `copy.auth.register.toLogin`（`continue` 保持）。
+- 未知の email は、コードで初回登録になる: `/mypage`（または `continuationPath(intent)`）へ進み、Session は `authenticated` + `emailVerified: true`、mock の user が**ちょうど 1 人**増え `{ displayName: null, emailVerified: true }`（Mypage の表示名は「未設定」。email から推測しない）。
+- 既に登録済みの email でも「すでに登録されています」等の答えを出さない: Login と同じく signed_in になり user は増えない（SEC-API-027）。
+- 誤ったコード（`code_invalid`）・サービス失敗（`unavailable`）は §6.1B と同じ文言の alert で、Guest のまま user を作らず、URL は `/account/register` のまま。
 
 ### 6.2 `/account/register`（PG-AUTH-001）
 
@@ -341,13 +437,13 @@ export function describeContinuation(intent: ContinuationIntent | null): Continu
 
 - `/account/login`、`/account/register`、`/account/email-verification`、`/account/password-reset`、`/account/password-reset/complete`、`/mypage` の GET が **HTTP 200** で、`Cache-Control` が `no-store` と `private` を含み、`Pragma: no-cache`（SEC-WEB-009。`dist/_headers` の規則。静的 shell なので route が未実装でも 200 になる）。`/` の navigation 応答も `no-store, private, max-age=0`（公開 page も同じ。S4 / S5 と TC-SEC-WEB-009-701 の後半）。
 - 各ページは title = `${copy.<…>.pageTitle} | ${SITE_NAME}`、`h1` が 1 つ、`pageerror` / `console.error`（resource load 失敗を除く）が無く、外部 origin へ要求せず、`/admin` / `/staff` への href が無く、390px 幅で横 scroll が無い。
-- 認証フローの前後で、localStorage / sessionStorage の全内容（key と value）、URL、`main` のテキストに、入力した Password（テストの sentinel）と verification / reset の context が現れない（SEC-AUTH-018）。root layout の `<ScrollRestoration />` は `getKey` を渡さず既定の location key を使うので、sessionStorage の保存値に URL・query（`context` など）が入らない（`tests/e2e/static-hosting.spec.ts` TC-STACK-008-306）。
+- 認証フローの前後で、localStorage / sessionStorage の全内容（key と value）、URL、`main` のテキストに、入力した Password（テストの sentinel）と verification / reset の context が現れない（SEC-AUTH-018）。【B5 C1】Email OTP のコード（sentinel）も同様に、誤り・期限切れ・サービス失敗・成功のどの後でも、URL・storage・DOM のテキスト・console に現れず、コード欄は送信のたびに空になる（TC-SEC-AUTH-018-702）。390px 幅では方式の radio group、OTP の email step、コード step（欄・送信・再送・メール変更）が viewport 内に収まり横 scroll が無い（Login と登録。TC-PG-AUTH-003-504）。root layout の `<ScrollRestoration />` は `getKey` を渡さず既定の location key を使うので、sessionStorage の保存値に URL・query（`context` など）が入らない（`tests/e2e/static-hosting.spec.ts` TC-STACK-008-306）。
 
 ## 7. E2E の共通条件
 
 - 時刻は `page.clock.setFixedTime(NOW_ISO)`（`fixClock`）。状態の仕込みは `seedLocalStorage`（`KEYS.session` / `KEYS.scenario` / `KEYS.cart`）。ナビゲーションは `gotoHydrated` / `reloadHydrated`（`HydrationMarker` は S5 で実装済み）。
 - Seed の User: `demo@example.com`（確認済み）、`new@example.com`（確認済み）、`unverified@example.com`（未確認）、`other@example.com`（確認済み）。Password は mock が形だけ検査する（空でなければよい。`TEST_PASSWORD`）。メールアドレスは `example.com` だけ（TST-DAT-002）。
-- scenario の auth 切替（`scenarioJson({ auth: {...} })`、`tests/harness/browser/auth.ts` の `authScenario(patch)` が既定値へ合成する）: `login` / `signup` / `verify` / `reset` / `resetContext` / `session`。scenario の失敗は mock 内の切替であり SPEC-170 の Fault Point ではない（TST-GEN-006）。
+- scenario の auth 切替（`scenarioJson({ auth: {...} })`、`tests/harness/browser/auth.ts` の `authScenario(patch)` が既定値へ合成する）: `login` / `signup` / `verify` / `reset` / `resetContext` / `session`。scenario の失敗は mock 内の切替であり SPEC-170 の Fault Point ではない（TST-GEN-006）。【B5 C1】Email OTP は新しい値を作らず、`login`（`unavailable` / `credential_failure`）と `verify`（`invalid_or_expired`）を再利用する（§9 の 12）。E2E は `auth.ts` の `setAuthScenario(page, patch)` で、画面を開いたまま scenario を切り替えられる（mock は呼び出しごとに scenario を読む）。コードの sentinel は `SENTINEL_OTP_CODE`、通常のコードは `OTP_CODE`。
 
 ## 8. テストファイルと契約の対応
 
@@ -363,14 +459,20 @@ export function describeContinuation(intent: ContinuationIntent | null): Continu
 | `tests/e2e/auth-register-verify.spec.ts` | §6.2、§6.3 |
 | `tests/e2e/auth-password-reset.spec.ts` | §6.4、§6.5 |
 | `tests/e2e/auth-gate-logout.spec.ts` | §3、§6.6、§6.7 |
-| `tests/e2e/auth-common.spec.ts` | §6.8 |
+| `tests/e2e/auth-common.spec.ts` | §6.8、390px の方式選択と OTP の 2 step（TC-PG-AUTH-003-504）、コードの非漏えい（TC-SEC-AUTH-018-702） |
+| `tests/unit/web/auth/auth-methods.test.ts` | §5A（TC-PG-AUTH-003-212） |
+| `tests/unit/web/mock/mock-auth.test.ts` | s2-mock-backend.md §14（OTP。TC-PG-AUTH-003-102 / -103、TC-SEC-AUTH-018-101） |
+| `tests/unit/web/auth/cart-lifecycle-auth-port.test.ts` | §3A と §10（TC-FR-CRT-012-016） |
+| `tests/e2e/cart-failure-modes.spec.ts` | §10 の Q-1（OTP を含む。TC-PG-CRT-001-543） |
+
+B5 C1 の対応: §1（`copy.auth.method` / `copy.auth.otp` / `copy.auth.field.otpCode`）は `s6-copy.test.ts`（TC-PG-AUTH-003-403）、§4 の `validateOtpCodeForm` は `form-validation.test.ts`（TC-PG-AUTH-003-202）、§0 / §5A / §6.1A / §6.1B / §6.2A の構成は `s6-static.test.ts`（TC-PG-AUTH-003-512）、§6.1A〜§6.1B は `auth-login.spec.ts`（TC-PG-AUTH-003-305 / -306 / -307）、§6.2A は `auth-register-verify.spec.ts`（TC-PG-AUTH-001-305）。
 
 ## 9. 曖昧さ・仕様の不足についてテスト担当が決めたこと
 
 1. **Continuation key の一覧**: Design §7 は「cart, karaoke-slot, purchase-order, mypage と mypage 配下の各 key」とだけ書く。→ §2 の 13 個に固定した（SPEC-060 §29.1 の許可例と SPEC-050 §17.2 の Mypage 構成から導いた）。Entry / Goods の販売 Page への key は、Cart 導入後は不要（SPEC-060 §29.1 / SPEC-050 の例が Cart 導入前の記述。OI-6 と同じ性質）なので作らない。
 2. **QR ページは復帰先にしない**: QR は保護 path だが key を持たず、AuthGate の逆引きは `mypage` へ寄せる。QR 提示は直前の認証・Owner 再検証を要するため（SEC-QR-012 / 013 の趣旨）。
 3. **既に Authenticated で Login / 登録を開いたとき**: SPEC-050 に規定がない。自動 redirect は、login 成功直後の自身の遷移と競合するため行わない（フォームをそのまま出す）。
-4. **verification / reset context の運び方**: Design / SPEC-050 は context の運び方を定めない。mock では `?context=<opaque>` の query とし、読み取り後に URL から除去する（SEC-AUTH-018 の趣旨: token を URL に残さない）。実 Supabase Auth では provider の redirect 規約に従う（UCR 不要。実装前の mock の決定）。
+4. **verification / reset context の運び方**: Design / SPEC-050 は context の運び方を定めない。mock では `?context=<opaque>` の query とし、読み取り後に URL から除去する（SEC-AUTH-018 の趣旨: token を URL に残さない）。実 Neon Auth では provider の redirect 規約に従う（UCR 不要。実装前の mock の決定）。
 5. **Logout と AuthGate の競合**: §3 のとおり、Logout 後の最終 URL は `/`（SPEC-050 §15.6）。back で保護 Page に戻ったときだけ Login へ遷移する。
 6. **email の trim**: SPEC-140 は Password だけ trim を禁じる。email は前後の空白を除いて検証・送信する（利用者の貼り付け誤りに寛容）。
 7. **不正な `continue` の扱い**: Design §7 の「不正な値は mypage 扱い」に従い、Login 後は `/mypage`、案内は「マイページの利用」。silent に捨てて通常 Login（案内なし）にはしない。
@@ -378,6 +480,14 @@ export function describeContinuation(intent: ContinuationIntent | null): Continu
 10. **`?notice=password-updated`**: Password reset 完了後の通知のための、このモックの内部 query である（Secret を含まない固定値。SPEC-050 §15.5 は成功後に PG-AUTH-003 へ遷移するとだけ定める）。
 9. **pageshow**: bfcache 復帰時の再確認は `window.location.reload()` とする（再取得を確実にするため）。E2E は `PageTransitionEvent("pageshow", { persisted: true })` を dispatch して検証する（Chromium は headless で bfcache を無効にするため、実際の bfcache 復帰は再現できない）。
 11. **検証 round 1 の訂正**: `email-verification-page.tsx`（PG-AUTH-002、SPEC-050 §15.2）は入力欄を持たないため、`noValidate` / `ErrorSummary` / `aria-busy` の form 要件（TC-PG-AUTH-003-511）の対象外とする（テスト側の誤りだった。対象は login / register / password-reset の2ページ）。
+12. **【B5 C1】方式選択と Email OTP の mock の決定**（計画書 `ref/planning/20261029-b5-auth-methods.md` v4 の Q2 / Q5 / Q7 / Q-1。SPEC-050 §15.0 / §25）:
+    - 新しい scenario 値・storage key・State・API は作らない。Email OTP の成否は既存の auth scenario を再利用する: `auth.login = "unavailable"` は要求・検証とも `unavailable`、`auth.login = "credential_failure"` は `code_invalid`、`auth.verify = "invalid_or_expired"` は `code_expired`（`code_invalid` と `code_expired` の両方が成り立つときは `code_invalid`）。scenario 値の名前は password 向けの語だが、mock の内部の切替であり意味は広げない（`unavailable` を「サービス利用不能」と読む中立な語として使う）。Fault Point ではない（TST-GEN-006）。
+    - 失敗の種類は 2 つ（`code_invalid` = 入力し直し、`code_expired` = 期限切れまたは試行回数超過で再送）。provider が両者を区別できない場合の縮退は Production gate で決める（コードと文言は有効期限・試行回数の数値を持たない。TC-PG-AUTH-003-403）。
+    - コードを送る mock は実際にはメールを送らない。コードの値は比較しない（空でなければ受理する）。コードはどこにも保存・記録・表示しない（TC-SEC-AUTH-018-101 / -702）。
+    - コードでの Login は email の持ち主であることの証明になる（mock の user は `emailVerified: true` になる。Q7）。初回登録（未知の email）は `displayName: null` の user を作る（`signUp` と同じ。表示名を推測しない）。
+    - 要求（`requestEmailOtp`）は、登録済み・未確認・未登録の email で同じ `{ kind: "sent" }` を返し、DB・session・storage を変えない（SEC-API-027）。未登録の email で user を作るのは `signInWithEmailOtp` だけ。
+    - 方式の一覧は C1 では「Email+Password」「Email OTP」の 2 つである。C2 / C3 が SPEC-050 §15.0 の 4 方式の順序へ更新する。Google と Magic Link のテストは C1 に含まれない。
+    - OTP の画面は Login / Registration の同じ route の中の状態で、URL を変えない（`continue` を保つ）。
 
 ## 10. Issue #8 の Cart 分離回帰契約
 
@@ -395,6 +505,7 @@ export function describeContinuation(intent: ContinuationIntent | null): Continu
   2. Guest の Karaoke 購入開始（`guestButton`）: Login へ handoff せず `cart_recovery` になる（`CartRecovery` を Slot 画面に出し、button は disabled、Login へ遷移しない）。Order も Hold も作られず、Slot は AVAILABLE、mock DB は不変、session は Guest のまま。
   3. Login / 登録の送信: `CartRecovery` を出し、submit button は disabled。disabled を迂回した送信（`form.requestSubmit()`）も `cart_blocked` になり、画面に留まる（Guest のまま、mock の session key への書き込み 0 回 = 認証の raw 呼び出しなし、credential / service の失敗文言なし）。
   4. Cart キーが再び読めるようになった後の復旧操作: 停止が解ける。保護ページは `/account/login?continue=mypage` へ redirect し、Karaoke の次の操作は `/account/login?continue=karaoke-slot...` へ handoff し（Order は作られない）、Login はサインインして `/mypage` に着く。
+  5. 【B5 C1】Email OTP も同じ規則で止まる（§6.1B）。Cart キーを読めないとき、コード要求の button（`copy.auth.otp.send`）は disabled、`form.requestSubmit()` による迂回も `cart_blocked` で `sent` の status もコード入力も出さず、mock の session key への書き込みは 0 回。コード要求の後で Cart キーが読めなくなった場合も、コード送信（`submitLogin`）は disabled で、迂回しても `cart_blocked`。復旧操作のあとは OTP Login が成功する。Email OTP による登録（§6.2A）も同様に止まる。単体では `TC-FR-CRT-012-016`（`tests/unit/web/auth/cart-lifecycle-auth-port.test.ts`）が、`signInWithEmailOtp` の成功（Guest Cart 維持と由来 `authenticated` の記録、由来が `authenticated` / 不明の Cart の clear）、失敗（Cart 不変）、`cart_busy`（遷移中、他 Tab の Web Lock、自身の実行中）、`cart_blocked`（Cart キー不読）と、`requestEmailOtp` が Cart に書かないことを固定する。
   - 読めるが壊れた Cart 本体は停止ではなく `corrupted`（s5-cart.md §2.3）で、この規則の対象外。
 - `tests/e2e/auth-gate-logout.spec.ts` の既存Issue再現は、公開Login画面と失敗Loginで旧Cartの保存値が維持され、成功時に初めてclearされる順序をassertする。
 - `tests/e2e/cart-session-isolation.spec.ts` はAuthGateとCart / Guest KaraokeのLogin handoffで、必要なCart clear失敗中は遷移しないこと、AuthGateのstorage取得不可時はLoginへ進むことを検証する。Karaoke Slotは表示を保ち、Authenticated Userの購入開始がCart停止中も進むことを検証する。ActionはAPIで初めて期限切れが分かる場合と、UIが既にGuestを認識している場合の双方を検証する。【B4c】Karaoke Slotは購入開始の前に本人向け判定（`API-PUR-ELG-001`）を読むため、Karaokeの `api_expiry` ケース（TC-FR-CRT-012-006）は、期限切れにする前に購入 button が有効になる（事前判定の完了）ことを待つ。事前判定を期限切れ後のSessionで読むと、このケースが検証する「APIで初めて期限切れが分かる」前提が崩れるためである。期待値は変えない。

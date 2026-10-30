@@ -127,3 +127,117 @@ describe("TC-PG-AUTH-003-402 failure and result wording separates what must be s
     }
   });
 });
+
+// B5 C1 (tests/contracts/s6-auth.md section 1): the method selection and Email OTP wording. SPEC-050 15.0
+// (no account existence in the sent wording, no GitHub / Discord), SPEC-140 SEC-API-027.
+describe("TC-PG-AUTH-003-403 the method selection and Email OTP wording is the contracted wording and keeps what must be separated apart (SPEC-050 15.0, SEC-API-027)", () => {
+  const otp = () => copy.auth.otp;
+
+  it("has the method legends and labels literally", () => {
+    expect(copy.auth.method.legendLogin).toBe("ログイン方法");
+    expect(copy.auth.method.legendRegister).toBe("登録方法");
+    expect(copy.auth.method.password).toBe("メールアドレスとパスワード");
+    expect(copy.auth.method.emailOtp).toBe("メールで届く確認コード");
+    expect(Object.keys(copy.auth.method).sort()).toEqual(
+      ["emailOtp", "legendLogin", "legendRegister", "password"].sort(),
+    );
+    for (const value of stringLeaves(copy.auth.method)) {
+      expect(value, value).not.toMatch(/github|discord|\bline\b|\bapple\b/i);
+    }
+  });
+
+  it("has the code field and the action wording literally", () => {
+    expect(copy.auth.field.otpCode.label).toBe("確認コード");
+    expect(copy.auth.field.otpCode.required).toBe("確認コードを入力してください");
+    expect(otp().send).toBe("確認コードを送る");
+    expect(otp().submitLogin).toBe("確認コードでログインする");
+    expect(otp().submitRegister).toBe("確認コードで登録する");
+    expect(otp().resend).toBe("確認コードを再送する");
+    expect(otp().changeEmail).toBe("メールアドレスを変更する");
+    expect(Object.keys(otp()).sort()).toEqual(
+      [
+        "changeEmail",
+        "codeExpired",
+        "codeInvalid",
+        "resend",
+        "send",
+        "sent",
+        "submitLogin",
+        "submitRegister",
+        "unavailable",
+      ].sort(),
+    );
+  });
+
+  it("has the result wording literally", () => {
+    expect(otp().sent).toBe("確認コードを送信しました。メールに記載されたコードを入力してください");
+    expect(otp().codeInvalid).toBe("確認コードが正しくありません。もう一度入力してください");
+    expect(otp().codeExpired).toBe(
+      "確認コードの有効期限が切れたか、入力できる回数を超えました。確認コードを再送してください",
+    );
+    expect(otp().unavailable).toBe(
+      "確認コードを処理できません。時間をおいて、もう一度お試しください",
+    );
+  });
+
+  it("the sent wording never discloses whether the email is registered (SEC-API-027, SPEC-050 15.0)", () => {
+    expect(otp().sent).not.toMatch(/登録|存在|見つかり|アカウント|場合/);
+    for (const value of stringLeaves(copy.auth.otp)) {
+      expect(value, value).not.toMatch(
+        /登録されていません|存在しません|見つかりません|登録されている/,
+      );
+    }
+  });
+
+  it("states no expiry time and no attempt count: those values belong to the provider and are checked at the Production gate (SPEC-050 15.0)", () => {
+    const leaves = stringLeaves(copy.auth.otp);
+    expect(leaves, "copy.auth.otp must exist").toHaveLength(9);
+    for (const value of leaves) {
+      expect(value, value).not.toMatch(/[0-9０-９]/);
+      expect(value, value).not.toMatch(/[0-9０-９一二三四五六七八九十]+\s*(分|秒|回|桁)/);
+    }
+  });
+
+  it("a wrong code and an expired or exhausted code are separate messages with their own next step", () => {
+    expect(otp().codeInvalid).not.toBe(otp().codeExpired);
+    expect(otp().codeInvalid).not.toContain("再送");
+    expect(otp().codeExpired).toContain("再送");
+    expect(otp().unavailable).toMatch(/できません/);
+    const distinct = [
+      otp().sent,
+      otp().codeInvalid,
+      otp().codeExpired,
+      otp().unavailable,
+      copy.auth.login.credentialFailure,
+      copy.auth.login.unavailable,
+      copy.auth.register.unavailable,
+    ];
+    expect(new Set(distinct).size).toBe(distinct.length);
+  });
+
+  it("every new leaf is a trimmed, non-empty string without markup, and the buttons have distinct names", () => {
+    const leaves = stringLeaves({
+      method: copy.auth.method,
+      code: copy.auth.field.otpCode,
+      otp: copy.auth.otp,
+    });
+    expect(leaves).toHaveLength(4 + 2 + 9);
+    for (const value of leaves) {
+      expect(value, value).toBe(value.trim());
+      expect(value.length, value).toBeGreaterThan(0);
+      expect(value, value).not.toMatch(/[<>]/);
+    }
+    // getByRole name matching in the E2E suite is exact; these names must not collide with each other
+    // or with the existing submit buttons.
+    const names = [
+      otp().send,
+      otp().submitLogin,
+      otp().submitRegister,
+      otp().resend,
+      otp().changeEmail,
+      copy.auth.login.submit,
+      copy.auth.register.submit,
+    ];
+    expect(new Set(names).size).toBe(names.length);
+  });
+});

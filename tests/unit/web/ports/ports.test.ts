@@ -118,8 +118,10 @@ describe("TC-DEV-WEB-010-102 ApiPort and AuthPort have the documented shape (des
         "completePasswordReset",
         "getSession",
         "onSessionChange",
+        "requestEmailOtp",
         "requestPasswordReset",
         "signIn",
+        "signInWithEmailOtp",
         "signOut",
         "signUp",
         "verifyEmail",
@@ -132,6 +134,47 @@ describe("TC-DEV-WEB-010-102 ApiPort and AuthPort have the documented shape (des
     const result = api.public.getEvent();
     expect(result).toBeInstanceOf(Promise);
     await result;
+  });
+
+  it("returns promises from the Email OTP methods and answers with the documented kinds (B5 C1)", async () => {
+    const otp = createBackend().auth;
+    const requested = otp.requestEmailOtp({ email: "demo@example.com" });
+    expect(requested).toBeInstanceOf(Promise);
+    expect((await requested).kind).toBe("sent");
+    const signedIn = otp.signInWithEmailOtp({ email: "demo@example.com", code: "246810" });
+    expect(signedIn).toBeInstanceOf(Promise);
+    expect((await signedIn).kind).toBe("signed_in");
+  });
+
+  it("documents the Email OTP methods in auth/port.ts: a Neon Auth transport without a business Operation ID, an answer that never discloses the account, a code that is never kept (B5 C1, SPEC-110 23.1, SEC-API-027, SEC-AUTH-018)", () => {
+    const lines = read(join(webDir, "src/auth/port.ts")).split("\n");
+    const annotationOf = (name: string): string => {
+      const index = lines.findIndex((line) => new RegExp(`^\\s*${name}\\(`).test(line));
+      expect(index, `${name} must be declared in auth/port.ts`).toBeGreaterThanOrEqual(0);
+      const block: string[] = [];
+      for (let i = index - 1; i >= 0; i -= 1) {
+        const text = (lines[i] ?? "").trim();
+        if (!/^(\/\*|\*|\/\/)/.test(text)) break;
+        block.unshift(text);
+      }
+      return block.join("\n");
+    };
+    const request = annotationOf("requestEmailOtp");
+    const verify = annotationOf("signInWithEmailOtp");
+    for (const annotation of [request, verify]) {
+      expect(annotation).toMatch(/Neon Auth/);
+      expect(annotation).toContain("23.1");
+      expect(annotation).toMatch(/Operation ID/);
+      // A business Operation ID would be a claim that the Hono API owns this call; it does not.
+      expect(annotation).not.toMatch(/API-[A-Z]+(?:-[A-Z]+)*-\d{3}/);
+      expect(annotation).not.toMatch(/UCR-/);
+    }
+    expect(request).toContain("SEC-API-027");
+    expect(request).toMatch(/registered/i);
+    expect(verify).toContain("SEC-AUTH-018");
+    expect(verify).toContain("code_expired");
+    expect(verify).toMatch(/attempt/i);
+    expect(verify).toMatch(/resend/i);
   });
 
   it("types the public port methods", () => {
@@ -322,6 +365,24 @@ describe("TC-DEV-WEB-010-102 ApiPort and AuthPort have the documented shape (des
     >();
     expectTypeOf<AuthPort["onSessionChange"]>().returns.toEqualTypeOf<() => void>();
     expectTypeOf<AuthPort["signOut"]>().returns.resolves.toEqualTypeOf<{ kind: "signed_out" }>();
+  });
+
+  it("types the Email OTP methods (B5 C1): the request never reveals the account, the verification separates a wrong code from an expired one", () => {
+    expectTypeOf<AuthPort["requestEmailOtp"]>().parameters.toEqualTypeOf<[{ email: string }]>();
+    expectTypeOf<AuthPort["requestEmailOtp"]>().returns.resolves.toEqualTypeOf<
+      { kind: "sent" } | { kind: "unavailable" } | { kind: "cart_busy" } | { kind: "cart_blocked" }
+    >();
+    expectTypeOf<AuthPort["signInWithEmailOtp"]>().parameters.toEqualTypeOf<
+      [{ email: string; code: string }]
+    >();
+    expectTypeOf<AuthPort["signInWithEmailOtp"]>().returns.resolves.toEqualTypeOf<
+      | { kind: "signed_in"; emailVerified: boolean }
+      | { kind: "code_invalid" }
+      | { kind: "code_expired" }
+      | { kind: "unavailable" }
+      | { kind: "cart_busy" }
+      | { kind: "cart_blocked" }
+    >();
   });
 
   it("makes the Cart unable to represent Karaoke, prices or other fields (FR-CRT-002/003)", () => {

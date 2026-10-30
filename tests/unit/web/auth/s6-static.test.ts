@@ -36,6 +36,7 @@ const PURE = [
   "src/auth/gate-decision.ts",
   "src/features/auth/form-validation.ts",
   "src/features/auth/continuation-view.ts",
+  "src/features/auth/auth-methods.ts", // B5 C1
 ] as const;
 
 const CONTAINERS = [
@@ -44,6 +45,7 @@ const CONTAINERS = [
   "src/features/auth/email-verification-page.tsx",
   "src/features/auth/password-reset-request-page.tsx",
   "src/features/auth/password-reset-complete-page.tsx",
+  "src/features/auth/email-otp-form.tsx", // B5 C1: the Email OTP steps; calls the port through useAuth()
 ] as const;
 
 const MODULES = [
@@ -51,6 +53,7 @@ const MODULES = [
   "src/auth/auth-gate.tsx",
   "src/auth/use-auth.ts",
   ...CONTAINERS,
+  "src/features/auth/method-selector.tsx", // B5 C1: the method radio group (a client part, no port)
   "src/presentation/components/form-field.tsx",
   "src/presentation/components/error-summary.tsx",
 ] as const;
@@ -293,6 +296,103 @@ describe("TC-PG-AUTH-003-511 forms follow SPEC-050 25 (error summary, aria-inval
       expect(code, name).toMatch(/parseContinuation/);
       expect(code, name).toMatch(/continuationPath/);
       expect(code, name).toMatch(/describeContinuation/);
+    }
+  });
+});
+
+// B5 C1 (tests/contracts/s6-auth.md sections 5A, 6.1A, 6.2A): the method radio group and the Email OTP steps.
+describe("TC-PG-AUTH-003-512 the method selection and the Email OTP steps are wired as contracted: radio group, one-time-code field, the port only through useAuth(), the code never leaves state (SPEC-050 15.0 / 25, SEC-AUTH-018)", () => {
+  const code = (path: string): string => stripComments(read(path));
+  const otpForm = (): string => code("src/features/auth/email-otp-form.tsx");
+
+  it("the method selector is a fieldset with a legend and radio inputs named by labels, and it does not move focus", () => {
+    const selector = code("src/features/auth/method-selector.tsx");
+    expect(selector).toMatch(/^\s*["']use client["']/);
+    expect(selector).toMatch(/<fieldset\b/);
+    expect(selector).toMatch(/<legend\b/);
+    expect(selector).toMatch(/type=["']radio["']/);
+    expect(selector).toMatch(/<label\b/);
+    expect(selector).toMatch(/\buseId\b/);
+    expect(selector).toMatch(/AUTH_METHODS/);
+    expect(selector).toMatch(/authMethodLabel/);
+    expect(selector).not.toMatch(/\.focus\s*\(|autoFocus/);
+    expect(selector).not.toMatch(/\buseAuth\b|createAuthPort|from\s+["'][^"']*\/mock\//);
+    expect(selector).not.toMatch(/\b(fetch|localStorage|sessionStorage)\b|\bconsole\s*\./);
+  });
+
+  it("the method list is pure data: the exports the pages and the selector use", () => {
+    const methods = code("src/features/auth/auth-methods.ts");
+    expect(methods).toMatch(/export\s+(const|type)\s+AUTH_METHODS\b/);
+    expect(methods).toMatch(/export\s+const\s+DEFAULT_AUTH_METHOD\b/);
+    expect(methods).toMatch(/export\s+(function|const)\s+authMethodLabel\b/);
+    expect(methods).toMatch(/export\s+type\s+AuthMethod\b/);
+    expect(methods).toMatch(/["']email-otp["']/);
+    expect(methods).not.toMatch(/github|discord/i);
+  });
+
+  it("Login and Register show the selector with their own legend and start on the default method", () => {
+    const login = code("src/features/auth/login-page.tsx");
+    const register = code("src/features/auth/register-page.tsx");
+    for (const [name, page] of [
+      ["login-page", login],
+      ["register-page", register],
+    ] as const) {
+      expect(page, name).toMatch(/\bMethodSelector\b/);
+      expect(page, name).toMatch(/\bEmailOtpForm\b/);
+      expect(page, name).toMatch(/\bDEFAULT_AUTH_METHOD\b/);
+    }
+    expect(login).toMatch(/copy\.auth\.method\.legendLogin/);
+    expect(register).toMatch(/copy\.auth\.method\.legendRegister/);
+    expect(login).not.toMatch(/copy\.auth\.method\.legendRegister/);
+    expect(register).not.toMatch(/copy\.auth\.method\.legendLogin/);
+  });
+
+  it("the Email OTP steps call both OTP port methods, validate before calling, and show the contracted wording", () => {
+    const form = otpForm();
+    expect(form).toMatch(/\.requestEmailOtp\s*\(/);
+    expect(form).toMatch(/\.signInWithEmailOtp\s*\(/);
+    expect(form).toMatch(/validateOtpCodeForm/);
+    expect(form).toMatch(/validateResetRequestForm/);
+    expect(form).toMatch(/copy\.auth\.otp\.send\b/);
+    expect(form).toMatch(/copy\.auth\.otp\.sent\b/);
+    expect(form).toMatch(/copy\.auth\.otp\.resend\b/);
+    expect(form).toMatch(/copy\.auth\.otp\.changeEmail\b/);
+    expect(form).toMatch(/copy\.auth\.otp\.codeInvalid\b/);
+    expect(form).toMatch(/copy\.auth\.otp\.codeExpired\b/);
+    expect(form).toMatch(/copy\.auth\.otp\.unavailable\b/);
+    expect(form).toMatch(/copy\.auth\.otp\.submitLogin\b/);
+    expect(form).toMatch(/copy\.auth\.otp\.submitRegister\b/);
+    expect(form).toMatch(/role=["']status["']/);
+  });
+
+  it("the code field is autoComplete one-time-code and numeric, has no maxLength, and the email field keeps autoComplete email", () => {
+    const form = otpForm();
+    expect(form).toMatch(/autoComplete=["']one-time-code["']/);
+    expect(form).toMatch(/inputMode=["']numeric["']/);
+    expect(form).toMatch(/autoComplete=["']email["']/);
+    expect(form).not.toMatch(/\bmaxLength\b/);
+    expect(form).toMatch(/copy\.auth\.field\.otpCode\.label/);
+  });
+
+  it("the one-time code is held in component state only: it never reaches a URL, a navigation target, a storage or the console", () => {
+    const form = otpForm();
+    expect(form, "email-otp-form.tsx must exist and not be empty").not.toBe("");
+    expect(form).not.toMatch(/\b(localStorage|sessionStorage|document\.cookie)\b|\bconsole\s*\./);
+    expect(form).not.toMatch(
+      /(router\.(push|replace)|location\.(assign|replace|href)|replaceState|accountPath|continuationPath|URLSearchParams|setSearchParams)\s*\([^)]*\bcode\b/,
+    );
+    expect(form).not.toMatch(/searchParams\.set\s*\(/);
+  });
+
+  it("the Email OTP steps follow the same Cart rule as password Login: the recovery is shown through the page and the buttons are natively disabled while the Cart is stopped", () => {
+    const form = otpForm();
+    expect(form).toMatch(/cartBlocked/);
+    expect(form).toMatch(/cart_busy/);
+    expect(form).toMatch(/cart_blocked/);
+    expect(form).toMatch(/disabled=/);
+    for (const name of ["login-page", "register-page"]) {
+      const page = code(`src/features/auth/${name}.tsx`);
+      expect(page, name).toMatch(/CartRecovery/);
     }
   });
 });

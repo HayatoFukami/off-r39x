@@ -174,6 +174,21 @@ export function createCartLifecycleAuthPort(
         }
       }
     },
+    async requestEmailOtp(input) {
+      // Requesting a code does not cross the Cart boundary: no transition is started and nothing
+      // is written, but it must not begin while a transition runs or the Cart is stopped (Q-1).
+      if (transition !== null) return { kind: "cart_busy" };
+      const snapshot = lifecycle.getSnapshot();
+      if (snapshot.kind === "busy") return { kind: "cart_busy" };
+      if (snapshot.kind === "blocked") return { kind: "cart_blocked" };
+      return rawAuth.requestEmailOtp(input);
+    },
+    signInWithEmailOtp(input) {
+      return authenticate(
+        () => rawAuth.signInWithEmailOtp(input),
+        (result) => result.kind === "signed_in",
+      );
+    },
     requestPasswordReset: (input) => rawAuth.requestPasswordReset(input),
     completePasswordReset: (input) => rawAuth.completePasswordReset(input),
   };

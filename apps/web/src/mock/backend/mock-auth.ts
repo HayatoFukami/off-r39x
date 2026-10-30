@@ -1,7 +1,7 @@
 import { validatePassword } from "../../auth/password-policy";
 import type { AuthPort, Session } from "../../auth/port";
 import type { Clock } from "./clock";
-import { createMockDb, type MockStorage } from "./db";
+import { createMockDb, DB_STORAGE_KEY, type MockStorage } from "./db";
 import type { IdGenerator } from "./ids";
 import { loadScenario, type Scenario } from "./scenario";
 import {
@@ -23,9 +23,10 @@ const sameSession = (a: Session, b: Session): boolean =>
     : a.email === b.email && a.emailVerified === b.emailVerified;
 
 /**
- * Mock of the Supabase Auth boundary. Users live in the mock DB, the session in its own storage
+ * Mock of the Neon Auth boundary. Users live in the mock DB, the session in its own storage
  * entry. A password is only ever checked for shape: it is never stored, logged or returned
- * (SEC-AUTH-018), and the outcome of every call is decided by the scenario.
+ * (SEC-AUTH-018), and the outcome of every call is decided by the scenario. A one-time code is
+ * never compared, stored, logged or returned either; the mock sends no email.
  */
 export function createMockAuth(deps: MockAuthDeps): AuthPort {
   const { storage, clock } = deps;
@@ -40,6 +41,11 @@ export function createMockAuth(deps: MockAuthDeps): AuthPort {
     const loaded = loadScenario(storage);
     return loaded.kind === "ok" ? loaded.scenario : null;
   };
+
+  // Reads only: an unseeded DB is not a corruption and is not seeded by a call that must not write.
+  const storedStateCorrupted = (): boolean =>
+    (storage.getItem(DB_STORAGE_KEY) !== null && db.load().kind === "corrupted") ||
+    loadSessionState(storage).kind === "corrupted";
 
   return {
     async getSession() {
@@ -174,6 +180,53 @@ export function createMockAuth(deps: MockAuthDeps): AuthPort {
       }
       // Known and unknown emails get the identical answer and no state change (SEC-API-027).
       return { kind: "accepted" };
+    },
+
+    async requestEmailOtp({ email }) {
+      if (!EMAIL_FORMAT.test(email)) {
+        throw new RangeError("The email for a one-time code is malformed");
+      }
+      const scenario = readScenario();
+      if (scenario === null || scenario.auth.login === "unavailable") {
+        return { kind: "unavailable" };
+      }
+      if (storedStateCorrupted()) return { kind: "unavailable" };
+      // Registered, unverified and unknown emails get the identical answer and no state change
+      // (SEC-API-027). Only signInWithEmailOtp creates a user.
+      return { kind: "sent" };
+    },
+
+    async signInWithEmailOtp({ email, code }) {
+      const scenario = readScenario();
+      if (scenario === null) return { kind: "unavailable" };
+      const { login, verify } = scenario.auth;
+      if (login === "unavailable" || storedStateCorrupted()) return { kind: "unavailable" };
+      // The code is not compared: the mock only rejects an empty one. A wrong code wins over an
+      // expired one when the scenario selects both. A failure writes nothing, not even the seed.
+      if (code === "" || login === "credential_failure") return { kind: "code_invalid" };
+      if (verify === "invalid_or_expired") return { kind: "code_expired" };
+      const loaded = db.load();
+      const sessionLoad = loadSessionState(storage);
+      if (loaded.kind === "corrupted" || sessionLoad.kind === "corrupted") {
+        return { kind: "unavailable" };
+      }
+      const { state } = loaded;
+      // A valid code proves the mailbox, so it also confirms an unverified email.
+      let user = state.users.find((u) => u.email === email);
+      if (user === undefined) {
+        // First registration by code; the display name is never inferred from the email (SPEC-030 9.2).
+        user = { email, displayName: null, emailVerified: true };
+        state.users.push(user);
+        db.save(state);
+      } else if (!user.emailVerified) {
+        user.emailVerified = true;
+        db.save(state);
+      }
+      const session: Session = { kind: "authenticated", email: user.email, emailVerified: true };
+      const changed = !sameSession(sessionLoad.state.session, session);
+      saveSessionState(storage, { ...sessionLoad.state, session });
+      if (changed) notify();
+      return { kind: "signed_in", emailVerified: true };
     },
 
     async completePasswordReset({ context, newPassword }) {

@@ -4,6 +4,7 @@ import {
   alertsIn,
   authScenario,
   CONTEXT_VALUE,
+  chooseMethod,
   describedText,
   dumpStorage,
   field,
@@ -14,10 +15,17 @@ import {
   linkIn,
   loginWith,
   mainOf,
+  methodGroup,
+  OTP_CODE,
+  otpButton,
   readSession,
+  readUsers,
   SENTINEL_PASSWORD,
+  sendOtp,
+  setAuthScenario,
   statusesIn,
   submitButton,
+  submitOtpCode,
   unverifiedSession,
   urlOf,
 } from "../harness/browser/auth.ts";
@@ -249,6 +257,133 @@ test.describe("TC-PG-AUTH-001-304 the registration page keeps the destination vi
     expect(await linkIn(page, copy.auth.register.toLogin).getAttribute("href")).toBe(
       "/account/login",
     );
+  });
+});
+
+// B5 C1: PG-AUTH-001 offers the same method selection, and Email OTP registers a first-time email
+// (SPEC-050 15.0 / 15.1, SPEC-020 FR-AUTH-001, SPEC-030 9.2). tests/contracts/s6-auth.md section 6.2A.
+test.describe("TC-PG-AUTH-001-305 Registration offers the same method selection, and Email OTP registers a new email as a verified, signed-in user with no display name (SPEC-050 15.0 / 15.1, FR-AUTH-001, SPEC-030 9.2)", () => {
+  const otp = () => copy.auth.otp;
+  const method = () => copy.auth.method;
+
+  test("the radio group is named by the registration legend and starts on Email+Password with the existing registration form; Email OTP swaps it without changing the URL", async ({
+    page,
+  }) => {
+    await openRegister(page, "?continue=cart");
+    const url = page.url();
+    const radios = methodGroup(page, method().legendRegister).getByRole("radio");
+    await expect(radios).toHaveCount(2);
+    await expect(radios.nth(0)).toHaveAccessibleName(method().password);
+    await expect(radios.nth(1)).toHaveAccessibleName(method().emailOtp);
+    await expect(radios.nth(0)).toBeChecked();
+    for (const label of [
+      copy.auth.field.email.label,
+      copy.auth.field.password.label,
+      copy.auth.field.passwordConfirm.label,
+    ]) {
+      await expect(field(page, label)).toBeVisible();
+    }
+    await expect(submit(page)).toBeVisible();
+    await expect(mainOf(page)).not.toContainText(/GitHub|Discord/i);
+    await expect(mainOf(page)).toContainText(copy.auth.continuation.notice);
+
+    await chooseMethod(page, method().emailOtp);
+    await expect(field(page, copy.auth.field.password.label)).toHaveCount(0);
+    await expect(field(page, copy.auth.field.passwordConfirm.label)).toHaveCount(0);
+    await expect(submit(page)).toHaveCount(0);
+    await expect(otpButton(page, otp().send)).toBeVisible();
+    expect(page.url()).toBe(url);
+    await expect(mainOf(page)).toContainText(copy.auth.continuation.notice);
+    expect(await readSession(page)).toEqual({ kind: "guest" });
+  });
+
+  test("a new email: code request, then the code registers it: Mypage, a signed-in verified Session, one new verified user with display name null shown as 未設定", async ({
+    page,
+  }) => {
+    const email = "otp-newcomer@example.com";
+    await openRegister(page);
+    await chooseMethod(page, method().emailOtp);
+    await sendOtp(page, email);
+    await expect(statusesIn(page)).toHaveText(otp().sent);
+    await expect(otpButton(page, otp().submitRegister)).toBeVisible();
+    await expect(otpButton(page, otp().submitLogin)).toHaveCount(0);
+    expect(await readSession(page)).toEqual({ kind: "guest" });
+    const usersBefore = (await readUsers(page)) ?? [];
+    expect(usersBefore.some((u) => u.email === email)).toBe(false);
+
+    await submitOtpCode(page, OTP_CODE, otp().submitRegister);
+    await expect(page).toHaveURL(/\/mypage$/);
+    expect(await readSession(page)).toEqual({
+      kind: "authenticated",
+      email,
+      emailVerified: true,
+    });
+    const users = (await readUsers(page)) ?? [];
+    expect(users).toHaveLength(usersBefore.length + 1);
+    expect(users.filter((u) => u.email === email)).toEqual([
+      { email, displayName: null, emailVerified: true },
+    ]);
+    const account = mainOf(page).getByRole("region", {
+      name: copy.mypage.overview.profileHeading,
+      exact: true,
+    });
+    await expect(
+      account.locator("p").filter({ hasText: copy.mypage.overview.displayNameLabel }),
+    ).toHaveText(`${copy.mypage.overview.displayNameLabel} 未設定`);
+  });
+
+  test("the destination is kept: continue=cart registers by code and arrives at /cart", async ({
+    page,
+  }) => {
+    await openRegister(page, "?continue=cart");
+    await chooseMethod(page, method().emailOtp);
+    await sendOtp(page, "otp-newcomer2@example.com");
+    await expect(statusesIn(page)).toHaveText(otp().sent);
+    await submitOtpCode(page, OTP_CODE, otp().submitRegister);
+    await expect(page).toHaveURL(/\/cart$/);
+    expect((await readSession(page)).kind).toBe("authenticated");
+  });
+
+  test("an already registered email gets no 'already registered' answer: it signs in the same way and no user is added (SEC-API-027)", async ({
+    page,
+  }) => {
+    await openRegister(page);
+    await chooseMethod(page, method().emailOtp);
+    await sendOtp(page, EMAIL.demo);
+    await expect(statusesIn(page)).toHaveText(otp().sent);
+    await expect(alertsIn(page)).toHaveCount(0);
+    const before = await readUsers(page);
+    await submitOtpCode(page, OTP_CODE, otp().submitRegister);
+    await expect(page).toHaveURL(/\/mypage$/);
+    expect((await readUsers(page))?.length).toBe(before?.length);
+    expect(await readSession(page)).toEqual({
+      kind: "authenticated",
+      email: EMAIL.demo,
+      emailVerified: true,
+    });
+  });
+
+  test("the registration code step reports a wrong code and an outage like Login does, and stays a Guest", async ({
+    page,
+  }) => {
+    await openRegister(page, "", authScenario({ login: "credential_failure" }));
+    await chooseMethod(page, method().emailOtp);
+    await sendOtp(page, "otp-newcomer3@example.com");
+    await expect(statusesIn(page)).toHaveText(otp().sent);
+    await submitOtpCode(page, OTP_CODE, otp().submitRegister);
+    await expect(alertsIn(page)).toHaveCount(1);
+    await expect(alertsIn(page)).toHaveText(otp().codeInvalid);
+    expect(await readSession(page)).toEqual({ kind: "guest" });
+    expect(
+      ((await readUsers(page)) ?? []).some((u) => u.email === "otp-newcomer3@example.com"),
+    ).toBe(false);
+
+    await setAuthScenario(page, { login: "unavailable" });
+    await submitOtpCode(page, OTP_CODE, otp().submitRegister);
+    await expect(alertsIn(page)).toHaveCount(1);
+    await expect(alertsIn(page)).toHaveText(otp().unavailable);
+    expect(await readSession(page)).toEqual({ kind: "guest" });
+    await expect(page).toHaveURL(/\/account\/register$/);
   });
 });
 

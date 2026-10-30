@@ -1,11 +1,19 @@
 import { expect, type Page, test } from "@playwright/test";
 import { copy } from "../../apps/web/src/presentation/copy/ja.ts";
 import {
+  chooseMethod,
   field,
+  formOf,
   loginWith,
   MARKER_PROTECTED_TEXT,
+  OTP_CODE,
+  otpButton,
+  otpCodeField,
   readSession,
+  sendOtp,
+  statusesIn,
   submitButton,
+  submitOtpCode,
 } from "../harness/browser/auth.ts";
 import {
   addButton,
@@ -410,5 +418,126 @@ test.describe("TC-PG-CRT-001-543 a Cart store that cannot be read stops Cart add
     expect(await sessionWrites(page)).toBe(0);
     expect(await readSession(page)).toEqual({ kind: "guest" });
     expect(await cartKeyStored(page)).toBe(false);
+  });
+
+  // ---- B5 C1: Email OTP crosses into Auth too, so the same Q-1 stop applies ----------------------------------------
+  // Submits the form that contains the given control without its (disabled) button.
+  const forceSubmitOf = (control: ReturnType<typeof field>) =>
+    formOf(control).evaluate((form) => (form as HTMLFormElement).requestSubmit());
+
+  /** An unreadable Cart key that the page can switch on and off (a flag in sessionStorage; off by default). */
+  async function cartReadFaultSwitch(page: Page): Promise<void> {
+    await page.addInitScript((key: string) => {
+      const original = Storage.prototype.getItem;
+      Storage.prototype.getItem = function getItem(this: Storage, name: string) {
+        if (name === key && window.sessionStorage.getItem("test-only-cart-read-fault") === "on")
+          throw new DOMException("blocked", "SecurityError");
+        return original.call(this, name);
+      };
+    }, KEYS.cart);
+  }
+  const setCartReadFault = (page: Page, on: boolean) =>
+    page.evaluate(
+      (value) => window.sessionStorage.setItem("test-only-cart-read-fault", value),
+      on ? "on" : "off",
+    );
+
+  test("Email OTP with guest metadata and an unreadable Cart: the recovery is shown, the code request is disabled, a forced request makes no authentication call and no code step appears; after recovery OTP Login works", async ({
+    page,
+  }) => {
+    await fixClock(page);
+    await seedLocalStorage(page, lifecycleSeed("guest"));
+    await failCartReadsUntilEnabled(page);
+    await countSessionWrites(page);
+    await gotoHydrated(page, "/account/login");
+    const urls = watchNavigation(page);
+    await expect(recoveryAlert(page)).toBeVisible();
+    await chooseMethod(page, copy.auth.method.emailOtp);
+    await expect(otpButton(page, copy.auth.otp.send)).toBeDisabled();
+    await expect(recoveryAlert(page)).toBeVisible();
+    const email = field(page, copy.auth.field.email.label);
+    await email.fill(EMAIL.other);
+    await forceSubmitOf(email);
+    // Stopped in the lifecycle port: no sent status, no code step, no failure text of a raw call.
+    await expect(recoveryAlert(page)).toBeVisible();
+    await expect(main(page)).not.toContainText(copy.auth.otp.sent);
+    await expect(main(page)).not.toContainText(copy.auth.otp.unavailable);
+    await expect(otpCodeField(page)).toHaveCount(0);
+    await expect(page).toHaveURL(/\/account\/login$/);
+    expect(urls.filter((url) => !url.startsWith("/account/login"))).toEqual([]);
+    expect(await sessionWrites(page)).toBe(0);
+    expect(await readSession(page)).toEqual({ kind: "guest" });
+    expect(await cartKeyStored(page)).toBe(false);
+
+    // After the Cart can be read again, the explicit recovery lifts the stop and the OTP Login proceeds.
+    await enableCartReads(page);
+    await recoverButton(page).click();
+    await expect(recoverButton(page)).toHaveCount(0);
+    await expect(otpButton(page, copy.auth.otp.send)).toBeEnabled();
+    await sendOtp(page, EMAIL.other);
+    await expect(statusesIn(page)).toHaveText(copy.auth.otp.sent);
+    await submitOtpCode(page, OTP_CODE, copy.auth.otp.submitLogin);
+    await expect(page).toHaveURL(/\/mypage$/);
+    await expect(main(page)).toContainText(EMAIL.other);
+  });
+
+  test("Email OTP whose Cart becomes unreadable after the code request: the code submit is cart_blocked, the buttons are natively disabled, nothing is written; after recovery the code signs in", async ({
+    page,
+  }) => {
+    await fixClock(page);
+    await seedLocalStorage(page, lifecycleSeed("guest"));
+    await cartReadFaultSwitch(page);
+    await countSessionWrites(page);
+    await gotoHydrated(page, "/account/login");
+    await chooseMethod(page, copy.auth.method.emailOtp);
+    await sendOtp(page, EMAIL.other);
+    await expect(statusesIn(page)).toHaveText(copy.auth.otp.sent);
+    await expect(otpCodeField(page)).toBeVisible();
+
+    await setCartReadFault(page, true);
+    await otpCodeField(page).fill(OTP_CODE);
+    await forceSubmitOf(otpCodeField(page));
+    await expect(recoveryAlert(page)).toBeVisible();
+    await expect(otpButton(page, copy.auth.otp.submitLogin)).toBeDisabled();
+    await expect(main(page)).not.toContainText(copy.auth.otp.codeInvalid);
+    await expect(main(page)).not.toContainText(copy.auth.otp.codeExpired);
+    await expect(main(page)).not.toContainText(copy.auth.otp.unavailable);
+    await expect(page).toHaveURL(/\/account\/login$/);
+    expect(await sessionWrites(page)).toBe(0);
+    expect(await readSession(page)).toEqual({ kind: "guest" });
+
+    await setCartReadFault(page, false);
+    await recoverButton(page).click();
+    await expect(recoverButton(page)).toHaveCount(0);
+    await expect(otpButton(page, copy.auth.otp.submitLogin)).toBeEnabled();
+    await submitOtpCode(page, OTP_CODE, copy.auth.otp.submitLogin);
+    await expect(page).toHaveURL(/\/mypage$/);
+    expect(await readSession(page)).toEqual({
+      kind: "authenticated",
+      email: EMAIL.other,
+      emailVerified: true,
+    });
+  });
+
+  test("Email OTP registration with guest metadata and an unreadable Cart is stopped the same way: recovery shown, send disabled, a forced request makes no authentication call", async ({
+    page,
+  }) => {
+    await fixClock(page);
+    await seedLocalStorage(page, lifecycleSeed("guest"));
+    await failCartReadsUntilEnabled(page);
+    await countSessionWrites(page);
+    await gotoHydrated(page, "/account/register");
+    await expect(recoveryAlert(page)).toBeVisible();
+    await chooseMethod(page, copy.auth.method.emailOtp);
+    await expect(otpButton(page, copy.auth.otp.send)).toBeDisabled();
+    const email = field(page, copy.auth.field.email.label);
+    await email.fill("b5-otp-new@example.com");
+    await forceSubmitOf(email);
+    await expect(recoveryAlert(page)).toBeVisible();
+    await expect(main(page)).not.toContainText(copy.auth.otp.sent);
+    await expect(otpCodeField(page)).toHaveCount(0);
+    await expect(page).toHaveURL(/\/account\/register$/);
+    expect(await sessionWrites(page)).toBe(0);
+    expect(await readSession(page)).toEqual({ kind: "guest" });
   });
 });

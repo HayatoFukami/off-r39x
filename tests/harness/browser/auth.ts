@@ -186,3 +186,59 @@ export function watchConsole(page: Page): { messages: string[] } {
   });
   return { messages };
 }
+
+// ---- B5 C1: method selection and Email OTP (tests/contracts/s6-auth.md sections 6.1A, 6.2A) ----------------
+
+/** A one-time code that is no seed value. It must never appear in a URL, storage, DOM text or console. */
+export const SENTINEL_OTP_CODE = "Sentinel-Otp-Code-7531";
+/** An ordinary synthetic code. The mock never compares a code, so any non-empty value signs in. */
+export const OTP_CODE = "246810";
+
+export const methodGroup = (page: Page, legend: string): Locator =>
+  mainOf(page).getByRole("group", { name: legend, exact: true });
+export const methodRadio = (page: Page, label: string): Locator =>
+  mainOf(page).getByRole("radio", { name: label, exact: true });
+/** Chooses a method by its radio label. Nothing else is touched: no focus move, no navigation. */
+export async function chooseMethod(page: Page, label: string): Promise<void> {
+  await methodRadio(page, label).check();
+}
+
+export const otpButton = (page: Page, name: string): Locator =>
+  mainOf(page).getByRole("button", { name, exact: true });
+export const otpCodeField = (page: Page): Locator => field(page, copy.auth.field.otpCode.label);
+/** The <form> that contains the given control (to submit it without the native button: requestSubmit). */
+export const formOf = (control: Locator): Locator => control.locator("xpath=ancestor::form");
+
+/** Step 1 on the Email OTP method: fills the email and presses "send code". Does not wait for the result. */
+export async function sendOtp(page: Page, email: string): Promise<void> {
+  await field(page, copy.auth.field.email.label).fill(email);
+  await otpButton(page, copy.auth.otp.send).click();
+}
+
+/** Step 2: fills the code and presses the submit button of the page (Login or Registration). */
+export async function submitOtpCode(page: Page, code: string, submitName: string): Promise<void> {
+  await otpCodeField(page).fill(code);
+  await otpButton(page, submitName).click();
+}
+
+/** The users of the stored mock DB, or null while the mock DB has not been written yet. */
+export async function readUsers(
+  page: Page,
+): Promise<{ email: string; displayName: string | null; emailVerified: boolean }[] | null> {
+  const raw = await page.evaluate((key) => window.localStorage.getItem(key), KEYS.db);
+  if (raw === null) return null;
+  return (
+    JSON.parse(raw) as {
+      users: { email: string; displayName: string | null; emailVerified: boolean }[];
+    }
+  ).users;
+}
+
+/** Replaces the stored mock scenario's auth switches (the mock reads the scenario on every call). */
+export async function setAuthScenario(page: Page, auth: Record<string, string>): Promise<void> {
+  const [[key, value]] = Object.entries(authScenario(auth)) as [[string, string]];
+  await page.evaluate(
+    ([k, v]) => window.localStorage.setItem(k as string, v as string),
+    [key, value],
+  );
+}

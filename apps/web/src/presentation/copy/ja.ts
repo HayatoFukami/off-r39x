@@ -491,6 +491,28 @@ export const copy = {
       },
       newPassword: { label: "新しいパスワード" },
       newPasswordConfirm: { label: "新しいパスワード（確認）" },
+      otpCode: {
+        label: "確認コード",
+        required: "確認コードを入力してください",
+      },
+    },
+    method: {
+      legendLogin: "ログイン方法",
+      legendRegister: "登録方法",
+      password: "メールアドレスとパスワード",
+      emailOtp: "メールで届く確認コード",
+    },
+    otp: {
+      send: "確認コードを送る",
+      sent: "確認コードを送信しました。メールに記載されたコードを入力してください",
+      submitLogin: "確認コードでログインする",
+      submitRegister: "確認コードで登録する",
+      resend: "確認コードを再送する",
+      changeEmail: "メールアドレスを変更する",
+      codeInvalid: "確認コードが正しくありません。もう一度入力してください",
+      codeExpired:
+        "確認コードの有効期限が切れたか、入力できる回数を超えました。確認コードを再送してください",
+      unavailable: "確認コードを処理できません。時間をおいて、もう一度お試しください",
     },
     continuation: {
       notice: "この操作にはログインが必要です",

@@ -223,7 +223,7 @@ export function eligibilityTargetKey(target: EligibilityTarget): string;   // Ca
 
 ## 3. AuthPort `apps/web/src/auth/port.ts`
 
-設計書 Design §3 の `Session` と `AuthPort` をそのまま（`getSession`, `onSessionChange`, `signUp`, `verifyEmail`, `signIn`, `signOut`, `requestPasswordReset`, `completePasswordReset`）。
+設計書 Design §3 の `Session` と `AuthPort` をそのまま（`getSession`, `onSessionChange`, `signUp`, `verifyEmail`, `signIn`, `signOut`, `requestPasswordReset`, `completePasswordReset`）。【B5 C1】Email OTP のために `requestEmailOtp` と `signInWithEmailOtp` を加える（合計 10 method。型と Cart lifecycle の扱いは `s6-auth.md` §3A、mock の意味論は §14。Neon Auth の transport で、業務 Operation ID は無い。SPEC-110 §23.1）。既存の method の名前・シグネチャは変えない。
 
 `apps/web/src/auth/password-policy.ts`（mock ではなく本番の UI 規則。SEC-AUTH-016/017）:
 
@@ -621,6 +621,15 @@ export function createMockAuth(deps: MockAuthDeps): AuthPort;
 - `requestPasswordReset({ email })`: `auth.reset === "unavailable"` → `unavailable`、`ok` → **email が既知でも未知でも**同一の `{ kind: "accepted" }`（`toEqual` で等しい）。user を作らず、DB と session を変えない。同じ呼び出し回数の `sleep` 以外に挙動の差を作らない（SEC-API-027）。
 - `completePasswordReset({ context, newPassword })`: `validatePassword(newPassword)` が不合格なら Promise を **reject**（`RangeError`、メッセージに `password policy` を含む）。UI が先に検査する。次に `auth.reset === "unavailable"` → `unavailable`。`context` が `null` / 空文字、または `auth.resetContext === "invalid"` → `{ kind: "invalid_context" }`。それ以外は `{ kind: "updated" }`。password を保存しない。session を変えない。
 
+### 14.1 Email OTP（B5 C1。`requestEmailOtp` / `signInWithEmailOtp`。TC-PG-AUTH-003-102 / -103、TC-SEC-AUTH-018-101）
+
+新しい scenario 値・storage key・State は作らない。成否は既存の `auth.login`（`unavailable` / `credential_failure`）と `auth.verify`（`invalid_or_expired`）を再利用する（Q2。scenario 値は password 向けの名前だが、mock の内部の切替で意味は広げない）。code は**保存・記録・返却しない**（SEC-AUTH-018）。mock は code を比較しない（空でなければ受理する）。メールを実際には送らない。
+
+- `requestEmailOtp({ email })`: email の形式（`^[^@\s]+@[^@\s]+$`）が不正なら `RangeError` で reject（メッセージに email を含めない。UI が先に検査する）。`auth.login === "unavailable"`、または scenario / DB / session が corrupted → `{ kind: "unavailable" }`（何も書かない）。それ以外は、登録済み・未確認・未登録のどの email でも**同一の** `{ kind: "sent" }`（`toEqual` で等しい。SEC-API-027）。DB・保存済み session・`pendingVerificationEmail`・storage のどの write も起こさず、`onSessionChange` の cb を呼ばず、user を作らない。`auth.login === "credential_failure"` と `auth.verify === "invalid_or_expired"` はこの要求に影響しない。
+- `signInWithEmailOtp({ email, code })`: 判定の順は、`auth.login === "unavailable"` / corrupted → `unavailable`、`code` が空 → `code_invalid`、`auth.login === "credential_failure"` → `code_invalid`、`auth.verify === "invalid_or_expired"` → `code_expired`（両方が成り立つときは `code_invalid`）。失敗では DB・session・storage への write と cb 呼び出しは 0 回。成功のとき:
+  - 既存の確認済み user → session を `authenticated(emailVerified:true)` にし `{ kind: "signed_in", emailVerified: true }`。cb を 1 回呼ぶ。DB は不変。
+  - 既存の未確認 user → コードは mailbox の証明なので（Q7）user を `emailVerified:true` にし、session も `emailVerified:true`。`{ kind: "signed_in", emailVerified: true }`。
+  - 未登録の email → 初回登録: `displayName: null`（`signUp` と同じ。email から推測しない。TC-PG-MYP-002-103）、`emailVerified:true` の user を 1 人作り、session を `authenticated(emailVerified:true)` にして `{ kind: "signed_in", emailVerified: true }`。
 ## 15. 受入との対応（テストファイル）
 
 | ファイル | 内容 |
@@ -635,8 +644,8 @@ export function createMockAuth(deps: MockAuthDeps): AuthPort;
 | `tests/unit/web/mock/karaoke-purchase.test.ts` | §11.2、§11.5（KARAOKE の対象。TC-PG-KRK-003-107） |
 | `tests/unit/web/mock/checkout-payment.test.ts` | §11.3（key のみの replay を含む）, §11.4（在庫の確保と戻りは保存済み DB の `remaining`、本人別上限の消費は §11.5 の `getPurchaseEligibility` で確かめる。公開 read は本人の消費を反映しない） |
 | `tests/unit/web/mock/self-api.test.ts` | §10, §12 |
-| `tests/unit/web/mock/mock-auth.test.ts` | §14 |
-| `tests/unit/web/ports/ports.test.ts` | §1, §2, §3 の型、`zod` 依存、Hold TTL の不在 |
+| `tests/unit/web/mock/mock-auth.test.ts` | §14、§14.1（B5 C1。Email OTP） |
+| `tests/unit/web/ports/ports.test.ts` | §1, §2, §3 の型（B5 C1 で AuthPort は 10 method）、`zod` 依存、Hold TTL の不在 |
 | `tests/unit/web/ports/eligibility-target-key.test.ts` | §2（`eligibilityTargetKey`。TC-PG-KRK-003-617） |
 
 ## 16. 仕様の曖昧さについてテスト担当が決めたこと

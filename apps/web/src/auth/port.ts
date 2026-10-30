@@ -40,4 +40,29 @@ export interface AuthPort {
     context: string | null;
     newPassword: string;
   }): Promise<{ kind: "updated" } | { kind: "invalid_context" } | { kind: "unavailable" }>;
+  /**
+   * Sends a one-time code to the email. A Neon Auth transport (SPEC-110 section 23.1): it has no
+   * business Operation ID. The answer never reveals whether the email is registered (SEC-API-027).
+   */
+  requestEmailOtp(i: {
+    email: string;
+  }): Promise<
+    { kind: "sent" } | { kind: "unavailable" } | { kind: "cart_busy" } | { kind: "cart_blocked" }
+  >;
+  /**
+   * Signs in (or registers a first-time email) with the code. A Neon Auth transport (SPEC-110
+   * section 23.1): it has no business Operation ID. The code is never kept (SEC-AUTH-018).
+   * `code_expired` covers an expired code and too many attempts alike; both need a resend.
+   */
+  signInWithEmailOtp(i: {
+    email: string;
+    code: string;
+  }): Promise<
+    | { kind: "signed_in"; emailVerified: boolean }
+    | { kind: "code_invalid" }
+    | { kind: "code_expired" }
+    | { kind: "unavailable" }
+    | { kind: "cart_busy" }
+    | { kind: "cart_blocked" }
+  >;
 }
