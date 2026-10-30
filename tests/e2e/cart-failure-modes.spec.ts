@@ -3,6 +3,7 @@ import { copy } from "../../apps/web/src/presentation/copy/ja.ts";
 import {
   addButton,
   cartEntries,
+  describedText,
   entryLine,
   expectedGoodsDetail,
   failCartWrites,
@@ -24,7 +25,7 @@ import { GOODS, OFFERING } from "../harness/mock-seed.ts";
 
 // UI mock suite (TST-E2E-004: auxiliary, not G8). Review gap tests for S5 verification (round 1):
 // a write that did not happen is never shown as done, an unreadable store is never an empty Cart.
-// SPEC-050 26.4, 9.2, 9.3, 14A.1, 21, FR-CRT-001 / 003.
+// SPEC-050 26.4, 9.2, 9.3, 12.1, 14A.1, 21, FR-CRT-001 / 003 / 012.
 
 const main = mainOf;
 const rows = (page: Page) => main(page).getByRole("listitem");
@@ -95,7 +96,12 @@ test.describe("TC-PG-GDS-002-541 a Goods add that cannot be written is reported,
   });
 });
 
-test.describe("TC-PG-CRT-001-542 a Cart store that cannot be read is an unknown state, never an empty Cart (SPEC-050 26.4, 9.2, 21)", () => {
+/** Whether the Cart key exists in storage. Does not go through getItem, so it works under failCartReads. */
+async function cartKeyStored(page: Page): Promise<boolean> {
+  return page.evaluate((key: string) => Object.keys(window.localStorage).includes(key), KEYS.cart);
+}
+
+test.describe("TC-PG-CRT-001-542 a Cart store that cannot be read (Guest, no Cart lifecycle metadata) is an unknown state, never an empty Cart, and stops Cart additions (SPEC-050 9.2, 12.1, 14A.1, 21, FR-CRT-012)", () => {
   test("the Cart page reports a failure, shows no empty wording, no rows and no proceed button", async ({
     page,
   }) => {
@@ -109,16 +115,32 @@ test.describe("TC-PG-CRT-001-542 a Cart store that cannot be read is an unknown 
     await expect(headerCartLink(page, null)).toBeVisible();
   });
 
-  test("an add on the Entry page is not announced as a success while the store cannot be read", async ({
+  test("the Entry page stays viewable but disables quantity and Add with the Cart stop reason while the store cannot be read", async ({
     page,
   }) => {
     await fixClock(page);
     await failCartReads(page);
     await gotoHydrated(page, "/entry");
-    const name = offeringName(OFFERING.regular);
-    await expect(rowByHeading(page, name)).toBeVisible();
-    await addButton(rowByHeading(page, name)).click();
-    await expect(main(page).getByRole("alert")).toBeVisible();
+    const row = rowByHeading(page, offeringName(OFFERING.regular));
+    // The sale stays viewable (SPEC-050 12.1: browsing continues while the Cart is stopped).
+    await expect(row).toBeVisible();
+    // Auto-wait first: the Cart lifecycle settles to blocked after hydration.
+    await expect(addButton(row)).toBeDisabled();
+    // Native disabled, not aria-disabled: the form cannot be submitted.
+    await expect(addButton(row)).toHaveJSProperty("disabled", true);
+    await expect(quantityInput(row)).toBeDisabled();
+    // The stop reason is attached to Add (SPEC-050 25), including the link to the Cart.
+    const reason = await describedText(addButton(row));
+    expect(reason).toContain(copy.cart.lifecycleBlocked.description);
+    expect(reason).toContain(copy.cart.corrupted.goToCart);
+    await expect(
+      row.getByRole("link", { name: copy.cart.corrupted.goToCart, exact: true }),
+    ).toHaveAttribute("href", "/cart");
+    // No success is announced and no count is shown.
     await expect(liveRegion(page)).not.toContainText(copy.sales.addSucceeded);
+    await expect(main(page)).not.toContainText(copy.sales.addSucceeded);
+    await expect(headerCartLink(page, null)).toBeVisible();
+    // Nothing was stored (the Cart key stays absent).
+    expect(await cartKeyStored(page)).toBe(false);
   });
 });

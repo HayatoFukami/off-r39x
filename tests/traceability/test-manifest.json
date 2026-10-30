@@ -6962,18 +6962,18 @@
       "test_case_id": "TC-PG-CRT-001-542",
       "level": "E2E",
       "suite": "e2e-ui-mock",
-      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-003", "FR-CRT-012"],
+      "upstream_rule_ids": ["PG-CRT-001", "PG-TKT-001", "FR-CRT-003", "FR-CRT-012"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "Mock mode; localStorage Cart reads forced to fail",
+      "preconditions": "Mock mode; Guest; no Cart lifecycle metadata (storage not seeded); localStorage Cart reads forced to fail",
       "fixture_ids": [],
       "clock_instant": "2027-03-01T03:00:00Z",
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "unreadable store reported as failure, never as an empty Cart; no success on add"
+        "unreadable store reported as failure, never as an empty Cart; on the Entry page the sale stays visible while quantity and Cart addition are natively disabled and described by the Cart stop reason with a Cart link; no add result or success announcement; Header count hidden; stored Cart key unchanged (absent)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
