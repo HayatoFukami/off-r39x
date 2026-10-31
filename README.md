@@ -6,7 +6,7 @@
 
 ## 現在の状態
 
-実装済みなのは、フロントエンドの**画面モック**（UI mock）です。Hono API、DB、認証、決済、メールの実装はまだありません。
+フロントエンドは旧仕様の**画面モック**（UI mock）です。バックエンドには Hono / PostgreSQL 17 / JWT 認証・認可 / Provider Adapter / Worker 起動基盤があります。個別業務機能と実 Neon・Provider の公開前検証は未完了です。[基盤の実行手順・制限](docs/backend-foundation.md)を参照してください。
 
 | 領域 | 状態 |
 |---|---|
@@ -14,7 +14,8 @@
 | 画面モック（`apps/web`） | 公開ページ、Cart、Entry 販売、Goods、認証、購入開始と mock Checkout、購入状況、Karaoke の Slot 詳細と購入、マイページ、QR 表示 |
 | ドメインの純粋ロジック（`packages/domain`） | 状態の型と網羅性検査 |
 | 検査用スクリプト（`scripts/`） | import 境界、traceability、Secret スキャン、mock 用の起動 |
-| Hono API、DB、Supabase Auth、Stripe、Resend | 未実装（仕様上の計画） |
+| Hono API / Neon PostgreSQL / Neon Auth JWT | 基盤実装済み。業務 route と Auth 中継は未実装 |
+| Stripe / Resend / Worker | Adapter と起動・停止基盤。個別業務 handler は未実装 |
 
 モックは、画面の表示・導線・アクセシビリティの確認だけを目的とします。API の契約、DB 制約、決済 Provider の動作を検証したことにはなりません（`SPEC-190` DEV-WEB-010、`SPEC-170` TST-E2E-004）。
 
@@ -25,14 +26,14 @@
 | 領域 | 技術 |
 |---|---|
 | 言語 / モノレポ | TypeScript / pnpm workspaces |
-| Web | Next.js（App Router）/ React / Tailwind CSS / shadcn/ui |
-| API（計画） | Hono / Zod / Hono RPC |
-| DB・認証（計画） | Supabase PostgreSQL / Supabase Auth |
-| 決済・メール（計画） | Stripe Checkout・Webhook / Resend |
+| Web | 既存 UI mock は Next.js / React（正式 SPA への改訂は別作業） |
+| API | Hono / Zod / Hono RPC（基盤） |
+| DB・認証 | Neon PostgreSQL 17 / Drizzle / pg / Neon Auth JWT（基盤） |
+| 決済・メール | Stripe / Resend Adapter（個別業務は未実装） |
 | テスト | Vitest / Playwright |
 | Lint / Format | Biome |
 
-データの流れは `Browser → Next.js Web → Hono API → Supabase PostgreSQL` です。ブラウザと Next.js は Business Database に直接アクセスしません。認証・所有者・価格・在庫・決済結果は、サーバー側が権威です。
+正式仕様の業務経路は `Browser → Railway Hono API → Neon PostgreSQL` です。既存 Next.js UI モックの改訂・実 API 接続は別作業です。ブラウザと Web は Business Database に直接アクセスせず、認証・所有者・価格・在庫・決済結果はサーバー側が権威です。
 
 ## リポジトリ構成
 
@@ -50,6 +51,14 @@
 │     ├─ config/         サイト設定、route、素材
 │     └─ mock/           UI mock の実装（合成データ、mock 認証、dev 用 UI）
 ├─ packages/domain/      ドメインの純粋な型と判定
+├─ apps/api/             Hono API 基盤
+├─ apps/email-worker/    Email Worker 起動基盤
+├─ apps/reconciliation-worker/  Reconciliation Worker 起動基盤
+├─ packages/db/          Schema / Migration / pg / Drizzle / Transaction
+├─ packages/auth/        検証済み JWT / Principal / Capability
+├─ packages/providers/   Stripe / Resend Adapter
+├─ packages/config/ 等   設定・Secret 境界・Reliability・Observability
+├─ infra/                共通 OCI image と Railway 起動設定
 ├─ tests/                unit / e2e / harness / contracts / traceability
 ├─ scripts/              開発用の検査スクリプト
 ├─ traceability/         Rule とコードの対応（rule-code-map.json）
@@ -106,6 +115,10 @@ pnpm validate:traceability    # テストの manifest と rule-code-map の整�
 pnpm test:unit                # Vitest
 pnpm secret-scan              # Secret・実 QR・PII らしい値の検出（値は出力しない）
 pnpm test:e2e                 # Playwright（モック用の補助 suite）
+pnpm test:backend             # バックエンド基盤（実 PG17 と合成 CA 設定が必須）
+pnpm validate:migrations      # Migration source の静的レビュー補助
+pnpm build:backend            # 実行時 Secret 不要の3プロセス共通ビルド
+pnpm secret-scan --build-dir dist --require-build
 ```
 
 - `pnpm secret-scan` は、ビルド出力も走査するなら `pnpm build:mock` の後に実行します。
@@ -119,7 +132,7 @@ pnpm test:e2e                 # Playwright（モック用の補助 suite）
 - **仕様が先:** 画面の挙動、公開インターフェース、業務ルールを変えるときは、実装より先に該当の仕様書を改訂します（`AGENTS.md §7`）。
 - **変更の分類と必読仕様:** `SPEC-190 §33` の表で決めます。
 - **役割分担:** プランニング、テスト、コーディングの各担当と、その書き込み範囲は `AGENTS.md §4` にあります。テストを先に書き、実装し、検証する流れです。
-- **ブランチ:** 作業は `dev` ブランチで行います。`main` へのマージは手動です。
+- **ブランチ:** 個別作業は最新の `dev` を起点とする専用ブランチで行います。同期・コミット・push の権限は `AGENTS.md` と当該作業の明示指示に従います。
 - **テストの追跡:** テストは `tests/traceability/test-manifest.json` で、コードは `traceability/rule-code-map.json` で、Rule ID に紐づけます。
 
 ## ドキュメント

@@ -279,10 +279,17 @@ function main(): void {
   }
 
   if (isDirectory(buildRoot)) {
-    const areas: [string, Area][] = [
-      [join(buildRoot, "static"), "build-static"],
-      [join(buildRoot, "server"), "build-server"],
-    ];
+    // Next's two output trees or a complete bundled backend/static-SPA output directory.
+    const nextOutput =
+      /(?:^|[\\/])\.next$/.test(buildRoot) ||
+      isDirectory(join(buildRoot, "static")) ||
+      isDirectory(join(buildRoot, "server"));
+    const areas: [string, Area][] = nextOutput
+      ? [
+          [join(buildRoot, "static"), "build-static"],
+          [join(buildRoot, "server"), "build-server"],
+        ]
+      : [[buildRoot, "build-server"]];
     for (const [dir, area] of areas) {
       for (const file of walk(dir, () => false)) {
         const relativeToServer = posix(relative(join(buildRoot, "server"), file));

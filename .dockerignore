@@ -1,0 +1,15 @@
+.git
+.slim
+**/node_modules
+**/.next
+dist
+generated
+**/test-results
+**/playwright-report
+.env
+.env.*
+**/.env
+**/.env.*
+**/*.log
+ref
+.claude

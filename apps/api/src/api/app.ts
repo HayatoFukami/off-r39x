@@ -1,0 +1,394 @@
+import { randomUUID } from "node:crypto";
+import { createPublicRpc } from "@off-r39x/api-contract";
+import {
+  AuthFailure,
+  type Capability,
+  capabilities,
+  hasCapability,
+  type Principal,
+  type PrincipalStore,
+  resolvePrincipal,
+  type TokenVerifier,
+} from "@off-r39x/auth";
+import type { createLogger, LogEvent } from "@off-r39x/observability";
+import { Hono, type MiddlewareHandler } from "hono";
+import { bodyLimit } from "hono/body-limit";
+import { TrieRouter } from "hono/router/trie-router";
+import { secureHeaders } from "hono/secure-headers";
+import { AUTH_ROUTES, type AuthProxy } from "./auth-proxy.ts";
+import { type ErrorCode, errorSchema, errorStatuses } from "./schemas/common.ts";
+
+export type ApiEnvironment = {
+  Variables: {
+    requestId: string;
+    principal: Principal;
+    validatedJson: unknown;
+    logger: ReturnType<typeof createLogger> | undefined;
+    operationExecutionId: string | undefined;
+  };
+};
+export class ApiFailure extends Error {
+  constructor(
+    readonly code: ErrorCode,
+    readonly statusOverride?: 400 | 405 | 413 | 415,
+  ) {
+    super(code);
+  }
+}
+const authErrorCodes = {
+  unauthenticated: "AUTHENTICATION_REQUIRED",
+  unavailable: "AUTH_SERVICE_TEMPORARY_FAILURE",
+  database: "DATABASE_TEMPORARY_FAILURE",
+  denied: "AUTHORIZATION_DENIED",
+  consistency: "CONSISTENCY_REVIEW_REQUIRED",
+  email: "EMAIL_VERIFICATION_REQUIRED",
+} as const satisfies Record<AuthFailure["kind"], ErrorCode>;
+export interface AppDependencies {
+  webOrigin: string;
+  allowedHosts?: readonly string[];
+  ready: () => Promise<boolean>;
+  logger?: ReturnType<typeof createLogger>;
+  draining?: () => boolean;
+  auth?: { verifier: TokenVerifier; store: PrincipalStore };
+  enforcement?: SharedRateLimitGuard;
+  authProxy?: AuthProxy;
+}
+function failure(
+  c: import("hono").Context<ApiEnvironment>,
+  code: ErrorCode,
+  statusOverride?: 400 | 405 | 413 | 415,
+) {
+  c.header("Cache-Control", "no-store");
+  const status = statusOverride ?? errorStatuses[code];
+  return c.json(
+    errorSchema.parse({
+      error: {
+        code,
+        message:
+          code === "RESOURCE_NOT_FOUND"
+            ? "Requested resource was not found."
+            : "Request could not be completed.",
+        request_id: c.get("requestId"),
+        retryable: status === 503 || status === 424,
+        details: null,
+      },
+    }),
+    status,
+  );
+}
+export function createApp(dependencies: AppDependencies) {
+  const origin = new URL(dependencies.webOrigin).origin;
+  if (origin !== dependencies.webOrigin) throw new Error("Expected exact Web origin");
+  const app = new Hono<ApiEnvironment>();
+  app.use("*", async (c, next) => {
+    const started = Date.now();
+    c.set("requestId", randomUUID());
+    c.set("logger", dependencies.logger);
+    c.set("operationExecutionId", undefined);
+    c.header("X-Request-Id", c.get("requestId"));
+    c.header("Cache-Control", "no-store");
+    await next();
+    dependencies.logger?.log({
+      event_name: "http.request.completed",
+      level: c.res.status >= 500 ? "ERROR" : "INFO",
+      result: c.res.status < 400 ? "SUCCESS" : c.res.status >= 500 ? "FAILED" : "REJECTED",
+      is_retry: false,
+      request_id: c.get("requestId"),
+      ...operationContext(c),
+      ...actorContext(c),
+      http_method: (["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].includes(
+        c.req.method,
+      )
+        ? c.req.method
+        : "GET") as "GET",
+      http_route: [
+        "/internal/health/live",
+        "/internal/health/ready",
+        "/api/v1/self/principal",
+        ...Object.keys(AUTH_ROUTES).map((path) => `/auth/${path}`),
+      ].includes(c.req.routePath)
+        ? c.req.routePath
+        : "/",
+      http_status: c.res.status,
+      duration_ms: Math.max(0, Date.now() - started),
+    });
+  });
+  app.use("*", secureHeaders({ strictTransportSecurity: "max-age=63072000; includeSubDomains" }));
+  app.use("/api/v1/*", async (c, next) => {
+    if (dependencies.allowedHosts && !dependencies.allowedHosts.includes(new URL(c.req.url).host))
+      return failure(c, "MALFORMED_REQUEST");
+    await next();
+    return;
+  });
+  app.use("*", async (c, next) => {
+    if (dependencies.draining?.()) return failure(c, "TEMPORARY_UNAVAILABLE");
+    await next();
+    return;
+  });
+  app.onError((error, c) => {
+    if (error instanceof AuthFailure)
+      dependencies.logger?.log({
+        event_name: "security.fail_closed.triggered",
+        level: "ERROR",
+        result: "FAILED",
+        is_retry: false,
+        request_id: c.get("requestId"),
+        ...operationContext(c),
+        ...actorContext(c),
+        error_code: authErrorCodes[error.kind],
+        failure_class:
+          error.kind === "database" || error.kind === "unavailable"
+            ? "TEMPORARY_FAILURE"
+            : error.kind === "consistency"
+              ? "CONSISTENCY_FAILURE"
+              : "SECURITY_FAILURE",
+      });
+    if (error instanceof ApiFailure) return failure(c, error.code, error.statusOverride);
+    if (error instanceof AuthFailure) return failure(c, authErrorCodes[error.kind]);
+    return failure(c, "INTERNAL_ERROR");
+  });
+  app.use("/api/v1/*", async (c, next) => {
+    const requestOrigin = c.req.header("Origin");
+    c.header("Vary", "Origin");
+    if (requestOrigin && requestOrigin !== origin) throw new ApiFailure("AUTHORIZATION_DENIED");
+    if (requestOrigin === origin) {
+      c.header("Access-Control-Allow-Origin", origin);
+      c.header("Access-Control-Expose-Headers", "X-Request-Id");
+    }
+    if (c.req.method === "OPTIONS") {
+      const method = c.req.header("Access-Control-Request-Method") ?? "";
+      const headers = (c.req.header("Access-Control-Request-Headers") ?? "")
+        .toLowerCase()
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean);
+      if (
+        requestOrigin !== origin ||
+        !["GET", "HEAD", "POST", "PATCH", "DELETE"].includes(method) ||
+        headers.some(
+          (h) => !["authorization", "content-type", "idempotency-key", "x-request-id"].includes(h),
+        )
+      )
+        throw new ApiFailure("AUTHORIZATION_DENIED");
+      c.header("Access-Control-Allow-Methods", "GET, HEAD, POST, PATCH, DELETE");
+      c.header(
+        "Access-Control-Allow-Headers",
+        "Authorization, Content-Type, Idempotency-Key, X-Request-Id",
+      );
+      return c.body(null, 204);
+    }
+    if (!["GET", "HEAD"].includes(c.req.method)) {
+      if (
+        requestOrigin !== origin ||
+        (c.req.header("Sec-Fetch-Site") &&
+          !["same-origin", "same-site"].includes(c.req.header("Sec-Fetch-Site") as string))
+      )
+        throw new ApiFailure("AUTHORIZATION_DENIED");
+    }
+    await next();
+    return;
+  });
+  app.use(
+    "/api/v1/*",
+    bodyLimit({ maxSize: 65536, onError: (c) => failure(c, "MALFORMED_REQUEST", 413) }),
+  );
+  app.route(
+    "/",
+    createPublicRpc<ApiEnvironment>({
+      guard: async (c, next) => {
+        c.set("operationExecutionId", randomUUID());
+        if (!dependencies.auth || !dependencies.enforcement)
+          throw new ApiFailure("TEMPORARY_UNAVAILABLE");
+        try {
+          await dependencies.enforcement.assertAvailable();
+        } catch {
+          throw new ApiFailure("TEMPORARY_UNAVAILABLE");
+        }
+        await requirePrincipal(dependencies.auth.verifier, dependencies.auth.store)(c, async () => {
+          await requireVerifiedEmail()(c, async () => {
+            await dependencies.enforcement?.middleware(c, next);
+          });
+        });
+      },
+      principal: (c) => {
+        const principal = c.get("principal");
+        return {
+          profile_ref: principal.profileRef,
+          capabilities: capabilities.filter((capability) => hasCapability(principal, capability)),
+          has_staff_role: principal.roles.includes("STAFF"),
+          has_administrator_role: principal.roles.includes("ADMINISTRATOR"),
+        };
+      },
+      requestId: (c) => c.get("requestId"),
+    }),
+  );
+  if (dependencies.authProxy) {
+    for (const [path, method] of Object.entries(AUTH_ROUTES)) {
+      app.on([method, "OPTIONS"], `/auth/${path}`, async (c) => {
+        if (
+          dependencies.allowedHosts &&
+          !dependencies.allowedHosts.includes(new URL(c.req.url).host)
+        )
+          return failure(c, "MALFORMED_REQUEST");
+        const proxy = dependencies.authProxy;
+        if (!proxy) throw new ApiFailure("TEMPORARY_UNAVAILABLE");
+        if (c.req.method === "OPTIONS") return proxy.handle(c.req.raw);
+        if (!dependencies.enforcement) throw new ApiFailure("TEMPORARY_UNAVAILABLE");
+        try {
+          await dependencies.enforcement.assertAvailable();
+        } catch {
+          throw new ApiFailure("TEMPORARY_UNAVAILABLE");
+        }
+        await dependencies.enforcement.middleware(c, async () => {
+          c.res = await proxy.handle(c.req.raw);
+        });
+        return c.res;
+      });
+    }
+  }
+  app.get("/internal/health/live", (c) => c.json({ status: "ok" }));
+  app.get("/internal/health/ready", async (c) => {
+    try {
+      if (await dependencies.ready()) return c.json({ status: "ok" });
+    } catch {
+      /* generic dependency failure */
+    }
+    return c.json({ status: "unavailable" }, 503);
+  });
+  app.notFound((c) => {
+    // Middleware wildcards do not establish an endpoint. Reuse Hono's path
+    // matching so parameterized routes have the same 405 semantics as literals.
+    const paths = new TrieRouter<string>();
+    for (const route of app.routes)
+      if (route.method !== "ALL") paths.add("ALL", route.path, route.method);
+    const methods = new Set(paths.match("ALL", c.req.path)[0].map(([method]) => method));
+    if (methods.has("GET") && !c.req.path.startsWith("/auth/")) methods.add("HEAD");
+    if (methods.size) {
+      c.header("Allow", [...methods].sort().join(", "));
+      return failure(c, "MALFORMED_REQUEST", 405);
+    }
+    return failure(c, "RESOURCE_NOT_FOUND");
+  });
+  return app;
+}
+export function requirePrincipal(
+  verifier: TokenVerifier,
+  store: PrincipalStore,
+): MiddlewareHandler<ApiEnvironment> {
+  return async (c, next) => {
+    let identity: Awaited<ReturnType<TokenVerifier["verify"]>>;
+    try {
+      const match = /^Bearer ([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/.exec(
+        c.req.header("Authorization") ?? "",
+      );
+      if (!match?.[1]) throw new AuthFailure("unauthenticated");
+      identity = await verifier.verify(match[1]);
+      securityEvent(c, "auth.verification.completed");
+    } catch (error) {
+      securityEvent(
+        c,
+        "auth.verification.completed",
+        error instanceof AuthFailure && error.kind === "unavailable"
+          ? "AUTH_SERVICE_UNAVAILABLE"
+          : "AUTHENTICATION_REQUIRED",
+      );
+      throw error;
+    }
+    try {
+      c.set("principal", await resolvePrincipal(identity, store));
+      securityEvent(c, "auth.business_profile_resolution.completed");
+      securityEvent(c, "authorization.role_resolution.completed");
+    } catch (error) {
+      const kind = error instanceof AuthFailure ? error.kind : "database";
+      securityEvent(
+        c,
+        "auth.business_profile_resolution.completed",
+        kind === "consistency"
+          ? "BUSINESS_PROFILE_INCONSISTENT"
+          : kind === "database"
+            ? "ROLE_RESOLUTION_UNAVAILABLE"
+            : "BUSINESS_PROFILE_UNRESOLVED",
+      );
+      throw error;
+    }
+    await next();
+  };
+}
+export function requireCapability(capability: Capability): MiddlewareHandler<ApiEnvironment> {
+  return async (c, next) => {
+    if (!c.get("principal") || !hasCapability(c.get("principal"), capability)) {
+      securityEvent(c, "authorization.decision.completed", "CAPABILITY_DENIED");
+      throw new AuthFailure("denied");
+    }
+    securityEvent(c, "authorization.decision.completed");
+    await next();
+  };
+}
+export interface SharedRateLimitGuard {
+  assertAvailable(): Promise<void>;
+  middleware: MiddlewareHandler<ApiEnvironment>;
+}
+export function requireVerifiedEmail(): MiddlewareHandler<ApiEnvironment> {
+  return async (c, next) => {
+    if (!c.get("principal")) throw new AuthFailure("unauthenticated");
+    if (!c.get("principal").emailVerified) {
+      securityEvent(c, "auth.email_verified_resolution.completed", "EMAIL_VERIFICATION_REQUIRED");
+      throw new AuthFailure("email");
+    }
+    securityEvent(c, "auth.email_verified_resolution.completed");
+    await next();
+  };
+}
+export async function protectedMountGuard(
+  guard: SharedRateLimitGuard | undefined,
+): Promise<MiddlewareHandler<ApiEnvironment>> {
+  if (!guard) throw new Error("Shared multi-instance rate limiter contract is required");
+  await guard.assertAvailable();
+  return guard.middleware;
+}
+
+function securityEvent(
+  c: import("hono").Context<ApiEnvironment>,
+  event_name: LogEvent["event_name"],
+  error_code?: string,
+): void {
+  c.get("logger")?.log({
+    event_name,
+    level: error_code ? "WARN" : "INFO",
+    result: error_code ? "REJECTED" : "SUCCESS",
+    is_retry: false,
+    request_id: c.get("requestId"),
+    ...operationContext(c),
+    ...actorContext(c),
+    ...(error_code
+      ? {
+          error_code,
+          failure_class: error_code.endsWith("UNAVAILABLE")
+            ? "TEMPORARY_FAILURE"
+            : "SECURITY_FAILURE",
+        }
+      : {}),
+  });
+}
+
+function operationContext(c: import("hono").Context<ApiEnvironment>) {
+  const execution = c.get("operationExecutionId");
+  return execution ? { operation_id: "API-AUTH-001", operation_execution_id: execution } : {};
+}
+
+function actorContext(c: import("hono").Context<ApiEnvironment>): {
+  actor_type: NonNullable<LogEvent["actor_type"]>;
+  actor_ref?: string;
+} {
+  const principal = c.get("principal");
+  return principal
+    ? {
+        actor_type: principal.roles.includes("ADMINISTRATOR")
+          ? "ADMINISTRATOR"
+          : principal.roles.includes("STAFF")
+            ? "STAFF"
+            : "AUTHENTICATED_USER",
+        actor_ref: principal.profileRef,
+      }
+    : { actor_type: "GUEST" };
+}

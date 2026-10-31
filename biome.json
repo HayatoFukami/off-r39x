@@ -6,6 +6,7 @@
       "!ref",
       "!docs",
       "!**/.next",
+      "!**/dist",
       "!**/node_modules",
       "!generated",
       "!**/test-results",
