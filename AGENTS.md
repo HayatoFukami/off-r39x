@@ -13,14 +13,14 @@ Use Node **24.x** and **pnpm 12.3.4** (`package.json`). `scripts/*.mts` run with
 ```sh
 corepack enable
 pnpm install --frozen-lockfile
-pnpm dev                         # vite dev server; defaults to mock mode when the flag is unset
-pnpm build:mock                  # explicitly sets VITE_UI_MOCK=1; output apps/web/dist
+pnpm dev                         # vite dev server; defaults to mock mode when the flag is unset, and APP_ENV to development when it is unset
+APP_ENV=development pnpm build:mock   # sets VITE_UI_MOCK=1; APP_ENV must be given explicitly (PowerShell: $env:APP_ENV = "development"; pnpm build:mock); output apps/web/dist
 pnpm start:mock                  # serves apps/web/dist and dist/_headers (scripts/serve-web-dist.mts) at http://127.0.0.1:3100
 pnpm start:mock --port 3200       # no extra -- separator
 ```
 
-- `apps/web/vite.config.ts` supplies the dev-server default. Builds do **not** default to mock mode: use `build:mock` for UI verification. Non-mock API/auth factories currently throw (fail closed).
-- Mock builds are refused when `APP_ENV=production` (this repository's choice to satisfy DEV-WEB-011; the spec does not name the variable); do not bypass that guard.
+- `apps/web/vite.config.ts` supplies the dev-server defaults (mock flag, and `APP_ENV=development` only when `APP_ENV` is unset). Builds do **not** default to mock mode or to an `APP_ENV`: use `build:mock` with an explicit `APP_ENV` for UI verification. Non-mock API/auth factories currently throw (fail closed).
+- A mock-enabled build (`VITE_UI_MOCK=1`) passes only when `APP_ENV` is exactly `development`, `staging` or `test`; unset, empty, other-cased, padded, aliased and `production` values fail. The dev server (`pnpm dev`) differs only in that an unset `APP_ENV` becomes `development` (an explicit empty, invalid or `production` value still fails) (this repository's choice to satisfy DEV-WEB-011 under DEV-AI-003; the spec does not name the variable, and SPEC-180 §9 lists `APP_ENV` as a server-process variable, not a Web static-build one). `build:mock` gets no default; `start:mock` builds nothing, so it rejects only `production` and invalid values (unset passes); the E2E harness always uses `APP_ENV=test`. Whether to also check at upload time, or raise a UCR, is still open in Issue #29. Do not bypass that guard.
 - `/dev/scenarios` controls mock outcomes. Mock data persists in browser localStorage (`r39x.mock.*`; cart: `r39x.cart.v1`); reset that origin's storage when reproducing from a clean state. Use synthetic data only.
 
 ## 3. Architecture and import boundaries
@@ -49,7 +49,7 @@ pnpm check:boundaries            # separate gate, not included in lint
 pnpm validate:traceability       # separate gate, not included in typecheck
 pnpm test:unit                   # Vitest unit AND security projects, Node environment
 pnpm test:e2e                    # Playwright UI-mock suite; builds apps/web/dist and serves it itself
-pnpm build:mock                  # UI-mock build; standard non-mock command is pnpm build
+APP_ENV=development pnpm build:mock   # UI-mock build (APP_ENV is required); standard non-mock command is pnpm build
 pnpm secret-scan --require-build # run after build to require and inspect build output
 ```
 
@@ -62,7 +62,7 @@ pnpm --dir tests exec playwright test e2e/cart-page.spec.ts --project=desktop-ch
 pnpm --dir tests exec playwright install chromium  # if the browser binary is missing
 ```
 
-- Playwright reserves `127.0.0.1:3100`, refuses an existing server, and rebuilds `apps/web/dist` and serves it with `scripts/serve-web-dist.mts`; do not run alongside `start:mock` or another build/E2E run. Default projects are desktop/mobile Chromium, workers=2, timezone=UTC, retries=0. Windows loopback stalls are documented; use `--workers=1` for diagnosis, not retries to erase a failure.
+- Playwright reserves `127.0.0.1:3100`, refuses an existing server, and rebuilds `apps/web/dist` (with `VITE_UI_MOCK=1` and `APP_ENV=test`, from `tests/harness/browser/mock-web-env.mts`) and serves it with `scripts/serve-web-dist.mts`; do not run alongside `start:mock` or another build/E2E run. Default projects are desktop/mobile Chromium, workers=2, timezone=UTC, retries=0. Windows loopback stalls are documented; use `--workers=1` for diagnosis, not retries to erase a failure.
 - `dist/_headers` puts the protective headers (no-store, Pragma, `Referrer-Policy: no-referrer`) on `/*`; only the exact paths of content-hashed files in `dist/assets/` detach no-store and Pragma with `!` and get a long immutable cache (they keep `Referrer-Policy: no-referrer`). Cloudflare Pages is expected (per the OSS asset server; unverified on Pages, Issue C) to match `_headers` against the URL pathname without percent-decoding, so a path rule cannot cover every spelling: do not reintroduce per-prefix protective rules or a `dist/404.html`.
 - Use `gotoHydrated`/`waitForHydration` from `tests/harness/browser/hydration.ts` before interactive assertions; navigation completing does not mean React is ready.
 - E2E is the auxiliary `e2e-ui-mock` suite, not real DB/API/provider coverage or SPEC-170 G8. Tests needing constraints, locks or transaction races require real PostgreSQL; provider contract tests require nonproduction credentials.
