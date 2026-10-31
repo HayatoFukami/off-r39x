@@ -121,9 +121,24 @@
         "TC-DEV-WEB-011-203",
         "TC-DEV-WEB-012-101",
         "TC-DEV-WEB-011-202",
-        "TC-DEV-WEB-011-204"
+        "TC-DEV-WEB-011-204",
+        "TC-DEV-WEB-011-003",
+        "TC-DEV-WEB-011-205",
+        "TC-DEV-WEB-011-206",
+        "TC-DEV-WEB-011-207"
       ],
       "notes": "implementation mapping only"
+    },
+    {
+      "rule_id": "INF-ENV-001",
+      "code_paths": ["apps/web/src/config/ui-mock.ts", "scripts/mock-web.mts"],
+      "test_case_ids": [
+        "TC-DEV-WEB-011-003",
+        "TC-DEV-WEB-011-205",
+        "TC-DEV-WEB-011-206",
+        "TC-DEV-WEB-011-207"
+      ],
+      "notes": "implementation mapping only: exact canonical environment names for the UI mock guard"
     },
     {
       "rule_id": "DEV-TS-010",

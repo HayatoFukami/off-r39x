@@ -617,7 +617,7 @@ Magic Link は Google に続く 2 つ目の外部完了認証である。送信�
 
 ### 6.9 `/dev/mock-google`（B5 C2。dev 専用。DEV-WEB-012 / 013。`mock/dev-ui/mock-google-screen.tsx` + `routes/dev/mock-google.tsx`）
 
-Stripe Checkout の代わりの画面（`/dev/mock-checkout`）と同じ位置づけの、Google の代わりの画面である。`DevLayout` の guard 配下にあるため、mock が無効なとき（`VITE_UI_MOCK` が `1` でない、または `APP_ENV=production`）は Not Found 表示になる。一般 Navigation・Footer・Drawer・Account menu・MockModeBadge・PG-AUTH 画面から **Link しない**（`<a href>` を置かない。開始は `window.location.assign`）。
+Stripe Checkout の代わりの画面（`/dev/mock-checkout`）と同じ位置づけの、Google の代わりの画面である。`DevLayout` の guard 配下にあるため、mock が無効なとき（`VITE_UI_MOCK` が `1` でない、または `APP_ENV` が `development` / `staging` / `test` 以外）は Not Found 表示になる。一般 Navigation・Footer・Drawer・Account menu・MockModeBadge・PG-AUTH 画面から **Link しない**（`<a href>` を置かない。開始は `window.location.assign`）。
 
 - query: `success` と `failure`（どちらも percent-encoded された相対 path。`startGoogleSignIn` の返す URL の形。`s2-mock-backend.md` §14.2）。画面は表示のたびに、**両方が**あり、それぞれ `isSafeRelativePath` を通り、pathname が `/account/login` または `/account/register` であることを検査する。1 つでも満たさない（欠落、重複して複数値、絶対 URL、`//`、backslash、dot segment、保護 path・`/dev`・`/admin`・`/`・PG-AUTH でも Login / 登録でもない path）場合は、**3 つの操作すべてが `disabled`**（ネイティブ）で、何も変更せず、何も辿らない（`window.location.assign` を呼ばない）。
 - 表示: `h1` = `copy.mockGoogle.heading`（代わりの画面で、実際の認証が行われないことを言う）、本文に `copy.mockGoogle.note`、title は `copy.mockGoogle.pageTitle`。`<main>` は layout のものだけ。入力欄を持たない（email を入力させない。URL にも storage にも email を出さない）。
@@ -632,7 +632,7 @@ Stripe Checkout の代わりの画面（`/dev/mock-checkout`）と同じ位置�
 
 ### 6.10 `/dev/mock-magic-link`（B5 C3。dev 専用。DEV-WEB-012 / 013。`mock/dev-ui/mock-magic-link-screen.tsx` + `routes/dev/mock-magic-link.tsx`）
 
-実際のメールの受信箱の代わりの画面である（`/dev/mock-google` と同じ位置づけ）。開発者が「リンクの持ち主のメールアドレス」を入力して、リンクを有効として開くか、期限切れとして開く。`DevLayout` の guard 配下にあるため、mock が無効なときは Not Found 表示になる。一般 Navigation・Footer・Drawer・Account menu・MockModeBadge・PG-AUTH 画面・`features/**` から **Link も参照もしない**（`<a href>` を置かない。リンクを開く操作は開発者がこの画面の URL を直接開くことで表す）。
+実際のメールの受信箱の代わりの画面である（`/dev/mock-google` と同じ位置づけ）。開発者が「リンクの持ち主のメールアドレス」を入力して、リンクを有効として開くか、期限切れとして開く。`DevLayout` の guard 配下にあるため、mock が無効なとき（`VITE_UI_MOCK` が `1` でない、または `APP_ENV` が `development` / `staging` / `test` 以外）は Not Found 表示になる。一般 Navigation・Footer・Drawer・Account menu・MockModeBadge・PG-AUTH 画面・`features/**` から **Link も参照もしない**（`<a href>` を置かない。リンクを開く操作は開発者がこの画面の URL を直接開くことで表す）。
 
 - query: `success` と `failure`（どちらも percent-encoded された相対 path。`s2-mock-backend.md` §14.3）。§6.9 と同じ検査（両方がある、`isSafeRelativePath`、pathname が `/account/login` または `/account/register`）を表示のたびに行い、1 つでも満たさない場合（欠落、複数値、絶対 URL、`//`、backslash、dot segment、Login / 登録でない path・`/dev` など）は、**2 つの操作ともネイティブ `disabled`** で、何も変更せず、何も辿らない（`window.location.assign` を呼ばない）。query が両方とも無い場合も同じ。
 - 表示: `h1` = `copy.mockMagicLink.heading`、本文に `copy.mockMagicLink.note`、title は `copy.mockMagicLink.pageTitle`。`<main>` は layout のものだけ。`<form>` を持たない。email 欄 1 つ（`copy.mockMagicLink.emailLabel`、`type="email"`、初期は空）。
