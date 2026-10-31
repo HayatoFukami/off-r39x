@@ -356,7 +356,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "assertUiMockNotInProductionBuild throws (message contains 'UI mock') only when mock is enabled and APP_ENV is production (VERCEL_ENV is not the signal)"
+        "with VITE_UI_MOCK=1, assertUiMockNotInProductionBuild throws for APP_ENV production (production message) and for APP_ENV unset (unset message), and does not throw for development, staging or test; VERCEL_ENV is not a signal in either direction (an allowed APP_ENV plus VERCEL_ENV=production passes); without the flag it never throws"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -3176,7 +3176,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "isDevAreaEnabled is true only for VITE_UI_MOCK=1 outside APP_ENV=production; false otherwise (NEXT_PUBLIC_UI_MOCK is not read)"
+        "isDevAreaEnabled is true only for VITE_UI_MOCK=1 together with APP_ENV exactly development, staging or test; false for any other flag value, and with the flag on false for APP_ENV unset, empty, malformed, an alias or production (NEXT_PUBLIC_UI_MOCK and VERCEL_ENV are not read)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -14554,7 +14554,7 @@
       "preconditions": "apps/web/vite.config.ts loaded in a child process with controlled env and called with command and mode",
       "expected_http": null,
       "expected_domain_postconditions": [
-        "APP_ENV=production with VITE_UI_MOCK=1 throws in build and serve; staging and unflagged production load; VERCEL_ENV and NEXT_PUBLIC_UI_MOCK are not honoured; sourcemap false and outDir dist"
+        "APP_ENV=production with VITE_UI_MOCK=1 throws in build and serve; staging and unflagged production load; an allowed APP_ENV plus VERCEL_ENV=production loads and NEXT_PUBLIC_UI_MOCK is not the flag; sourcemap false and outDir dist"
       ]
     },
     {
@@ -14600,7 +14600,7 @@
       "preconditions": "scripts/mock-web.mts --dry-run with controlled env",
       "expected_http": null,
       "expected_domain_postconditions": [
-        "prints VITE_UI_MOCK=1 and the command only (start = node scripts/serve-web-dist.mts); refuses APP_ENV=production and ignores VERCEL_ENV; USAGE exit 2"
+        "with an explicit APP_ENV the dry-run prints exactly the DRY-RUN, ENV VITE_UI_MOCK=1, ENV APP_ENV=<value> and COMMAND lines (start = node scripts/serve-web-dist.mts); refuses APP_ENV=production; VERCEL_ENV is ignored and cannot stand in for APP_ENV; USAGE exit 2"
       ]
     },
     {
@@ -16428,6 +16428,121 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "serve with VITE_UI_MOCK unset sets it to 1; an explicit 0 stays 0; build leaves an unset flag unset (fail closed)"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-DEV-WEB-011-003",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["DEV-WEB-011", "INF-ENV-001", "DEV-AUTH-009"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "env passed as a plain object, no process.env access; synthetic APP_ENV values only",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "isUiMockAppEnv is true only for the exact names development, staging and test (case-sensitive, not trimmed; unset, empty, aliases, different case, surrounding whitespace and production are false); with VITE_UI_MOCK=1 assertUiMockNotInProductionBuild passes for the three names, throws the 'APP_ENV is unset' message for unset, the production message for production and the 'APP_ENV is not one of them' message for every other value; a flag other than 1 never throws; the message never contains the offending value"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-DEV-WEB-011-205",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["DEV-WEB-011", "INF-ENV-001"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "apps/web/vite.config.ts loaded in a child process with controlled env (no empty-string APP_ENV: child-process handling of empty values differs between operating systems) and called with command build or serve",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "a build with VITE_UI_MOCK=1 loads only for APP_ENV exactly development, staging or test (the embedded name is that value) and fails for unset, production, surrounding whitespace, different case and aliases with the matching message and no CONFIG-OK; VERCEL_ENV cannot stand in for APP_ENV; the offending value is not printed; without the flag any APP_ENV loads; the dev server also fails for an explicit invalid APP_ENV"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-DEV-WEB-011-206",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["DEV-WEB-011", "INF-ENV-001"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "apps/web/vite.config.ts loaded in a child process with controlled env and called with command serve or build",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "the dev server alone defaults an unset APP_ENV to development (flag 1, embedded name development) and keeps an explicit staging or test; an explicit production still fails; a build never gets a default (flag unset loads with an empty embedded name, flag 1 fails); an explicit flag 0 loads with APP_ENV unset; the default is not written into process.env (serve with APP_ENV unset leaves process.env.APP_ENV unset while define embeds development, and a build config read later in the same process still fails with the unset message)"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-DEV-WEB-011-207",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["DEV-WEB-011", "INF-ENV-001"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "scripts/mock-web.mts --dry-run in a child process with controlled env (no empty-string APP_ENV); the repository choice that a build gives no default and start lets an unset APP_ENV through is recorded in tests/contracts/s9-finalize.md section 4",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "build --dry-run needs an explicit development, staging or test and prints that value on its ENV APP_ENV line; unset or any other value (other than production, which keeps ERROR mock-web-production) exits 1 with the ERROR mock-web-app-env-invalid line and no COMMAND line, for build and start alike; start --dry-run with APP_ENV unset passes and prints no ENV APP_ENV line; an explicit allowed value is kept; the offending value is never printed; argument errors (exit 2, USAGE) come before the APP_ENV check; the allow list in mock-web.mts (ALLOWED_APP_ENVS) is the same set that isUiMockAppEnv in ui-mock.ts accepts"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-DEV-WEB-011-208",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["DEV-WEB-011", "TST-E2E-004", "DEV-REP-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "tests/harness/browser/mock-web-env.mts called with plain objects as the parent environment; start-mock-web.mjs read as text",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "mockWebEnv returns a new object with VITE_UI_MOCK=1 and APP_ENV=test whatever the parent APP_ENV is, without NODE_ENV, SPONSOR_IMAGE_ALLOWED_ORIGINS, VERCEL_ENV and NEXT_PUBLIC_UI_MOCK, keeps the other variables and does not change the parent; start-mock-web.mjs imports mockWebEnv and passes that same env object to both the build and the static server spawn"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
