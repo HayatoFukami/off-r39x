@@ -205,13 +205,20 @@ export type SponsorItemModel = {
 export type SponsorAreaModel =
   | { readonly kind: "hidden" }
   | { readonly kind: "visible"; readonly items: readonly SponsorItemModel[] };
-export function buildSponsorAreaModel(input: SponsorAreaInput): SponsorAreaModel;
+export type SponsorAreaOptions = {
+  /** 既定 false。UI mock の同一 origin 素材（`/mock/sponsors/*.svg`）だけのための許可 */
+  readonly allowSameOriginImagePath?: boolean;
+};
+export function buildSponsorAreaModel(
+  input: SponsorAreaInput,
+  options?: SponsorAreaOptions,
+): SponsorAreaModel;
 ```
 
 - `{ kind: "ok", data }` で `data.length >= 1` のときだけ `visible`。`data` が空、`not_found` / `unavailable` / `auth_required` / `email_unverified`、`loading` はすべて **`{ kind: "hidden" }`（他の field を持たない）**。0 件を示す文言・理由などを model に持たない（SPEC-050 §8.5）。
 - `items` は **`data` の順序のまま**（再ソートしない。表示順の権威は port）。入力を変更しない。
 - `externalHref`: `linkUrl` が `https:` で parse でき、userinfo（username / password）が無いときだけ元の文字列を返す。`http:`、`javascript:`、`data:`、相対 path、parse 不能、`null` は `null`。
-- `imageSrc`: `imageUrl`（**非 null の `string`**。`API-PUB-012` の `image_url` は必須で、`SponsorLogo.imageUrl: string`）が `/` で始まる相対 path（`//` と `/\` で始まるものを除く）か、`https:` の URL（userinfo なし）のとき元の文字列。`http:`、`javascript:`、`data:`、`//host/...`、空文字、userinfo 付き、parse 不能は `null`。相対 path を許すのは UI mock の同一 origin 素材（`/mock/sponsors/*.svg`）のためであり、`API-PUB-012` は https の URL だけを返す（仕様の文言との差は PR の説明に記録する）。この許可は `apps/web/src/presentation/layout/sponsor-area-model.ts` の `toImageSrc` にあるため、mock に限らず本番経路でも通る（実 API が https だけを返す前提）。実 api-client の導入時に見直す。許可 origin の判定は CSP（`SPONSOR_IMAGE_ALLOWED_ORIGINS` 由来の `img-src`）が担い、UI は origin の一覧を持たない。
+- `imageSrc`: `imageUrl`（**非 null の `string`**。`API-PUB-012` の `image_url` は必須で、`SponsorLogo.imageUrl: string`）が `https:` の URL（userinfo なし）のとき元の文字列（既定。SPEC-050 §8.5、`SEC-WEB-026`）。`http:`、`javascript:`、`data:`、`//host/...`、相対 path、空文字、userinfo 付き、parse 不能は `null`。`options.allowSameOriginImagePath === true` のときだけ、`/` で始まる相対 path（`//` と `/\` で始まるものを除く）も元の文字列を返す。これは UI mock の同一 origin 素材（`/mock/sponsors/*.svg`）のためで、`API-PUB-012` は https の URL だけを返す。container（`features/shell/site-footer.tsx`）は `isUiMockEnabled(readBuildEnv())`（ビルド時の `VITE_UI_MOCK`、DEV-WEB-011）からだけこの値を作り、`true` を直書きしない。非 mock の build では相対 path は通らない（TC-PG-PUB-001-213、TC-PG-PUB-001-232）。許可 origin の判定は CSP（`SPONSOR_IMAGE_ALLOWED_ORIGINS` 由来の `img-src`）が担い、UI は origin の一覧を持たない。
 - `name` と `sponsorRef` は入力のまま。
 
 ## 3. Factory / Provider

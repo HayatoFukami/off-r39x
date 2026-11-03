@@ -35,22 +35,35 @@ function toExternalHref(linkUrl: string | null): string | null {
   return linkUrl !== null && isPlainHttps(linkUrl) ? linkUrl : null;
 }
 
-function toImageSrc(imageUrl: string): string | null {
+export type SponsorAreaOptions = {
+  /**
+   * Accept a same-origin path (`/mock/sponsors/*.svg`) as the image. Only the UI mock's own assets need it, so
+   * the container turns it on from the build-time mock flag; a real API returns https URLs only (SPEC-050 8.5,
+   * SEC-WEB-026) and the default is off.
+   */
+  readonly allowSameOriginImagePath?: boolean;
+};
+
+function toImageSrc(imageUrl: string, allowSameOriginPath: boolean): string | null {
   if (imageUrl === "") return null;
   if (imageUrl.startsWith("/")) {
+    if (!allowSameOriginPath) return null;
     return imageUrl.startsWith("//") || imageUrl.startsWith("/\\") ? null : imageUrl;
   }
   return isPlainHttps(imageUrl) ? imageUrl : null;
 }
 
-export function buildSponsorAreaModel(input: SponsorAreaInput): SponsorAreaModel {
+export function buildSponsorAreaModel(
+  input: SponsorAreaInput,
+  options: SponsorAreaOptions = {},
+): SponsorAreaModel {
   if (input.kind !== "ok" || input.data.length === 0) return { kind: "hidden" };
   return {
     kind: "visible",
     items: input.data.map((logo) => ({
       sponsorRef: logo.sponsorRef,
       name: logo.name,
-      imageSrc: toImageSrc(logo.imageUrl),
+      imageSrc: toImageSrc(logo.imageUrl, options.allowSameOriginImagePath === true),
       externalHref: toExternalHref(logo.linkUrl),
     })),
   };

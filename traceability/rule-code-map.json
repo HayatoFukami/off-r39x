@@ -2716,16 +2716,18 @@
       "code_paths": [
         "scripts/generate-web-headers.mts",
         "apps/web/src/presentation/layout/sponsor-logos.tsx",
-        "apps/web/src/presentation/layout/sponsor-area-model.ts"
+        "apps/web/src/presentation/layout/sponsor-area-model.ts",
+        "apps/web/src/features/shell/site-footer.tsx"
       ],
       "test_case_ids": [
+        "TC-PG-PUB-001-213",
         "TC-STACK-008-203",
         "TC-STACK-008-204",
         "TC-PG-PUB-001-402",
         "TC-PG-PUB-001-406",
         "TC-PG-PUB-001-232"
       ],
-      "notes": "implementation mapping only: Sponsor image origin validation for img-src, no-referrer images and the name fallback for a CSP-blocked image; not API URL validation"
+      "notes": "implementation mapping only: Sponsor image origin validation for img-src, no-referrer images and the name fallback for a CSP-blocked image, and https-only images outside the UI mock (a same-origin path only from the mock build flag); the UI does not re-check port, query, fragment, IP literal or localhost, which the API validates (SPEC-140); not API URL validation"
     }
   ]
 }

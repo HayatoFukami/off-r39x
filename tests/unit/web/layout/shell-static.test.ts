@@ -308,9 +308,18 @@ describe("TC-PG-PUB-001-232 sponsor images are no-referrer, links are noopener n
     expect(block?.[0]).not.toMatch(/imageUrl:[^;]*null/);
   });
 
+  it("lets the container allow a same-origin image path only from the build-time mock flag (SEC-WEB-026)", () => {
+    const footer = read("src/features/shell/site-footer.tsx");
+    expect(footer).toMatch(/allowSameOriginImagePath:\s*isUiMockEnabled\(\s*readBuildEnv\(\)\s*\)/);
+    expect(footer).not.toMatch(/allowSameOriginImagePath:\s*true/);
+    const model = read("src/presentation/layout/sponsor-area-model.ts");
+    expect(model).toMatch(/options\.allowSameOriginImagePath === true/);
+    expect(model).not.toMatch(/from "\.\.\/\.\.\/(config|mock)/);
+  });
+
   it("takes a non-null string in toImageSrc", () => {
     const source = read("src/presentation/layout/sponsor-area-model.ts");
-    expect(source).toMatch(/function toImageSrc\(\s*imageUrl:\s*string\s*\)/);
+    expect(source).toMatch(/function toImageSrc\(\s*imageUrl:\s*string\s*[,)]/);
     expect(source).not.toMatch(/function toImageSrc\([^)]*null/);
   });
 });

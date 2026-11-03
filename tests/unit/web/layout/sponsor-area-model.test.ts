@@ -15,6 +15,10 @@ const logo = (n: number, name: string, over: Partial<SponsorLogo> = {}): Sponsor
 
 const ok = (data: SponsorLogo[]): Read<readonly SponsorLogo[]> => ({ kind: "ok", data });
 
+// The same-origin image path exists only for the UI mock's own assets (/mock/sponsors/*.svg). The container
+// turns it on from the build-time mock flag; the default (a real API) accepts https URLs only (SEC-WEB-026).
+const MOCK = { allowSameOriginImagePath: true } as const;
+
 describe("TC-PG-PUB-001-211 sponsor area is hidden for 0 items, failure and loading (SPEC-050 8.5)", () => {
   it("is hidden for an empty ok result, with no message or other field", () => {
     expect(buildSponsorAreaModel(ok([]))).toEqual({ kind: "hidden" });
@@ -47,9 +51,10 @@ describe("TC-PG-PUB-001-212 sponsor area keeps the port's display order (BR-EVT-
     expect(data).toEqual(snapshot);
   });
 
-  it("carries a relative image path and an https link through unchanged", () => {
+  it("carries a relative image path (mock option) and an https link through unchanged", () => {
     const model = buildSponsorAreaModel(
       ok([logo(1, "Sponsor Alpha", { linkUrl: "https://sponsor-alpha.example.com/" })]),
+      MOCK,
     );
     expect(model).toEqual({
       kind: "visible",
@@ -71,8 +76,11 @@ describe("TC-PG-PUB-001-213 sponsor links and images accept only safe URLs (SPEC
     return model.kind === "visible" ? (model.items[0]?.externalHref ?? null) : "HIDDEN";
   };
   // API-PUB-012 image_url is required: the model input is a plain string (a null case is not representable).
-  const imageSrc = (imageUrl: string): string | null => {
-    const model = buildSponsorAreaModel(ok([logo(1, "S", { imageUrl })]));
+  const imageSrc = (
+    imageUrl: string,
+    options?: { readonly allowSameOriginImagePath?: boolean },
+  ): string | null => {
+    const model = buildSponsorAreaModel(ok([logo(1, "S", { imageUrl })]), options);
     return model.kind === "visible" ? (model.items[0]?.imageSrc ?? null) : "HIDDEN";
   };
 
@@ -91,9 +99,21 @@ describe("TC-PG-PUB-001-213 sponsor links and images accept only safe URLs (SPEC
     expect(externalHref("")).toBeNull();
   });
 
-  it("uses a same-origin path or an https URL as the image, otherwise falls back to the name", () => {
-    expect(imageSrc("/mock/sponsors/alpha.svg")).toBe("/mock/sponsors/alpha.svg");
+  it("also accepts a same-origin path when the mock option is on, and nothing else changes", () => {
+    expect(imageSrc("/mock/sponsors/alpha.svg", MOCK)).toBe("/mock/sponsors/alpha.svg");
+    expect(imageSrc("https://img.example.com/a.png", MOCK)).toBe("https://img.example.com/a.png");
+    expect(imageSrc("http://img.example.com/a.png", MOCK)).toBeNull();
+    expect(imageSrc("https://user:pass@img.example.com/a.png", MOCK)).toBeNull();
+    expect(imageSrc("//img.example.com/a.png", MOCK)).toBeNull();
+    expect(imageSrc("/\\evil.example.com/a.png", MOCK)).toBeNull();
+    expect(imageSrc("data:image/svg+xml,<svg/>", MOCK)).toBeNull();
+    expect(imageSrc("", MOCK)).toBeNull();
+  });
+
+  it("uses only an https URL without credentials as the image by default (SEC-WEB-026), otherwise falls back to the name", () => {
     expect(imageSrc("https://img.example.com/a.png")).toBe("https://img.example.com/a.png");
+    expect(imageSrc("/mock/sponsors/alpha.svg")).toBeNull();
+    expect(imageSrc("/api/v1/self/orders")).toBeNull();
     expect(imageSrc("http://img.example.com/a.png")).toBeNull();
     expect(imageSrc("https://user:pass@img.example.com/a.png")).toBeNull();
     expect(imageSrc("not a url")).toBeNull();

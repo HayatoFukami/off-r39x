@@ -2827,7 +2827,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "only https links without credentials and same-origin / https images are accepted; others (http, javascript:, data:, protocol-relative, credentials, unparsable) fall back to null; the image URL input is a non-null string"
+        "only https links without credentials are accepted; an image is accepted only as an https URL without credentials by default, and a same-origin path only when the mock option allowSameOriginImagePath is on; others (http, javascript:, data:, protocol-relative, credentials, unparsable) fall back to null; the image URL input is a non-null string"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -2904,7 +2904,8 @@
       "expected_domain_postconditions": [
         "every img of the Sponsor Logo view sets referrerPolicy no-referrer",
         "the external link keeps target _blank and rel noopener noreferrer and nothing is proxied",
-        "SponsorLogo.imageUrl and toImageSrc take a required string"
+        "SponsorLogo.imageUrl and toImageSrc take a required string",
+        "the Sponsor footer container derives allowSameOriginImagePath only from isUiMockEnabled(readBuildEnv()) and never hard-codes true"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
