@@ -84,43 +84,97 @@ describe("TC-PG-PUB-001-213 sponsor links and images accept only safe URLs (SPEC
     return model.kind === "visible" ? (model.items[0]?.imageSrc ?? null) : "HIDDEN";
   };
 
-  it("links only https URLs without credentials", () => {
-    expect(externalHref("https://sponsor.example.com/path?q=1")).toBe(
-      "https://sponsor.example.com/path?q=1",
+  // SEC-WEB-026: the link and the image share one rule. Each entry is a URL shape the spec rejects.
+  const UNSAFE_URLS = [
+    ["http scheme", "http://sponsor.example.com/a"],
+    ["userinfo (user and password)", "https://user:pass@sponsor.example.com/a"],
+    ["userinfo (user only)", "https://user@sponsor.example.com/a"],
+    ["non-standard port", "https://sponsor.example.com:8443/a"],
+    ["port 80", "https://sponsor.example.com:80/a"],
+    ["query", "https://sponsor.example.com/a?token=x"],
+    ["empty query", "https://sponsor.example.com/a?"],
+    ["fragment", "https://sponsor.example.com/a#top"],
+    ["empty fragment", "https://sponsor.example.com/a#"],
+    ["IPv4 literal", "https://192.0.2.10/a"],
+    ["IPv4 literal normalised from hex", "https://0xc0.0.2.10/a"],
+    ["IPv4 literal normalised from decimal", "https://3221225994/a"],
+    ["IPv4 literal with a trailing dot", "https://192.0.2.10./a"],
+    ["IPv6 literal", "https://[2001:db8::1]/a"],
+    ["IPv4-mapped IPv6 literal", "https://[::ffff:192.0.2.10]/a"],
+    ["localhost", "https://localhost/a"],
+    ["localhost (upper case)", "https://LOCALHOST/a"],
+    ["localhost with a trailing dot", "https://localhost./a"],
+    ["a localhost subdomain", "https://sponsor.localhost/a"],
+    [".local host", "https://sponsor.local/a"],
+    [".local host with a trailing dot", "https://sponsor.local./a"],
+    ["tab inside", "https://sponsor.example.com/\ta"],
+    ["newline inside", "https://sponsor.example.com/a\nb"],
+    ["NUL", "https://sponsor.example.com/a\u0000"],
+    ["DEL", "https://sponsor.example.com/a\u007F"],
+    ["C1 control (NEL)", "https://sponsor.example.com/a\u0085"],
+    ["leading space", " https://sponsor.example.com/a"],
+    ["trailing space", "https://sponsor.example.com/a "],
+    ["backslash", "https:\\\\sponsor.example.com\\a"],
+    ["protocol-relative", "//sponsor.example.com/a"],
+    ["javascript scheme", "javascript:alert(1)"],
+    ["data scheme", "data:image/svg+xml,<svg/>"],
+    ["unparsable", "not a url"],
+    ["empty", ""],
+  ] as const;
+
+  it("links only absolute https URLs that SEC-WEB-026 allows", () => {
+    expect(externalHref("https://sponsor.example.com/path")).toBe(
+      "https://sponsor.example.com/path",
     );
+    expect(externalHref("https://sponsor.example.com/")).toBe("https://sponsor.example.com/");
+    expect(externalHref("https://sponsor.example.com")).toBe("https://sponsor.example.com");
+    // Port 443 is the standard port; the other parts are ordinary public hosts.
+    expect(externalHref("https://sponsor.example.com:443/a")).toBe(
+      "https://sponsor.example.com:443/a",
+    );
+    expect(externalHref("https://Sponsor.Example.com/a")).toBe("https://Sponsor.Example.com/a");
+    expect(externalHref("https://a-b.sponsor.example.co.jp/a/b.html")).toBe(
+      "https://a-b.sponsor.example.co.jp/a/b.html",
+    );
+    expect(externalHref("https://localhost-sponsor.example.com/a")).toBe(
+      "https://localhost-sponsor.example.com/a",
+    );
+    expect(externalHref("https://192.0.2.example.com/a")).toBe("https://192.0.2.example.com/a");
+    expect(externalHref("https://xn--eckwd4c7c.example.jp/a")).toBe(
+      "https://xn--eckwd4c7c.example.jp/a",
+    );
+  });
+
+  it.each(UNSAFE_URLS)("does not link a URL with %s", (_label, url) => {
+    expect(externalHref(url)).toBeNull();
+  });
+
+  it("does not link without a URL or with a same-origin path", () => {
     expect(externalHref(null)).toBeNull();
-    expect(externalHref("http://sponsor.example.com/")).toBeNull();
-    expect(externalHref("javascript:alert(1)")).toBeNull();
-    expect(externalHref("data:text/html,x")).toBeNull();
     expect(externalHref("/relative")).toBeNull();
-    expect(externalHref("//sponsor.example.com/")).toBeNull();
-    expect(externalHref("not a url")).toBeNull();
-    expect(externalHref("https://user:pass@sponsor.example.com/")).toBeNull();
-    expect(externalHref("")).toBeNull();
+    expect(externalHref("/mock/sponsors/alpha.svg")).toBeNull();
+    expect(externalHref("data:text/html,x")).toBeNull();
   });
 
   it("also accepts a same-origin path when the mock option is on, and nothing else changes", () => {
     expect(imageSrc("/mock/sponsors/alpha.svg", MOCK)).toBe("/mock/sponsors/alpha.svg");
     expect(imageSrc("https://img.example.com/a.png", MOCK)).toBe("https://img.example.com/a.png");
-    expect(imageSrc("http://img.example.com/a.png", MOCK)).toBeNull();
-    expect(imageSrc("https://user:pass@img.example.com/a.png", MOCK)).toBeNull();
-    expect(imageSrc("//img.example.com/a.png", MOCK)).toBeNull();
     expect(imageSrc("/\\evil.example.com/a.png", MOCK)).toBeNull();
-    expect(imageSrc("data:image/svg+xml,<svg/>", MOCK)).toBeNull();
-    expect(imageSrc("", MOCK)).toBeNull();
   });
 
-  it("uses only an https URL without credentials as the image by default (SEC-WEB-026), otherwise falls back to the name", () => {
+  it.each(UNSAFE_URLS)(
+    "does not use a URL with %s as the image, with or without the mock option, and falls back to the name",
+    (_label, url) => {
+      expect(imageSrc(url)).toBeNull();
+      expect(imageSrc(url, MOCK)).toBeNull();
+    },
+  );
+
+  it("uses only an absolute https URL that SEC-WEB-026 allows as the image by default, otherwise falls back to the name", () => {
     expect(imageSrc("https://img.example.com/a.png")).toBe("https://img.example.com/a.png");
+    expect(imageSrc("https://img.example.com:443/a.png")).toBe("https://img.example.com:443/a.png");
     expect(imageSrc("/mock/sponsors/alpha.svg")).toBeNull();
     expect(imageSrc("/api/v1/self/orders")).toBeNull();
-    expect(imageSrc("http://img.example.com/a.png")).toBeNull();
-    expect(imageSrc("https://user:pass@img.example.com/a.png")).toBeNull();
-    expect(imageSrc("not a url")).toBeNull();
-    expect(imageSrc("javascript:alert(1)")).toBeNull();
-    expect(imageSrc("data:image/svg+xml,<svg/>")).toBeNull();
-    expect(imageSrc("//img.example.com/a.png")).toBeNull();
     expect(imageSrc("/\\evil.example.com/a.png")).toBeNull();
-    expect(imageSrc("")).toBeNull();
   });
 });

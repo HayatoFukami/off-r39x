@@ -2736,7 +2736,7 @@
         "TC-PG-PUB-001-406",
         "TC-PG-PUB-001-232"
       ],
-      "notes": "implementation mapping only: Sponsor image origin validation for img-src, no-referrer images and the name fallback for a CSP-blocked image, and https-only images outside the UI mock (a same-origin path only from the mock build flag); the UI does not re-check port, query, fragment, IP literal or localhost, which the API validates (SPEC-140); not API URL validation"
+      "notes": "implementation mapping only: Sponsor image origin validation for img-src, no-referrer images and the name fallback for a CSP-blocked image, and https-only images outside the UI mock (a same-origin path only from the mock build flag); the Sponsor image and link URL shape (absolute https, no userinfo, non-standard port, query, fragment, IP literal, localhost or .local host, or control character) is re-checked in the UI as defence in depth because the external link is not covered by the CSP; the image origin allowlist stays with the CSP img-src; not API URL validation (SPEC-140)"
     }
   ]
 }
