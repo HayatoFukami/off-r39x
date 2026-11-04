@@ -32,6 +32,7 @@ import type {
   OrderSummary,
   Profile,
   ProfileUpdate,
+  PurchaseReason,
   QrPresentation,
   Read,
   Ref,
@@ -42,6 +43,7 @@ import type {
 } from "../../../../apps/web/src/api-client/types.ts";
 import type { AuthPort, Session } from "../../../../apps/web/src/auth/port.ts";
 import { createBackend } from "../../../harness/mock-backend.ts";
+import { PURCHASE_REASONS } from "../../../harness/purchase-reasons.ts";
 
 const webDir = fileURLToPath(new URL("../../../../apps/web/", import.meta.url));
 
@@ -201,6 +203,45 @@ describe("TC-DEV-WEB-010-102 ApiPort and AuthPort have the documented shape (des
     }>();
   });
 
+  it("shapes the Cart purchase start as API-PUR-CART-001: one Order for every line, or item failures with API-PUR-ELG-001 reasons", () => {
+    expectTypeOf<Extract<CartPurchaseStart, { kind: "created" }>>().toEqualTypeOf<{
+      kind: "created";
+      orderRef: Ref<"order">;
+    }>();
+    expectTypeOf<Extract<CartPurchaseStart, { kind: "rejected" }>>().toEqualTypeOf<{
+      kind: "rejected";
+      itemFailures: readonly { lineKey: string; reasons: readonly PurchaseReason[] }[];
+    }>();
+    expectTypeOf<PurchaseReason>().toEqualTypeOf<
+      | "NOT_PUBLIC_OR_NOT_FOUND"
+      | "SALES_NOT_STARTED"
+      | "SALES_CLOSED"
+      | "SALES_STOPPED"
+      | "SOLD_OUT"
+      | "INSUFFICIENT_QUANTITY"
+      | "PURCHASE_LIMIT_EXCEEDED"
+      | "SLOT_UNAVAILABLE"
+      | "PAYMENT_WINDOW_TOO_SHORT"
+    >();
+    expectTypeOf<CartPurchaseStart["kind"]>().toEqualTypeOf<
+      "created" | "rejected" | "auth_required" | "email_unverified" | "unavailable"
+    >();
+  });
+
+  it("declares that shape in types.ts: the 9 reasons in the canonical order, no partial inclusion, no retired reason", () => {
+    const types = read(join(webDir, "src/api-client/types.ts"));
+    const code = types.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    const block = /export type PurchaseReason\s*=([^;]*);/.exec(code);
+    expect(block, "types.ts must export PurchaseReason").not.toBeNull();
+    const declared = [...(block?.[1] ?? "").matchAll(/"([A-Z_]+)"/g)].map((m) => m[1]);
+    expect(declared).toEqual([...PURCHASE_REASONS]);
+    expect(code).toMatch(/itemFailures/);
+    expect(code).not.toMatch(/includedLineKeys/);
+    expect(code).not.toMatch(/ALLOCATION_CONFLICT/);
+    expect(code).not.toMatch(/CartRejectionReasonCode/);
+    expect(code).not.toMatch(/\brejections\b/);
+  });
+
   it("types the auth port", () => {
     expectTypeOf<Session>().toEqualTypeOf<
       { kind: "guest" } | { kind: "authenticated"; email: string; emailVerified: boolean }
@@ -244,7 +285,7 @@ describe("TC-DEV-WEB-010-102 ApiPort and AuthPort have the documented shape (des
   });
 });
 
-describe("TC-DEV-WEB-010-103 port doc comments name the Operation ID or the UCR (design section 3, DEV-GEN-003)", () => {
+describe("TC-DEV-WEB-010-103 port doc comments name the Operation ID or the UCR (design section 3, DEV-GEN-003, API-PUR-CART-001)", () => {
   const portSource = (): string[] => read(join(webDir, "src/api-client/port.ts")).split("\n");
 
   const methods = [
@@ -290,13 +331,24 @@ describe("TC-DEV-WEB-010-103 port doc comments name the Operation ID or the UCR 
     }
   });
 
-  it("marks the ports without an Operation ID as UCR-110-001 / Operation ID なし", () => {
+  it("marks only the ports whose viewer-specific part has no Operation ID yet as UCR-110-001 / Operation ID なし (until B4b)", () => {
     const lines = portSource();
-    // listSponsorLogos now has an Operation ID (API-PUB-012); startCartPurchase stays until phase B4.
-    for (const name of ["startCartPurchase"]) {
+    // listSponsorLogos has API-PUB-012 and startCartPurchase has API-PUR-CART-001; the viewer-specific
+    // Purchase Limit reads (listEntryOfferings, resolveCartLines) keep the mark until phase B4b.
+    for (const name of ["listEntryOfferings", "resolveCartLines"]) {
       expect(window(lines, name), name).toContain("UCR-110-001");
     }
     expect(portSource().join("\n")).toMatch(/Operation ID\s*(なし|none|missing)/i);
+  });
+
+  it("cites API-PUR-CART-001 for startCartPurchase without the UCR or Operation ID なし wording (SPEC-110 API-PUR-CART-001, UCR-110-001 INCORPORATED)", () => {
+    const annotation = window(portSource(), "startCartPurchase");
+    expect(annotation).toContain("API-PUR-CART-001");
+    expect(annotation).not.toContain("UCR-110-001");
+    expect(annotation).not.toMatch(/Operation ID\s*(なし|none|missing)/i);
+    // The all-or-nothing contract and the Checkout hand-off are part of the annotation.
+    expect(annotation).toMatch(/all-or-nothing/);
+    expect(annotation).toContain("API-CHK-001");
   });
 
   it("cites API-PUB-012 for listSponsorLogos without the UCR or Operation ID なし wording (SPEC-110 API-PUB-012, BR-EVT-005)", () => {
@@ -345,6 +397,8 @@ describe("TC-DEV-WEB-010-103 port doc comments name the Operation ID or the UCR 
       "API-PUB-012",
       "API-AUTH-002",
       "API-AUTH-004",
+      "API-PUR-CART-001",
+      "API-PUR-ELG-001",
       "API-PUR-KRK-001",
       "API-CHK-001",
       "API-ORD-001",

@@ -405,7 +405,8 @@ export const copy = {
       PURCHASE_LIMIT_EXCEEDED: "購入上限により購入不可",
       NOT_PUBLIC: "現在取り扱っていません",
       UNAVAILABLE: "状態を確認できません",
-      ALLOCATION_CONFLICT: "在庫の確保に失敗",
+      SLOT_UNAVAILABLE: "枠を確保できません",
+      PAYMENT_WINDOW_TOO_SHORT: "支払い期限を確保できません",
     },
     description: {
       ON_SALE: "購入できます。",
@@ -417,7 +418,9 @@ export const copy = {
       PURCHASE_LIMIT_EXCEEDED: "購入上限を超えるため購入できません。",
       NOT_PUBLIC: "この商品は現在取り扱っていません。",
       UNAVAILABLE: "現在の状態を取得できません。時間をおいて再度お試しください。",
-      ALLOCATION_CONFLICT: "他の購入と重なり確保できませんでした。内容を確認してください。",
+      SLOT_UNAVAILABLE: "この枠は確保中・販売済み・販売停止のいずれかのため購入できません。",
+      PAYMENT_WINDOW_TOO_SHORT:
+        "利用開始までの時間が短く、支払いの期限を確保できないため購入できません。",
     },
     beforeSales: (startsAtText: string): string => `${startsAtText}から販売を開始します。`,
     insufficientQuantity: (max: string): string =>

@@ -61,7 +61,7 @@ export interface PublicApi {
 }
 
 export interface PurchaseApi {
-  /** Operation ID なし (UCR-110-001) */
+  /** API-PUR-CART-001 (all-or-nothing: one Order for every line or none; item failures carry API-PUR-ELG-001 reasons; the Checkout is started or resumed through startCheckout / API-CHK-001) */
   startCartPurchase(
     lines: readonly CartLine[],
     o: { idempotencyKey: string },

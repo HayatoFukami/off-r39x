@@ -42,15 +42,21 @@ export type CartLine =
   | { kind: "ENTRY_TICKET"; offeringRef: Ref<"offering">; quantity: number }
   | { kind: "GOODS"; goodsRef: Ref<"goods">; quantity: number };
 
-export type CartRejectionReasonCode =
-  | "BEFORE_SALES"
-  | "SALES_ENDED"
-  | "SUSPENDED"
+/**
+ * SPEC-110 API-PUR-ELG-001 reasons, shared by API-PUR-CART-001 item failures. Canonical order:
+ * NOT_PUBLIC_OR_NOT_FOUND, SALES_NOT_STARTED, SALES_CLOSED, SALES_STOPPED, SOLD_OUT,
+ * INSUFFICIENT_QUANTITY, PURCHASE_LIMIT_EXCEEDED, SLOT_UNAVAILABLE, PAYMENT_WINDOW_TOO_SHORT.
+ */
+export type PurchaseReason =
+  | "NOT_PUBLIC_OR_NOT_FOUND"
+  | "SALES_NOT_STARTED"
+  | "SALES_CLOSED"
+  | "SALES_STOPPED"
   | "SOLD_OUT"
   | "INSUFFICIENT_QUANTITY"
   | "PURCHASE_LIMIT_EXCEEDED"
-  | "ALLOCATION_CONFLICT"
-  | "NOT_PUBLIC";
+  | "SLOT_UNAVAILABLE"
+  | "PAYMENT_WINDOW_TOO_SHORT";
 
 export type CartLineResolution = { lineKey: string } & (
   | { status: "resolved"; name: string; unitPrice: Money; availability: SaleAvailability }
@@ -59,10 +65,10 @@ export type CartLineResolution = { lineKey: string } & (
 );
 
 export type CartPurchaseStart =
-  | { kind: "created"; orderRef: Ref<"order">; includedLineKeys: readonly string[] }
+  | { kind: "created"; orderRef: Ref<"order"> } // every sent line is in the Order (all-or-nothing)
   | {
-      kind: "rejected";
-      rejections: readonly { lineKey: string; reason: CartRejectionReasonCode }[];
+      kind: "rejected"; // reasons are non-empty and in the canonical order
+      itemFailures: readonly { lineKey: string; reasons: readonly PurchaseReason[] }[];
     }
   | { kind: "auth_required" }
   | { kind: "email_unverified" }
