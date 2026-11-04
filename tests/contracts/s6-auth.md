@@ -11,9 +11,9 @@
 共通の約束（S4 / S5 の約束を引き継ぐ）:
 
 - 文言は `apps/web/src/presentation/copy/ja.ts` の `copy` に集める。`features/auth/**`、`src/auth/**` の新規ファイル、新規 `presentation/components/**` に**日本語の直書き・色の直書きを置かない**。
-- page.tsx は Server Component の薄い殻（`metadata` だけ。route param は無い）。画面は `"use client"` の container が `useAuth()`（下記 §3）経由の `AuthPort` だけを呼ぶ。`mock/**` を import しない（import してよいのは `src/auth/index.ts` だけ。DEV-WEB-012）。`mock-auth` を直接呼ばない。
+- route module（`src/routes/auth/**`。React Router）は薄い殻（`export const handle = { title }` だけ。route param は無い。`<main>` を描画しない）。画面は `"use client"` の container が `useAuth()`（下記 §3）経由の `AuthPort` だけを呼ぶ。`mock/**` を import しない（import してよいのは `src/auth/index.ts` だけ。DEV-WEB-012）。`mock-auth` を直接呼ばない。
 - パスワード・reset context・verification context は**どこにも保存・記録・表示しない**（SEC-AUTH-018）: URL（成功後・失敗後とも）、DOM のテキスト、localStorage / sessionStorage、console、Cookie に出さない。`console.*` を使わない。パスワードは **trim しない**（SEC-AUTH-016）。`maxLength` 属性を付けない（付けると 129 文字目以降が黙って切り捨てられ、検証エラーが見えなくなる）。
-- 各ページの `h1` は 1 つだけ。`main` 内の `role="alert"` は同時に 1 つだけ（Next.js の route announcer は `main` の外）。
+- 各ページの `h1` は 1 つだけ。`main` 内の `role="alert"` は同時に 1 つだけ（route announcer は追加しない）。
 - 認証 UI は Guest / Authenticated のどちらでも閲覧できる（Actor は SPEC-050 §7 のとおり）。**既に Authenticated でも自動 redirect はしない**（login 成功後の自身の遷移と競合するため。曖昧さ 3）。
 
 ## 0. ファイル一覧
@@ -33,15 +33,15 @@
 | `apps/web/src/features/auth/password-reset-complete-page.tsx` | client container | `PasswordResetCompletePage` |
 | `apps/web/src/presentation/components/form-field.tsx` | 純粋な表示部品 | `FormField` |
 | `apps/web/src/presentation/components/error-summary.tsx` | 純粋な表示部品 | `ErrorSummary` |
-| `apps/web/app/account/register/page.tsx` | route | PG-AUTH-001。`metadata.title = copy.auth.register.pageTitle` |
-| `apps/web/app/account/email-verification/page.tsx` | route | PG-AUTH-002。`copy.auth.verify.pageTitle` |
-| `apps/web/app/account/login/page.tsx` | route | PG-AUTH-003。`copy.auth.login.pageTitle` |
-| `apps/web/app/account/password-reset/page.tsx` | route | PG-AUTH-004。`copy.auth.reset.pageTitle` |
-| `apps/web/app/account/password-reset/complete/page.tsx` | route | PG-AUTH-005。`copy.auth.resetComplete.pageTitle` |
-| `apps/web/app/(self)/layout.tsx` | route layout | `AuthGate` で `children` を包む（Design §3 の `(self)/layout.tsx`）。`/mypage/*` と `/purchase/*` を覆う |
-| `apps/web/app/(self)/mypage/page.tsx` | route | **S6 の最小 placeholder**（S8 が PG-MYP-001 に置き換える。`h1` と AuthGate の配下を保つ）。`metadata.title = copy.mypage.pageTitle` |
+| `apps/web/src/routes/auth/register.tsx` | route | PG-AUTH-001。`metadata.title = copy.auth.register.pageTitle` |
+| `apps/web/src/routes/auth/email-verification.tsx` | route | PG-AUTH-002。`copy.auth.verify.pageTitle` |
+| `apps/web/src/routes/auth/login.tsx` | route | PG-AUTH-003。`copy.auth.login.pageTitle` |
+| `apps/web/src/routes/auth/password-reset.tsx` | route | PG-AUTH-004。`copy.auth.reset.pageTitle` |
+| `apps/web/src/routes/auth/password-reset-complete.tsx` | route | PG-AUTH-005。`copy.auth.resetComplete.pageTitle` |
+| `apps/web/src/routes/self/self-layout.tsx` | route layout | `AuthGate` で `children` を包む（Design §3 の `(self)/layout.tsx`）。`/mypage/*` と `/purchase/*` を覆う |
+| `apps/web/src/routes/self/mypage-overview.tsx` | route | **S6 の最小 placeholder**（S8 が PG-MYP-001 に置き換える。`h1` と AuthGate の配下を保つ）。`metadata.title = copy.mypage.pageTitle` |
 
-route 用ファイルは `app/<path>/page.tsx` でも `app/(auth)/<path>/page.tsx` でもよい（`(self)` だけは上記の位置に固定）。title は `copy.<...>.pageTitle` に置き、`copy.pageTitle` へ足さない（S4 の `s4-copy.test.ts` が全 key を固定している）。`next.config.ts` の no-store ヘッダ（`/mypage/:path*`、`/purchase/:path*`、`/account/:path*`）は S0 で設定済みであり、変更しない。
+route module の位置は上の表のとおり。title は `copy.<...>.pageTitle` に置き、`copy.pageTitle` へ足さない（S4 の `s4-copy.test.ts` が全 key を固定している）。no-store ヘッダ（SEC-WEB-009 の 6 prefix: `/account`・`/auth`・`/purchase`・`/mypage`・`/admin`・`/staff`）は `dist/_headers`（`scripts/generate-web-headers.mts` が生成。`tests/contracts/s9-finalize.md` §8）が付ける。保護 path の `Referrer-Policy` は `/*` の既定値と連結されて実効値が `no-referrer`。
 
 ## 1. 文言 `copy`（`ja.ts` に追加。既存 key は変えない）
 
@@ -216,7 +216,7 @@ export function decideGate(state: SessionState, pathname: string): GateDecision;
 - `ready` + `authenticated` かつ `emailVerified === true` → `allow`。
 - 入力を変更しない。
 
-`AuthGate`（`"use client"`。`app/(self)/layout.tsx` が `children` を包む）:
+`AuthGate`（`"use client"`。`src/routes/self/self-layout.tsx` が `children` を包む）:
 
 - `useSession()` と `usePathname()` から `decideGate` を求める。**`allow` のときだけ `children` を描画する**。`loading` / `redirect` / `unavailable` の間は保護 Content を DOM に出さない（最初の描画は常に `loading`。SSR を含む）。
 - `loading`: `role="status"` + `copy.pageState.loading`。`redirect`: `role="status"` + `copy.auth.gate.redirecting` を描画し、`useEffect` で `router.replace(to)`。`unavailable`: `role="alert"` + `copy.pageState.unavailable(copy.auth.gate.subject)` + `<button type="button">` `copy.pageState.retry`（`window.location.reload()`。Login へ redirect しない）。
@@ -339,9 +339,9 @@ export function describeContinuation(intent: ContinuationIntent | null): Continu
 
 ### 6.8 no-store と共通（`/account/*`、`/mypage`）
 
-- `/account/login`、`/account/register`、`/account/email-verification`、`/account/password-reset`、`/account/password-reset/complete`、`/mypage` の GET が **HTTP 200** で、`Cache-Control` が `no-store` と `private` を含み、`Pragma: no-cache`（SEC-WEB-009。S0 の `next.config.ts` で設定済み。route が実在して初めて 200 になる）。`/`、`/cart`、`/entry` は `private` を含まない（S4 / S5 のまま）。
+- `/account/login`、`/account/register`、`/account/email-verification`、`/account/password-reset`、`/account/password-reset/complete`、`/mypage` の GET が **HTTP 200** で、`Cache-Control` が `no-store` と `private` を含み、`Pragma: no-cache`（SEC-WEB-009。`dist/_headers` の規則。静的 shell なので route が未実装でも 200 になる）。`/`、`/cart`、`/entry` は `private` を含まない（S4 / S5 のまま）。
 - 各ページは title = `${copy.<…>.pageTitle} | ${SITE_NAME}`、`h1` が 1 つ、`pageerror` / `console.error`（resource load 失敗を除く）が無く、外部 origin へ要求せず、`/admin` / `/staff` への href が無く、390px 幅で横 scroll が無い。
-- 認証フローの前後で、localStorage / sessionStorage の全内容（key と value）、URL、`main` のテキストに、入力した Password（テストの sentinel）と verification / reset の context が現れない（SEC-AUTH-018）。
+- 認証フローの前後で、localStorage / sessionStorage の全内容（key と value）、URL、`main` のテキストに、入力した Password（テストの sentinel）と verification / reset の context が現れない（SEC-AUTH-018）。root layout の `<ScrollRestoration />` は `getKey` を渡さず既定の location key を使うので、sessionStorage の保存値に URL・query（`context` など）が入らない（`tests/e2e/static-hosting.spec.ts` TC-STACK-008-306）。
 
 ## 7. E2E の共通条件
 

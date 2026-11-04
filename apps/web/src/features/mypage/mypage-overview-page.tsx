@@ -1,12 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { type ReactNode, useCallback, useId } from "react";
 import type { ApiPort } from "../../api-client/port";
 import { MYPAGE_PATHS } from "../../config/mypage-routes";
 import { PageState } from "../../presentation/components/page-state";
 import { SectionHeading } from "../../presentation/components/section-heading";
 import { copy } from "../../presentation/copy/ja";
+import { Link } from "../../routing/link";
 import { OrderRowView } from "./order-row";
 import { buildMypageOverviewModel } from "./overview-model";
 import { ReservationRowView } from "./reservation-row";

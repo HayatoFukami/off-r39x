@@ -1,10 +1,10 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useCallback, useRef, useState } from "react";
 import { useApi } from "../../api-client/provider";
 import type { CheckoutStart, KaraokePurchaseStart, Ref } from "../../api-client/types";
 import { useSession } from "../../auth/use-session";
+import { useRouter } from "../../routing/navigation";
 import { getBrowserCartLifecycle } from "../cart/cart-lifecycle";
 import {
   interpretKaraokeCheckout,

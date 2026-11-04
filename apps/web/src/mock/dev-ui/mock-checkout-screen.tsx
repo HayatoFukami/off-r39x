@@ -1,7 +1,7 @@
-import Link from "next/link";
 import type { Ref } from "../../api-client/types";
 import { purchaseOrderHref } from "../../config/purchase-routes";
 import { copy } from "../../presentation/copy/ja";
+import { Link } from "../../routing/link";
 
 // Stand-in for Stripe Checkout (dev only, design section 6). It reads and writes nothing: no port, no
 // storage. Both buttons only return to the Purchase Status, which reads the Order state (PAY-BRW-001..003).

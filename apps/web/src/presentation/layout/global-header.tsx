@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { assets } from "../../config/assets";
 import { CTA_HREF, GUEST_ACCOUNT_LINKS, MYPAGE_HREF, SITE_NAME } from "../../config/site";
+import { Link } from "../../routing/link";
 import { buttonVariants } from "../components/ui/button";
 import { cn } from "../components/ui/cn";
 import { copy } from "../copy/ja";
@@ -37,7 +37,6 @@ export function GlobalHeader({ cartCount, session, pathname, onLogout }: Props) 
           {assets.logo === null ? (
             SITE_NAME
           ) : (
-            // biome-ignore lint/performance/noImgElement: the logo slot is a plain configured asset
             <img src={assets.logo.src} alt={assets.logo.alt} className="inline-block h-6 w-auto" />
           )}
         </SiteNameLink>

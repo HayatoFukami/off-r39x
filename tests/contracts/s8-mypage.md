@@ -18,7 +18,7 @@
 共通の約束（S4〜S7b の約束を引き継ぐ）:
 
 - 文言は `apps/web/src/presentation/copy/ja.ts` の `copy` に集める。S8 の新規ファイルに**日本語の直書き・`¥` の直書き・色の直書きを置かない**。金額は `formatMoney`、日時は `format/datetime.ts`（JST）。
-- page.tsx は Server Component の薄い殻（`metadata` と route param の検証だけ。async `params` を `await`）。データ取得は `"use client"` の container が mount 後（`useEffect`）に `useApi()` 経由で行う。`features/**` から `mock/**` を import しない。
+- route module（`src/routes/**`。React Router。旧 `app/**/page.tsx`）は薄い殻（`export const handle = { title }` と route param の検証だけ。`useParams()` で値を取り、feature container に `key={生の param 値}` を付けて描画して param の変化で再マウントする）。`<main>` を描画せず、mock・`fetch`・storage を参照しない。データ取得は `"use client"` の container が mount 後（`useEffect`）に `useApi()` 経由で行う。`features/**` から `mock/**` を import しない。
 - 価格・状態・可否の権威は port の戻り値だけ。URL・DOM の値を権威にしない（DEV-WEB-009）。
 - `console.*`、`localStorage` / `sessionStorage` の直接参照、`dangerouslySetInnerHTML` を S8 の新規ファイルで使わない。
 - `h1` は 1 つだけ。見出し level を飛ばさない。Order / Ticket / Reservation の ref（UUID）・内部 ID を画面の本文に出さない（URL の path は可）。
@@ -52,19 +52,19 @@
 | `apps/web/src/features/mypage/goods-item-list-page.tsx` | client container | `GoodsItemListPage` |
 | `apps/web/src/features/mypage/goods-item-detail-page.tsx` | client container | `GoodsItemDetailPage`（props `{ goodsItemRef }`） |
 | `apps/web/src/presentation/components/qr-placeholder.tsx` | 純粋な表示部品 | `QrPlaceholder`（props `{ matrixSeed: string; label: string }`） |
-| `apps/web/app/(self)/mypage/layout.tsx` | route layout（Server Component の薄い殻） | `MypageNav` + `children` |
-| `apps/web/app/(self)/mypage/page.tsx` | route（**S6 placeholder の置き換え**） | `metadata.title = copy.mypage.pageTitle`、`<MypageOverviewPage />` |
-| `apps/web/app/(self)/mypage/profile/page.tsx` | route | `copy.mypage.profile.pageTitle`、`<ProfilePage />` |
-| `apps/web/app/(self)/mypage/orders/page.tsx` | route | `copy.mypage.orders.pageTitle` |
-| `apps/web/app/(self)/mypage/orders/[orderRef]/page.tsx` | route | `copy.mypage.orders.detail.pageTitle`。`parseOrderRef`（S7a）が null なら `AccessDeniedView`（§8） |
-| `apps/web/app/(self)/mypage/entry-tickets/page.tsx` | route | `copy.mypage.entryTickets.pageTitle` |
-| `apps/web/app/(self)/mypage/entry-tickets/[ticketRef]/page.tsx` | route | `copy.mypage.entryTickets.detail.pageTitle`。`parseTicketRef` が null なら `AccessDeniedView` |
-| `apps/web/app/(self)/mypage/entry-tickets/[ticketRef]/qr/page.tsx` | route | `metadata.title = copy.qr.ENTRY` |
-| `apps/web/app/(self)/mypage/karaoke/page.tsx` | route | `copy.mypage.reservations.pageTitle` |
-| `apps/web/app/(self)/mypage/karaoke/[reservationRef]/page.tsx` | route | `copy.mypage.reservations.detail.pageTitle`。`parseReservationRef` が null なら `AccessDeniedView` |
-| `apps/web/app/(self)/mypage/karaoke/[reservationRef]/qr/page.tsx` | route | `metadata.title = copy.qr.KARAOKE` |
-| `apps/web/app/(self)/mypage/goods/page.tsx` | route | `copy.mypage.goodsItems.pageTitle` |
-| `apps/web/app/(self)/mypage/goods/[goodsItemRef]/page.tsx` | route | `copy.mypage.goodsItems.detail.pageTitle`。`parseGoodsItemRef` が null なら `AccessDeniedView` |
+| `apps/web/src/routes/self/mypage-layout.tsx` | route layout（薄い殻。`MypageNav` + `Outlet`。`"use client"` にしない） | `MypageNav` + `children` |
+| `apps/web/src/routes/self/mypage-overview.tsx` | route（**S6 placeholder の置き換え**） | `metadata.title = copy.mypage.pageTitle`、`<MypageOverviewPage />` |
+| `apps/web/src/routes/self/mypage-profile.tsx` | route | `copy.mypage.profile.pageTitle`、`<ProfilePage />` |
+| `apps/web/src/routes/self/mypage-orders.tsx` | route | `copy.mypage.orders.pageTitle` |
+| `apps/web/src/routes/self/mypage-order-detail.tsx` | route | `copy.mypage.orders.detail.pageTitle`。`parseOrderRef`（S7a）が null なら `AccessDeniedView`（§8） |
+| `apps/web/src/routes/self/mypage-entry-tickets.tsx` | route | `copy.mypage.entryTickets.pageTitle` |
+| `apps/web/src/routes/self/mypage-entry-ticket-detail.tsx` | route | `copy.mypage.entryTickets.detail.pageTitle`。`parseTicketRef` が null なら `AccessDeniedView` |
+| `apps/web/src/routes/self/mypage-entry-ticket-qr.tsx` | route | `metadata.title = copy.qr.ENTRY` |
+| `apps/web/src/routes/self/mypage-karaoke.tsx` | route | `copy.mypage.reservations.pageTitle` |
+| `apps/web/src/routes/self/mypage-reservation-detail.tsx` | route | `copy.mypage.reservations.detail.pageTitle`。`parseReservationRef` が null なら `AccessDeniedView` |
+| `apps/web/src/routes/self/mypage-reservation-qr.tsx` | route | `metadata.title = copy.qr.KARAOKE` |
+| `apps/web/src/routes/self/mypage-goods.tsx` | route | `copy.mypage.goodsItems.pageTitle` |
+| `apps/web/src/routes/self/mypage-goods-item-detail.tsx` | route | `copy.mypage.goodsItems.detail.pageTitle`。`parseGoodsItemRef` が null なら `AccessDeniedView` |
 
 - title は root layout の template（`%s | SITE_NAME`）に従う（`copy.pageTitle` へは足さない）。
 - 全 route は `(self)/layout.tsx`（S6 の AuthGate）の配下。AuthGate は**変更しない**。QR ページは Continuation の key を持たない（S6 の設計どおり。Guest が QR ページを開くと `/account/login?continue=mypage` になり、Login 後は `/mypage` へ戻る。QR を戻り先にしない）。
@@ -434,7 +434,7 @@ export function buildMypageOverviewModel(input: OverviewInput): MypageOverviewMo
 
 ### 4.1 共通
 
-- 全ページ: AuthGate が allow した後に mount で read する（SSR 中は fetch しない。最初の描画は loading）。read が `not_found`（detail / QR）なら**データを描画する前に** `AccessDeniedView` を表示する（redirect しない。§8）。
+- 全ページ: AuthGate が allow した後に mount で read する（最初の描画は loading）。read が `not_found`（detail / QR）なら**データを描画する前に** `AccessDeniedView` を表示する（redirect しない。§8）。
 - loading: `h1`（denied 以外は各ページの heading）と `role="status"` + `copy.pageState.loading`。業務データ・空表示・金額・状態 label を出さない。
 - unavailable: `h1` + `role="alert"` + `copy.pageState.unavailable(subject)` + `<button type="button">` `copy.pageState.retry`（その read の再取得だけ。Empty / Access Denied に変換しない）。Overview は Section ごとに同じ表示（§4.2）。
 - 一覧（Order / Entry Ticket / Karaoke / Goods）: 取得成功で 0 件のときだけ `copy.mypage.*.empty`（`<p>`。alert / button なし）。1 件以上のとき `<ul>` の各 `<li>` が 1 行。**Mypage nav は `<ul>` / `<li>` を使わない**（`main` 内の `listitem` = ページの行だけ）。
@@ -500,7 +500,7 @@ export function buildMypageOverviewModel(input: OverviewInput): MypageOverviewMo
 
 ### 4.9 Entry QR（`/mypage/entry-tickets/{ticketRef}/qr`、PG-MYP-007）
 
-- document title = `Entry Ticket / 入場受付用 | SITE_NAME`（`metadata.title = copy.qr.ENTRY`）。`h1` = `copy.qr.ENTRY`（denied 以外。**loading と unavailable でも同じ**: route が決める権利種別の語であり、所有権の判定結果ではない。TC-PG-MYP-007-705。§11-17）。見出しは `h1` だけ（`h2` 以降を持たない）。
+- document title = `Entry Ticket / 入場受付用 | SITE_NAME`（`handle.title = copy.qr.ENTRY`）。`h1` = `copy.qr.ENTRY`（denied 以外。**loading と unavailable でも同じ**: route が決める権利種別の語であり、所有権の判定結果ではない。TC-PG-MYP-007-705。§11-17）。見出しは `h1` だけ（`h2` 以降を持たない）。
 - ready: `<figure>`（QR 近傍。`main` に 1 つだけ）が次を**すべて含む**: (1) `<figcaption>` の `copy.qr.ENTRY`（権利種別をテキストで常時識別）、(2) `lines`（`Ticketの状態` + `StatusBadge`）、(3) presentable のとき QR（`<svg role="img" aria-label={imageLabel}>` を持つ `QrPlaceholder`）と `mockNotice`、(4) presentable でないとき `primaryLabel`（使用済み / 取消済み / 失効済み）と `disabledReason` を**テキストで主表示**し、QR（role `img`）を**描かない**。`main` に Link `backLabel`（`copy.mypage.qr.backToTicket`）→ `backHref`。
 - presentable のとき QR の `role="img"` 要素は、viewport 390px でも**幅・高さとも 200px 以上**で、`<figure>` の幅との差が 16px 以上ある（周囲の余白。SPEC-050 §18.7 / §24.2）。横 scroll が出ない。
 - QR の描画は `matrixSeed` から決定的に導く。seed の文字列そのものを DOM / URL / storage / console に出さない（§0）。
@@ -536,7 +536,7 @@ export function buildMypageOverviewModel(input: OverviewInput): MypageOverviewMo
 - detail / QR の read が `not_found`（他者所有・不存在）→ **データを描画する前に** `AccessDeniedView`（redirect しない。`h1` = `copy.accessDenied.title`、`copy.accessDenied.description`、Link `copy.accessDenied.mypageLink` → `/mypage`、本人所有一覧への Link、retry button なし）。他者の Item 名・日時・state・購入内容を一切出さない。`main` のテキストが、他者所有 ref・不存在 ref・不正 ref で**完全に同じ**になる（同じ種類のページ内で。Mypage nav を含む）。
 - `listHref` / `listLabel`: Order = `/mypage/orders` / `copy.accessDenied.ordersLink`、Entry Ticket（詳細・QR）= `/mypage/entry-tickets` / `copy.accessDenied.entryTicketsLink`、Karaoke（詳細・QR）= `/mypage/karaoke` / `copy.accessDenied.reservationsLink`、Goods = `/mypage/goods` / `copy.accessDenied.goodsItemsLink`。
 - **QR ページの権利種別の語（`copy.qr.ENTRY` / `copy.qr.KARAOKE`）は loading と unavailable の `h1` と document title には出てよいが、最終の Access Denied には出さない**（他者所有・不存在・不正・権利種別違いの ref は loading の `main` テキストも同一。TC-PG-MYP-007-705 / 010-705 / TC-PG-XFN-003-701）。
-- route param が不正（UUID でない・大文字・空白等）の detail / QR route は、server の殻が `AccessDeniedView` を直接描画する（HTTP 200。`notFound()` にしない。存在の有無を確定させない。S7a と同じ）。
+- route param が不正（UUID でない・大文字・空白等）の detail / QR route は、route module が `useParams()` の値を検査して `AccessDeniedView` を直接描画する（HTTP 200。`NotFoundView` にしない。存在の有無を確定させない。S7a と同じ）。
 - **権利種別の取り違え**: Entry の route に Reservation の ref（またはその逆）を渡しても `AccessDeniedView`（port が not_found を返す）。Entry QR の route で Karaoke の presentation を受け取っても描画しない（§3.7）。
 - 他者所有 ref の read の前後で mock DB は変わらない。Login している User を切り替えると（`other@example.com`）、demo の ref は denied、自分の ref は表示される（所有権は Session に従う）。
 
@@ -599,7 +599,7 @@ PG-MYP-001〜012 の各 Page の Sections / State / Actions / Failure は §4 �
 
 ## 10. S6 placeholder の置き換え（既存テストの更新。理由: S6 契約 §6.6 が「S8 が置き換えてよい」と明記）
 
-- `copy.mypage.protectedMarker` を**削除**する。S6 のテストの「保護 Content の目印」は、`/mypage`（Overview）の Profile Section に出る `demo@example.com` の**表示名**（seed の `デモ太郎`。`tests/harness/browser/auth.ts` の `MARKER_PROTECTED_TEXT`）に置き換えた。更新したテスト: `tests/e2e/auth-gate-logout.spec.ts`、`tests/e2e/auth-login.spec.ts`、`tests/unit/web/auth/s6-copy.test.ts`（marker の等値 assert を削除）、`tests/unit/web/auth/s6-static.test.ts`（`app/(self)/mypage/page.tsx` が `copy.mypage.protectedMarker` を使う assert を、`MypageOverviewPage` を描画する assert へ）、`tests/e2e/auth-common.spec.ts`（title / `h1` は同じ `copy.mypage.*` のまま。表示名を ready の目印にする）、`tests/contracts/s6-auth.md` の該当記述（§1 の copy、§6.6、§6.7）は本書が上書きする。
+- `copy.mypage.protectedMarker` を**削除**する。S6 のテストの「保護 Content の目印」は、`/mypage`（Overview）の Profile Section に出る `demo@example.com` の**表示名**（seed の `デモ太郎`。`tests/harness/browser/auth.ts` の `MARKER_PROTECTED_TEXT`）に置き換えた。更新したテスト: `tests/e2e/auth-gate-logout.spec.ts`、`tests/e2e/auth-login.spec.ts`、`tests/unit/web/auth/s6-copy.test.ts`（marker の等値 assert を削除）、`tests/unit/web/auth/s6-static.test.ts`（`src/routes/self/mypage-overview.tsx` が `copy.mypage.protectedMarker` を使う assert を、`MypageOverviewPage` を描画する assert へ）、`tests/e2e/auth-common.spec.ts`（title / `h1` は同じ `copy.mypage.*` のまま。表示名を ready の目印にする）、`tests/contracts/s6-auth.md` の該当記述（§1 の copy、§6.6、§6.7）は本書が上書きする。
 - S6 の他の挙動（Guest → `/account/login?continue=mypage`、email 未確認 → verification、session unavailable の alert、Logout / back、no-store、Header の切替）は**変わらない**。`/mypage` の `h1` は `copy.mypage.heading` のまま。
 
 ## 11. 曖昧さ・仕様の不足についてテスト担当が決めたこと

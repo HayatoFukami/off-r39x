@@ -426,15 +426,15 @@ test.describe("TC-PG-KRK-002-614 empty day, failure and loading are three differ
 });
 
 test.describe("TC-PG-KRK-002-615 a bad date is Not Found and the page has no purchase operation (SPEC-050 13.2, 19.1, 33)", () => {
-  test("an impossible or malformed date is answered with HTTP 404 and the Not Found page", async ({
+  test("an impossible or malformed date shows the Not Found page (the static shell answers HTTP 200)", async ({
     page,
   }) => {
-    // The day route must work for a sales date, so the 404 checks below cannot pass vacuously.
+    // The day route must work for a sales date, so the Not Found checks below cannot pass vacuously.
     await open(page, dayRoute(D1));
     await expect(bucketRegion(page, 10)).toBeVisible();
     for (const bad of ["2027-02-30", "2027-13-01", "abc", "2027-3-8", "20270308"]) {
       const response = await gotoHydrated(page, `/karaoke/schedule/${bad}`);
-      expect(response?.status(), bad).toBe(404);
+      expect(response?.status(), bad).toBe(200);
       await expect(h1(page), bad).toHaveText(copy.notFound.title);
       await expect(main(page), bad).not.toContainText(bad);
     }

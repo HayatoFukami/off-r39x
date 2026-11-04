@@ -21,11 +21,10 @@ function walk(dir: string): string[] {
   });
 }
 
+/** Route modules live in src/routes/<path> (React Router; SPEC-190 DEV-WEB-001). */
 function routeFile(path: string): string | null {
-  for (const candidate of [`app/${path}`, `app/(auth)/${path}`]) {
-    if (existsSync(abs(candidate))) return candidate;
-  }
-  return null;
+  const candidate = `src/routes/${path}`;
+  return existsSync(abs(candidate)) ? candidate : null;
 }
 
 function stripComments(source: string): string {
@@ -57,12 +56,12 @@ const MODULES = [
 ] as const;
 
 const PAGES = [
-  { path: "account/register/page.tsx", title: "copy\\.auth\\.register\\.pageTitle" },
-  { path: "account/email-verification/page.tsx", title: "copy\\.auth\\.verify\\.pageTitle" },
-  { path: "account/login/page.tsx", title: "copy\\.auth\\.login\\.pageTitle" },
-  { path: "account/password-reset/page.tsx", title: "copy\\.auth\\.reset\\.pageTitle" },
+  { path: "auth/register.tsx", title: "copy\\.auth\\.register\\.pageTitle" },
+  { path: "auth/email-verification.tsx", title: "copy\\.auth\\.verify\\.pageTitle" },
+  { path: "auth/login.tsx", title: "copy\\.auth\\.login\\.pageTitle" },
+  { path: "auth/password-reset.tsx", title: "copy\\.auth\\.reset\\.pageTitle" },
   {
-    path: "account/password-reset/complete/page.tsx",
+    path: "auth/password-reset-complete.tsx",
     title: "copy\\.auth\\.resetComplete\\.pageTitle",
   },
 ] as const;
@@ -73,8 +72,8 @@ const s6Sources = [
     const file = routeFile(p.path);
     return file === null ? [] : [abs(file)];
   }),
-  abs("app/(self)/layout.tsx"),
-  abs("app/(self)/mypage/page.tsx"),
+  abs("src/routes/self/self-layout.tsx"),
+  abs("src/routes/self/mypage-overview.tsx"),
 ].filter((f) => existsSync(f));
 
 describe("TC-DEV-WEB-001-501 the S6 modules and routes exist at the contracted paths (DEV-WEB-001, DEV-REP-006)", () => {
@@ -88,35 +87,35 @@ describe("TC-DEV-WEB-001-501 the S6 modules and routes exist at the contracted p
       expect(routeFile(page.path), page.path).not.toBeNull();
     });
   }
-  it("has the AuthGate layout and the Mypage placeholder under (self)", () => {
-    expect(existsSync(abs("app/(self)/layout.tsx"))).toBe(true);
-    expect(existsSync(abs("app/(self)/mypage/page.tsx"))).toBe(true);
+  it("has the AuthGate layout and the Mypage Overview under src/routes/self", () => {
+    expect(existsSync(abs("src/routes/self/self-layout.tsx"))).toBe(true);
+    expect(existsSync(abs("src/routes/self/mypage-overview.tsx"))).toBe(true);
   });
 });
 
-describe("TC-DEV-WEB-001-502 the S6 page.tsx files are thin server shells (DEV-WEB-001)", () => {
+describe("TC-DEV-WEB-001-502 the S6 route modules are thin shells (DEV-WEB-001, React Router)", () => {
   for (const page of PAGES) {
     const file = routeFile(page.path);
     const source = file === null ? "" : stripComments(read(file));
-    it(`${page.path} is a Server Component that renders a feature container with metadata`, () => {
+    it(`${page.path} is a thin route module that renders a feature container with a title handle`, () => {
       expect(file, page.path).not.toBeNull();
       expect(source).not.toMatch(/^\s*["']use client["']/);
       expect(source).not.toMatch(/<main[\s>]/);
       expect(source).toMatch(/features\/auth\//);
-      expect(source).toMatch(/export\s+const\s+metadata/);
+      expect(source).toMatch(/export\s+const\s+handle/);
       expect(source).toMatch(new RegExp(page.title));
       expect(source).not.toMatch(/from\s+["'][^"']*\/mock\//);
       expect(source).not.toMatch(/\b(fetch|localStorage|sessionStorage)\b/);
     });
   }
 
-  it("the (self) layout is a thin shell around AuthGate and the Mypage Overview (S8 replaced the S6 placeholder) renders inside it", () => {
-    const layout = stripComments(read("app/(self)/layout.tsx"));
-    expect(layout).toMatch(/AuthGate/);
-    expect(layout).toMatch(/children/);
+  it("the self layout is a thin shell around AuthGate and an Outlet, and the Mypage Overview renders inside it", () => {
+    const layout = stripComments(read("src/routes/self/self-layout.tsx"));
+    expect(layout).toMatch(/\bAuthGate\b/);
+    expect(layout).toMatch(/\bOutlet\b/);
     expect(layout).not.toMatch(/<main[\s>]/);
-    const mypage = stripComments(read("app/(self)/mypage/page.tsx"));
-    expect(mypage).toMatch(/export\s+const\s+metadata/);
+    const mypage = stripComments(read("src/routes/self/mypage-overview.tsx"));
+    expect(mypage).toMatch(/export\s+const\s+handle/);
     expect(mypage).toMatch(/copy\.mypage\.pageTitle/);
     expect(mypage).toMatch(/MypageOverviewPage/);
     expect(mypage).not.toMatch(/<main[\s>]/);
@@ -127,7 +126,7 @@ describe("TC-DEV-WEB-001-503 the pure modules are pure and the containers use th
   it("keeps continuation / gate / form / view free of React, Next, storage and the mock backend", () => {
     for (const path of PURE) {
       const code = stripComments(read(path));
-      expect(code, path).not.toMatch(/from\s+["'](react|next)[/"']/);
+      expect(code, path).not.toMatch(/from\s+["'](react|next|react-router)[/"']/);
       expect(code, path).not.toMatch(/\b(localStorage|sessionStorage|document|window|fetch)\b/);
       expect(code, path).not.toMatch(/from\s+["'][^"']*\/mock\//);
       expect(code, path).not.toMatch(/\bconsole\s*\./);

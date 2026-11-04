@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const USAGE =
   "USAGE node scripts/secret-scan.mts [--root <dir>] [--build-dir <path>] [--require-build]";
-const DEFAULT_BUILD_DIR = "apps/web/.next";
+const DEFAULT_BUILD_DIR = "apps/web/dist";
 const MAX_BYTES = 5 * 1024 * 1024;
 const SOURCE_DIRS = ["apps", "packages", "scripts", "tests", "traceability", ".github"];
 const EXCLUDED_DIRS = new Set([
@@ -25,12 +25,12 @@ const EXCLUDED_DIRS = new Set([
 ]);
 const SKIPPED_FILES = new Set(["pnpm-lock.yaml"]);
 
-type Area = "source" | "build-static" | "build-server";
+// "build-shell" is an HTML file of the static build output (the SPA shell); every other build file is "build-static".
+type Area = "source" | "build-static" | "build-shell";
 
 interface Scope {
   readonly area: Area;
   readonly inTests: boolean;
-  readonly inServerApp: boolean;
 }
 
 interface Rule {
@@ -130,7 +130,7 @@ const RULES: readonly Rule[] = [
   { id: "mock-seed-leak", applies: (scope) => !scope.inTests, detect: test(/mock-seed-\d+/) },
   {
     id: "mock-seed-field",
-    applies: (scope) => scope.area === "build-server" && scope.inServerApp,
+    applies: (scope) => scope.area === "build-shell",
     detect: (line) => line.includes("mockMatrixSeed"),
   },
   { id: "real-email", applies: sourceOnly, detect: hasRealEmail },
@@ -273,25 +273,14 @@ function main(): void {
     const scope: Scope = {
       area: "source",
       inTests: path.startsWith("tests/"),
-      inServerApp: false,
     };
     if (scanFile(file, path, scope, findings)) scanned += 1;
   }
 
   if (isDirectory(buildRoot)) {
-    const areas: [string, Area][] = [
-      [join(buildRoot, "static"), "build-static"],
-      [join(buildRoot, "server"), "build-server"],
-    ];
-    for (const [dir, area] of areas) {
-      for (const file of walk(dir, () => false)) {
-        const relativeToServer = posix(relative(join(buildRoot, "server"), file));
-        const inServerApp =
-          area === "build-server" &&
-          (relativeToServer === "app" || relativeToServer.startsWith("app/"));
-        if (scanFile(file, rel(file), { area, inTests: false, inServerApp }, findings))
-          scanned += 1;
-      }
+    for (const file of walk(buildRoot, () => false)) {
+      const area: Area = file.toLowerCase().endsWith(".html") ? "build-shell" : "build-static";
+      if (scanFile(file, rel(file), { area, inTests: false }, findings)) scanned += 1;
     }
   } else if (requireBuild) {
     process.stdout.write(`ERROR build-output-missing ${posix(buildDir)}\n`);

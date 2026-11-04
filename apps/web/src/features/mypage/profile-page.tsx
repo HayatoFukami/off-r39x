@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { type FormEvent, useCallback, useEffect, useId, useRef, useState } from "react";
 import type { ApiPort } from "../../api-client/port";
 import { useApi } from "../../api-client/provider";
@@ -8,6 +7,7 @@ import type { ProfileUpdate } from "../../api-client/types";
 import { PageState } from "../../presentation/components/page-state";
 import { Button } from "../../presentation/components/ui/button";
 import { copy } from "../../presentation/copy/ja";
+import { Link } from "../../routing/link";
 import { buildProfileModel, interpretProfileSave, resolveInputAfterSave } from "./profile-model";
 import { useRead } from "./use-read";
 
