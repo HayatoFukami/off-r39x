@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useApi } from "../../api-client/provider";
 import { settleRead } from "../../api-client/settle-read";
@@ -12,6 +11,7 @@ import { PageState } from "../../presentation/components/page-state";
 import { PlainText } from "../../presentation/components/plain-text";
 import { StatusBadge } from "../../presentation/components/status-badge";
 import { copy } from "../../presentation/copy/ja";
+import { Link } from "../../routing/link";
 import { type AddResult, AddResultNotice, AddToCartForm } from "../cart/add-to-cart-form";
 import { buildEntryModel, type EntryOfferingItem } from "./entry-model";
 

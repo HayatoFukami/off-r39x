@@ -17,7 +17,7 @@
 共通の約束（S4 / S5 / S6 の約束を引き継ぐ）:
 
 - 文言は `apps/web/src/presentation/copy/ja.ts` の `copy` に集める。S7a の新規ファイル（`features/purchase/**`、`src/config/purchase-routes.ts`、新規 `presentation/components/**`、`src/mock/dev-ui/mock-checkout-screen.tsx`、route）に**日本語の直書き・`¥` の直書き・色の直書きを置かない**。金額は `formatMoney`（bigint）、日時は `format/datetime.ts`（JST）。
-- page.tsx は Server Component の薄い殻（`metadata` と route param の検証だけ。async `params` を `await` する）。データ取得は `"use client"` の container が mount 後（`useEffect`）に `useApi()` 経由で行う。`features/**` から `mock/**` を import しない。
+- route module（`src/routes/**`。React Router。旧 `app/**/page.tsx`）は薄い殻（`export const handle = { title }` と route param の検証だけ。`useParams()` で値を取り、feature container に `key={生の param 値}` を付けて描画して param の変化で再マウントする）。`<main>` を描画せず、mock・`fetch`・storage を参照しない。データ取得は `"use client"` の container が mount 後（`useEffect`）に `useApi()` 経由で行う。`features/**` から `mock/**` を import しない。
 - 価格・金額・数量の権威は port の戻り値だけ。Cart の保存値・URL・Continuation の値を権威にしない。Browser Return（mock Checkout からの戻り）だけで成功を表示しない（PAY-BRW-001〜003）。
 - `console.*`、`localStorage` / `sessionStorage` の直接参照、`dangerouslySetInnerHTML` を `features/purchase/**` と新規ファイルで使わない（Cart の保存は既存の `useCart()` / cart store 経由だけ）。
 - 各ページの `h1` は 1 つだけ。見出しの level は飛ばさない。`main` 内の `role="alert"` は同時に 1 つだけ。
@@ -38,11 +38,11 @@
 | `apps/web/src/features/cart/cart-page.tsx` | client container（S5 既存。変更） | `CartPage`（`handleProceed` を `useCartPurchase` へ結線） |
 | `apps/web/src/presentation/components/access-denied-view.tsx` | 純粋な表示部品 | `AccessDeniedView`（props `{ listHref: string; listLabel: string }`） |
 | `apps/web/src/mock/dev-ui/mock-checkout-screen.tsx` | view（dev 専用） | `MockCheckoutScreen`（props `{ orderRef: Ref<"order"> }`） |
-| `apps/web/app/(self)/purchase/orders/[orderRef]/page.tsx` | route | PG-XFN-001。`metadata.title = copy.purchase.pageTitle` |
-| `apps/web/app/dev/mock-checkout/[orderRef]/page.tsx` | route（`app/dev/**`） | `metadata.title = copy.mockCheckout.pageTitle` |
+| `apps/web/src/routes/self/purchase-order.tsx` | route | PG-XFN-001。`metadata.title = copy.purchase.pageTitle` |
+| `apps/web/src/routes/dev/mock-checkout.tsx` | route（`app/dev/**`） | `metadata.title = copy.mockCheckout.pageTitle` |
 
 - `(self)/layout.tsx`（S6 の AuthGate）が `/purchase/*` を覆う。変更しない。
-- `/dev/mock-checkout/*` は `app/dev/layout.tsx` の guard 配下（mock 無効時は `notFound()`、noindex）。一般の Navigation / Footer / Drawer / sitemap から Link しない。
+- `/dev/mock-checkout/*` は `src/routes/dev/dev-layout.tsx` の guard 配下（mock 無効時は Not Found 表示 = `NotFoundView`、noindex）。一般の Navigation / Footer / Drawer / sitemap から Link しない。
 - title は `${copy.purchase.pageTitle} | ${SITE_NAME}` 等（root layout の template）。`copy.pageTitle` へ足さない。
 - 既存の再利用: `presentOrderState` / `orderActionLabel` / `presentPurpose` / `purchaseAgainTarget` / `presentNotification` / `presentRejectionReason`（S1）、`CartStore.addFromOrder` / `subtractLines`（S5）、`accountPath` / `continuationPath`（S6）、`StatusBadge` / `PageState` / `ExternalLink` / `PlainText` / `SectionHeading`。
 
@@ -259,14 +259,14 @@ DOM（`CartPurchaseFeedback`。`ready` / `unavailable` の Cart で表示）:
 
 ## 5. mock Checkout（`/dev/mock-checkout/[orderRef]`）
 
-- route 殻: async `params` を `await`、`parseOrderRef` が null なら `notFound()`（HTTP 404）。それ以外は `MockCheckoutScreen`。mock 無効時は `app/dev/layout.tsx` が `notFound()`。
+- route module（`src/routes/dev/mock-checkout.tsx`）: `useParams()` の値を `parseOrderRef` で検査し、null なら `NotFoundView`（HTTP 200 の静的 shell。mock-checkout の見出しを出さない）。それ以外は `key` 付きの `MockCheckoutScreen`。mock 無効時、または `APP_ENV=production` は `src/routes/dev/dev-layout.tsx` が `NotFoundView` を返す。
 - DOM: `h1` = `copy.mockCheckout.heading`（大きく表示。1 つだけ）、`copy.mockCheckout.note`、Link `copy.mockCheckout.pay`（name exact）と Link `copy.mockCheckout.back`（name exact）。**どちらも `href = purchaseOrderHref(orderRef)`**（PG-XFN-001 へ戻るだけ）。入力欄（`input` / `textarea` / `select`、role `textbox` / `spinbutton` / `combobox`）を**置かない**（カード番号等を扱わない）。`main` 内に `role="alert"` を置かない。
 - **この画面は mock DB を読み書きしない**（`self.getOrder` を含め port を一切呼ばない）。Order の state と `webhookReads` はこの画面の表示・操作の前後で変わらない。Browser Return（pay / back のどちらでも）は Order を確定しない（PAY-BRW-001〜003）。Order の状態は、PG-XFN-001 の `getOrder` が scenario `paymentOutcome` に従って決める。
 - 一般 Navigation から到達できない。`/admin` / `/staff` への href、外部 origin への要求、外部 font を持たない。
 
 ## 6. PG-XFN-001 Purchase Status（`/purchase/orders/[orderRef]`）
 
-- route 殻（Server Component）: async `params` を `await`。`parseOrderRef` が null → **`AccessDeniedView`** を直接描画する（HTTP 200。`notFound()` にしない。存在の有無を確定させない。`listHref = "/mypage/orders"`、`listLabel = copy.accessDenied.ordersLink`）。それ以外は `<PurchaseStatusPage orderRef={...} />`。AuthGate（`(self)/layout.tsx`）の内側。
+- route module（`src/routes/self/purchase-order.tsx`）: `useParams()` の値を `parseOrderRef` で検査し、null → **`AccessDeniedView`** を直接描画する（HTTP 200。`NotFoundView` にしない。存在の有無を確定させない。`listHref = "/mypage/orders"`、`listLabel = copy.accessDenied.ordersLink`）。それ以外は `<PurchaseStatusPage orderRef={...} />`。AuthGate（`(self)/layout.tsx`）の内側。
 - `PurchaseStatusPage`（client container）: AuthGate が allow した後の mount で `self.getOrder(orderRef)` を**ちょうど 1 回**読む（mount ごと。S2 契約 §16-4: `confirm_after_recheck` の初回 read は呼び出し回数で数える）。「状態を再確認」の press ごとに 1 回だけ読む。再読込（reload）は同じ Order を読み直すだけで新しい Order を作らない（§22）。mount / reload / 再確認 / 支払い開始の再試行後の読み直しは `api-client/latest-request.ts` の `applyIfLatest` で順序づけ、**最後に開始した read だけが画面へ反映される**（unmount・dependency 変更では `invalidateRequests` する。DEV-WEB-009）。読む回数（mount ごとに 1 回、press ごとに 1 回）は変わらない。`buildPurchaseStatusModel` で整形する。
 - **Ownership（§26.2 / §16.8）**: read が `not_found` なら、データを描画する前に `AccessDeniedView` を表示する（redirect しない。`h1` = `copy.accessDenied.title`）。他者所有 ref と不存在 ref で、`main` のテキストが**完全に同じ**になる。Order 内容・state・Purpose・購入者・存在の有無を一切出さない。
 
@@ -332,7 +332,7 @@ S5 の以下のテストは S7a の結線に合わせて**更新済み**（購�
 7. **created 後の Cart 除去と「カートは空です」**: SPEC-050 §14A.1 は「Item を Cart から除去し、PG-XFN-001 へ遷移するか Checkout 開始へ進む」。→ 除去直後から遷移までの間に「カートは空です」を見せない（`preparing` 中は status だけ）。除去の失敗は購入手続きを止めない。
 8. **再購入の合算**: SPEC-050 §16.4 の「再投入」は、既存 line と同じ key なら加算する（S5 §8-4）。Karaoke の明細は Cart に入れない。
 9. **`AccessDeniedView` の置き場所**: Design §1 は `presentation/components/access-denied-view.tsx` と定める。PG-XFN-003 は S8 の範囲だが PG-XFN-001 の Ownership failure（§16.8）が先に必要なため、S7a が部品を作る。S8 は同じ部品を使い、本人所有一覧の `listHref` を渡す。route param が不正な UUID のときも同じ部品を表示する（Design §1 の「self の route は PG-XFN-003 の表示」）。
-10. **`/dev/mock-checkout` が存在しない Order ref を受けたとき**: 仕様に定めがない。mock Checkout は Stripe の代替で port を呼ばないため、形式が正しい ref なら Order の有無を問わず同じ画面を表示する（PG-XFN-001 側が not found を扱う）。形式が不正な ref だけ 404。
+10. **`/dev/mock-checkout` が存在しない Order ref を受けたとき**: 仕様に定めがない。mock Checkout は Stripe の代替で port を呼ばないため、形式が正しい ref なら Order の有無を問わず同じ画面を表示する（PG-XFN-001 側が not found を扱う）。形式が不正な ref だけ Not Found 表示（HTTP 200）。
 11. **OrderOutcome の置き場所**: Design §6 は PG-XFN-001 / PG-MYP-004 の共有部品とする。→ `features/purchase/order-outcome.tsx`（presentation から features への import は禁止のため）。S8 の Mypage feature が import する（features → features は禁止 edge に無い）。
 12. **E2E 7 の「Mypage の注文一覧」**: S7a は Mypage 一覧 UI を持たない。→ mock DB の `orders` の件数と内容（同じ Order が 1 件、重複なし）で確認する。一覧 UI での確認は S8 の E2E 15 が担う。
 12. **検証 round 1 の訂正**: (a) `copy.cart.purchase.unavailable` は `rejectedTitle`（「購入は開始されていません」）を部分文字列として含むため、`unavailable` の alert が `rejectedTitle` を含まないという期待は誤りだった。区別は `rejectedBody` を含まないことで行う。(b) Login 画面の継続案内「購入状況の確認」が `copy.purchase.heading`（購入状況）を含むため、ゲストの保護 Content 監視の対象を seed Order の明細名に改めた（`copy.purchase.outcomeHeading`「現在の状態」も Login の revalidate 文に含まれるため不可）。(c) Cart の live region は処理中だけ描画する（§4 を訂正。SPEC-050 §25 が要求するのは AWAITING_PAYMENT → CONFIRMED の通知領域であり、Cart の常設は要求していない）。

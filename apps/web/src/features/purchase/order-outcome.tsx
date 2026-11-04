@@ -1,12 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { useId } from "react";
 import { ExternalLink } from "../../presentation/components/external-link";
 import { SectionHeading } from "../../presentation/components/section-heading";
 import { StatusBadge } from "../../presentation/components/status-badge";
 import { Button } from "../../presentation/components/ui/button";
 import { copy } from "../../presentation/copy/ja";
+import { Link } from "../../routing/link";
 import type { PurchaseAction, PurchaseStatusModel } from "./purchase-status-model";
 
 // The Order outcome shared by PG-XFN-001 and PG-MYP-004 (SPEC-050 16.2 .. 16.7, 25). A view: the state is

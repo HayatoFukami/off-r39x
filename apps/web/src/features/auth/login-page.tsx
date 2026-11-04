@@ -1,7 +1,5 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, Suspense, useId, useRef, useState } from "react";
 import {
   accountPath,
@@ -15,6 +13,8 @@ import { ErrorSummary } from "../../presentation/components/error-summary";
 import { FormField } from "../../presentation/components/form-field";
 import { Button } from "../../presentation/components/ui/button";
 import { copy } from "../../presentation/copy/ja";
+import { Link } from "../../routing/link";
+import { useRouter, useSearchParams } from "../../routing/navigation";
 import { CartRecovery } from "../cart/cart-recovery";
 import { useCart } from "../cart/use-cart";
 import { ContinuationNoticeView } from "./continuation-notice";

@@ -7,7 +7,7 @@
 - 純粋 TypeScript。React / DOM / `window` / `localStorage` 直接参照 / `Date.now()` / `Math.random()` / `crypto.randomUUID()` の直接呼び出し（デフォルト実装を除く）/ `setTimeout`（デフォルト `sleep` を除く）/ ネットワークを使わない。時刻・乱数・待機・storage はすべて注入する。`console.*` を呼ばない（Biome `noConsole`）。
 - `any`、`as unknown as T`、非 null assertion を使わない（DEV-TS-002/003）。永続化データは必ず `zod` の `.strict()`（または `z.strictObject`）で検証してから使う（DEV-TS-004）。`zod` は `apps/web/package.json` の `dependencies` に追加する（v3 / v4 のどちらでもよい）。
 - **Hold の TTL（45 / 30 / 5 分など）をコードのどこにも持たない。** Hold の失効は scenario（`karaokeHold: "expire_before_checkout"`、`checkout: "opportunity_expired"`）でのみ起こす。`ttl`、`holdExpires*`、`expiresAt` などの識別子も置かない。
-- `apps/web/src/mock/**` は `src/api-client/index.ts`、`src/auth/index.ts`、`app/dev/**`、`app/layout.tsx` 以外から import されない（DEV-WEB-012）。ただし `src/mock/**` 自身は `src/api-client/{port,types}.ts`、`src/auth/port.ts`、`src/presentation/**` の純粋関数、`@off-r39x/domain` を import してよい（`presentation` → `mock` の逆向きだけが禁止）。
+- `apps/web/src/mock/**` は `src/api-client/index.ts`、`src/auth/index.ts`、`src/routes/dev/**`、`src/routes/root-layout.tsx`（`mock/dev-ui/mock-mode-badge` だけ）以外から import されない（DEV-WEB-012。`scripts/check-import-boundaries.mts`）。ただし `src/mock/**` 自身は `src/api-client/{port,types}.ts`、`src/auth/port.ts`、`src/presentation/**` の純粋関数、`@off-r39x/domain` を import してよい（`presentation` → `mock` の逆向きだけが禁止）。
 - 相対 import は拡張子なしでも `.ts` 付きでもよい。
 
 ## 0. ファイル一覧

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { copy } from "../../apps/web/src/presentation/copy/ja.ts";
+import { gotoHydrated } from "../harness/browser/hydration.ts";
 import { SITE_NAME } from "../harness/browser/shell.ts";
 
 // UI mock suite (TST-E2E-004: auxiliary, not G8). Contract: tests/contracts/s3-layout.md section 6.
@@ -8,11 +9,12 @@ import { SITE_NAME } from "../harness/browser/shell.ts";
 const MISSING = "/no-such-route-r39x/deeper";
 
 test.describe("TC-PG-XFN-002-301 Not Found page (SPEC-050 19.1)", () => {
-  test("answers 404 with a page that says it cannot be shown and links back Home", async ({
+  test("shows a page that says it cannot be shown and links back Home (the static shell answers HTTP 200 text/html)", async ({
     page,
   }) => {
-    const response = await page.goto(MISSING);
-    expect(response?.status()).toBe(404);
+    const response = await gotoHydrated(page, MISSING);
+    expect(response?.status()).toBe(200);
+    expect(response?.headers()["content-type"] ?? "").toMatch(/^text\/html/);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(copy.notFound.title);
     await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
     await expect(page.getByRole("main")).toContainText(copy.notFound.description);
@@ -28,7 +30,7 @@ test.describe("TC-PG-XFN-002-301 Not Found page (SPEC-050 19.1)", () => {
   test("leaks no internal information (requested path, framework default text)", async ({
     page,
   }) => {
-    await page.goto(MISSING);
+    await gotoHydrated(page, MISSING);
     const main = page.getByRole("main");
     await expect(main).not.toContainText(/no-such-route|deeper/);
     await expect(main).not.toContainText(/This page could not be found|404|stack|Error/);
@@ -36,7 +38,7 @@ test.describe("TC-PG-XFN-002-301 Not Found page (SPEC-050 19.1)", () => {
   });
 
   test("the Home link returns to the Event Home", async ({ page }) => {
-    await page.goto(MISSING);
+    await gotoHydrated(page, MISSING);
     await page
       .getByRole("main")
       .getByRole("link", { name: copy.notFound.homeLink, exact: true })

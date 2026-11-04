@@ -44,10 +44,7 @@ const OTHER = [
   "src/mock/dev-ui/mock-checkout-screen.tsx",
 ] as const;
 
-const ROUTES = [
-  "app/(self)/purchase/orders/[orderRef]/page.tsx",
-  "app/dev/mock-checkout/[orderRef]/page.tsx",
-] as const;
+const ROUTES = ["src/routes/self/purchase-order.tsx", "src/routes/dev/mock-checkout.tsx"] as const;
 
 const s7aSources = [
   ...PURE,
@@ -73,40 +70,45 @@ describe("TC-DEV-WEB-001-601 the S7a modules and routes exist at the contracted 
   });
 });
 
-describe("TC-DEV-WEB-001-602 the S7a route files are thin server shells (DEV-WEB-001, SPEC-050 5.2 / 19.2)", () => {
+describe("TC-DEV-WEB-001-602 the S7a route modules are thin shells (DEV-WEB-001, SPEC-050 5.2 / 19.2)", () => {
   const purchase = stripComments(read(ROUTES[0]));
   const checkout = stripComments(read(ROUTES[1]));
 
   it("the Purchase Status route validates the param, shows Access Denied for a bad one, and renders the container", () => {
     expect(purchase).not.toMatch(/^\s*["']use client["']/);
-    expect(purchase).toMatch(/export\s+const\s+metadata/);
+    expect(purchase).toMatch(/export\s+const\s+handle/);
     expect(purchase).toMatch(/copy\.purchase\.pageTitle/);
-    expect(purchase).toMatch(/await\s+params|params\s*\)\s*=>|await\s+props\.params/);
+    expect(purchase).toMatch(/\buseParams\b/);
     expect(purchase).toMatch(/parseOrderRef/);
     expect(purchase).toMatch(/AccessDeniedView/);
     expect(purchase).toMatch(/PurchaseStatusPage/);
-    // A bad ref does not reveal anything through a 404: it renders the same Access Denied view (design 1).
-    expect(purchase).not.toMatch(/\bnotFound\s*\(/);
+    expect(purchase).toMatch(/\bkey=/);
+    // A bad ref does not reveal anything through Not Found: it renders the same Access Denied view (design 1).
+    expect(purchase).not.toMatch(/\bnotFound\s*\(|\bNotFoundView\b/);
     expect(purchase).not.toMatch(/<main[\s>]/);
     expect(purchase).not.toMatch(/from\s+["'][^"']*\/mock\//);
     expect(purchase).not.toMatch(/\b(fetch|localStorage|sessionStorage)\b/);
   });
 
-  it("the mock Checkout route is under app/dev (guarded by the dev layout), 404s a bad ref and renders the screen", () => {
-    expect(ROUTES[1].startsWith("app/dev/")).toBe(true);
+  it("the mock Checkout route is under src/routes/dev (guarded by the dev layout), shows Not Found for a bad ref and renders the screen by key", () => {
+    expect(ROUTES[1].startsWith("src/routes/dev/")).toBe(true);
     expect(checkout).not.toMatch(/^\s*["']use client["']/);
-    expect(checkout).toMatch(/export\s+const\s+metadata/);
+    expect(checkout).toMatch(/export\s+const\s+handle/);
     expect(checkout).toMatch(/copy\.mockCheckout\.pageTitle/);
+    expect(checkout).toMatch(/\buseParams\b/);
     expect(checkout).toMatch(/parseOrderRef/);
-    expect(checkout).toMatch(/\bnotFound\s*\(/);
+    expect(checkout).toMatch(/\bNotFoundView\b/);
+    expect(checkout).not.toMatch(/\bnotFound\s*\(/);
     expect(checkout).toMatch(/MockCheckoutScreen/);
+    expect(checkout).toMatch(/\bkey=/);
     expect(checkout).not.toMatch(/<main[\s>]/);
   });
 
-  it("the dev layout guard that makes /dev/* 404 outside mock mode is still in place (DEV-WEB-012)", () => {
-    const layout = stripComments(read("app/dev/layout.tsx"));
+  it("the dev layout guard that shows Not Found for /dev/* outside mock mode is still in place (DEV-WEB-012)", () => {
+    const layout = stripComments(read("src/routes/dev/dev-layout.tsx"));
     expect(layout).toMatch(/isDevAreaEnabled/);
-    expect(layout).toMatch(/notFound\s*\(/);
+    expect(layout).toMatch(/\bNotFoundView\b/);
+    expect(layout).not.toMatch(/\bnotFound\s*\(/);
   });
 });
 
@@ -114,7 +116,7 @@ describe("TC-DEV-WEB-001-603 the pure modules are pure (DEV-WEB-001, DEV-TS)", (
   for (const path of PURE) {
     it(`${path} imports no React, Next, storage, clock, random or mock backend`, () => {
       const code = stripComments(read(path));
-      expect(code, path).not.toMatch(/from\s+["'](react|next)[/"']/);
+      expect(code, path).not.toMatch(/from\s+["'](react|next|react-router)[/"']/);
       expect(code, path).not.toMatch(/\b(localStorage|sessionStorage|document|window|fetch)\b/);
       expect(code, path).not.toMatch(/from\s+["'][^"']*\/mock\//);
       expect(code, path).not.toMatch(/\b(Date\.now|Math\.random|crypto\.randomUUID)\b/);

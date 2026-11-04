@@ -1,7 +1,7 @@
 import type { ComponentProps } from "react";
 import { cn } from "./cn";
 
-// Visual values come from the @theme tokens in app/globals.css (SPEC-050 24.3).
+// Visual values come from the @theme tokens in src/styles/globals.css (SPEC-050 24.3).
 export function Input({ className, ...props }: ComponentProps<"input">) {
   return (
     <input

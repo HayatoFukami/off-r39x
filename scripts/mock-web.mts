@@ -1,12 +1,18 @@
 // DEV-WEB-011: cross-platform UI mock build / start. The mock flag is set only in the child environment,
-// and a production deployment environment is refused (the flag must never reach a production build).
+// and a production environment (APP_ENV=production) is refused (the flag must never reach a production build).
+// `build` runs the web build (Vite, then dist/_headers); `start` serves apps/web/dist with scripts/serve-web-dist.mts.
 // Runs under plain `node` (type stripping): erasable TypeScript syntax only, node: built-ins only.
 // Usage: node scripts/mock-web.mts <build|start> [--port <1-65535>] [--dry-run]
 import { spawnSync } from "node:child_process";
 import { writeSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const USAGE = "USAGE node scripts/mock-web.mts <build|start> [--port <1-65535>] [--dry-run]";
 const DEFAULT_PORT = 3100;
+const HOST = "127.0.0.1";
+const BUILD_COMMAND = "pnpm --filter @off-r39x/web build";
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 interface Options {
   readonly mode: "build" | "start";
@@ -60,29 +66,31 @@ function parseArgs(argv: readonly string[]): Options {
   return { mode, port, dryRun };
 }
 
+function serveArgs(options: Options): string[] {
+  return ["scripts/serve-web-dist.mts", "--port", String(options.port), "--host", HOST];
+}
+
 function commandFor(options: Options): string {
-  return options.mode === "build"
-    ? "pnpm --filter @off-r39x/web build"
-    : `pnpm --filter @off-r39x/web exec next start -p ${options.port} -H 127.0.0.1`;
+  return options.mode === "build" ? BUILD_COMMAND : `node ${serveArgs(options).join(" ")}`;
 }
 
 function main(): void {
   const options = parseArgs(process.argv.slice(2));
-  if (process.env.VERCEL_ENV === "production") {
-    fail("ERROR mock-web-production UI mock must not be enabled in a production deployment", 1);
+  if (process.env.APP_ENV === "production") {
+    fail("ERROR mock-web-production UI mock must not be enabled in a production environment", 1);
   }
   const command = commandFor(options);
   if (options.dryRun) {
     process.stdout.write(
-      `DRY-RUN mock-web ${options.mode}\nENV NEXT_PUBLIC_UI_MOCK=1\nCOMMAND ${command}\n`,
+      `DRY-RUN mock-web ${options.mode}\nENV VITE_UI_MOCK=1\nCOMMAND ${command}\n`,
     );
     return;
   }
-  const result = spawnSync(command, {
-    stdio: "inherit",
-    shell: true,
-    env: { ...process.env, NEXT_PUBLIC_UI_MOCK: "1" },
-  });
+  const env = { ...process.env, VITE_UI_MOCK: "1" };
+  const result =
+    options.mode === "build"
+      ? spawnSync(command, { stdio: "inherit", shell: true, env })
+      : spawnSync(process.execPath, serveArgs(options), { stdio: "inherit", cwd: REPO_ROOT, env });
   process.exitCode = result.status ?? 1;
 }
 

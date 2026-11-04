@@ -6,6 +6,8 @@ const BASE_URL = `http://127.0.0.1:${PORT}`;
 const launcher = fileURLToPath(new URL("./harness/browser/start-mock-web.mjs", import.meta.url));
 
 // UI mock suite (TST-E2E-004): auxiliary suite, not G8. Runner retry is 0 (SPEC-170 §69).
+// The webServer builds apps/web (Vite, VITE_UI_MOCK=1) and serves apps/web/dist with dist/_headers applied through
+// scripts/serve-web-dist.mts on 127.0.0.1:3100 (see harness/browser/start-mock-web.mjs).
 export default defineConfig({
   testDir: "./e2e",
   testMatch: "**/*.spec.ts",

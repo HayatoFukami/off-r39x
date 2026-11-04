@@ -13,28 +13,31 @@ import { EMAIL, TEST_PASSWORD } from "../../../harness/mock-seed.ts";
 
 // Contract: tests/contracts/s3-layout.md section 3.1 (DEV-WEB-011 fail closed, DEV-WEB-010 mock selection).
 
-const MOCK = { NEXT_PUBLIC_UI_MOCK: "1" } as const;
+const MOCK = { VITE_UI_MOCK: "1" } as const;
 
 describe("TC-DEV-WEB-011-101 createApiPort / createAuthPort fail closed unless UI mock is enabled (DEV-WEB-011)", () => {
   it.each([
     [{}],
-    [{ NEXT_PUBLIC_UI_MOCK: "0" }],
-    [{ NEXT_PUBLIC_UI_MOCK: "true" }],
-    [{ NEXT_PUBLIC_UI_MOCK: "" }],
+    [{ VITE_UI_MOCK: "0" }],
+    [{ VITE_UI_MOCK: "true" }],
+    [{ VITE_UI_MOCK: "" }],
+    [{ NEXT_PUBLIC_UI_MOCK: "1" }],
   ])("createApiPort throws 'real api client not implemented' for env %j", (env) => {
     const storage = createMemoryStorage();
     expect(() => createApiPort({ env, storage })).toThrow("real api client not implemented");
     expect(storage.writes).toEqual([]);
   });
 
-  it.each([[{}], [{ NEXT_PUBLIC_UI_MOCK: "0" }], [{ NEXT_PUBLIC_UI_MOCK: "yes" }]])(
-    "createAuthPort throws 'real auth client not implemented' for env %j",
-    (env) => {
-      const storage = createMemoryStorage();
-      expect(() => createAuthPort({ env, storage })).toThrow("real auth client not implemented");
-      expect(storage.writes).toEqual([]);
-    },
-  );
+  it.each([
+    [{}],
+    [{ VITE_UI_MOCK: "0" }],
+    [{ VITE_UI_MOCK: "yes" }],
+    [{ NEXT_PUBLIC_UI_MOCK: "1" }],
+  ])("createAuthPort throws 'real auth client not implemented' for env %j", (env) => {
+    const storage = createMemoryStorage();
+    expect(() => createAuthPort({ env, storage })).toThrow("real auth client not implemented");
+    expect(storage.writes).toEqual([]);
+  });
 });
 
 describe("TC-DEV-WEB-010-111 mock mode selects the mock ports on the injected storage (DEV-WEB-010)", () => {
