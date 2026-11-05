@@ -10,6 +10,7 @@ import {
   createBackend,
   createMemoryStorage,
   dbFingerprint,
+  okData,
 } from "../../../harness/mock-backend.ts";
 import { EMAIL, ORDER, TEST_PASSWORD } from "../../../harness/mock-seed.ts";
 
@@ -165,6 +166,46 @@ describe("TC-PG-AUTH-001-101 signUp (15.1, SEC-API-027, SEC-AUTH-016)", () => {
     expect(
       await backend.auth.signUp({ email: "trimmed@example.com", password: `${"d".repeat(9)}   ` }),
     ).toEqual({ kind: "confirmation_required" });
+  });
+});
+
+describe("TC-PG-MYP-002-103 a newly registered user has no display name; none is guessed from the email (SPEC-030 9.2, SPEC-050 18.2)", () => {
+  const LOCAL = "uniquelocalpart";
+  const EMAIL_WITH_LOCAL = `${LOCAL}@example.com`;
+  const storedNameOf = (backend: ReturnType<typeof createBackend>): string | null | undefined => {
+    const loaded = backend.db.load();
+    if (loaded.kind !== "ready") throw new Error("expected a ready DB");
+    return loaded.state.users.find((u) => u.email === EMAIL_WITH_LOCAL)?.displayName;
+  };
+
+  it("confirmation_required: the unverified user is stored with displayName null", async () => {
+    const backend = createBackend();
+    expect(await backend.auth.signUp({ email: EMAIL_WITH_LOCAL, password: TEST_PASSWORD })).toEqual(
+      { kind: "confirmation_required" },
+    );
+    expect(storedNameOf(backend)).toBeNull();
+    expect(JSON.stringify(backend.db.load())).not.toContain(`"displayName":"${LOCAL}"`);
+  });
+
+  it("signed_in: the verified user is stored with displayName null and getProfile returns null, not the local part", async () => {
+    const backend = createBackend();
+    backend.setScenario({ auth: { signup: "signed_in" } });
+    expect(await backend.auth.signUp({ email: EMAIL_WITH_LOCAL, password: TEST_PASSWORD })).toEqual(
+      { kind: "signed_in" },
+    );
+    expect(storedNameOf(backend)).toBeNull();
+    const profile = okData(await backend.api.self.getProfile());
+    expect(profile).toEqual({ email: EMAIL_WITH_LOCAL, displayName: null });
+    expect(JSON.stringify(profile)).not.toContain(`"displayName":"${LOCAL}"`);
+  });
+
+  it("leaves the seed users' display names as they are", async () => {
+    const backend = createBackend();
+    backend.setScenario({ auth: { signup: "signed_in" } });
+    await backend.auth.signUp({ email: EMAIL_WITH_LOCAL, password: TEST_PASSWORD });
+    const loaded = backend.db.load();
+    if (loaded.kind !== "ready") throw new Error("expected a ready DB");
+    expect(loaded.state.users.find((u) => u.email === EMAIL.demo)?.displayName).toBe("デモ太郎");
   });
 });
 

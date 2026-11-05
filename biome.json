@@ -6,11 +6,11 @@
       "!ref",
       "!docs",
       "!**/.next",
+      "!**/dist",
       "!**/node_modules",
       "!generated",
       "!**/test-results",
       "!**/playwright-report",
-      "!**/next-env.d.ts",
       "!pnpm-lock.yaml",
       "!reviews"
     ]

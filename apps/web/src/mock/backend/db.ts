@@ -85,7 +85,11 @@ const idempotency = z.discriminatedUnion("kind", [
 export const dbStateSchema = z.strictObject({
   version: z.literal(1),
   users: z.array(
-    z.strictObject({ email: z.string(), displayName: z.string(), emailVerified: z.boolean() }),
+    z.strictObject({
+      email: z.string(),
+      displayName: z.string().nullable(),
+      emailVerified: z.boolean(),
+    }),
   ),
   offerings: z.array(
     z.strictObject({

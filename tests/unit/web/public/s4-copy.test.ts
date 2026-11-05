@@ -75,9 +75,30 @@ describe("TC-PG-PUB-001-611 copy carries the SPEC-050 fixed public wording", () 
   });
 
   it("keeps the dictionary free of English placeholder text and brand material", () => {
-    for (const text of stringLeaves(copy)) {
+    // "未設定" is required wording of the Profile (SPEC-050 18.2: the unset display name). The exemption is by
+    // key position, not by string value: exactly mypage.profile.unset, .displayNameHint and .status.cleared
+    // may contain it, so the same text at any other key (an invented placeholder) is still found.
+    const profile = copy.mypage.profile;
+    const withoutUnsetKeys = {
+      ...copy,
+      mypage: {
+        ...copy.mypage,
+        profile: {
+          ...profile,
+          unset: "",
+          displayNameHint: "",
+          status: { ...profile.status, cleared: "" },
+        },
+      },
+    };
+    for (const text of stringLeaves(withoutUnsetKeys)) {
       expect(text.toLowerCase()).not.toContain("lorem");
       expect(text).not.toContain("未設定");
     }
+    // Exactly those three leaves carry the wording (a fourth, or a lost one, changes this count).
+    expect(stringLeaves(copy).filter((text) => text.includes("未設定"))).toHaveLength(3);
+    expect(profile.unset).toContain("未設定");
+    expect(profile.displayNameHint).toContain("未設定");
+    expect(profile.status.cleared).toContain("未設定");
   });
 });

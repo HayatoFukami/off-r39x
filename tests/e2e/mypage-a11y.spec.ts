@@ -191,11 +191,11 @@ test.describe("TC-PG-MYP-001-723 a disabled action explains itself in text and a
   }) => {
     await openAs(page, PATH.profile);
     const field = mainOf(page).getByLabel(profile().displayNameLabel, { exact: true });
-    await field.fill("");
+    await field.fill("あ".repeat(81));
     await mainButton(page, profile().save).click();
     await expect(alertsOf(page)).toBeFocused();
     await expect(field).toHaveAttribute("aria-invalid", "true");
-    expect(await describedBy(field)).toContain(profile().error.required);
+    expect(await describedBy(field)).toContain(profile().error.tooLong);
     await page.keyboard.press("Tab");
     await expect(alertsOf(page).getByRole("link")).toBeFocused();
     await page.keyboard.press("Enter");

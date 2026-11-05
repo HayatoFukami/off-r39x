@@ -1,10 +1,10 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { getBrowserCartLifecycle } from "../features/cart/cart-lifecycle";
 import { getBrowserCartTransitionCoordinator } from "../features/cart/cart-transition-lock";
 import { createCartLifecycleAuthPort } from "../features/shell/cart-lifecycle-auth-port";
+import { usePathname, useRouter } from "../routing/navigation";
 import { continuationForPath } from "./continuation";
 import { createAuthPort } from "./index";
 import { beginLogout, endLogout } from "./logout-signal";

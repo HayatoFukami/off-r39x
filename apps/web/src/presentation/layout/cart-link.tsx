@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { CART_HREF } from "../../config/site";
+import { Link } from "../../routing/link";
 import { copy } from "../copy/ja";
 
 /** Cart link: the quantity is text and part of the accessible name, only when it is 1 or more. */

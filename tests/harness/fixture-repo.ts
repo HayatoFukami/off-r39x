@@ -63,12 +63,10 @@ export function cleanFiles(): Record<string, string> {
     "packages/domain/package.json": pkg("@off-r39x/domain"),
     "packages/domain/src/states.ts": 'export const A = ["X"] as const;\n',
     "packages/domain/src/index.ts": 'export * from "./states";\n',
-    "apps/web/app/layout.tsx":
-      'import { Badge } from "@/mock/dev-ui/mock-mode-badge";\nexport default Badge;\n',
-    "apps/web/app/page.tsx":
+    // React Router route modules (DEV-WEB-001). The mock allowances of the dev routes and the root layout are
+    // exercised explicitly in TC-DEV-WEB-012-001, not through the shared clean tree.
+    "apps/web/src/routes/public/home.tsx":
       'import { Card } from "@/presentation/components/card";\nexport default Card;\n',
-    "apps/web/app/dev/scenarios/page.tsx":
-      'import { Panel } from "@/mock/dev-ui/scenario-panel";\nexport default Panel;\n',
     "apps/web/src/api-client/port.ts": "export interface ApiPort {}\n",
     "apps/web/src/api-client/types.ts": "export type Ref = string;\n",
     "apps/web/src/api-client/index.ts":
@@ -84,6 +82,7 @@ export function cleanFiles(): Record<string, string> {
     "apps/web/src/mock/backend/seed.ts": "export const seed = 1;\n",
     "apps/web/src/mock/dev-ui/mock-mode-badge.tsx": "export const Badge = () => null;\n",
     "apps/web/src/mock/dev-ui/scenario-panel.tsx": "export const Panel = () => null;\n",
+    "apps/web/src/mock/dev-ui/mock-checkout-screen.tsx": "export const Screen = () => null;\n",
     "apps/web/src/presentation/components/card.tsx": [
       'import type { ApiPort } from "@/api-client/port";',
       'import type { Ref } from "@/api-client/types";',

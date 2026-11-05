@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 import { ACCOUNT_MENU_ITEMS } from "../../config/site";
+import { Link } from "../../routing/link";
 import { Button } from "../components/ui/button";
 import { copy } from "../copy/ja";
 

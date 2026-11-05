@@ -21,12 +21,10 @@ function walk(dir: string): string[] {
   });
 }
 
-/** Route files may live in app/<path> or in the (public) route group. */
+/** Route modules live in src/routes/<path> (React Router; SPEC-190 DEV-WEB-001). */
 function routeFile(path: string): string | null {
-  for (const candidate of [`app/${path}`, `app/(public)/${path}`]) {
-    if (existsSync(abs(candidate))) return candidate;
-  }
-  return null;
+  const candidate = `src/routes/${path}`;
+  return existsSync(abs(candidate)) ? candidate : null;
 }
 
 function stripComments(source: string): string {
@@ -69,12 +67,12 @@ const CONTAINERS = [
 ] as const;
 
 const PAGES = [
-  { path: "page.tsx", title: null, dynamic: false },
-  { path: "announcements/page.tsx", title: "announcements", dynamic: false },
-  { path: "announcements/[announcementRef]/page.tsx", title: "announcementDetail", dynamic: true },
-  { path: "karaoke/page.tsx", title: "karaoke", dynamic: false },
-  { path: "karaoke/schedule/[date]/page.tsx", title: "karaokeDay", dynamic: true },
-  { path: "goods/page.tsx", title: "goods", dynamic: false },
+  { path: "public/home.tsx", title: null, dynamic: false },
+  { path: "public/announcements.tsx", title: "announcements", dynamic: false },
+  { path: "public/announcement-detail.tsx", title: "announcementDetail", dynamic: true },
+  { path: "public/karaoke.tsx", title: "karaoke", dynamic: false },
+  { path: "public/karaoke-day.tsx", title: "karaokeDay", dynamic: true },
+  { path: "public/goods.tsx", title: "goods", dynamic: false },
 ] as const;
 
 const s4Sources = [
@@ -98,11 +96,11 @@ describe("TC-PG-PUB-001-612 the S4 modules and routes exist at the contracted pa
   }
 });
 
-describe("TC-PG-PUB-001-612 page.tsx files are thin server shells (DEV-WEB-001, Next 16 async params)", () => {
+describe("TC-PG-PUB-001-612 route modules are thin shells (DEV-WEB-001, React Router)", () => {
   for (const page of PAGES) {
     const file = routeFile(page.path);
     const source = file === null ? "" : stripComments(read(file));
-    it(`${page.path} is a Server Component that renders a feature container`, () => {
+    it(`${page.path} is a thin route module that renders a feature container`, () => {
       expect(file, page.path).not.toBeNull();
       expect(source).not.toMatch(/^\s*["']use client["']/);
       expect(source).not.toMatch(/<main[\s>]/);
@@ -111,24 +109,29 @@ describe("TC-PG-PUB-001-612 page.tsx files are thin server shells (DEV-WEB-001, 
       expect(source).not.toMatch(/\b(fetch|localStorage|sessionStorage)\b/);
     });
     if (page.title !== null) {
-      it(`${page.path} sets metadata.title from copy.pageTitle.${page.title}`, () => {
-        expect(source).toMatch(/export\s+const\s+metadata/);
+      it(`${page.path} exports handle.title from copy.pageTitle.${page.title}`, () => {
+        expect(source).toMatch(/export\s+const\s+handle/);
         expect(source).toMatch(new RegExp(`copy\\.pageTitle\\.${page.title}\\b`));
       });
     }
     if (page.dynamic) {
-      it(`${page.path} awaits params and calls notFound() for an invalid parameter`, () => {
-        expect(source).toMatch(/await\s+(props\.)?params|params\s*:\s*Promise</);
-        expect(source).toMatch(/notFound\s*\(/);
+      it(`${page.path} reads useParams, renders NotFoundView for an invalid parameter and remounts the container by key`, () => {
+        expect(source).toMatch(/\buseParams\b/);
+        expect(source).toMatch(/\bNotFoundView\b/);
+        expect(source).not.toMatch(/notFound\s*\(|await\s+(props\.)?params|params\s*:\s*Promise</);
         expect(source).toMatch(/parseAnnouncementRef|parseBusinessDateParam/);
+        expect(source).toMatch(/\bkey=/);
       });
     }
   }
 
-  it("makes the layout title a template so that pages read 'Page | SITE_NAME' (Home stays SITE_NAME)", () => {
-    const layout = read("app/layout.tsx");
-    expect(layout).toMatch(/template/);
-    expect(layout).toMatch(/default\s*:/);
+  it("builds the document title in the root layout so that pages read 'Page | SITE_NAME' (Home stays SITE_NAME)", () => {
+    const layout = read("src/routes/root-layout.tsx");
+    expect(layout).toMatch(/formatDocumentTitle/);
+    expect(layout).toMatch(/<title[\s>]/);
+    const title = read("src/routes/document-title.ts");
+    expect(title).toMatch(/SITE_NAME/);
+    expect(title).toContain(" | ");
   });
 });
 

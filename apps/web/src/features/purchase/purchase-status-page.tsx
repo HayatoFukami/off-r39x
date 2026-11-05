@@ -1,8 +1,6 @@
 "use client";
 
 import { assertNever } from "@off-r39x/domain";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { applyIfLatest, invalidateRequests } from "../../api-client/latest-request";
 import { useApi } from "../../api-client/provider";
@@ -12,6 +10,8 @@ import { AccessDeniedView } from "../../presentation/components/access-denied-vi
 import type { Loadable } from "../../presentation/components/list-state";
 import { PageState } from "../../presentation/components/page-state";
 import { copy } from "../../presentation/copy/ja";
+import { Link } from "../../routing/link";
+import { useRouter } from "../../routing/navigation";
 import { CartRecovery } from "../cart/cart-recovery";
 import { useCart } from "../cart/use-cart";
 import { interpretCheckoutStart } from "./cart-purchase-flow";

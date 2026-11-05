@@ -148,10 +148,11 @@ test.describe("TC-SPEC-050-25-002 headings below the fold wait invisibly and fad
 test.describe("TC-SPEC-050-25-003 without JavaScript the section headings are visible (SPEC-050 25)", () => {
   test.use({ javaScriptEnabled: false });
 
-  // In UI mock mode the pages render their sections on the client, so the server HTML contains no
-  // SectionHeading. The server-rendered form of a heading is `data-reveal="static"` (contract 6.1): this test
-  // splices two such headings into the real server HTML of Home and checks them against the real stylesheet.
-  test("a server-rendered heading (data-reveal=static) is opaque when scripts do not run", async ({
+  // The SPA renders nothing without JavaScript (SPEC-050 5.4): the static shell is an empty #root. The static form
+  // of a heading is `data-reveal="static"` (contract 6.1). This test splices two such headings into the real
+  // static shell right after the opening tag of #root and checks them against the real stylesheet. It verifies the
+  // CSS contract only (a heading is never hidden when scripts do not run); it does not claim server rendering.
+  test("a static heading (data-reveal=static) is opaque when scripts do not run", async ({
     page,
   }) => {
     await page.route(
@@ -165,8 +166,8 @@ test.describe("TC-SPEC-050-25-003 without JavaScript the section headings are vi
         const html = await response.text();
         const probes =
           '<h2 id="probe-h2" data-reveal="static">probe h2</h2><h3 id="probe-h3" data-reveal="static">probe h3</h3>';
-        const patched = html.replace(/(<main[^>]*>)/, `$1${probes}`);
-        expect(patched, "the probe headings were spliced into <main>").not.toBe(html);
+        const patched = html.replace(/(<div id="root"[^>]*>)/, `$1${probes}`);
+        expect(patched, "the probe headings were spliced into #root").not.toBe(html);
         await route.fulfill({ response, body: patched });
       },
     );
@@ -180,7 +181,6 @@ test.describe("TC-SPEC-050-25-003 without JavaScript the section headings are vi
     // Scripts did not run: nothing armed the reveal and the hydration signal is absent.
     await expect(page.locator("html[data-hydrated]")).toHaveCount(0);
     await expect(page.locator("[data-reveal='pending']")).toHaveCount(0);
-    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   });
 });
 

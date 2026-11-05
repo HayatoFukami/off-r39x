@@ -12,12 +12,13 @@
 
 - 含む: Cart の「購入手続きへ進む」の結線（Guest → Login、Authenticated → `purchase.startCartPurchase` → `purchase.startCheckout`）、mock Checkout 画面、PG-XFN-001 Purchase Status（OrderOutcome 部品を含む）、再購入（Entry / Goods / 複合は Cart へ再投入、Karaoke は `/karaoke`）、`AccessDeniedView`（PG-XFN-003 の部品。S8 が Mypage の経路を足す）。
 - 含まない（S7b / S8）: Karaoke の購入開始（PG-KRK-003 の `startKaraokePurchase`、Hold 系 scenario の画面）、Mypage の各ページ（`/mypage/orders` ほか）。S7a の画面は S8 の route へ `href` を張るだけで、遷移先の実在を前提にしない。E2E 7 の「Mypage の注文一覧に同じ Order がある」は、S7a では mock DB の `orders` に同じ Order が 1 件あることで確認し、一覧 UI の確認は S8 が行う。E2E 7〜9 の Karaoke 側は S7b。ただし seed 済みの Karaoke Order（`ORDER.kValid` / `ORDER.expired`）を PG-XFN-001 で開く確認は S7a に含める。
-- **mock backend / port への追加は不要**。S2 の `createMockApi`（`purchase.startCartPurchase`、`purchase.startCheckout`、`self.getOrder`、`self.listOrders`）、`ApiPort` の型、`AuthPort` は**変更しない**。必要な動作（Purpose 決定、all-or-nothing、同一 idempotencyKey の同一結果、`/dev/mock-checkout/<orderRef>` の redirect、`confirm_after_recheck` の read 回数、entitlements の CONFIRMED 限定、`notice`）はすべて S2 契約 §9〜§11 で実装済みであり、`tests/unit/web/mock/*.test.ts` が検証している。coder は `apps/web/src/mock/backend/**` と `src/api-client/{port,types}.ts` を変更しない。追加するのは `src/mock/dev-ui/mock-checkout-screen.tsx` だけ。
+- **mock backend / port への追加は不要**。S2 の `createMockApi`（`purchase.startCartPurchase`、`purchase.startCheckout`、`self.getOrder`、`self.listOrders`）、`ApiPort` の型、`AuthPort` は**変更しない**。必要な動作（Purpose 決定、all-or-nothing、同一 idempotencyKey の同一結果、`/dev/mock-checkout/<orderRef>` の redirect、`confirm_after_recheck` の read 回数、entitlements の CONFIRMED 限定、`notificationSummary`）はすべて S2 契約 §9〜§11 で実装済みであり、`tests/unit/web/mock/*.test.ts` が検証している。coder は `apps/web/src/mock/backend/**` と `src/api-client/{port,types}.ts` を変更しない。追加するのは `src/mock/dev-ui/mock-checkout-screen.tsx` だけ。
+- **B4a の更新**（2027 phase B、`API-PUR-CART-001`）: 上の「変更しない」は S7a 当時の範囲である。phase B4a は port の `CartPurchaseStart` を `created { orderRef }` / `rejected { itemFailures: [{ lineKey, reasons }] }` に変え（`includedLineKeys` と `rejections` を廃止）、`startCartPurchase` の mock を `API-PUR-CART-001` の契約（S2 契約 §11.1）に合わせた。これに伴い、本書の `CartStartStep` / `RejectionLine` / `describeRejections` / hook / 不成立の summary の DOM を下記のとおり更新し、`orderedLines` を廃止した。
 
 共通の約束（S4 / S5 / S6 の約束を引き継ぐ）:
 
 - 文言は `apps/web/src/presentation/copy/ja.ts` の `copy` に集める。S7a の新規ファイル（`features/purchase/**`、`src/config/purchase-routes.ts`、新規 `presentation/components/**`、`src/mock/dev-ui/mock-checkout-screen.tsx`、route）に**日本語の直書き・`¥` の直書き・色の直書きを置かない**。金額は `formatMoney`（bigint）、日時は `format/datetime.ts`（JST）。
-- page.tsx は Server Component の薄い殻（`metadata` と route param の検証だけ。async `params` を `await` する）。データ取得は `"use client"` の container が mount 後（`useEffect`）に `useApi()` 経由で行う。`features/**` から `mock/**` を import しない。
+- route module（`src/routes/**`。React Router。旧 `app/**/page.tsx`）は薄い殻（`export const handle = { title }` と route param の検証だけ。`useParams()` で値を取り、feature container に `key={生の param 値}` を付けて描画して param の変化で再マウントする）。`<main>` を描画せず、mock・`fetch`・storage を参照しない。データ取得は `"use client"` の container が mount 後（`useEffect`）に `useApi()` 経由で行う。`features/**` から `mock/**` を import しない。
 - 価格・金額・数量の権威は port の戻り値だけ。Cart の保存値・URL・Continuation の値を権威にしない。Browser Return（mock Checkout からの戻り）だけで成功を表示しない（PAY-BRW-001〜003）。
 - `console.*`、`localStorage` / `sessionStorage` の直接参照、`dangerouslySetInnerHTML` を `features/purchase/**` と新規ファイルで使わない（Cart の保存は既存の `useCart()` / cart store 経由だけ）。
 - 各ページの `h1` は 1 つだけ。見出しの level は飛ばさない。`main` 内の `role="alert"` は同時に 1 つだけ。
@@ -28,7 +29,7 @@
 | パス | 種別 | export |
 |---|---|---|
 | `apps/web/src/config/purchase-routes.ts` | 純粋（react / next を import しない。型 import のみ） | `parseOrderRef`, `purchaseOrderHref`, `mypageOrderHref`, `entitlementsListHref`, `entryTicketHref`, `reservationHref`, `goodsItemHref`, `mockCheckoutHref` |
-| `apps/web/src/features/purchase/cart-purchase-flow.ts` | 純粋 | `ProceedPlan`, `planProceed`, `CartStartStep`, `interpretCartStart`, `CheckoutStep`, `interpretCheckoutStart`, `isSafeCheckoutUrl`, `RejectionLine`, `describeRejections`, `orderedLines` |
+| `apps/web/src/features/purchase/cart-purchase-flow.ts` | 純粋 | `ProceedPlan`, `planProceed`, `CartStartStep`, `interpretCartStart`, `CheckoutStep`, `interpretCheckoutStart`, `isSafeCheckoutUrl`, `RejectionLine`, `describeRejections` |
 | `apps/web/src/features/purchase/purchase-status-model.ts` | 純粋 | `PurchaseItemRow`, `PurchaseAction`, `EntitlementsModel`, `PurchaseStatusModel`, `buildPurchaseStatusModel`, `recheckAnnouncement` |
 | `apps/web/src/features/purchase/purchase-again.ts` | 純粋 | `PurchaseAgainPlan`, `planPurchaseAgain` |
 | `apps/web/src/features/purchase/use-cart-purchase.ts` | client hook | `CartPurchasePhase`, `useCartPurchase` |
@@ -38,13 +39,13 @@
 | `apps/web/src/features/cart/cart-page.tsx` | client container（S5 既存。変更） | `CartPage`（`handleProceed` を `useCartPurchase` へ結線） |
 | `apps/web/src/presentation/components/access-denied-view.tsx` | 純粋な表示部品 | `AccessDeniedView`（props `{ listHref: string; listLabel: string }`） |
 | `apps/web/src/mock/dev-ui/mock-checkout-screen.tsx` | view（dev 専用） | `MockCheckoutScreen`（props `{ orderRef: Ref<"order"> }`） |
-| `apps/web/app/(self)/purchase/orders/[orderRef]/page.tsx` | route | PG-XFN-001。`metadata.title = copy.purchase.pageTitle` |
-| `apps/web/app/dev/mock-checkout/[orderRef]/page.tsx` | route（`app/dev/**`） | `metadata.title = copy.mockCheckout.pageTitle` |
+| `apps/web/src/routes/self/purchase-order.tsx` | route | PG-XFN-001。`metadata.title = copy.purchase.pageTitle` |
+| `apps/web/src/routes/dev/mock-checkout.tsx` | route（`app/dev/**`） | `metadata.title = copy.mockCheckout.pageTitle` |
 
 - `(self)/layout.tsx`（S6 の AuthGate）が `/purchase/*` を覆う。変更しない。
-- `/dev/mock-checkout/*` は `app/dev/layout.tsx` の guard 配下（mock 無効時は `notFound()`、noindex）。一般の Navigation / Footer / Drawer / sitemap から Link しない。
+- `/dev/mock-checkout/*` は `src/routes/dev/dev-layout.tsx` の guard 配下（mock 無効時は Not Found 表示 = `NotFoundView`、noindex）。一般の Navigation / Footer / Drawer / sitemap から Link しない。
 - title は `${copy.purchase.pageTitle} | ${SITE_NAME}` 等（root layout の template）。`copy.pageTitle` へ足さない。
-- 既存の再利用: `presentOrderState` / `orderActionLabel` / `presentPurpose` / `purchaseAgainTarget` / `presentNotification` / `presentRejectionReason`（S1）、`CartStore.addFromOrder` / `subtractLines`（S5）、`accountPath` / `continuationPath`（S6）、`StatusBadge` / `PageState` / `ExternalLink` / `PlainText` / `SectionHeading`。
+- 既存の再利用: `presentOrderState` / `orderActionLabel` / `presentPurpose` / `purchaseAgainTarget` / `presentNotificationSummary` / `presentRejectionReason`（S1）、`CartStore.addFromOrder` / `subtractLines`（S5）、`accountPath` / `continuationPath`（S6）、`StatusBadge` / `PageState` / `ExternalLink` / `PlainText` / `SectionHeading`。
 
 ## 2. 文言 `copy`（`ja.ts` に追加。既存 key は変えない）
 
@@ -141,15 +142,15 @@ export function planProceed(session: SessionState): ProceedPlan;   // SessionSta
 
 ```ts
 export type CartStartStep =
-  | { kind: "checkout"; orderRef: Ref<"order">; includedLineKeys: readonly string[] }
-  | { kind: "rejected"; rejections: readonly { lineKey: string; reason: CartRejectionReasonCode }[] }
+  | { kind: "checkout"; orderRef: Ref<"order"> }
+  | { kind: "rejected"; itemFailures: readonly { lineKey: string; reasons: readonly PurchaseReason[] }[] }
   | { kind: "go_login"; to: string }
   | { kind: "go_verification"; to: string }
   | { kind: "unavailable" };
 export function interpretCartStart(result: CartPurchaseStart): CartStartStep;
 ```
 
-- `created` → `checkout`（`orderRef` と `includedLineKeys` をそのまま）。`rejected` → `rejected`（`rejections` をそのまま。空でも `rejected`）。`auth_required` → `go_login`（`accountPath("login", cart intent)`）。`email_unverified` → `go_verification`（`accountPath("email-verification", cart intent)`。`continue=cart` を引き継ぐ）。`unavailable` → `unavailable`。入力を変更しない。
+- `created` → `checkout`（`orderRef` だけ。送った全 line が Order に入っている。API-PUR-CART-001 の All-or-Nothing。TC-PG-CRT-001-622）。`rejected` → `rejected`（`itemFailures` をそのまま。空でも `rejected`）。`auth_required` → `go_login`（`accountPath("login", cart intent)`）。`email_unverified` → `go_verification`（`accountPath("email-verification", cart intent)`。`continue=cart` を引き継ぐ）。`unavailable` → `unavailable`。入力を変更しない。
 
 ```ts
 export type CheckoutStep = { kind: "assign"; url: string } | { kind: "go_status"; to: string };
@@ -157,24 +158,20 @@ export function interpretCheckoutStart(orderRef: Ref<"order">, result: CheckoutS
 export function isSafeCheckoutUrl(url: string): boolean;
 ```
 
-```ts
-export function orderedLines(sent: readonly CartLine[], includedLineKeys: readonly string[]): CartLine[];
-```
-
-- `orderedLines`（FR-CRT-011 / BR-ORD-014。TC-PG-CRT-001-624）: `sent`（port に渡した snapshot）を順に走査し、line key が `includedLineKeys` の集合に含まれる line を、**送った数量のまま**返す。`includedLineKeys` を走査しないので key の重複で二重に数えない。`includedLineKeys` にあって `sent` にない key は無視。入力を変更しない。注文数量の出典は port に渡した snapshot だけ（描画後の Cart や現在の保存内容ではない）。
+- 部分的な成立は無い（B4a で廃止）。Order に入れた数量の出典は、port に渡した snapshot（送った全 line。描画後の Cart や現在の保存内容ではない）だけである。hook はその snapshot をそのまま `cart.subtractLines(lines)` に渡す（FR-CRT-011 / BR-ORD-014。送った数量だけを引く挙動は TC-PG-CRT-001-615 と `subtractLines` の TC-PG-CRT-001-407 / 427 が検証する）。
 
 - `redirect` かつ `isSafeCheckoutUrl(url)` → `assign`（`location.assign` で top-level 遷移。SEC-WEB-005）。それ以外のすべて（`redirect` で URL が不正、`start_failed`、`opportunity_expired`、`state_conflict`、`auth_required`、`unavailable`）→ `go_status`、`to = purchaseOrderHref(orderRef)`（PG-XFN-001 が現在の Order 状態を読み直して表示する。盲目的な retry をしない）。
 - `isSafeCheckoutUrl`: 文字列全体が次のどちらかのときだけ true。(a) `isSafeRelativePath(url)` を満たす同一 origin の相対 path（例 `/dev/mock-checkout/<uuid>`）。(b) `https:` の絶対 URL で、userinfo（username / password）が無く、`new URL` で解釈できる。それ以外（空、`http:`、`javascript:`、`data:`、`//host/...`、backslash を含む、制御文字を含む、前後に空白、`/admin...`、userinfo 付き）は false。例外を throw しない。
 
 ```ts
-export type RejectionLine = { lineKey: string; name: string; label: string; description: string };
+export type RejectionLine = { lineKey: string; name: string; reasons: readonly RejectionPresentation[] };
 export function describeRejections(
-  rejections: readonly { lineKey: string; reason: CartRejectionReasonCode }[],
+  itemFailures: readonly { lineKey: string; reasons: readonly PurchaseReason[] }[],
   names: ReadonlyMap<string, string | null>,
 ): RejectionLine[];
 ```
 
-- 入力の順のまま 1 件ずつ。`name` は `names.get(lineKey)`（未登録・null は `copy.cart.unknownItemName`）。`label` / `description` は `presentRejectionReason(reason)`（S1）。
+- 入力の順のまま 1 Item に 1 件（TC-PG-CRT-001-623）。`name` は `names.get(lineKey)`（未登録・null は `copy.cart.unknownItemName`）。`reasons` は受け取った順のまま、各理由を `presentRejectionReason(reason)`（S1。`label` / `description`）で写した配列（並べ替え・重複除去・件数の絞り込みをしない）。入力を変更しない。`PurchaseReason` は `api-client/types` の型（API-PUR-ELG-001 の 9 code。S1 契約）。
 
 ### 3.3 `features/purchase/purchase-status-model.ts`
 
@@ -210,7 +207,7 @@ export function recheckAnnouncement(previous: OrderState, next: OrderState): str
 - `stateLabel` / `description` / `tone` は `presentOrderState(state)`、`purposeLabel` は `presentPurpose(purpose).label`、`createdAtText = formatJstDateTime(createdAt)`、`totalText = formatMoney(total)`。`items` は Order の明細の順（購入時 Snapshot。`unitPriceText` / `subtotalText` は `formatMoney`）。`kindLabel = copy.purchase.itemKind[kind]`。`key` は明細ごとに一意（例 `kind + ref + index`）。
 - **`entitlements`（INV-010-07 / BR-ORD-015 の多重防御）**: `presentOrderState(state).showsEntitlements`（= `CONFIRMED`）でなければ、port が entitlements を返しても **`null`**。`CONFIRMED` のときも、Purpose が要求する権利が**すべて**揃っているときだけ非 null: Entry を含む Purpose は `entryTicketRefs.length >= 1`、Goods を含む Purpose は `goodsItems.length >= 1`、`KARAOKE_PURCHASE` は `reservationRef !== null`。1 つでも欠けたら**全体を `null`**（複合 Order で一部の権利だけを有効表示しない）。非 null のとき `label` は `copy.purchase.entitlements.entryLink(i + 1)` / `reservationLink` / `goodsLink(i + 1)`（i は port の順）、`href` は `entryTicketHref` / `reservationHref` / `goodsItemHref`、`itemLabel = copy.goods.item[itemState]`、`handoffLabel = copy.goods.handoff[handoffState]`。Purpose に含まれない種類は空（`entryTickets: []` / `reservation: null` / `goodsItems: []`）。
 - **`actions`**: `presentOrderState(state).actions` の順で、`orderActionLabel(action)` を `label` にする。`retry_checkout` → `{ kind: "retry_checkout" }`、`recheck_status` → `{ kind: "recheck_status" }`、`purchase_again` → `{ kind: "purchase_again", target: purchaseAgainTarget(purpose) }`、`view_purchase` → `{ kind: "link", action: "view_purchase", href: mypageOrderHref(orderRef) }`、`view_entitlements` → **`entitlements !== null` のときだけ** `{ kind: "link", action: "view_entitlements", href: entitlementsListHref(purpose) }`（null なら出さない）。
-- **`notice`**: `detail.notice?.kind === "email_delayed"` かつ `state === "CONFIRMED"` のときだけ `presentNotification("FAILED_RETRYABLE")` の `{ label, message }`。それ以外は `null`（§16.7）。通知に再試行の action を持たせない（`actions` へ足さない）。
+- **`notice`**（SPEC-050 §16.2 / §16.7、`API-ORD-003.notification_summary`、`EML-NTF-003`）: `state === "CONFIRMED"` かつ `detail.notificationSummary?.status === "ATTENTION_REQUIRED"` のときだけ `presentNotificationSummary("ATTENTION_REQUIRED")` の `{ label, message }`（`copy.notification.ATTENTION_REQUIRED`）。それ以外は `null`: `notificationSummary` が `null`（summary だけの取得障害）、`NONE` / `PENDING` / `SENT`、非 `CONFIRMED` の Order。`notice` 以外の field（`stateKey` / `stateLabel` / `tone` / `entitlements` / `actions` / `receiptHref`）は `notificationSummary` の値に**一切影響されない**（取得障害を Order の失敗にしない。INV-010-06）。通知に再試行・再送の action を持たせない（`actions` へ足さない）。`detail.notice` は存在しない。model の field 名 `notice` と DOM は変えない。
 - **`receiptHref`**: `state === "CONFIRMED"` かつ `safeExternalHref(receiptUrl) !== null`（https で userinfo なし）のときだけその URL。それ以外は `null`。
 - `recheckAnnouncement(previous, next)`: `previous !== next` → `copy.purchase.recheck.changed(presentOrderState(next).label)`、同じ → `copy.purchase.recheck.unchanged`。
 - 入力を変更しない。
@@ -245,28 +242,28 @@ export type CartPurchasePhase =
 2. phase = `verifying`。idempotency key を**この試行ごとに 1 つ**新しく作る（`crypto.randomUUID()`）。`purchase.startCartPurchase(lines, { idempotencyKey })` を呼ぶ（`lines` は Cart の現在の line。価格を含めない）。処理中は購入手続き button を**ネイティブ `disabled` + `aria-busy="true"`**（name は変えない）にし、二重送信を抑止する（double click で Order は 1 件だけ）。
 3. `interpretCartStart(result)`:
    - `go_login` / `go_verification` → `router.push(to)`。
-   - `rejected` → phase = `rejected`（`describeRejections` に Cart の行名を渡す）。**Cart を変更しない**。error summary へ focus を移す。**`resolveCartLines` を再取得して**行の状態表示を現在の状態に更新する（古い「販売中」のまま進めなくなるのを防ぐ）。
+   - `rejected` → phase = `rejected`（`describeRejections(step.itemFailures, names)` に Cart の行名を渡す）。**Cart を変更しない**。error summary へ focus を移す。**`resolveCartLines` を再取得して**行の状態表示を現在の状態に更新する（古い「販売中」のまま進めなくなるのを防ぐ）。
    - `unavailable` → phase = `unavailable`。Cart を変更しない。
-   - `checkout` → phase = `preparing`。`cart.subtractLines(orderedLines(lines, includedLineKeys))`（`lines` は port に渡した snapshot。購入開始の応答待ちに編集された Cart から、Order に含めた数量だけを外す。待機中に削除された line は復活させず、追加された line には触れない。write に失敗しても続行する。Order は作成済み。INV-010-01）。続けて新しい idempotency key で `purchase.startCheckout(orderRef, { idempotencyKey })`。`interpretCheckoutStep` 相当（`interpretCheckoutStart`）が `assign` → `window.location.assign(url)`、`go_status` → `router.push(purchaseOrderHref(orderRef))`。
+   - `checkout` → phase = `preparing`。`cart.subtractLines(lines)`（`lines` は port に渡した snapshot で、送った全 line が Order に入っている。購入開始の応答待ちに編集された Cart から、送った数量だけを外す。待機中に削除された line は復活させず、追加された line には触れない。write に失敗しても続行する。Order は作成済み。INV-010-01）。続けて新しい idempotency key で `purchase.startCheckout(orderRef, { idempotencyKey })`。`interpretCheckoutStep` 相当（`interpretCheckoutStart`）が `assign` → `window.location.assign(url)`、`go_status` → `router.push(purchaseOrderHref(orderRef))`。
 4. `preparing` の間、`main` は `h1` と status だけを描画する（行・Summary・購入手続き button・**`copy.cart.empty`** を出さない。Order 作成直後に Cart が変わっても「カートは空です」を見せない）。`verifying` の間は行・Summary を保つ。
 
 DOM（`CartPurchaseFeedback`。`ready` / `unavailable` の Cart で表示）:
 
 - **live region**: `<div role="status">` を、購入開始の処理中（`verifying` / `preparing`）だけ 1 つ描画する（通常時は描画しない。S5 の TC-PG-CRT-001-541 が Cart ページの `role="status"` 0 件を要求するため、検証で訂正）。`verifying` のとき `copy.cart.purchase.verifying`、`preparing` のとき `copy.cart.purchase.preparing` を入れる。
-- **不成立の error summary**（`rejected`）: `<div role="alert" tabindex="-1">`。`copy.cart.purchase.rejectedTitle`、`copy.cart.purchase.rejectedBody`、**不成立の line だけ**を 1 件ずつ `<p>`（`<li>` を使わない）に「名称 + `label` + `description`」で並べる。表示後に**この要素へ focus** を移す。次の購入試行を始めたら消える。`main` 内の `role="alert"` はこれ 1 つ。
+- **不成立の error summary**（`rejected`）: `<div role="alert" tabindex="-1">`。`copy.cart.purchase.rejectedTitle`、`copy.cart.purchase.rejectedBody`、**不成立の Item だけ**を 1 Item ごとに `<p>`（`<li>` を使わない。`<p key={lineKey}><span class="font-medium">名称</span>…</p>`）で並べ、名称の後に、その Item の**全理由**を受け取った順に「`label` + `description`」で続ける（理由の並べ替え・省略をしない。API-PUR-CART-001、TC-PG-CRT-001-616）。表示後に**この要素へ focus** を移す。次の購入試行を始めたら消える。`main` 内の `role="alert"` はこれ 1 つ。
 - **`unavailable`**: `<div role="alert">` + `copy.cart.purchase.unavailable`。Cart・DB は変わらない。
 - 購入手続き button の `disabled` / 理由の結び付け（S5）は変えない。`rejected` / `unavailable` のあと、button は再び（`canProceed` が許すなら）有効になり、再試行できる。
 
 ## 5. mock Checkout（`/dev/mock-checkout/[orderRef]`）
 
-- route 殻: async `params` を `await`、`parseOrderRef` が null なら `notFound()`（HTTP 404）。それ以外は `MockCheckoutScreen`。mock 無効時は `app/dev/layout.tsx` が `notFound()`。
+- route module（`src/routes/dev/mock-checkout.tsx`）: `useParams()` の値を `parseOrderRef` で検査し、null なら `NotFoundView`（HTTP 200 の静的 shell。mock-checkout の見出しを出さない）。それ以外は `key` 付きの `MockCheckoutScreen`。mock 無効時、または `APP_ENV=production` は `src/routes/dev/dev-layout.tsx` が `NotFoundView` を返す。
 - DOM: `h1` = `copy.mockCheckout.heading`（大きく表示。1 つだけ）、`copy.mockCheckout.note`、Link `copy.mockCheckout.pay`（name exact）と Link `copy.mockCheckout.back`（name exact）。**どちらも `href = purchaseOrderHref(orderRef)`**（PG-XFN-001 へ戻るだけ）。入力欄（`input` / `textarea` / `select`、role `textbox` / `spinbutton` / `combobox`）を**置かない**（カード番号等を扱わない）。`main` 内に `role="alert"` を置かない。
 - **この画面は mock DB を読み書きしない**（`self.getOrder` を含め port を一切呼ばない）。Order の state と `webhookReads` はこの画面の表示・操作の前後で変わらない。Browser Return（pay / back のどちらでも）は Order を確定しない（PAY-BRW-001〜003）。Order の状態は、PG-XFN-001 の `getOrder` が scenario `paymentOutcome` に従って決める。
 - 一般 Navigation から到達できない。`/admin` / `/staff` への href、外部 origin への要求、外部 font を持たない。
 
 ## 6. PG-XFN-001 Purchase Status（`/purchase/orders/[orderRef]`）
 
-- route 殻（Server Component）: async `params` を `await`。`parseOrderRef` が null → **`AccessDeniedView`** を直接描画する（HTTP 200。`notFound()` にしない。存在の有無を確定させない。`listHref = "/mypage/orders"`、`listLabel = copy.accessDenied.ordersLink`）。それ以外は `<PurchaseStatusPage orderRef={...} />`。AuthGate（`(self)/layout.tsx`）の内側。
+- route module（`src/routes/self/purchase-order.tsx`）: `useParams()` の値を `parseOrderRef` で検査し、null → **`AccessDeniedView`** を直接描画する（HTTP 200。`NotFoundView` にしない。存在の有無を確定させない。`listHref = "/mypage/orders"`、`listLabel = copy.accessDenied.ordersLink`）。それ以外は `<PurchaseStatusPage orderRef={...} />`。AuthGate（`(self)/layout.tsx`）の内側。
 - `PurchaseStatusPage`（client container）: AuthGate が allow した後の mount で `self.getOrder(orderRef)` を**ちょうど 1 回**読む（mount ごと。S2 契約 §16-4: `confirm_after_recheck` の初回 read は呼び出し回数で数える）。「状態を再確認」の press ごとに 1 回だけ読む。再読込（reload）は同じ Order を読み直すだけで新しい Order を作らない（§22）。mount / reload / 再確認 / 支払い開始の再試行後の読み直しは `api-client/latest-request.ts` の `applyIfLatest` で順序づけ、**最後に開始した read だけが画面へ反映される**（unmount・dependency 変更では `invalidateRequests` する。DEV-WEB-009）。読む回数（mount ごとに 1 回、press ごとに 1 回）は変わらない。`buildPurchaseStatusModel` で整形する。
 - **Ownership（§26.2 / §16.8）**: read が `not_found` なら、データを描画する前に `AccessDeniedView` を表示する（redirect しない。`h1` = `copy.accessDenied.title`）。他者所有 ref と不存在 ref で、`main` のテキストが**完全に同じ**になる。Order 内容・state・Purpose・購入者・存在の有無を一切出さない。
 
@@ -276,7 +273,7 @@ DOM（`CartPurchaseFeedback`。`ready` / `unavailable` の Cart で表示）:
 - loading: `role="status"` + `copy.pageState.loading`。Order の内容・state label・金額を出さない。
 - unavailable: `role="alert"` + `copy.pageState.unavailable(copy.purchase.subject)` + `<button type="button">` `copy.pageState.retry`（`getOrder` の再取得。空の表示や Access Denied にしない）。
 - ready: 次の構造。**`main` 内で `role="status"` を持つ要素は live region の 1 つだけ**。`StatusBadge` 等に `role` を付けない。
-  1. `<section aria-labelledby>`（region。見出し `h2` = `copy.purchase.outcomeHeading`）: `StatusBadge`（`stateLabel` を**テキストで**表示）、`description`、`copy.purchase.purposeLabel` + `purposeLabel`、`copy.purchase.createdAtLabel` + `createdAtText`、`notice`（あれば `label` と `message` を含む非阻害の `<p>`。`role="alert"` にしない。ボタンを付けない）、**live region `<div role="status">`**（ready のとき常に存在。初期は空）、actions。
+  1. `<section aria-labelledby>`（region。見出し `h2` = `copy.purchase.outcomeHeading`）: `StatusBadge`（`stateLabel` を**テキストで**表示）、`description`、`copy.purchase.purposeLabel` + `purposeLabel`、`copy.purchase.createdAtLabel` + `createdAtText`、`notice`（あれば `label` と `message` を含む非阻害の `<p>`。`role="alert"` にしない。ボタンを付けない。DOM は summary 導入前から不変）、**live region `<div role="status">`**（ready のとき常に存在。初期は空）、actions。
   2. `<section aria-labelledby>`（見出し `h2` = `copy.purchase.itemsHeading`）: `<ul>` の各 `<li>` が 1 明細。名称、`kindLabel`、`quantityText`（Karaoke は `usageText`）、`copy.cart.unitPriceLabel` + `unitPriceText`、`copy.cart.subtotalLabel` + `subtotalText`。末尾に `copy.purchase.totalLabel` + `totalText`。
   3. `entitlements !== null` のときだけ `<section aria-labelledby>`（見出し `h2` = `copy.purchase.entitlements.heading`）: 含まれる種類ごとに `h3`（`entryHeading` / `karaokeHeading` / `goodsHeading`）と、`<a href>`（`label`）。Goods は各 item に `itemLabel` と `handoffLabel` をテキストで併記し、`copy.goods.detail.pickupNotice` を表示する（会場受け取り導線。§16.5）。Entry と Goods（複合）は**別の見出しの下**に並べる。
   4. `receiptHref !== null` のとき `ExternalLink`（`copy.purchase.receipt.link`。`target="_blank"` `rel="noopener noreferrer"`）。`null` ならリンクも見出しも出さない。
@@ -306,15 +303,15 @@ DOM（`CartPurchaseFeedback`。`ready` / `unavailable` の Cart で表示）:
 | ファイル | 内容 |
 |---|---|
 | `tests/unit/web/purchase/purchase-routes.test.ts` | §3.1 |
-| `tests/unit/web/purchase/cart-purchase-flow.test.ts` | §3.2（planProceed / interpretCartStart / interpretCheckoutStart / isSafeCheckoutUrl / describeRejections / orderedLines = TC-PG-CRT-001-624） |
+| `tests/unit/web/purchase/cart-purchase-flow.test.ts` | §3.2（planProceed / interpretCartStart / interpretCheckoutStart / isSafeCheckoutUrl / describeRejections。`orderedLines` と TC-PG-CRT-001-624 は B4a で廃止） |
 | `tests/unit/web/purchase/purchase-status-model.test.ts` | §3.3 |
 | `tests/unit/web/purchase/purchase-again.test.ts` | §3.4 |
 | `tests/unit/web/purchase/s7a-copy.test.ts` | §2 |
 | `tests/unit/web/purchase/s7a-static.test.ts` | §1 と静的検査（構成、route 殻、直書き、依存方向、mock Checkout が port を呼ばない、Cart page の結線、TC-PG-XFN-001-651 の全 Order read が `applyIfLatest` を通ること） |
 | `tests/unit/web/mock/seeded-order-checkout.test.ts` | mock の忠実度: seed 済み `PREPARED` Order の再試行（§6.2 の前提。S2 の拡張確認） |
-| `tests/e2e/purchase-cart-start.spec.ts` | §4（E2E 3 / 7 の前半 / 24 後半 / 26。TC-PG-CRT-001-615: 応答待ちの編集と Order に含めた数量だけを Cart から外す規則、同 tab の増減・削除、別 tab の編集、Cart write 失敗でも Checkout へ進む） |
+| `tests/e2e/purchase-cart-start.spec.ts` | §4（E2E 3 / 7 の前半 / 24 後半 / 26。TC-PG-CRT-001-616: 1 Item に複数の理由がある不成立の summary。TC-PG-CRT-001-615: 応答待ちの編集と送った数量だけを Cart から外す規則、同 tab の増減・削除、別 tab の編集、Cart write 失敗でも Checkout へ進む） |
 | `tests/e2e/mock-checkout.spec.ts` | §5（PAY-BRW-001〜003） |
-| `tests/e2e/purchase-status.spec.ts` | §6.1 / §6.2（E2E 7 / 8 / 9 / 10 / 11 / 19 XFN / 27）。TC-PG-XFN-001-669: 最後に開始した read だけの反映（遅い read・連続操作・read 中の離脱・unavailable 後の遅い retry。helper は `tests/harness/browser/order-reads.ts`） |
+| `tests/e2e/purchase-status.spec.ts` | §6.1 / §6.2（E2E 7 / 8 / 9 / 10 / 11 / 19 XFN / 27）。TC-PG-XFN-001-667 / 670: 通知サマリ（`ATTENTION_REQUIRED` だけ Banner。`PENDING` / `SENT` / `NONE` / null は何も出さず Order の表示・権利・actions は不変。scenario `failed_retryable` / `pending` / `sent` / `canceled` / `summary_unavailable`。`canceled` は CONFIRMED の Entry Order では確認通知の欠落として `ATTENTION_REQUIRED`（Banner 表示）、Reservation が既に `CANCELED` の Karaoke Order（`ORDER.kCanceled`）では正規 suppression として `NONE`（Banner なし））。TC-PG-XFN-001-669: 最後に開始した read だけの反映（遅い read・連続操作・read 中の離脱・unavailable 後の遅い retry。helper は `tests/harness/browser/order-reads.ts`） |
 | `tests/e2e/purchase-again.spec.ts` | §6.2 もう一度購入する（E2E 12）とTC-FR-CRT-012-010の停止中disabled / recovery |
 | `tests/e2e/purchase-ownership.spec.ts` | §6 Ownership、§6.3、§7 の保護（E2E 20 の XFN-001 部分、§26.2） |
 | `tests/e2e/purchase-common.spec.ts` | §7 |
@@ -332,7 +329,7 @@ S5 の以下のテストは S7a の結線に合わせて**更新済み**（購�
 7. **created 後の Cart 除去と「カートは空です」**: SPEC-050 §14A.1 は「Item を Cart から除去し、PG-XFN-001 へ遷移するか Checkout 開始へ進む」。→ 除去直後から遷移までの間に「カートは空です」を見せない（`preparing` 中は status だけ）。除去の失敗は購入手続きを止めない。
 8. **再購入の合算**: SPEC-050 §16.4 の「再投入」は、既存 line と同じ key なら加算する（S5 §8-4）。Karaoke の明細は Cart に入れない。
 9. **`AccessDeniedView` の置き場所**: Design §1 は `presentation/components/access-denied-view.tsx` と定める。PG-XFN-003 は S8 の範囲だが PG-XFN-001 の Ownership failure（§16.8）が先に必要なため、S7a が部品を作る。S8 は同じ部品を使い、本人所有一覧の `listHref` を渡す。route param が不正な UUID のときも同じ部品を表示する（Design §1 の「self の route は PG-XFN-003 の表示」）。
-10. **`/dev/mock-checkout` が存在しない Order ref を受けたとき**: 仕様に定めがない。mock Checkout は Stripe の代替で port を呼ばないため、形式が正しい ref なら Order の有無を問わず同じ画面を表示する（PG-XFN-001 側が not found を扱う）。形式が不正な ref だけ 404。
+10. **`/dev/mock-checkout` が存在しない Order ref を受けたとき**: 仕様に定めがない。mock Checkout は Stripe の代替で port を呼ばないため、形式が正しい ref なら Order の有無を問わず同じ画面を表示する（PG-XFN-001 側が not found を扱う）。形式が不正な ref だけ Not Found 表示（HTTP 200）。
 11. **OrderOutcome の置き場所**: Design §6 は PG-XFN-001 / PG-MYP-004 の共有部品とする。→ `features/purchase/order-outcome.tsx`（presentation から features への import は禁止のため）。S8 の Mypage feature が import する（features → features は禁止 edge に無い）。
 12. **E2E 7 の「Mypage の注文一覧」**: S7a は Mypage 一覧 UI を持たない。→ mock DB の `orders` の件数と内容（同じ Order が 1 件、重複なし）で確認する。一覧 UI での確認は S8 の E2E 15 が担う。
 12. **検証 round 1 の訂正**: (a) `copy.cart.purchase.unavailable` は `rejectedTitle`（「購入は開始されていません」）を部分文字列として含むため、`unavailable` の alert が `rejectedTitle` を含まないという期待は誤りだった。区別は `rejectedBody` を含まないことで行う。(b) Login 画面の継続案内「購入状況の確認」が `copy.purchase.heading`（購入状況）を含むため、ゲストの保護 Content 監視の対象を seed Order の明細名に改めた（`copy.purchase.outcomeHeading`「現在の状態」も Login の revalidate 文に含まれるため不可）。(c) Cart の live region は処理中だけ描画する（§4 を訂正。SPEC-050 §25 が要求するのは AWAITING_PAYMENT → CONFIRMED の通知領域であり、Cart の常設は要求していない）。

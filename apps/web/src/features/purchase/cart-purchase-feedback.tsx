@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { Fragment, useEffect, useRef } from "react";
 import { copy } from "../../presentation/copy/ja";
 import type { CartPurchasePhase } from "./use-cart-purchase";
 
@@ -41,7 +41,14 @@ export function CartPurchaseFeedback({ phase }: { phase: CartPurchasePhase }) {
           <p>{copy.cart.purchase.rejectedBody}</p>
           {phase.rejections.map((line) => (
             <p key={line.lineKey}>
-              <span className="font-medium">{line.name}</span> {line.label} {line.description}
+              <span className="font-medium">{line.name}</span>
+              {line.reasons.map((reason) => (
+                // The reasons of one Item are distinct, and so are their labels.
+                <Fragment key={reason.label}>
+                  {" "}
+                  {reason.label} {reason.description}
+                </Fragment>
+              ))}
             </p>
           ))}
         </div>

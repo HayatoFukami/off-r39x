@@ -19,7 +19,7 @@
 共通の約束（S4〜S7a の約束を引き継ぐ）:
 
 - 文言は `apps/web/src/presentation/copy/ja.ts` の `copy` に集める。S7b の新規ファイルに**日本語の直書き・`¥` の直書き・色の直書きを置かない**。金額は `formatMoney`、日時は `format/datetime.ts`（JST）。
-- page.tsx は Server Component の薄い殻（`metadata` と route param の検証だけ。async `params` を `await`）。データ取得は `"use client"` の container が mount 後（`useEffect`）に `useApi()` 経由で行う。`features/**` から `mock/**` を import しない。
+- route module（`src/routes/**`。React Router。旧 `app/**/page.tsx`）は薄い殻（`export const handle = { title }` と route param の検証だけ。`useParams()` で値を取り、feature container に `key={生の param 値}` を付けて描画して param の変化で再マウントする）。`<main>` を描画せず、mock・`fetch`・storage を参照しない。データ取得は `"use client"` の container が mount 後（`useEffect`）に `useApi()` 経由で行う。`features/**` から `mock/**` を import しない。
 - 価格・状態・可否の権威は port の戻り値だけ。URL・Continuation・DOM の値を権威にしない（DEV-WEB-009）。
 - `console.*`、`localStorage` / `sessionStorage` の直接参照、`dangerouslySetInnerHTML` を S7b の新規ファイルで使わない。
 - `h1` は 1 つだけ。見出し level を飛ばさない。`main` 内の `role="alert"` は同時に 1 つだけ。
@@ -34,7 +34,7 @@
 | `apps/web/src/features/karaoke/karaoke-purchase-flow.ts` | 純粋 | `KaraokeProceedPlan`, `planKaraokeProceed`, `KaraokeStartStep`, `interpretKaraokeStart`, `KaraokeCheckoutStep`, `interpretKaraokeCheckout` |
 | `apps/web/src/features/karaoke/use-karaoke-purchase.ts` | client hook | `KaraokePurchasePhase`, `useKaraokePurchase` |
 | `apps/web/src/features/karaoke/karaoke-slot-page.tsx` | client container | `KaraokeSlotPage`（props `{ slotRef: Ref<"slot"> }`） |
-| `apps/web/app/karaoke/slots/[slotRef]/page.tsx` | route（Server Component の薄い殻） | `metadata.title = copy.pageTitle.karaokeSlot`、`parseSlotRef` が null なら `notFound()`（HTTP 404）、それ以外は `<KaraokeSlotPage slotRef=... />` |
+| `apps/web/src/routes/public/karaoke-slot.tsx` | route（React Router の薄い殻） | `handle.title = copy.pageTitle.karaokeSlot`、`parseSlotRef` が null なら `NotFoundView`（HTTP 200 の静的 shell。購入 button を出さない）、それ以外は `key` 付きで `<KaraokeSlotPage slotRef=... />` |
 
 - title は root layout の template（`%s | SITE_NAME`）に従う。
 - この route は公開（AuthGate の外。`(self)` に置かない）。Guest でも閲覧できる（閲覧不要、購入開始は必要）。`/karaoke/slots/*` の `Cache-Control` は検査しない（動的 route。S4 §4）。
@@ -150,7 +150,7 @@ export type KaraokePurchasePhase =
 
 ### 4.1 取得と表示
 
-- mount 後に `public.getKaraokeSlot(slotRef)` を読む（SSR 中は fetch せず、最初の描画は常に loading）。
+- mount 後に `public.getKaraokeSlot(slotRef)` を読む（最初の描画は常に loading）。
 - loading: `h1` = `copy.karaoke.slotDetail.heading` と `PageState` の `role="status"`（`copy.pageState.loading`）。価格・日時・状態・購入ボタンを出さない。
 - not_found: `NotFoundView`（S4 の日 page と同じ。`h1` = `copy.notFound.title`）。存在しない Slot の ref でも同じ。
 - unavailable: `h1` = `copy.karaoke.slotDetail.heading`、`role="alert"` + `copy.pageState.unavailable(copy.karaoke.slotDetail.subject)` + `<button type="button">` `copy.pageState.retry`（read の再取得のみ。購入 button を出さない）。

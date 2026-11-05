@@ -11,6 +11,7 @@ import {
 } from "../../../../apps/web/src/features/mypage/overview-model.ts";
 import { copy } from "../../../../apps/web/src/presentation/copy/ja.ts";
 import { formatBusinessDate } from "../../../../apps/web/src/presentation/format/datetime.ts";
+import { profileCopy, profileOf } from "../../../harness/display-name.ts";
 import { createBackend, okData } from "../../../harness/mock-backend.ts";
 import { EMAIL, GOODS_ITEM, ORDER, RESERVATION } from "../../../harness/mock-seed.ts";
 
@@ -277,5 +278,44 @@ describe("TC-PG-MYP-001-624 the Overview selection rules (SPEC-050 18.1, 20.3, I
         tickets: { kind: "ok", data: [] as readonly EntryTicketSummary[] },
       }),
     ).not.toThrow();
+  });
+});
+
+describe("TC-PG-MYP-001-625 an unset display name is shown as 未設定 and never replaced by the email (SPEC-050 18.1, 18.2, SPEC-030 9.2)", () => {
+  it("shows the unset wording for a null display name and keeps the email as the email", async () => {
+    const healthy = await inputFor(EMAIL.demo);
+    const model = buildMypageOverviewModel({
+      ...healthy,
+      profile: { kind: "ok", data: profileOf(EMAIL.demo, null) },
+    });
+    expect(model.profile).toEqual({
+      kind: "ready",
+      displayName: "未設定",
+      email: EMAIL.demo,
+      href: "/mypage/profile",
+    });
+    expect(profileCopy().unset).toBe("未設定");
+    if (model.profile.kind !== "ready") throw new Error("expected ready");
+    expect(model.profile.displayName).not.toContain("demo");
+    expect(model.profile.displayName).not.toContain("@");
+  });
+
+  it("does not change any other area", async () => {
+    const healthy = await inputFor(EMAIL.demo);
+    const baseline = buildMypageOverviewModel(healthy);
+    const unset = buildMypageOverviewModel({
+      ...healthy,
+      profile: { kind: "ok", data: profileOf(EMAIL.demo, null) },
+    });
+    expect({ ...unset, profile: null }).toEqual({ ...baseline, profile: null });
+  });
+
+  it("does not turn the unset wording into a stored name: a real name is still shown as it is", async () => {
+    const healthy = await inputFor(EMAIL.demo);
+    const model = buildMypageOverviewModel({
+      ...healthy,
+      profile: { kind: "ok", data: profileOf(EMAIL.demo, "山田 太郎") },
+    });
+    expect(model.profile).toMatchObject({ kind: "ready", displayName: "山田 太郎" });
   });
 });

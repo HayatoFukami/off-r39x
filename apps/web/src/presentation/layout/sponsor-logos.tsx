@@ -10,10 +10,10 @@ function SponsorLogoItem({ item }: { item: SponsorItemModel }) {
   const content = (
     <>
       {showImage ? (
-        // biome-ignore lint/performance/noImgElement: sponsor images are operator data, not optimized assets
         <img
           src={item.imageSrc ?? ""}
           alt={item.name}
+          referrerPolicy="no-referrer"
           onError={() => setBroken(true)}
           className="h-10 w-auto"
         />

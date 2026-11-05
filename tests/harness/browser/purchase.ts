@@ -114,6 +114,46 @@ export async function suspendOffering(page: Page, ref: string): Promise<void> {
   );
 }
 
+/** A server-side change after the page was rendered: the Goods item is suspended. */
+export async function suspendGoods(page: Page, ref: string): Promise<void> {
+  await page.evaluate(
+    ([key, goodsRef]) => {
+      const raw = window.localStorage.getItem(key as string);
+      if (raw === null) throw new Error("no mock DB");
+      const state = JSON.parse(raw) as { goods: { ref: string; control: string }[] };
+      const target = state.goods.find((g) => g.ref === goodsRef);
+      if (target === undefined) throw new Error("unknown goods");
+      target.control = "SUSPENDED";
+      window.localStorage.setItem(key as string, JSON.stringify(state));
+    },
+    [KEYS.db, ref],
+  );
+}
+
+/** A server-side change after the page was rendered: the offering's stock and per-account limit shrink. */
+export async function restrictOffering(
+  page: Page,
+  ref: string,
+  limits: { remaining: number; perAccountLimit: number },
+): Promise<void> {
+  await page.evaluate(
+    ([key, offeringRef, patch]) => {
+      const raw = window.localStorage.getItem(key as string);
+      if (raw === null) throw new Error("no mock DB");
+      const state = JSON.parse(raw) as {
+        offerings: { ref: string; remaining: number; perAccountLimit: number | null }[];
+      };
+      const target = state.offerings.find((o) => o.ref === offeringRef);
+      if (target === undefined) throw new Error("unknown offering");
+      const next = patch as { remaining: number; perAccountLimit: number };
+      target.remaining = next.remaining;
+      target.perAccountLimit = next.perAccountLimit;
+      window.localStorage.setItem(key as string, JSON.stringify(state));
+    },
+    [KEYS.db, ref, limits],
+  );
+}
+
 // ---- opening pages -----------------------------------------------------------------------
 
 export type OpenOptions = {

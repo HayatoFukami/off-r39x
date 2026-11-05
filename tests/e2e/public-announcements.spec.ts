@@ -214,13 +214,13 @@ test.describe("TC-PG-PUB-003-612 an unpublished, unknown or malformed announceme
     expect(draft).toBe(unknown);
   });
 
-  test("a malformed reference is answered with HTTP 404 and the Not Found page", async ({
+  test("a malformed reference shows the Not Found page (the static shell answers HTTP 200)", async ({
     page,
   }) => {
     await expectDetailRouteWorks(page);
     for (const bad of ["not-a-uuid", "12345", ANNOUNCEMENT.latest.toUpperCase()]) {
       const response = await gotoHydrated(page, `/announcements/${bad}`);
-      expect(response?.status(), bad).toBe(404);
+      expect(response?.status(), bad).toBe(200);
       await expect(h1(page), bad).toHaveText(copy.notFound.title);
       await expect(main(page), bad).not.toContainText(bad);
     }
