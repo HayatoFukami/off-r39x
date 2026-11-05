@@ -15,6 +15,7 @@ import {
   SLOT,
   SPONSOR,
 } from "../../../harness/mock-seed.ts";
+import { rewriteSponsors } from "../../../harness/sponsor-logos.ts";
 
 const nowMs = Date.parse(NOW_ISO);
 
@@ -177,7 +178,7 @@ describe("TC-PG-PUB-002-102 public fetch scenarios keep unavailable distinct fro
   });
 });
 
-describe("TC-BR-EVT-005-101 sponsor logos: PUBLISHED only in display order (BR-EVT-005, 8.5)", () => {
+describe("TC-BR-EVT-005-101 sponsor logos: PUBLISHED only in display order (BR-EVT-005, API-PUB-012, 8.5)", () => {
   it("returns only PUBLISHED logos sorted by display order, not by seed order", async () => {
     const { api } = createBackend();
     const logos = okData(await api.public.listSponsorLogos());
@@ -222,6 +223,72 @@ describe("TC-BR-EVT-005-101 sponsor logos: PUBLISHED only in display order (BR-E
     const backend = createBackend();
     backend.setScenario({ publicFetch: "fail" });
     expect((await backend.api.public.listSponsorLogos()).kind).toBe("ok");
+  });
+});
+
+describe("TC-BR-EVT-005-102 sponsor logos: equal sort_order falls back to ref ascending (BR-EVT-005, API-PUB-012)", () => {
+  const { alpha, bravo, charlie } = SPONSOR;
+  const draft = "5b000000-0000-4000-8000-000000000004";
+  const archived = "5b000000-0000-4000-8000-000000000005";
+
+  it("returns equal-order PUBLISHED logos by ref ascending whatever the stored order is", async () => {
+    for (const stored of [
+      [bravo, charlie, alpha],
+      [charlie, bravo, alpha],
+      [alpha, bravo, charlie],
+    ]) {
+      const backend = createBackend();
+      rewriteSponsors(backend, { [alpha]: 10, [bravo]: 10, [charlie]: 10 }, stored);
+      const logos = okData(await backend.api.public.listSponsorLogos());
+      expect(
+        logos.map((l) => l.sponsorRef),
+        stored.join(","),
+      ).toEqual([alpha, bravo, charlie]);
+    }
+  });
+
+  it("still sorts by display order first; only the ties use the ref", async () => {
+    const backend = createBackend();
+    rewriteSponsors(backend, { [alpha]: 20, [bravo]: 10, [charlie]: 10 }, [charlie, alpha, bravo]);
+    const logos = okData(await backend.api.public.listSponsorLogos());
+    expect(logos.map((l) => l.sponsorRef)).toEqual([bravo, charlie, alpha]);
+  });
+
+  it("never returns DRAFT or ARCHIVED logos even when they tie with a PUBLISHED one", async () => {
+    const backend = createBackend();
+    rewriteSponsors(
+      backend,
+      { [alpha]: 10, [bravo]: 10, [charlie]: 10, [draft]: 10, [archived]: 10 },
+      [archived, draft, charlie, bravo, alpha],
+    );
+    const logos = okData(await backend.api.public.listSponsorLogos());
+    expect(logos.map((l) => l.sponsorRef)).toEqual([alpha, bravo, charlie]);
+    const raw = JSON.stringify(logos);
+    expect(raw).not.toContain(MARKER.draftSponsor);
+    expect(raw).not.toContain(MARKER.archivedSponsor);
+  });
+});
+
+describe("TC-BR-EVT-005-103 sponsor logos: image_disallowed_origin points every image at an origin outside the CSP (BR-EVT-005, SEC-WEB-026)", () => {
+  it("keeps the same logos, order and links as published and only changes the image URL", async () => {
+    const published = createBackend();
+    const baseline = okData(await published.api.public.listSponsorLogos());
+    const backend = createBackend();
+    backend.setScenario({ sponsorLogos: "image_disallowed_origin" });
+    const logos = okData(await backend.api.public.listSponsorLogos());
+    expect(logos).toHaveLength(3);
+    expect(logos.map((l) => l.sponsorRef)).toEqual(baseline.map((l) => l.sponsorRef));
+    expect(logos.map((l) => l.name)).toEqual(baseline.map((l) => l.name));
+    expect(logos.map((l) => l.linkUrl)).toEqual(baseline.map((l) => l.linkUrl));
+    for (const logo of logos) {
+      const { imageUrl } = logo;
+      expect(imageUrl.startsWith(`${MARKER.disallowedImageOrigin}/`), imageUrl).toBe(true);
+      const url = new URL(imageUrl);
+      expect(url.protocol).toBe("https:");
+      expect(url.username + url.password).toBe("");
+      expect(url.hostname.endsWith(".invalid")).toBe(true);
+    }
+    expect(new Set(logos.map((l) => l.imageUrl)).size).toBe(3);
   });
 });
 

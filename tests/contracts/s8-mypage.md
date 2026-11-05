@@ -11,7 +11,7 @@
 ## 0. 範囲
 
 - 含む: `/mypage`（PG-MYP-001）、`/mypage/profile`（002）、`/mypage/orders`（003）、`/mypage/orders/{orderRef}`（004）、`/mypage/entry-tickets`（005）、`/mypage/entry-tickets/{ticketRef}`（006）、`/mypage/entry-tickets/{ticketRef}/qr`（007）、`/mypage/karaoke`（008）、`/mypage/karaoke/{reservationRef}`（009）、`/mypage/karaoke/{reservationRef}/qr`（010）、`/mypage/goods`（011）、`/mypage/goods/{goodsItemRef}`（012）、Mypage ローカルナビゲーション（SPEC-050 §17.2）、PG-XFN-003（`AccessDeniedView`。S7a の部品を再利用）、QR 表示部品（mock 用の合成プレースホルダ）。
-- **mock backend / port への追加は不要**。S2 の `createMockApi`（`self.getProfile` / `updateProfile` / `listOrders` / `getOrder` / `listEntryTickets` / `getEntryTicket` / `getEntryQr` / `listReservations` / `getReservation` / `getKaraokeQr` / `listGoodsItems` / `getGoodsItem`）、`ApiPort` の型、seed、scenario はすべて実装済みで、`tests/unit/web/mock/self-api.test.ts` ほかが検証している。coder は `apps/web/src/mock/backend/**` と `src/api-client/{port,types}.ts` を変更しない。
+- **mock backend / port への追加は、B1（Display name。SPEC-050 §18.2、SPEC-030 §9.2、API-AUTH-002 / API-AUTH-004）の範囲だけ**。次の変更を除き、S2 の `createMockApi`（`self.getProfile` / `updateProfile` / `listOrders` / `getOrder` / `listEntryTickets` / `getEntryTicket` / `getEntryQr` / `listReservations` / `getReservation` / `getKaraokeQr` / `listGoodsItems` / `getGoodsItem`）、`ApiPort` の型、seed、scenario はすべて実装済みで、`tests/unit/web/mock/self-api.test.ts` ほかが検証している。B1 の変更: (1) `Profile.displayName: string | null`（未設定 = null。`ProfileUpdate` と `updateProfile` のシグネチャは不変）、(2) 新規 `apps/web/src/api-client/display-name-policy.ts`（trim、空は null、1〜80 code points、内部 `Cc` 拒否の純粋関数。mock と UI の事前検査が共有する）、(3) mock の `updateProfile` がその規則を適用し、`signUp` が新規 user の表示名を null にする（email から推測しない）、(4) `db.ts` の `users[].displayName` が nullable。この範囲を除き coder は `apps/web/src/mock/backend/**` と `src/api-client/{port,types}.ts` を変更しない。
 - **QR は合成プレースホルダだけ**（SEC-QR-012 / 013、AGENTS.md §3）。実 QR token・raw QR は存在しない。port の `mockMatrixSeed`（`mock-seed-<数字>`）は**描画の入力にだけ**使い、DOM のテキスト・属性（`data-*` / `aria-*` / `title` / `alt` / class 名 / `id`）・URL・storage・console のどこにも**文字列として出さない**。QR ページの URL に token / seed を載せない（path は ref のみ）。
 - Order 詳細（PG-MYP-004）は S7a の `OrderOutcome`（`features/purchase/order-outcome.tsx`）と `buildPurchaseStatusModel` を共有する（§5）。
 
@@ -131,9 +131,18 @@ mypage: {
     emailNote: "ログインに使うメールアドレスです。この画面では変更できません",
     displayNameLabel: "表示名",
     save: "保存する",
-    status: { dirty: "未保存の変更があります", saving: "保存しています", saved: "表示名を保存しました" },
-    error: {
-      required: "表示名を入力してください",
+    unset: "未設定",                                  // 入力欄の placeholder（Overview の未設定表示にも使う）
+    displayNameHint: "任意です。80文字以内で入力してください。空欄で保存すると未設定になります",
+    status: {
+      dirty: "未保存の変更があります",
+      saving: "保存しています",
+      saved: "表示名を保存しました",
+      cleared: "表示名を未設定にしました",
+    },
+    error: {                                          // `required` は無い（空欄は検証エラーではなく「未設定」）
+      tooLong: "表示名は80文字以内で入力してください",
+      controlCharacter: "表示名に改行やタブなどの制御文字は使えません",
+      invalid: "表示名は80文字以内で、改行やタブなどの制御文字を含めずに入力してください",   // server の validation_failed 用
       unavailable: "表示名を保存できませんでした。時間をおいて、もう一度お試しください",
     },
     passwordNote: "パスワードの変更は、パスワード再設定の手続きで行います",
@@ -388,19 +397,21 @@ export function buildKaraokeQrModel(reservation: Loadable<ReservationDetail>, qr
 ### 3.8 `profile-model.ts`
 
 ```ts
-export type ProfileModel = { kind: "loading" } | { kind: "unavailable" } | { kind: "ready"; email: string; displayName: string };
+export type ProfileModel = { kind: "loading" } | { kind: "unavailable" } | { kind: "ready"; email: string; displayName: string | null };   // null = 未設定
 export function buildProfileModel(input: Loadable<Profile>): ProfileModel;
 export type ProfileSaveStep =
-  | { kind: "saved"; displayName: string }
+  | { kind: "saved"; displayName: string | null }     // null = server が未設定にした
   | { kind: "invalid"; message: string }
   | { kind: "failed"; message: string };
 export function interpretProfileSave(result: ProfileUpdate): ProfileSaveStep;
-export function resolveInputAfterSave(input: { current: string; submitted: string; saved: string }): string;
+export function resolveInputAfterSave(input: { current: string; submitted: string; saved: string | null }): string;
+export function checkDisplayNameInput(value: string): { kind: "ok" } | { kind: "invalid"; message: string };   // UI の事前検査（UX）。権威は API（mock）
 ```
 
-- `buildProfileModel`: `ok` → ready。`not_found` / `unavailable` / `auth_required` / `email_unverified` → `unavailable`（**別 Profile へ fallback しない**。SPEC-050 §18.2 Failure。`denied` を持たない）。
-- `interpretProfileSave`: `saved` → `{ kind: "saved", displayName: profile.displayName }`（server が確定した値）。`validation_failed` → `{ kind: "invalid", message: copy.mypage.profile.error.required }`。`unavailable` → `{ kind: "failed", message: copy.mypage.profile.error.unavailable }`。exhaustive switch。
-- `resolveInputAfterSave`（TC-PG-MYP-002-623）: 保存成功後の入力欄の値。`current === submitted`（送信後に打ち直していない）なら `saved`（server が確定した値。正規化されていればその値）、そうでなければ `current`（送信後に打った値を上書きしない。空にした場合は空のまま）。
+- `buildProfileModel`: `ok` → ready（`displayName` は null のまま。文字列化しない・email で補完しない）。`not_found` / `unavailable` / `auth_required` / `email_unverified` → `unavailable`（**別 Profile へ fallback しない**。SPEC-050 §18.2 Failure。`denied` を持たない）。
+- `interpretProfileSave`: `saved` → `{ kind: "saved", displayName: profile.displayName }`（server が確定した値）。`validation_failed` → `{ kind: "invalid", message: copy.mypage.profile.error.invalid }`（server が拒否した理由は契約に無いため一般文言）。`saved` の `displayName` が null なら `{ kind: "saved", displayName: null }`。`unavailable` → `{ kind: "failed", message: copy.mypage.profile.error.unavailable }`。exhaustive switch。
+- `resolveInputAfterSave`（TC-PG-MYP-002-623）: 保存成功後の入力欄の値。`current === submitted`（送信後に打ち直していない）なら `saved`（server が確定した値。正規化されていればその値）、そうでなければ `current`（送信後に打った値を上書きしない。空にした場合は空のまま）。`saved` が null（未設定）で `current === submitted` なら `""`（`saved ?? ""`）。
+- `checkDisplayNameInput`（TC-PG-MYP-002-624）: `display-name-policy.ts` の `normalizeDisplayName` の結果を文言へ写す。`too_long` → `copy.mypage.profile.error.tooLong`、`control_character` → `copy.mypage.profile.error.controlCharacter`、`ok`（空欄・空白のみ・80 code points を含む）→ `{ kind: "ok" }`。入力を trim・変更しない。内部 `Cc` と長さの両方に違反する値は `controlCharacter`。
 
 ### 3.9 `overview-model.ts`
 
@@ -411,7 +422,7 @@ export type OverviewInput = {
   goodsItems: Loadable<readonly GoodsItemSummary[]>;
 };
 export type MypageOverviewModel = {
-  profile: { kind: "loading" } | { kind: "unavailable" } | { kind: "ready"; displayName: string; email: string; href: string };  // href = "/mypage/profile"
+  profile: { kind: "loading" } | { kind: "unavailable" } | { kind: "ready"; displayName: string; email: string; href: string };  // displayName = 表示用テキスト（port の null は copy.mypage.profile.unset =「未設定」。email で代用しない）、href = "/mypage/profile"
   pending: ListState<OrderListRow>;                       // PREPARED / AWAITING_PAYMENT / REVIEW_REQUIRED の Order（新しい順）
   latest: { kind: "loading" } | { kind: "unavailable" } | { kind: "empty" } | { kind: "ready"; row: OrderListRow };
   tickets: { kind: "loading" } | { kind: "unavailable" } | { kind: "empty" }
@@ -451,7 +462,7 @@ export function buildMypageOverviewModel(input: OverviewInput): MypageOverviewMo
 ### 4.3 Overview（`/mypage`、PG-MYP-001）
 
 - `h1` = `copy.mypage.heading`。次の 6 つの `<section aria-labelledby>`（region。見出し `h2`、順序固定）。**各 region は loading / unavailable / empty / ready のどの状態でも見出しとともに存在する**:
-  1. `copy.mypage.overview.profileHeading`: ready = `emailLabel` + email、`displayNameLabel` + displayName、Link `profileLink` → `/mypage/profile`。
+  1. `copy.mypage.overview.profileHeading`: ready = `emailLabel` + email、`displayNameLabel` + displayName（未設定は `copy.mypage.profile.unset` =「未設定」。email や email の local part を表示名として出さない。TC-PG-MYP-001-625 / TC-PG-MYP-002-706）、Link `profileLink` → `/mypage/profile`。
   2. `pendingHeading`: items = 各行（`OrderListRow`）に `StatusBadge`（stateLabel）、purposeLabel、createdAtText、totalText、Link `linkLabel`（`href`）。empty = `pendingEmpty`。Section の末尾に Link `ordersLink` → `/mypage/orders`。
   3. `latestHeading`: ready = 1 行（同上）。empty = `latestEmpty`。
   4. `ticketsHeading`: ready = `summary`（`利用可能 n枚 / 全 m枚`）と Link `ticketsLink` → `/mypage/entry-tickets`。empty = `ticketsEmpty`。
@@ -465,12 +476,13 @@ export function buildMypageOverviewModel(input: OverviewInput): MypageOverviewMo
 
 - `h1` = `copy.mypage.profile.heading`。ready:
   - Account email: `copy.mypage.profile.emailLabel` + email（**テキスト**。`<input>` にしない）+ `emailNote`。
-  - `<form>`: `<label>` `displayNameLabel` + `<input type="text">`（`getByLabel(displayNameLabel, { exact: true })`。初期値 = displayName）と `<button type="submit">` `save`。**この画面の `main` の入力欄はこの 1 つだけ**（ref / email / ID を指定する入力を置かない。SPEC-050 §18.2 Failure）。
-  - 状態表示: `<div role="status">`（常に存在。初期は空）に、入力が保存済み値と異なるとき `status.dirty`（未保存）、送信中 `status.saving`、成功後 `status.saved`。
+  - `<form>`: `<label>` `displayNameLabel` + `<input type="text">`（`getByLabel(displayNameLabel, { exact: true })`。初期値 = displayName、未設定は空文字。`placeholder` = `copy.mypage.profile.unset`。**`maxlength` 属性を付けない**: UTF-16 code unit で数えるため、80 code points の絵文字を拒否してしまう）と `<button type="submit">` `save`。**この画面の `main` の入力欄はこの 1 つだけ**（ref / email / ID を指定する入力を置かない。SPEC-050 §18.2 Failure）。
+  - 欄の下に任意・80 文字・空欄で未設定になる旨のヒント `<p id>` `displayNameHint`。`aria-describedby` は常にヒントの id を含み、エラー時はヒントとエラー `<p id>` の両方（`hintId errorId`）を含む。
+  - 状態表示: `<div role="status">`（常に存在。初期は空）に、入力が保存済み値と異なるとき `status.dirty`（未保存）、送信中 `status.saving`、成功後 `status.saved`（保存値が null の場合は `status.cleared`）。
   - Link `passwordReset` → `/account/password-reset`（Password 変更を Profile 編集として扱わない。`passwordNote` を併記）。
-- 送信: **UI は値が空かどうかを自分で判定せず**、入力値をそのまま `self.updateProfile({ displayName })` に渡す（server が権威。Display name の最大文字数は定めない = UCR-100-001）。結果は `interpretProfileSave`:
-  - `saved` → 保存値 = server が確定した値。入力値は `resolveInputAfterSave`（§3.8）で決める: **保存中に打った値は上書きしない**（送信した値のまま触っていないときだけ server 確定値へ更新）。status は、入力値が保存値と同じなら `status.saved`（dirty ではなくなる）、保存中に打ち直して異なるなら `status.dirty`（未保存。mock DB の displayName は送信した値）。mock DB の displayName が更新され、reload 後も保持される。他の User は変わらない。
-  - `invalid` → **error summary** `<div role="alert" tabindex="-1">`（`main` で 1 つ。`message` と、入力欄へ移動する `<a href="#<input id>">` を含む）へ focus を移す。入力欄に `aria-invalid="true"` と `aria-describedby`（欄の下の誤りメッセージ `<p id>` = 同じ `message`）を付ける。mock DB は変わらない。次の入力 / 送信で消える。
+- 送信: **空欄・空白のみは検証エラーではない**（未設定にする。SPEC-050 §18.2、SPEC-030 §9.2）。UI は先に `checkDisplayNameInput(value)`（§3.8。UX の事前検査。権威は API（mock））を実行し、`invalid` なら **port を呼ばず**、下記の `invalid` と同じ表示（error summary、`aria-invalid`、`aria-describedby`）にする（message は `tooLong` / `controlCharacter`）。`ok` なら **UI で trim・正規化せず**、入力値をそのまま `self.updateProfile({ displayName })` に渡す。結果は `interpretProfileSave`:
+  - `saved` → 保存値 = server が確定した値。入力値は `resolveInputAfterSave`（§3.8）で決める: **保存中に打った値は上書きしない**（送信した値のまま触っていないときだけ server 確定値へ更新）。status は、入力値が保存値と同じなら `status.saved`（dirty ではなくなる）、保存中に打ち直して異なるなら `status.dirty`（未保存。mock DB の displayName は送信した値）。mock DB の displayName が更新され（前後の空白は mock が trim して保存。空欄・空白のみは null）、reload 後も保持される。保存値が null のとき入力欄は空・placeholder 表示になり、status は `status.cleared`。他の User は変わらない。
+  - `invalid` → **error summary** `<div role="alert" tabindex="-1">`（`main` で 1 つ。`message` と、入力欄へ移動する `<a href="#<input id>">` を含む）へ focus を移す。入力欄に `aria-invalid="true"` と `aria-describedby`（欄の下の誤りメッセージ `<p id>` = 同じ `message`）を付ける。mock DB は変わらない。次の入力 / 送信で消える。UI の事前検査で弾かれた場合も、server の `validation_failed`（message = `error.invalid`）の場合も同じ。
   - `failed` → `role="alert"` + `message`。入力値は保持する（失われない）。保存済みと表示しない。
 - 保存中は submit button を `disabled` + `aria-busy="true"` にする（二重送信を抑止）。**入力欄は保存中も編集できる**（`disabled` / `readOnly` にしない。TC-PG-MYP-002-702。§11-16）。
 - read が失敗（`not_found` を含む）→ unavailable（form を出さない。別 Profile を表示しない。`AccessDeniedView` にもしない）。
@@ -566,11 +578,12 @@ export function buildMypageOverviewModel(input: OverviewInput): MypageOverviewMo
 | `tests/unit/web/mypage/reservation-model.test.ts` | §3.5（TC-PG-MYP-008-621、TC-PG-MYP-009-621〜622） |
 | `tests/unit/web/mypage/goods-item-model.test.ts` | §3.6（TC-PG-MYP-011-621、TC-PG-MYP-012-621〜622） |
 | `tests/unit/web/mypage/qr-model.test.ts` | §3.7（TC-PG-MYP-007-621〜622、TC-PG-MYP-010-621〜622） |
-| `tests/unit/web/mypage/profile-model.test.ts` | §3.8（TC-PG-MYP-002-621〜623） |
-| `tests/unit/web/mypage/overview-model.test.ts` | §3.9（TC-PG-MYP-001-621〜624） |
+| `tests/unit/web/mypage/profile-model.test.ts` | §3.8（TC-PG-MYP-002-621〜624） |
+| `tests/unit/web/api-client/display-name-policy.test.ts` | §0 / §3.8（TC-FR-AUTH-011-001。SPEC-030 §9.2、API-AUTH-004 の規則） |
+| `tests/unit/web/mypage/overview-model.test.ts` | §3.9（TC-PG-MYP-001-621〜625） |
 | `tests/e2e/mypage-overview.spec.ts` | §4.3（E2E 14 / 19 の Overview 部分、TC-PG-MYP-001-701〜705） |
 | `tests/e2e/mypage-nav.spec.ts` | §4.2 / §6（E2E 14 / 3 の Mypage 部分 / 22、TC-PG-MYP-001-711〜714） |
-| `tests/e2e/mypage-profile.spec.ts` | §4.4（TC-PG-MYP-002-701〜705。702 に保存中の編集を含む） |
+| `tests/e2e/mypage-profile.spec.ts` | §4.4（TC-PG-MYP-002-701〜707。702 に保存中の編集を含む。706 は未設定の保存と表示、707 は trim と code point 境界） |
 | `tests/e2e/mypage-orders.spec.ts` | §4.5 / §4.6（E2E 15 / 19、TC-PG-MYP-003-701〜703、TC-PG-MYP-004-701〜707。707 は最後に開始した read だけの反映。helper は `tests/harness/browser/order-reads.ts`） |
 | `tests/e2e/mypage-entry-tickets.spec.ts` | §4.7〜4.9（E2E 16 / 17、TC-PG-MYP-005-701〜702、TC-PG-MYP-006-701〜703、TC-PG-MYP-007-701〜705。705 は loading / unavailable の `h1`） |
 | `tests/e2e/mypage-karaoke.spec.ts` | §4.10〜4.12（E2E 16 / 17、TC-PG-MYP-008-701〜702、TC-PG-MYP-009-701〜703、TC-PG-MYP-010-701〜705。705 は loading / unavailable の `h1`） |
@@ -615,10 +628,10 @@ PG-MYP-001〜012 の各 Page の Sections / State / Actions / Failure は §4 �
 9. **Goods 詳細の「会場受け取りに必要な案内」**: 受け取り可能（`receivable`）のときだけ `copy.goods.detail.pickupNotice` を示す。取消済み・支払未確定・受け渡し済みで受け取りを促さない。`COMPLETED` では「二回目の受け取りはできません」を示す。
 10. **Receipt**: 詳細 Page は、port が安全な https URL を返したときだけ `ExternalLink`（新しいタブ、`rel="noopener noreferrer"`）を出す。Goods は Order が `CONFIRMED` のときだけ。URL が null なら Link も見出しも出さない（Receipt の存在を捏造しない。SPEC-050 §23）。seed の Karaoke 予約 1（`RESERVATION.valid`）の Order は Receipt が null。
 11. **Order Detail の「購入内容を見る」**: 自分自身への Link のため出さない（SPEC-050 §18.4 は「PG-XFN-001 と同じ Order State 意味」とし、Action の集合は共有する）。他の Action は同じ。
-12. **Profile の検証の責務**: 「空」の判定は server（port）が権威。UI は事前に弾かず port の `validation_failed` を error summary にする（DEV-WEB-009）。最大文字数は定めない（UCR-100-001）。
+12. **Profile の検証の責務**: 権威は API（mock の `updateProfile`）。規則は SPEC-030 §9.2 / API-AUTH-004（trim、空は null、1〜80 code points、内部 `Cc` 拒否）。UI は 80 文字境界と制御文字だけを UX のため事前検査し（SPEC-050 §18.2）、空欄は検査せず未設定として送る。port の `validation_failed` は `error.invalid` の error summary にする（DEV-WEB-009）。
 13. **Profile の Password**: Credential 変更を Profile 編集として扱わない（SPEC-050 §18.2）。`/account/password-reset` への Link だけを置く。
 14. **Hold / Ticket の reload**: reload は既存の Order / Ticket / Reservation / Goods item を再取得するだけで、mock DB を変えない。ただし `PAYMENT` の模擬 Webhook（`pendingWebhook` の Order）は、S7a の契約どおり `self.getOrder` の read で進む。Mypage の一覧 read（`list*`）と Ticket / Reservation / Goods の read は DB を変えない。
 15. **E2E 17 の「補助情報」**: `figcaption`（権利種別）、`imageLabel`、`mockNotice` 以外の補助情報として、Karaoke QR は対象日・利用時刻・予約の状態を QR と同じ `<figure>` に持ち、Entry QR は Ticket の状態を持つ。
-16. **保存中に打った値（レビュー指摘 F1、案 A）**: 保存成功時に入力欄を server 値で一律に上書きすると、保存中に打った文字が消える。→ 送信した値を覚え、成功時は入力値がその値のままのときだけ server 確定値へ更新し、そうでなければ入力値を保持して status を `status.dirty` にする（`resolveInputAfterSave`、TC-PG-MYP-002-623 / 702）。入力欄は保存中も編集可能（`disabled` / `readOnly` にしない）。保存の結果（送信した値）は mock DB にそのまま保存される。
+16. **保存中に打った値（レビュー指摘 F1、案 A）**: 保存成功時に入力欄を server 値で一律に上書きすると、保存中に打った文字が消える。→ 送信した値を覚え、成功時は入力値がその値のままのときだけ server 確定値へ更新し、そうでなければ入力値を保持して status を `status.dirty` にする（`resolveInputAfterSave`、TC-PG-MYP-002-623 / 702）。入力欄は保存中も編集可能（`disabled` / `readOnly` にしない）。保存の結果は、mock が規則（trim 等）を適用した値として mock DB に保存される。
 17. **QR ページの loading / unavailable の `h1`（レビュー指摘 F3、案 A）**: §4.9 / §4.12 の `h1` は route が決める権利種別の語（`copy.qr.ENTRY` / `copy.qr.KARAOKE`）であり、`copy.mypage.heading` ではない。権利種別は所有権の判定結果ではないので、loading / unavailable に出しても存在は漏れない（loading の `main` テキストは他者所有・不存在・不正 ref と同一）。**TC-PG-XFN-003-701 の期待を変更する**: 以前は `readyOnly` に `copy.qr.*` を含めていたが、これは §4.9 / §4.12 と矛盾していたため `readyOnly` から外し、「最終の Access Denied に出ない」（`deniedNever`）へ移した（ユーザー承認済み。仕様と整合する変更であり、実装に合わせた書き換えではない）。
 18. **最後に開始した read だけを反映する仕組み（レビュー指摘 F2、request-ID 方式）**: `applyIfLatest(counter, request, apply)` は呼び出し時に `counter.current` を 1 増やしてその値を ID とし、応答時に ID が最新のときだけ `apply` を同期的に 1 回呼ぶ（`true`）。古ければ呼ばず `false`。rejection はそのまま reject（`apply` なし）。`invalidateRequests(counter)` は `counter.current` を 1 増やす（unmount / dependency 変更）。`useRead`（`features/mypage`）と `PurchaseStatusPage`（`features/purchase`）の両方が使うため、`features/mypage` ⇄ `features/purchase` の循環 import を避けて `api-client/latest-request.ts` に置く。UI は 2 つの read を重ねられない（pending 中は button が disabled、reload button は unavailable のときだけ）ため、E2E は「遅い read と連続操作」「read 中に離脱」「unavailable 後の遅い retry」の観測可能な帰結を検証し、順序そのものは Vitest（TC-DEV-WEB-009-601）で検証する。jsdom / testing-library は導入しない（GitHub Issue #13）。

@@ -13,6 +13,7 @@ function SponsorLogoItem({ item }: { item: SponsorItemModel }) {
         <img
           src={item.imageSrc ?? ""}
           alt={item.name}
+          referrerPolicy="no-referrer"
           onError={() => setBroken(true)}
           className="h-10 w-auto"
         />

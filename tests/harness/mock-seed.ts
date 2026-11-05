@@ -126,6 +126,8 @@ export const MARKER = {
   hiddenGoods: "[hidden] 非公開グッズ",
   scriptMarkup: '<script>alert("mock")</script>',
   brokenImage: "/mock/sponsors/__broken__.svg",
+  /** A reserved TLD origin that the E2E CSP img-src never lists (SEC-WEB-026, scenario image_disallowed_origin). */
+  disallowedImageOrigin: "https://sponsor-images.invalid",
 } as const;
 
 /** JST business date = JST date of NOW_ISO plus the offset in days. */

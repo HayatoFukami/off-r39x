@@ -378,6 +378,22 @@ describe("TC-DEV-WEB-001-805 the containers read through useApi() only and write
     expect(code).toMatch(/updateProfile\(\s*\{\s*displayName/);
   });
 
+  it("the Profile container pre-checks the name before the port call, shows the unset hint, and never limits the length with maxLength", () => {
+    const code = stripComments(read("src/features/mypage/profile-page.tsx"));
+    expect(code.match(/<input[\s>]/g) ?? []).toHaveLength(1);
+    // maxLength counts UTF-16 code units and would reject 80 emoji (SPEC-030 9.2 counts code points).
+    expect(code).not.toMatch(/maxLength|maxlength/);
+    expect(code).toMatch(/checkDisplayNameInput\s*\(/);
+    expect(code.search(/checkDisplayNameInput\s*\(/)).toBeLessThan(
+      code.search(/updateProfile\(\s*\{/),
+    );
+    expect(code).toMatch(/placeholder=\{copy\.mypage\.profile\.unset\}/);
+    expect(code).toMatch(/copy\.mypage\.profile\.displayNameHint/);
+    expect(code).toMatch(/copy\.mypage\.profile\.status\.cleared/);
+    // The value goes to the port as typed: the UI never trims or normalizes it.
+    expect(code).not.toMatch(/\.trim\(\)|\.normalize\(/);
+  });
+
   it("useRead orders every read through the shared latest-request guard (only the last-started read is reflected)", () => {
     const code = stripComments(read("src/features/mypage/use-read.ts"));
     expect(code.length).toBeGreaterThan(0);
