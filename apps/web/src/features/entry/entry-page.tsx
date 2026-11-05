@@ -19,8 +19,8 @@ import {
   type EligibilityMode,
   eligibilityForSession,
   eligibilityMode,
-  toEligibilityInput,
 } from "../purchase/eligibility-model";
+import { readEligibilityOf } from "../purchase/read-eligibility";
 import { buildEntryModel, type EntryOfferingItem } from "./entry-model";
 
 const linkClass = "text-brand underline underline-offset-4";
@@ -91,12 +91,8 @@ async function readEligibility(
       ? [{ kind: "ENTRY_TICKET", offeringRef: offering.offeringRef, quantity: 1 }]
       : [],
   );
-  if (lines.length === 0) return { kind: "ok", data: [] };
-  try {
-    return toEligibilityInput(await api.purchase.getPurchaseEligibility(lines));
-  } catch {
-    return { kind: "unavailable" };
-  }
+  // At most 50 items per request (API-PUR-ELG-001); all requests must succeed, else it is a failure.
+  return readEligibilityOf((chunk) => api.purchase.getPurchaseEligibility(chunk), lines);
 }
 
 // PG-TKT-001 container: reads after mount through the port. Adding to the Cart starts no purchase.

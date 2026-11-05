@@ -20,8 +20,8 @@ import {
   type EligibilityMode,
   eligibilityForSession,
   eligibilityMode,
-  toEligibilityInput,
 } from "../purchase/eligibility-model";
+import { readEligibilityOf } from "../purchase/read-eligibility";
 import { buildKaraokeSlotModel, karaokeEligibilityTarget } from "./karaoke-slot-model";
 import { type KaraokePurchasePhase, useKaraokePurchase } from "./use-karaoke-purchase";
 
@@ -88,11 +88,7 @@ async function readEligibility(
   if (mode === "unavailable") return { kind: "unavailable" };
   const target = karaokeEligibilityTarget(slot);
   if (target === null) return { kind: "ok", data: [] };
-  try {
-    return toEligibilityInput(await api.purchase.getPurchaseEligibility([target]));
-  } catch {
-    return { kind: "unavailable" };
-  }
+  return readEligibilityOf((chunk) => api.purchase.getPurchaseEligibility(chunk), [target]);
 }
 
 // PG-KRK-003 container: reads the slot after mount through the port. Karaoke purchase contents never enter the Cart.

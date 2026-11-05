@@ -164,6 +164,26 @@ describe("TC-DEV-WEB-001-403 the S5 containers read through the port after mount
     expect(source).not.toMatch(/\bconsole\s*\./);
   });
 
+  it("the chunked eligibility read keeps no state and touches no storage or mock (TC-PG-CRT-001-626, SEC-API-029)", () => {
+    const source = stripComments(read("src/features/purchase/read-eligibility.ts"));
+    expect(source).not.toBe("");
+    expect(source).not.toMatch(/from\s+["']react["']/);
+    expect(source).not.toMatch(/from\s+["'][^"']*\/mock\//);
+    expect(source).not.toMatch(/\b(fetch|localStorage|sessionStorage|setItem|useApi|useSession)\b/);
+    expect(source).not.toMatch(/\bconsole\s*\./);
+  });
+
+  for (const path of [
+    "src/features/cart/cart-page.tsx",
+    "src/features/entry/entry-page.tsx",
+    "src/features/goods/goods-detail-page.tsx",
+    "src/features/karaoke/karaoke-slot-page.tsx",
+  ]) {
+    it(`${path} reads the eligibility in requests of at most 50 items through readEligibilityOf (TC-PG-CRT-001-626, API-PUR-ELG-001)`, () => {
+      expect(stripComments(read(path))).toMatch(/\breadEligibilityOf\s*\(/);
+    });
+  }
+
   it("the Header count and the Cart page share one store (same-tab updates, SPEC-050 8.5)", () => {
     expect(stripComments(read("src/features/cart/use-cart-count.ts"))).toMatch(
       /cart-store|use-cart/,
