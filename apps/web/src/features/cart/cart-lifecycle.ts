@@ -101,6 +101,14 @@ export function createCartLifecycle(
   const clearCart = (): void => {
     if (cart.clear().kind !== "ok") throw new Error("Cart storage unavailable");
   };
+  /**
+   * FR-CRT-012: a Cart that cannot be read safely stops the Cart, whatever the metadata says. The store
+   * reports a getItem throw as `corrupted`; the lifecycle treats it as a stop. Reads only (the value is
+   * not used or kept); a throw is handled by the caller like a metadata fault.
+   */
+  const assertCartReadable = (): void => {
+    storage.getItem(CART_STORAGE_KEY);
+  };
 
   const reconcileTransition = (): void => {
     if (localTransition || blocked) return;
@@ -151,6 +159,7 @@ export function createCartLifecycle(
     initializeGuestIfEmpty() {
       if (blocked) return;
       try {
+        assertCartReadable();
         if (readMetadata() !== null) return;
         const rawCart = storage.getItem(CART_STORAGE_KEY);
         if (rawCart !== null) return;
@@ -163,6 +172,7 @@ export function createCartLifecycle(
     markAuthenticated() {
       if (blocked) return;
       try {
+        assertCartReadable();
         const metadata = readMetadata();
         if (isTransitioning(metadata)) {
           reconcileTransition();
@@ -180,6 +190,7 @@ export function createCartLifecycle(
       if (blocked || orphanedTransition) return { kind: "blocked" };
       if (localTransition || externalTransition) return { kind: "busy" };
       try {
+        assertCartReadable();
         const metadata = readMetadata();
         if (isTransitioning(metadata)) {
           if (lockAcquired) {
@@ -286,6 +297,7 @@ export function createCartLifecycle(
         if (localTransition || externalTransition) return "busy";
         clearCart();
         write(provenance);
+        assertCartReadable();
         blocked = false;
         localTransition = false;
         externalTransition = false;
@@ -325,6 +337,7 @@ export function createCartLifecycle(
     getSnapshot() {
       if (blocked || orphanedTransition) return BLOCKED;
       try {
+        assertCartReadable();
         const metadata = readMetadata();
         if (isTransitioning(metadata) && !coordinator.crossTab && !localTransition) {
           orphanedTransition = true;

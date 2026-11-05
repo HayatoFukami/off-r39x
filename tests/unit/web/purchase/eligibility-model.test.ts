@@ -13,9 +13,15 @@ import type { SessionState } from "../../../../apps/web/src/auth/use-session.ts"
 import type { EligibilityInput } from "../../../../apps/web/src/features/purchase/eligibility-model.ts";
 import * as model from "../../../../apps/web/src/features/purchase/eligibility-model.ts";
 import {
+  decideSaleState,
   eligibilityForLines,
   eligibilityForSession,
 } from "../../../../apps/web/src/features/purchase/eligibility-model.ts";
+import { copy } from "../../../../apps/web/src/presentation/copy/ja.ts";
+import {
+  presentAvailability,
+  presentPurchaseReasons,
+} from "../../../../apps/web/src/presentation/state-mapping/availability.ts";
 
 // Contract: tests/contracts/s5-cart.md section 3.3 (eligibility-model.ts; SPEC-110 API-PUR-ELG-001,
 // SPEC-050 12.1 / 14A.1 / 26.2, SEC-API-029, DEV-WEB-007). Pure functions: no React, no storage.
@@ -370,5 +376,153 @@ describe("TC-PG-CRT-001-625 eligibilityForLines: of an ok answer only the items 
     const before = JSON.stringify([input, readLines, lines]);
     eligibilityForLines(input, readLines, lines);
     expect(JSON.stringify([input, readLines, lines])).toBe(before);
+  });
+});
+
+describe("TC-PG-CRT-001-625 decideSaleState narrows only a publicly on-sale item and fails closed (B4c, SPEC-050 12.1 / 14.2, API-PUR-ELG-001, SEC-API-029)", () => {
+  const KEY = cartLineKey(goods(1));
+  const OTHER_KEY = cartLineKey(entry(1));
+  const item = (over: Partial<PurchaseEligibility> = {}): PurchaseEligibility => ({
+    lineKey: KEY,
+    purchasable: true,
+    reasons: [],
+    maxPurchasableQuantity: 5,
+    ...over,
+  });
+  const answer = (...items: PurchaseEligibility[]): EligibilityInput => ({
+    kind: "ok",
+    data: items,
+  });
+  const UNCONFIRMED = presentAvailability({ kind: "unavailable" });
+
+  const NOT_ON_SALE: readonly SaleAvailability[] = [
+    { kind: "BEFORE_SALES", startsAt: SOON },
+    { kind: "SALES_ENDED" },
+    { kind: "SUSPENDED" },
+    { kind: "SOLD_OUT" },
+    { kind: "INSUFFICIENT_QUANTITY", maxSelectableQuantity: 3 },
+    { kind: "PURCHASE_LIMIT_EXCEEDED" },
+  ];
+
+  it("(a) keeps the public state of an item that is not on sale, whatever the owner-scoped answer is (it cannot improve)", () => {
+    const inputs: EligibilityInput[] = [
+      { kind: "not_applicable" },
+      { kind: "loading" },
+      { kind: "unavailable" },
+      answer(),
+      answer(item()),
+      answer(item({ lineKey: OTHER_KEY })),
+      answer(item({ purchasable: false, reasons: ["SOLD_OUT"], maxPurchasableQuantity: 0 })),
+    ];
+    for (const availability of NOT_ON_SALE) {
+      for (const eligibility of inputs) {
+        const status = presentAvailability(availability);
+        expect(decideSaleState(availability, eligibility, KEY), availability.kind).toEqual({
+          status,
+          addable: status.purchasable,
+          maxSelectableQuantity: null,
+        });
+        expect(status.purchasable).toBe(false);
+      }
+    }
+  });
+
+  it.each([
+    [{ kind: "ON_SALE", maxSelectableQuantity: 20 }, 20],
+    [{ kind: "ON_SALE", maxSelectableQuantity: null }, null],
+  ] as const)(
+    "(b) shows %j as it is publicly for not_applicable (Guest and unverified: public conditions only)",
+    (availability, max) => {
+      expect(decideSaleState(availability, { kind: "not_applicable" }, KEY)).toEqual({
+        status: presentAvailability(availability),
+        addable: true,
+        maxSelectableQuantity: max,
+      });
+    },
+  );
+
+  it.each([
+    ["loading", { kind: "loading" }],
+    ["unavailable", { kind: "unavailable" }],
+    ["an ok answer without any item", answer()],
+    ["an ok answer with the item of another key only", answer(item({ lineKey: OTHER_KEY }))],
+  ] as const)(
+    "(c) is 'cannot confirm' with adding disabled and no maximum for an on-sale item when the answer is %s",
+    (_name, eligibility) => {
+      const decision = decideSaleState(
+        { kind: "ON_SALE", maxSelectableQuantity: 20 },
+        eligibility,
+        KEY,
+      );
+      expect(decision).toEqual({
+        status: UNCONFIRMED,
+        addable: false,
+        maxSelectableQuantity: null,
+      });
+      expect(decision.status.label).toBe(copy.availability.label.UNAVAILABLE);
+      expect(decision.status.label).not.toBe(copy.availability.label.ON_SALE);
+    },
+  );
+
+  it("(d) shows the owner-scoped reasons of an on-sale item that is not purchasable, with adding disabled and no maximum", () => {
+    const cases: PurchaseEligibility[] = [
+      item({ purchasable: false, reasons: ["SOLD_OUT"], maxPurchasableQuantity: 0 }),
+      item({ purchasable: false, reasons: ["PURCHASE_LIMIT_EXCEEDED"], maxPurchasableQuantity: 0 }),
+      item({ purchasable: false, reasons: ["INSUFFICIENT_QUANTITY"], maxPurchasableQuantity: 3 }),
+      item({
+        purchasable: false,
+        reasons: ["SALES_STOPPED", "PURCHASE_LIMIT_EXCEEDED", "SLOT_UNAVAILABLE"],
+        maxPurchasableQuantity: 0,
+      }),
+    ];
+    for (const one of cases) {
+      expect(
+        decideSaleState(
+          { kind: "ON_SALE", maxSelectableQuantity: 20 },
+          answer(item({ lineKey: OTHER_KEY }), one),
+          KEY,
+        ),
+        one.reasons.join(","),
+      ).toEqual({
+        status: presentPurchaseReasons(one.reasons, one.maxPurchasableQuantity),
+        addable: false,
+        maxSelectableQuantity: null,
+      });
+    }
+  });
+
+  it.each([
+    [20, 5, 5],
+    [3, 5, 3],
+    [null, 4, 4],
+    [5, 5, 5],
+  ] as const)(
+    "(e) shows an on-sale item that is purchasable as on sale with min(public maximum %s, owner maximum %s) = %s",
+    (publicMax, ownerMax, expected) => {
+      const decision = decideSaleState(
+        { kind: "ON_SALE", maxSelectableQuantity: publicMax },
+        answer(item({ maxPurchasableQuantity: ownerMax })),
+        KEY,
+      );
+      expect(decision).toEqual({
+        status: presentAvailability({ kind: "ON_SALE", maxSelectableQuantity: ownerMax }),
+        addable: true,
+        maxSelectableQuantity: expected,
+      });
+      expect(decision.status.label).toBe(copy.availability.label.ON_SALE);
+    },
+  );
+
+  it("(f) does not mutate its inputs", () => {
+    const eligibility = Object.freeze(
+      answer(Object.freeze(item()), Object.freeze(item({ lineKey: OTHER_KEY }))),
+    );
+    const availability = Object.freeze({
+      kind: "ON_SALE" as const,
+      maxSelectableQuantity: 20,
+    });
+    const before = JSON.stringify([eligibility, availability]);
+    decideSaleState(availability, eligibility, KEY);
+    expect(JSON.stringify([eligibility, availability])).toBe(before);
   });
 });

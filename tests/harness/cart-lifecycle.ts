@@ -29,11 +29,13 @@ export function setupCartLifecycle(
 ) {
   const data = new Map<string, string>([[CART_STORAGE_KEY, CART]]);
   if (marker !== null) data.set(CART_LIFECYCLE_STORAGE_KEY, marker);
-  const faults = { read: false, write: false, clear: false, writesRemaining: 0 };
+  // `read` fails the lifecycle metadata key only; `cartRead` fails the Cart key only (FR-CRT-012).
+  const faults = { read: false, cartRead: false, write: false, clear: false, writesRemaining: 0 };
   const storage: CartStorage = {
     getItem(key) {
       if (key === CART_LIFECYCLE_STORAGE_KEY && faults.read)
         throw new Error("test-only read fault");
+      if (key === CART_STORAGE_KEY && faults.cartRead) throw new Error("test-only cart read fault");
       return data.get(key) ?? null;
     },
     setItem(key, value) {

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { cartLineKey } from "../../../../apps/web/src/api-client/cart-line-key.ts";
+import { eligibilityTargetKey } from "../../../../apps/web/src/api-client/eligibility-target-key.ts";
 import type {
   CartLine,
+  EligibilityTarget,
   PurchaseEligibility,
   PurchaseEligibilityRead,
   Ref,
@@ -23,8 +25,8 @@ const entry = (index: number): CartLine => ({
 });
 const lines = (count: number): CartLine[] => Array.from({ length: count }, (_, i) => entry(i + 1));
 
-const answer = (line: CartLine): PurchaseEligibility => ({
-  lineKey: cartLineKey(line),
+const answer = (target: EligibilityTarget): PurchaseEligibility => ({
+  lineKey: eligibilityTargetKey(target),
   purchasable: true,
   reasons: [],
   maxPurchasableQuantity: 3,
@@ -33,7 +35,7 @@ const answer = (line: CartLine): PurchaseEligibility => ({
 /** A port double that records the size of every request and answers each item in the input order. */
 function recordingPort(failOn?: number, failWith?: PurchaseEligibilityRead | "throw") {
   const sizes: number[] = [];
-  const read = async (chunk: readonly CartLine[]): Promise<PurchaseEligibilityRead> => {
+  const read = async (chunk: readonly EligibilityTarget[]): Promise<PurchaseEligibilityRead> => {
     sizes.push(chunk.length);
     if (failOn !== undefined && sizes.length === failOn) {
       if (failWith === "throw") throw new Error("boom");
@@ -117,5 +119,42 @@ describe("TC-PG-CRT-001-626 readEligibilityOf: every request carries at most 50 
   it("a rejected request is a failure, not an exception", async () => {
     const port = recordingPort(2, "throw");
     expect(await readEligibilityOf(port.read, lines(60))).toEqual({ kind: "unavailable" });
+  });
+});
+
+describe("TC-PG-CRT-001-626 readEligibilityOf: a Karaoke Slot target is read like a Cart line (API-PUR-ELG-001, B4c)", () => {
+  const slot: EligibilityTarget = {
+    kind: "KARAOKE",
+    slotRef: "a0000000-0000-4000-8000-000000000001" as Ref<"slot">,
+    quantity: 1,
+  };
+
+  it("one Karaoke target is one request and its answer is used", async () => {
+    const sizes: number[] = [];
+    const read = async (chunk: readonly EligibilityTarget[]): Promise<PurchaseEligibilityRead> => {
+      sizes.push(chunk.length);
+      return {
+        kind: "ok",
+        data: chunk.map((target) => ({
+          lineKey: eligibilityTargetKey(target),
+          purchasable: true,
+          reasons: [],
+          maxPurchasableQuantity: 1,
+        })),
+      };
+    };
+    const result = await readEligibilityOf(read, [slot]);
+    expect(sizes).toEqual([1]);
+    expect(result.kind).toBe("ok");
+    if (result.kind === "ok") {
+      expect(result.data.map((item) => item.lineKey)).toEqual([eligibilityTargetKey(slot)]);
+    }
+  });
+
+  it("a rejected request for a Karaoke target is a failure, not an exception", async () => {
+    const read = async (): Promise<PurchaseEligibilityRead> => {
+      throw new Error("boom");
+    };
+    expect(await readEligibilityOf(read, [slot])).toEqual({ kind: "unavailable" });
   });
 });

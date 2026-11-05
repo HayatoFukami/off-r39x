@@ -74,7 +74,13 @@ export type CartPurchaseStart =
   | { kind: "email_unverified" }
   | { kind: "unavailable" };
 
-/** API-PUR-ELG-001 item, mapped to the UI line key. purchasable === (reasons.length === 0). */
+/**
+ * API-PUR-ELG-001 Body item, mapped to the UI: a Cart line, or one Karaoke Slot (quantity 1 only).
+ * The KARAOKE variant is never a CartLine (FR-CRT-002): Karaoke is checked here, never put in the Cart.
+ */
+export type EligibilityTarget = CartLine | { kind: "KARAOKE"; slotRef: Ref<"slot">; quantity: 1 };
+
+/** API-PUR-ELG-001 item, keyed by eligibilityTargetKey (Cart lines keep cartLineKey). purchasable === (reasons.length === 0). */
 export type PurchaseEligibility = {
   lineKey: string;
   purchasable: boolean;

@@ -1,24 +1,35 @@
 import type { KaraokeSlotState } from "@off-r39x/domain";
 import { describe, expect, it } from "vitest";
+import { eligibilityTargetKey } from "../../../../apps/web/src/api-client/eligibility-target-key.ts";
 import type {
   KaraokeSaleStatus,
   KaraokeSlotDetail,
+  PurchaseEligibility,
+  PurchaseReason,
   Ref,
 } from "../../../../apps/web/src/api-client/types.ts";
+import type { KaraokeSlotModel } from "../../../../apps/web/src/features/karaoke/karaoke-slot-model.ts";
 import {
   buildKaraokeSlotModel,
-  type KaraokeSlotModel,
+  karaokeEligibilityTarget,
 } from "../../../../apps/web/src/features/karaoke/karaoke-slot-model.ts";
+import type { EligibilityInput } from "../../../../apps/web/src/features/purchase/eligibility-model.ts";
 import { copy } from "../../../../apps/web/src/presentation/copy/ja.ts";
 import {
   formatBusinessDate,
   formatJstTimeRange,
 } from "../../../../apps/web/src/presentation/format/datetime.ts";
 import { formatMoney } from "../../../../apps/web/src/presentation/format/money.ts";
+import {
+  presentAvailability,
+  presentPurchaseReasons,
+  presentRejectionReason,
+} from "../../../../apps/web/src/presentation/state-mapping/availability.ts";
 import { presentSlot } from "../../../../apps/web/src/presentation/state-mapping/karaoke.ts";
 import { presentKaraokeSaleStatus } from "../../../../apps/web/src/presentation/state-mapping/karaoke-sale-status.ts";
 import { createBackend, okData } from "../../../harness/mock-backend.ts";
 import { D1, SLOT } from "../../../harness/mock-seed.ts";
+import { PURCHASE_REASONS } from "../../../harness/purchase-reasons.ts";
 
 // Contract: tests/contracts/s7b-karaoke.md section 3.2 (SPEC-050 13.3 state / action table, 20.3, INV-010-04).
 
@@ -217,5 +228,243 @@ describe("TC-PG-KRK-003-615 the port purchasable flag takes part in the judgemen
         }
       }
     }
+  });
+});
+
+describe("TC-PG-KRK-003-616 buildKaraokeSlotModel narrows a publicly purchasable slot by the owner-scoped eligibility and fails closed; karaokeEligibilityTarget (B4c, FR-KRK-007, BR-KRK-003, KRK-AVL-003, SEC-API-029, API-PUR-ELG-001, SPEC-050 12.1 / 13.3)", () => {
+  const KEY = eligibilityTargetKey({ kind: "KARAOKE", slotRef: SLOT.d1_1000, quantity: 1 });
+  const item = (over: Partial<PurchaseEligibility> = {}): PurchaseEligibility => ({
+    lineKey: KEY,
+    purchasable: true,
+    reasons: [],
+    maxPurchasableQuantity: 1,
+    ...over,
+  });
+  const answer = (over: Partial<PurchaseEligibility> = {}): EligibilityInput => ({
+    kind: "ok",
+    data: [item(over)],
+  });
+  const refused = (reasons: readonly PurchaseReason[], max = 0): EligibilityInput =>
+    answer({ purchasable: false, reasons, maxPurchasableQuantity: max });
+  const buildWith = (data: KaraokeSlotDetail, eligibility: EligibilityInput): Ready =>
+    readyOf(buildKaraokeSlotModel({ kind: "ok", data }, eligibility));
+  const UNCONFIRMED = presentAvailability({ kind: "unavailable" });
+
+  const everyAnswer: EligibilityInput[] = [
+    { kind: "not_applicable" },
+    { kind: "loading" },
+    { kind: "unavailable" },
+    { kind: "ok", data: [] },
+    answer(),
+    refused(["PURCHASE_LIMIT_EXCEEDED"]),
+  ];
+
+  it("(a) keeps the public model, to the last field, for a slot that is not purchasable publicly, whatever the owner answer is (it cannot improve)", async () => {
+    const base = await seeded(SLOT.d1_1000);
+    const datas: KaraokeSlotDetail[] = [
+      await seeded(SLOT.d1_1020),
+      await seeded(SLOT.d1_1040),
+      await seeded(SLOT.d1_1200),
+      await seeded(SLOT.d1_1000, "BEFORE_SALES"),
+      await seeded(SLOT.d1_1000, "SALES_ENDED"),
+      await seeded(SLOT.d1_1000, "SUSPENDED"),
+      { ...base, purchasable: false },
+    ];
+    for (const data of datas) {
+      const publicModel = build(data);
+      expect(publicModel.purchasable).toBe(false);
+      for (const eligibility of everyAnswer) {
+        expect(
+          buildWith(data, eligibility),
+          `${data.state} ${data.saleStatus} ${eligibility.kind}`,
+        ).toEqual(publicModel);
+      }
+    }
+  });
+
+  it("(b) is the public model for not_applicable (Guest and unverified: public conditions only) and when the second argument is omitted", async () => {
+    const data = await seeded(SLOT.d1_1000);
+    const publicModel = build(data);
+    expect(buildWith(data, { kind: "not_applicable" })).toEqual(publicModel);
+    expect(publicModel.stateLabel).toBe(detail.purchasableLabel);
+    expect(publicModel.purchasable).toBe(true);
+  });
+
+  it.each([
+    ["loading", { kind: "loading" }],
+    ["unavailable", { kind: "unavailable" }],
+    ["an ok answer without any item", { kind: "ok", data: [] }],
+    ["an ok answer with the item of another slot only", answer({ lineKey: "KARAOKE:other" })],
+    ["a purchasable item whose maximum is 0 (inconsistent)", answer({ maxPurchasableQuantity: 0 })],
+  ] as const)(
+    "(c) is 'cannot confirm' with the button disabled for a publicly purchasable slot when the answer is %s",
+    async (_name, eligibility) => {
+      const data = await seeded(SLOT.d1_1000);
+      const publicModel = build(data);
+      const model = buildWith(data, eligibility);
+      expect(model.stateLabel).toBe(copy.availability.label.UNAVAILABLE);
+      expect(model.description).toBe(copy.availability.description.UNAVAILABLE);
+      expect(model.tone).toBe(UNCONFIRMED.tone);
+      expect(model.tone).toBe("review");
+      expect(model.purchasable).toBe(false);
+      expect(model.disabledReason).toBe(copy.karaoke.slotDetail.disabledReason.UNCONFIRMED);
+      expect(model.stateLabel).not.toBe(detail.purchasableLabel);
+      expect(model.description).not.toBe(detail.purchasableDescription);
+      // The facts of the public read stay shown.
+      expect({
+        ...model,
+        stateLabel: "",
+        description: "",
+        tone: "",
+        purchasable: null,
+        disabledReason: null,
+      }).toEqual({
+        ...publicModel,
+        stateLabel: "",
+        description: "",
+        tone: "",
+        purchasable: null,
+        disabledReason: null,
+      });
+    },
+  );
+
+  it("(d) is the purchasable model when the owner answer is purchasable with a maximum of at least 1", async () => {
+    const data = await seeded(SLOT.d1_1000);
+    const model = buildWith(data, answer());
+    expect(model).toEqual(build(data));
+    expect(model.stateLabel).toBe(detail.purchasableLabel);
+    expect(model.purchasable).toBe(true);
+    expect(model.disabledReason).toBeNull();
+  });
+
+  it("(e) shows 'purchase limit' before the purchase start, with its own reason text", async () => {
+    const data = await seeded(SLOT.d1_1000);
+    const presented = presentPurchaseReasons(["PURCHASE_LIMIT_EXCEEDED"], 0);
+    const model = buildWith(data, refused(["PURCHASE_LIMIT_EXCEEDED"]));
+    expect(model.stateLabel).toBe(copy.availability.label.PURCHASE_LIMIT_EXCEEDED);
+    expect(model.description).toBe(presented.description);
+    expect(model.tone).toBe(presented.tone);
+    expect(model.purchasable).toBe(false);
+    expect(model.disabledReason).toBe(
+      copy.karaoke.slotDetail.disabledReason.PURCHASE_LIMIT_EXCEEDED,
+    );
+    expect(model.disabledReason).not.toBe(detail.failure.limit);
+    expect(model.stateLabel).not.toBe(detail.purchasableLabel);
+  });
+
+  it.each([
+    ["NOT_PUBLIC_OR_NOT_FOUND", "NOT_PURCHASABLE"],
+    ["SALES_NOT_STARTED", "NOT_ON_SALE"],
+    ["SALES_CLOSED", "NOT_ON_SALE"],
+    ["SALES_STOPPED", "NOT_ON_SALE"],
+    ["SOLD_OUT", "NOT_PURCHASABLE"],
+    ["INSUFFICIENT_QUANTITY", "NOT_PURCHASABLE"],
+    ["PURCHASE_LIMIT_EXCEEDED", "PURCHASE_LIMIT_EXCEEDED"],
+    ["SLOT_UNAVAILABLE", "NOT_PURCHASABLE"],
+    ["PAYMENT_WINDOW_TOO_SHORT", "NOT_PURCHASABLE"],
+  ] as const)(
+    "(f) maps the single reason %s to its label and to the disabled reason %s",
+    async (code, reasonKey) => {
+      const data = await seeded(SLOT.d1_1000);
+      const model = buildWith(data, refused([code]));
+      expect(model.stateLabel).toBe(presentRejectionReason(code).label);
+      expect(model.description).toBe(presentRejectionReason(code).description);
+      expect(model.purchasable).toBe(false);
+      expect(model.disabledReason).toBe(copy.karaoke.slotDetail.disabledReason[reasonKey]);
+    },
+  );
+
+  it("(f) covers every reason code of API-PUR-ELG-001 (the table above lists all nine)", () => {
+    expect(PURCHASE_REASONS).toHaveLength(9);
+  });
+
+  it("(g) decides the disabled reason by the first reason and lists every description in the received order", async () => {
+    const data = await seeded(SLOT.d1_1000);
+    const reasons = ["SALES_STOPPED", "PURCHASE_LIMIT_EXCEEDED", "SLOT_UNAVAILABLE"] as const;
+    const model = buildWith(data, refused(reasons));
+    expect(model.stateLabel).toBe(copy.availability.label.SUSPENDED);
+    expect(model.disabledReason).toBe(copy.karaoke.slotDetail.disabledReason.NOT_ON_SALE);
+    const positions = reasons.map((code) =>
+      model.description.indexOf(presentRejectionReason(code).description),
+    );
+    expect(positions.every((position) => position >= 0)).toBe(true);
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    expect(model.description).toBe(presentPurchaseReasons(reasons, 0).description);
+  });
+
+  it("(h) purchasable is true exactly when disabledReason is null, for every public situation and every owner answer", async () => {
+    const base = await seeded(SLOT.d1_1000);
+    const answers: EligibilityInput[] = [
+      ...everyAnswer,
+      answer({ maxPurchasableQuantity: 0 }),
+      ...PURCHASE_REASONS.map((code) => refused([code])),
+    ];
+    for (const state of ["AVAILABLE", "HELD", "SOLD", "SALES_STOPPED"] as KaraokeSlotState[]) {
+      for (const saleStatus of ["ON_SALE", "BEFORE_SALES", "SALES_ENDED", "SUSPENDED"] as const) {
+        for (const flag of [true, false]) {
+          for (const eligibility of answers) {
+            const model = buildWith({ ...base, state, saleStatus, purchasable: flag }, eligibility);
+            expect(
+              model.purchasable === (model.disabledReason === null),
+              `${state} ${saleStatus} ${flag} ${eligibility.kind}`,
+            ).toBe(true);
+          }
+        }
+      }
+    }
+  });
+
+  it("(i) keeps loading, not_found and unavailable as they are whatever the owner answer is", () => {
+    for (const eligibility of everyAnswer) {
+      expect(buildKaraokeSlotModel({ kind: "loading" }, eligibility)).toEqual({ kind: "loading" });
+      expect(buildKaraokeSlotModel({ kind: "not_found" }, eligibility)).toEqual({
+        kind: "not_found",
+      });
+      for (const kind of ["unavailable", "auth_required", "email_unverified"] as const) {
+        expect(buildKaraokeSlotModel({ kind }, eligibility)).toEqual({ kind: "unavailable" });
+      }
+    }
+  });
+
+  it("karaokeEligibilityTarget is the quantity-1 KARAOKE target of a slot that is purchasable publicly, and null otherwise", async () => {
+    const data = await seeded(SLOT.d1_1000);
+    expect(karaokeEligibilityTarget({ kind: "ok", data })).toEqual({
+      kind: "KARAOKE",
+      slotRef: SLOT.d1_1000,
+      quantity: 1,
+    });
+    for (const other of [
+      await seeded(SLOT.d1_1020),
+      await seeded(SLOT.d1_1040),
+      await seeded(SLOT.d1_1200),
+      await seeded(SLOT.d1_1000, "BEFORE_SALES"),
+      await seeded(SLOT.d1_1000, "SALES_ENDED"),
+      await seeded(SLOT.d1_1000, "SUSPENDED"),
+      { ...data, purchasable: false },
+    ]) {
+      expect(
+        karaokeEligibilityTarget({ kind: "ok", data: other }),
+        `${other.state} ${other.saleStatus}`,
+      ).toBeNull();
+    }
+    for (const input of [
+      { kind: "loading" },
+      { kind: "not_found" },
+      { kind: "unavailable" },
+      { kind: "auth_required" },
+      { kind: "email_unverified" },
+    ] as const) {
+      expect(karaokeEligibilityTarget(input), input.kind).toBeNull();
+    }
+  });
+
+  it("does not mutate its inputs", async () => {
+    const data = Object.freeze(await seeded(SLOT.d1_1000));
+    const eligibility = Object.freeze(refused(["PURCHASE_LIMIT_EXCEEDED"]));
+    const before = JSON.stringify([data, eligibility]);
+    buildWith(data, eligibility);
+    karaokeEligibilityTarget({ kind: "ok", data });
+    expect(JSON.stringify([data, eligibility])).toBe(before);
   });
 });

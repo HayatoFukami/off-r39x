@@ -15,6 +15,7 @@ import type {
   CartLineResolution,
   CartPurchaseStart,
   CheckoutStart,
+  EligibilityTarget,
   EntryOffering,
   EntryTicketDetail,
   EntryTicketSummary,
@@ -45,6 +46,7 @@ import type {
 } from "../../../../apps/web/src/api-client/types.ts";
 import type { AuthPort, Session } from "../../../../apps/web/src/auth/port.ts";
 import { createBackend } from "../../../harness/mock-backend.ts";
+import { SLOT } from "../../../harness/mock-seed.ts";
 import { PURCHASE_REASONS } from "../../../harness/purchase-reasons.ts";
 
 const webDir = fileURLToPath(new URL("../../../../apps/web/", import.meta.url));
@@ -168,10 +170,14 @@ describe("TC-DEV-WEB-010-102 ApiPort and AuthPort have the documented shape (des
     >();
   });
 
-  it("types getPurchaseEligibility as the owner-scoped read of API-PUR-ELG-001 (input lines, never a Read<T>)", () => {
-    // Until B4b adds the method to PurchaseApi its type is read through the pending window.
+  it("types getPurchaseEligibility as the owner-scoped read of API-PUR-ELG-001 (input Cart lines or one KARAOKE slot, never a Read<T>)", () => {
     type Method = PurchaseApi["getPurchaseEligibility"];
-    expectTypeOf<Method>().parameter(0).toEqualTypeOf<readonly CartLine[]>();
+    expectTypeOf<Method>().parameter(0).toEqualTypeOf<readonly EligibilityTarget[]>();
+    expectTypeOf<EligibilityTarget>().toEqualTypeOf<
+      CartLine | { kind: "KARAOKE"; slotRef: Ref<"slot">; quantity: 1 }
+    >();
+    // FR-CRT-002: Karaoke is checked through the target union and never becomes a Cart line.
+    expectTypeOf<Extract<CartLine, { kind: "KARAOKE" }>>().toBeNever();
     expectTypeOf<Method>().returns.resolves.toEqualTypeOf<PurchaseEligibilityRead>();
     expectTypeOf<PurchaseEligibilityRead["kind"]>().toEqualTypeOf<
       "ok" | "auth_required" | "email_unverified" | "unavailable"
@@ -198,6 +204,32 @@ describe("TC-DEV-WEB-010-102 ApiPort and AuthPort have the documented shape (des
     ]);
     expect(result).toBeInstanceOf(Promise);
     expect(await result).toEqual({ kind: "auth_required" });
+  });
+
+  it("accepts a KARAOKE target (quantity 1) on the same method and answers a guest with auth_required (no new method, API-PUR-ELG-001)", async () => {
+    const { api } = createBackend();
+    const result = api.purchase.getPurchaseEligibility([
+      { kind: "KARAOKE", slotRef: SLOT.d1_1000, quantity: 1 },
+    ]);
+    expect(result).toBeInstanceOf(Promise);
+    expect(await result).toEqual({ kind: "auth_required" });
+  });
+
+  it("declares the KARAOKE variant in the target union, keeps it out of CartLine and types the method input with it (source)", () => {
+    const types = read(join(webDir, "src/api-client/types.ts"));
+    const target = /export type EligibilityTarget =([\s\S]*?\});/.exec(types)?.[1] ?? "";
+    expect(target, "EligibilityTarget must be exported from api-client/types.ts").not.toBe("");
+    expect(target).toMatch(/\bCartLine\b/);
+    expect(target).toMatch(/kind:\s*"KARAOKE"/);
+    expect(target).toMatch(/slotRef:\s*Ref<"slot">/);
+    expect(target).toMatch(/quantity:\s*1\b/);
+    const cartLine = /export type CartLine =([\s\S]*?\});/.exec(types)?.[1] ?? "";
+    expect(cartLine).not.toBe("");
+    expect(cartLine).not.toMatch(/KARAOKE/);
+    const port = read(join(webDir, "src/api-client/port.ts"));
+    expect(port).toMatch(
+      /getPurchaseEligibility\(\s*targets:\s*readonly EligibilityTarget\[\]\s*\)/,
+    );
   });
 
   it("types the purchase and self port methods", () => {
@@ -407,6 +439,9 @@ describe("TC-DEV-WEB-010-103 port doc comments name the Operation ID or the UCR 
     expect(eligibility).toMatch(/read-only/);
     expect(eligibility).toMatch(/no-store/);
     expect(eligibility).toMatch(/not a reservation/);
+    // B4c: the same Operation ID also takes one KARAOKE Slot (quantity 1); no other Operation ID is cited.
+    expect(eligibility).toContain("KARAOKE");
+    expect(eligibility.match(/API-[A-Z]+(?:-[A-Z]+)*-\d{3}/g)).toEqual(["API-PUR-ELG-001"]);
   });
 
   it("cites API-PUR-CART-001 for startCartPurchase without the UCR or Operation ID なし wording (SPEC-110 API-PUR-CART-001, UCR-110-001 INCORPORATED)", () => {

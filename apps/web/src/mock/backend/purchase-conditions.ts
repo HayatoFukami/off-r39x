@@ -1,4 +1,5 @@
-import type { PurchaseReason } from "../../api-client/types";
+import { assertNever, type KaraokeSlotState } from "@off-r39x/domain";
+import type { KaraokeSaleStatus, PurchaseReason } from "../../api-client/types";
 
 // UI mock test double of the SPEC-110 API-PUR-ELG-001 reason evaluation; not a contract (DEV-WEB-010).
 // Pure: no React, storage or clock. The time is an argument.
@@ -61,4 +62,43 @@ export function evaluatePurchaseConditions(
   }
   const maxPurchasableQuantity = outsideSalesWindow ? 0 : Math.min(target.remaining, accountLeft);
   return { reasons, maxPurchasableQuantity };
+}
+
+export type KaraokeConditionTarget =
+  | { kind: "missing" } // unknown slot
+  | {
+      kind: "slot";
+      slotState: KaraokeSlotState;
+      saleStatus: KaraokeSaleStatus;
+      limitReached: boolean;
+    };
+
+/**
+ * UI mock test double of API-PUR-ELG-001 for one KARAOKE item (quantity 1): max is 0 or 1. Reasons are in
+ * the canonical order and without duplicates. The mock has no payment deadline: PAYMENT_WINDOW_TOO_SHORT
+ * is never produced (no time constant in the mock, TC-PG-KRK-003-106).
+ */
+export function evaluateKaraokeConditions(target: KaraokeConditionTarget): PurchaseConditionResult {
+  if (target.kind === "missing") {
+    return { reasons: ["NOT_PUBLIC_OR_NOT_FOUND"], maxPurchasableQuantity: 0 };
+  }
+  const reasons: PurchaseReason[] = [];
+  switch (target.saleStatus) {
+    case "ON_SALE":
+      break;
+    case "BEFORE_SALES":
+      reasons.push("SALES_NOT_STARTED");
+      break;
+    case "SALES_ENDED":
+      reasons.push("SALES_CLOSED");
+      break;
+    case "SUSPENDED":
+      reasons.push("SALES_STOPPED");
+      break;
+    default:
+      return assertNever(target.saleStatus);
+  }
+  if (target.limitReached) reasons.push("PURCHASE_LIMIT_EXCEEDED");
+  if (target.slotState !== "AVAILABLE") reasons.push("SLOT_UNAVAILABLE");
+  return { reasons, maxPurchasableQuantity: reasons.length === 0 ? 1 : 0 };
 }
