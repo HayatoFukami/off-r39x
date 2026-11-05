@@ -23,8 +23,8 @@ import {
   eligibilityForSession,
   eligibilityMode,
   eligibilityTargets,
-  toEligibilityInput,
 } from "../purchase/eligibility-model";
+import { readEligibilityOf } from "../purchase/read-eligibility";
 import { useCartPurchase } from "../purchase/use-cart-purchase";
 import { CartRecovery } from "./cart-recovery";
 import { buildCartPageModel, type CartRow } from "./cart-view-model";
@@ -57,12 +57,8 @@ async function readEligibility(
   if (mode === "not_applicable") return { kind: "not_applicable" };
   if (mode === "unavailable" || resolutions.kind !== "ok") return { kind: "unavailable" };
   const targets = eligibilityTargets(lines, resolutions.data);
-  if (targets.length === 0) return { kind: "ok", data: [] };
-  try {
-    return toEligibilityInput(await api.purchase.getPurchaseEligibility(targets));
-  } catch {
-    return { kind: "unavailable" };
-  }
+  // At most 50 items per request (API-PUR-ELG-001); all requests must succeed, else it is a failure.
+  return readEligibilityOf((chunk) => api.purchase.getPurchaseEligibility(chunk), targets);
 }
 
 function CartRowView({

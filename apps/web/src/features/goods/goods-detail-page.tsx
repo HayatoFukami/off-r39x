@@ -21,8 +21,8 @@ import {
   type EligibilityMode,
   eligibilityForSession,
   eligibilityMode,
-  toEligibilityInput,
 } from "../purchase/eligibility-model";
+import { readEligibilityOf } from "../purchase/read-eligibility";
 import {
   buildGoodsDetailModel,
   type GoodsDetailModel,
@@ -112,11 +112,7 @@ async function readEligibility(
   if (mode === "unavailable") return { kind: "unavailable" };
   const target = goodsEligibilityTarget(goods);
   if (target === null) return { kind: "ok", data: [] };
-  try {
-    return toEligibilityInput(await api.purchase.getPurchaseEligibility([target]));
-  } catch {
-    return { kind: "unavailable" };
-  }
+  return readEligibilityOf((chunk) => api.purchase.getPurchaseEligibility(chunk), [target]);
 }
 
 // PG-GDS-002 container: reads after mount through the port. Adding to the Cart starts no purchase.
