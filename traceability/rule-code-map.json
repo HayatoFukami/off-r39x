@@ -551,7 +551,8 @@
         "apps/web/src/features/cart/can-proceed.ts",
         "apps/web/src/features/cart/cart-view-model.ts",
         "apps/web/src/features/purchase/cart-purchase-flow.ts",
-        "apps/web/src/features/purchase/eligibility-model.ts"
+        "apps/web/src/features/purchase/eligibility-model.ts",
+        "apps/web/src/features/purchase/read-eligibility.ts"
       ],
       "test_case_ids": [
         "TC-PG-CRT-001-001",
@@ -609,7 +610,8 @@
         "apps/web/src/features/purchase/cart-purchase-flow.ts",
         "apps/web/src/features/purchase/use-cart-purchase.ts",
         "apps/web/src/features/purchase/cart-purchase-feedback.tsx",
-        "apps/web/src/features/purchase/eligibility-model.ts"
+        "apps/web/src/features/purchase/eligibility-model.ts",
+        "apps/web/src/features/purchase/read-eligibility.ts"
       ],
       "test_case_ids": [
         "TC-PG-CRT-001-001",
@@ -686,7 +688,8 @@
         "TC-PG-CRT-001-433",
         "TC-PG-CRT-001-446",
         "TC-PG-CRT-001-514",
-        "TC-PG-CRT-001-625"
+        "TC-PG-CRT-001-625",
+        "TC-PG-CRT-001-626"
       ],
       "notes": "implementation mapping only: availability and money formatting; S2 mock backend"
     },
@@ -1493,7 +1496,8 @@
         "apps/web/src/features/entry/entry-model.ts",
         "apps/web/src/features/cart/add-to-cart-form.tsx",
         "apps/web/src/routes/public/entry.tsx",
-        "apps/web/src/features/purchase/eligibility-model.ts"
+        "apps/web/src/features/purchase/eligibility-model.ts",
+        "apps/web/src/features/purchase/read-eligibility.ts"
       ],
       "test_case_ids": [
         "TC-PG-TKT-001-101",
@@ -2758,6 +2762,7 @@
       "code_paths": [
         "apps/web/src/mock/backend/mock-api.ts",
         "apps/web/src/features/purchase/eligibility-model.ts",
+        "apps/web/src/features/purchase/read-eligibility.ts",
         "apps/web/src/features/cart/cart-page.tsx",
         "apps/web/src/features/cart/cart-view-model.ts",
         "apps/web/src/features/entry/entry-page.tsx"
@@ -2765,6 +2770,7 @@
       "test_case_ids": [
         "TC-PG-CRT-001-105",
         "TC-PG-CRT-001-625",
+        "TC-PG-CRT-001-626",
         "TC-PG-CRT-001-514",
         "TC-PG-CRT-001-446",
         "TC-PG-TKT-001-511"

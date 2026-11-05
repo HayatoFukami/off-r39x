@@ -12,6 +12,18 @@ import type { SessionState } from "../../auth/use-session";
 // port and keeps the answer in memory only. A failed or pending read is never "under the limit".
 // An answer is used only for the session and the quantities it was read for (B4b-F-1).
 
+/** API-PUR-ELG-001 accepts 1..50 items per request (SPEC-110). */
+export const MAX_ELIGIBILITY_ITEMS = 50;
+
+/** Splits a list into requests of at most MAX_ELIGIBILITY_ITEMS items, keeping the order. */
+export function chunkEligibilityTargets<T>(items: readonly T[]): T[][] {
+  const chunks: T[][] = [];
+  for (let start = 0; start < items.length; start += MAX_ELIGIBILITY_ITEMS) {
+    chunks.push(items.slice(start, start + MAX_ELIGIBILITY_ITEMS));
+  }
+  return chunks;
+}
+
 export type EligibilityInput =
   | { kind: "not_applicable" } // Guest or unverified: public conditions only
   | { kind: "loading" }
