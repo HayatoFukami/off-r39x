@@ -55,6 +55,76 @@ export async function readDbRaw(page: Page): Promise<string | null> {
   return page.evaluate((key) => window.localStorage.getItem(key), KEYS.db);
 }
 
+/** Every key of localStorage and sessionStorage of the current origin, tagged by area and sorted. */
+export async function storageKeys(page: Page): Promise<string[]> {
+  return page.evaluate(() =>
+    [
+      ...Object.keys(window.localStorage).map((key) => `local:${key}`),
+      ...Object.keys(window.sessionStorage).map((key) => `session:${key}`),
+    ].sort(),
+  );
+}
+
+/**
+ * Every stored value of the origin (localStorage and sessionStorage) joined into one text, without the
+ * values of the given keys. Used to prove that an owner-scoped answer is never persisted (SEC-API-029).
+ */
+export async function storedText(page: Page, exceptKeys: readonly string[] = []): Promise<string> {
+  return page.evaluate((except) => {
+    const parts: string[] = [];
+    for (const area of [window.localStorage, window.sessionStorage]) {
+      for (const key of Object.keys(area)) {
+        if (!except.includes(key)) parts.push(`${key}=${area.getItem(key) ?? ""}`);
+      }
+    }
+    return parts.join("\n");
+  }, exceptKeys);
+}
+
+type RecordWindow = Window & { __recordedTexts?: Record<string, string[][]> };
+
+/**
+ * Records, from now on, which of the needles the element's text contains after every DOM change
+ * inside it (the current text is not recorded; consecutive equal snapshots are kept once). A transient
+ * state that is shown for a moment and then replaced is therefore found, which a check of the final
+ * display cannot do. The recording stops when the element is unmounted. It does not touch the display.
+ */
+export async function recordTextsIn(
+  locator: Locator,
+  key: string,
+  needles: readonly string[],
+): Promise<void> {
+  await locator.evaluate(
+    (element, args) => {
+      const recordWindow = window as RecordWindow;
+      const store: Record<string, string[][]> = recordWindow.__recordedTexts ?? {};
+      recordWindow.__recordedTexts = store;
+      store[args.key] = [];
+      const observer = new MutationObserver(() => {
+        const text = element.textContent ?? "";
+        const found = args.needles.filter((needle) => text.includes(needle));
+        const snapshots = store[args.key] ?? [];
+        const last = snapshots[snapshots.length - 1];
+        if (last === undefined || last.join("\u0000") !== found.join("\u0000")) {
+          snapshots.push(found);
+        }
+        store[args.key] = snapshots;
+      });
+      observer.observe(element, { childList: true, subtree: true, characterData: true });
+    },
+    { key, needles: [...needles] },
+  );
+}
+
+/** The snapshots recorded under the key: each is the list of needles contained at that change. */
+export async function recordedTexts(page: Page, key: string): Promise<string[][]> {
+  return page.evaluate((name) => (window as RecordWindow).__recordedTexts?.[name] ?? [], key);
+}
+
+/** What an owner-scoped eligibility answer would leave behind if it were persisted. */
+export const FORBIDDEN_ELIGIBILITY_IN_STORAGE =
+  /eligib|purchasable|maxPurchasable|"reasons"|PURCHASE_LIMIT_EXCEEDED|NOT_PUBLIC_OR_NOT_FOUND/;
+
 /**
  * Replaces the whole localStorage of the current origin. seedLocalStorage applies its entries once per tab
  * (so that a reload keeps later changes), which means a loop over several states must reset explicitly.

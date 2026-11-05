@@ -413,7 +413,7 @@ seed の `imageUrl`（`/mock/sponsors/<key>.svg`）が指す文字だけの plac
 | `latency` | `none` `long` |
 | `latencyLongMs` | 整数 1..60000（number input） |
 | `sponsorLogos` | `published` `none` `fail` `image_broken` `image_disallowed_origin` |
-| `cart.state` | `ok` `fail` `partial` |
+| `cart.state` | `ok` `fail` `partial` `eligibility_fail` |
 | `cart.purchaseStart` | `ok` `reject_one` `limit` `unavailable` |
 | `checkout` | `ok` `start_failed` `opportunity_expired` |
 | `karaokeHold` | `ok` `conflict` `limit` `expire_before_checkout` |

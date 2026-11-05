@@ -3,6 +3,7 @@ import { cartLineKey } from "../../../../apps/web/src/api-client/cart-line-key.t
 import type {
   CartLine,
   CartLineResolution,
+  PurchaseEligibility,
   Ref,
   SaleAvailability,
   UtcInstant,
@@ -66,6 +67,17 @@ describe("TC-PG-CRT-001-431 canProceed is enabled only for a non-empty Cart whos
     expect(canProceed([], [])).toEqual(expected);
     expect(canProceed([], null)).toEqual(expected);
     expect(canProceed([], [onSale(entry())])).toEqual(expected);
+  });
+
+  it("treats an omitted eligibility like not_applicable (guest and unverified users: public conditions only)", () => {
+    const a = entry(1);
+    const b = goods(1);
+    const blocked = resolved(b, { kind: "SOLD_OUT" });
+    for (const resolutions of [[onSale(a), onSale(b)], [onSale(a), blocked], null]) {
+      expect(canProceed([a, b], resolutions, { kind: "not_applicable" })).toEqual(
+        canProceed([a, b], resolutions),
+      );
+    }
   });
 
   it("is disabled with an 'unresolved' reason when the resolutions were not obtained (loading or failure)", () => {
@@ -158,5 +170,129 @@ describe("TC-PG-CRT-001-432 every unavailable reason of a line disables the butt
     const lines = Object.freeze([Object.freeze(line)]);
     const resolutions = Object.freeze([Object.freeze(onSale(line))]);
     expect(canProceed(lines, resolutions)).toEqual({ canProceed: true });
+  });
+});
+
+describe("TC-PG-CRT-001-433 canProceed also requires the owner-scoped eligibility of every purchasable line (API-PUR-ELG-001, SPEC-050 12.1 / 14A.1, FR-CRT-005)", () => {
+  const eligible = (
+    line: CartLine,
+    patch: Partial<PurchaseEligibility> = {},
+  ): PurchaseEligibility => ({
+    lineKey: cartLineKey(line),
+    purchasable: true,
+    reasons: [],
+    maxPurchasableQuantity: 10,
+    ...patch,
+  });
+  const ok = (...data: PurchaseEligibility[]) => ({ kind: "ok", data }) as const;
+
+  it.each([["loading"], ["unavailable"]] as const)(
+    "a purchasable line is not purchasable while the eligibility is %s: one 'unresolved' reason, never enabled",
+    (kind) => {
+      const a = entry(1);
+      const b = goods(2);
+      const result = canProceed([a, b], [onSale(a), onSale(b)], { kind });
+      expect(result.canProceed).toBe(false);
+      if (result.canProceed) return;
+      expect(result.reasons).toEqual([{ kind: "unresolved" }]);
+    },
+  );
+
+  it("counts 'unresolved' once even when several lines wait for the eligibility", () => {
+    const lines = [entry(1), goods(1), entry(1, OFFERING_2)];
+    const resolutions = lines.map((line) => onSale(line));
+    const result = canProceed(lines, resolutions, { kind: "unavailable" });
+    if (result.canProceed) throw new Error("expected a blocked decision");
+    expect(result.reasons.filter((reason) => reason.kind === "unresolved")).toHaveLength(1);
+    expect(result.reasons.filter((reason) => reason.kind === "line")).toHaveLength(0);
+  });
+
+  it("enables proceeding when the eligibility says purchasable for every line", () => {
+    const a = entry(2);
+    const b = goods(3);
+    expect(canProceed([a, b], [onSale(a, 4), onSale(b, 20)], ok(eligible(a), eligible(b)))).toEqual(
+      { canProceed: true },
+    );
+  });
+
+  it("names the first reason of a line the eligibility refuses, per line, in Cart order", () => {
+    const a = entry(1);
+    const b = goods(1);
+    const c = entry(1, OFFERING_2);
+    const result = canProceed(
+      [a, b, c],
+      [onSale(a), onSale(b), onSale(c)],
+      ok(
+        eligible(c, {
+          purchasable: false,
+          reasons: ["INSUFFICIENT_QUANTITY", "PURCHASE_LIMIT_EXCEEDED"],
+          maxPurchasableQuantity: 0,
+        }),
+        eligible(a),
+        eligible(b, {
+          purchasable: false,
+          reasons: ["PURCHASE_LIMIT_EXCEEDED"],
+          maxPurchasableQuantity: 0,
+        }),
+      ),
+    );
+    expect(result).toEqual({
+      canProceed: false,
+      reasons: [
+        { kind: "line", lineKey: cartLineKey(b), reason: "PURCHASE_LIMIT_EXCEEDED" },
+        { kind: "line", lineKey: cartLineKey(c), reason: "INSUFFICIENT_QUANTITY" },
+      ],
+    });
+  });
+
+  it("treats a purchasable line without an eligibility entry as unknown, never as purchasable", () => {
+    const a = entry(1);
+    const b = goods(1);
+    const result = canProceed([a, b], [onSale(a), onSale(b)], ok(eligible(a)));
+    expect(result).toEqual({
+      canProceed: false,
+      reasons: [{ kind: "line", lineKey: cartLineKey(b), reason: "unavailable" }],
+    });
+  });
+
+  it("defends against a purchasable answer whose maximum is below the line quantity", () => {
+    const line = goods(5);
+    const result = canProceed(
+      [line],
+      [onSale(line)],
+      ok(eligible(line, { maxPurchasableQuantity: 3 })),
+    );
+    expect(result).toEqual({
+      canProceed: false,
+      reasons: [{ kind: "line", lineKey: cartLineKey(line), reason: "INSUFFICIENT_QUANTITY" }],
+    });
+  });
+
+  it("keeps the public reason of a line that is not purchasable on the public conditions, whatever the eligibility says", () => {
+    const sold = entry(1);
+    const fine = goods(1);
+    const resolutions = [resolved(sold, { kind: "SOLD_OUT" }), onSale(fine)];
+    for (const eligibility of [
+      { kind: "loading" },
+      { kind: "unavailable" },
+      ok(eligible(sold), eligible(fine)),
+    ] as const) {
+      const result = canProceed([sold, fine], resolutions, eligibility);
+      if (result.canProceed) throw new Error("expected a blocked decision");
+      expect(
+        result.reasons.filter(
+          (reason) => reason.kind === "line" && reason.lineKey === cartLineKey(sold),
+        ),
+        eligibility.kind,
+      ).toEqual([{ kind: "line", lineKey: cartLineKey(sold), reason: "SOLD_OUT" }]);
+    }
+  });
+
+  it("does not mutate its inputs", () => {
+    const line = entry(1);
+    const lines = Object.freeze([Object.freeze(line)]);
+    const resolutions = Object.freeze([Object.freeze(onSale(line))]);
+    const data = Object.freeze([Object.freeze(eligible(line))]);
+    expect(canProceed(lines, resolutions, { kind: "ok", data })).toEqual({ canProceed: true });
   });
 });

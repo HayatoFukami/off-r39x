@@ -15,7 +15,8 @@ import type {
   OrderDetail,
   OrderItem,
   OrderSummary,
-  PurchaseReason,
+  PurchaseEligibility,
+  PurchaseEligibilityRead,
   QrPresentation,
   Read,
   ReservationDetail,
@@ -31,7 +32,7 @@ import { createMockDb, type DbState, type MockStorage } from "./db";
 import type { IdGenerator } from "./ids";
 import { buildKaraokeBuckets, filterSlotsByBusinessDate } from "./karaoke-buckets";
 import { applyLatency, type Sleep } from "./latency";
-import { evaluatePurchaseConditions } from "./purchase-conditions";
+import { evaluatePurchaseConditions, type PurchaseConditionResult } from "./purchase-conditions";
 import { decidePurpose, type OrderLineKind } from "./purpose";
 import { loadScenario, type Scenario } from "./scenario";
 import { loadSessionState } from "./session-store";
@@ -435,10 +436,6 @@ export function createMockApi(deps: MockApiDeps): ApiPort {
     return fn({ ...ctx, user: gate.user, save: () => db.save(ctx.state) });
   }
 
-  function viewerEmail(viewer: Viewer): string | null {
-    return viewer.kind === "user" ? viewer.user.email : null;
-  }
-
   function slotView(state: DbState, ref: string): SlotRow | undefined {
     return state.slots.find((s) => s.ref === ref);
   }
@@ -604,10 +601,8 @@ export function createMockApi(deps: MockApiDeps): ApiPort {
     listEntryOfferings: async () => {
       const ctx = await open();
       if (ctx === null || ctx.scenario.publicFetch === "fail") return UNAVAILABLE;
-      const viewer = viewerOf(ctx.state);
-      if (viewer.kind === "unavailable") return UNAVAILABLE;
       if (ctx.scenario.publicFetch === "empty") return { kind: "ok", data: [] };
-      const email = viewerEmail(viewer);
+      // Public read (API-PUB-005): independent of the viewer; owner conditions come from getPurchaseEligibility.
       return {
         kind: "ok",
         data: ctx.state.offerings
@@ -618,13 +613,7 @@ export function createMockApi(deps: MockApiDeps): ApiPort {
             description: o.description,
             unitPrice: o.unitPrice,
             salesPeriod: { startsAt: asUtc(o.startsAt), endsAt: asUtc(o.endsAt) },
-            availability: evaluate(
-              o,
-              o.perAccountLimit,
-              1,
-              usedQuantity(ctx.state, email, o.ref),
-              ctx.nowMs,
-            ),
+            availability: evaluate(o, o.perAccountLimit, 1, 0, ctx.nowMs),
             perAccountLimit: o.perAccountLimit,
           })),
       };
@@ -733,9 +722,7 @@ export function createMockApi(deps: MockApiDeps): ApiPort {
       const ctx = await open();
       if (ctx === null || ctx.scenario.publicFetch === "fail") return UNAVAILABLE;
       if (ctx.scenario.cart.state === "fail") return UNAVAILABLE;
-      const viewer = viewerOf(ctx.state);
-      if (viewer.kind === "unavailable") return UNAVAILABLE;
-      const email = viewerEmail(viewer);
+      // Public conditions only (viewer-independent, used = 0); owner conditions come from getPurchaseEligibility.
       const data: CartLineResolution[] = lines.map((line, index) => {
         const lineKey = cartLineKey(line);
         if (ctx.scenario.cart.state === "partial" && index === 0) {
@@ -756,7 +743,7 @@ export function createMockApi(deps: MockApiDeps): ApiPort {
                 offering,
                 offering.perAccountLimit,
                 line.quantity,
-                usedQuantity(ctx.state, email, offering.ref),
+                0,
                 ctx.nowMs,
               ),
             };
@@ -780,13 +767,12 @@ export function createMockApi(deps: MockApiDeps): ApiPort {
     },
   };
 
-  /** Every confirmed reason that stops one cart line (empty when the line can be purchased). */
-  function reasonsOf(ctx: Ctx, line: CartLine, email: string): PurchaseReason[] {
+  /** Every confirmed reason that stops one cart line (empty when the line can be purchased) and the maximum quantity. */
+  function conditionsOf(ctx: Ctx, line: CartLine, email: string): PurchaseConditionResult {
     switch (line.kind) {
       case "ENTRY_TICKET": {
         const offering = ctx.state.offerings.find((o) => o.ref === line.offeringRef && o.published);
-        if (offering === undefined)
-          return evaluatePurchaseConditions({ kind: "missing" }, 0, 0).reasons;
+        if (offering === undefined) return evaluatePurchaseConditions({ kind: "missing" }, 0, 0);
         return evaluatePurchaseConditions(
           {
             kind: "sellable",
@@ -799,12 +785,11 @@ export function createMockApi(deps: MockApiDeps): ApiPort {
           },
           line.quantity,
           ctx.nowMs,
-        ).reasons;
+        );
       }
       case "GOODS": {
         const goods = ctx.state.goods.find((g) => g.ref === line.goodsRef && g.published);
-        if (goods === undefined)
-          return evaluatePurchaseConditions({ kind: "missing" }, 0, 0).reasons;
+        if (goods === undefined) return evaluatePurchaseConditions({ kind: "missing" }, 0, 0);
         return evaluatePurchaseConditions(
           {
             kind: "sellable",
@@ -817,7 +802,7 @@ export function createMockApi(deps: MockApiDeps): ApiPort {
           },
           line.quantity,
           ctx.nowMs,
-        ).reasons;
+        );
       }
       default:
         return assertNever(line);
@@ -825,6 +810,27 @@ export function createMockApi(deps: MockApiDeps): ApiPort {
   }
 
   const purchaseApi: ApiPort["purchase"] = {
+    // API-PUR-ELG-001: read-only (no db.save, no id, no idempotency record, no Order progress; SEC-API-029).
+    getPurchaseEligibility: async (lines): Promise<PurchaseEligibilityRead> => {
+      const ctx = await open();
+      if (ctx === null) return UNAVAILABLE;
+      const gate = access(viewerOf(ctx.state));
+      if (!gate.ok) return { kind: gate.reason };
+      if (ctx.scenario.cart.state === "eligibility_fail") return UNAVAILABLE;
+      validateCartLines(lines);
+      const email = gate.user.email;
+      const data: PurchaseEligibility[] = lines.map((line) => {
+        const { reasons, maxPurchasableQuantity } = conditionsOf(ctx, line, email);
+        return {
+          lineKey: cartLineKey(line),
+          purchasable: reasons.length === 0,
+          reasons,
+          maxPurchasableQuantity,
+        };
+      });
+      return { kind: "ok", data };
+    },
+
     startCartPurchase: async (lines, o): Promise<CartPurchaseStart> => {
       const ctx = await open();
       if (ctx === null) return UNAVAILABLE;
@@ -848,7 +854,7 @@ export function createMockApi(deps: MockApiDeps): ApiPort {
       }
 
       // Each line is evaluated on its own (BR-ORD-017); the valid input has no duplicate lines.
-      const reasons = lines.map((line) => reasonsOf(ctx, line, email));
+      const reasons = lines.map((line) => conditionsOf(ctx, line, email).reasons);
       const forced = ctx.scenario.cart.purchaseStart;
       const first = reasons[0];
       if (

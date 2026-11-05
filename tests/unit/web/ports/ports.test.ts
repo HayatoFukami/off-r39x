@@ -32,6 +32,8 @@ import type {
   OrderSummary,
   Profile,
   ProfileUpdate,
+  PurchaseEligibility,
+  PurchaseEligibilityRead,
   PurchaseReason,
   QrPresentation,
   Read,
@@ -86,7 +88,12 @@ describe("TC-DEV-WEB-010-102 ApiPort and AuthPort have the documented shape (des
       ].sort(),
     );
     expect(Object.keys(api.purchase).sort()).toEqual(
-      ["startCartPurchase", "startCheckout", "startKaraokePurchase"].sort(),
+      [
+        "getPurchaseEligibility",
+        "startCartPurchase",
+        "startCheckout",
+        "startKaraokePurchase",
+      ].sort(),
     );
     expect(Object.keys(api.self).sort()).toEqual(
       [
@@ -159,6 +166,38 @@ describe("TC-DEV-WEB-010-102 ApiPort and AuthPort have the documented shape (des
     expectTypeOf<PublicApi["resolveCartLines"]>().returns.resolves.toEqualTypeOf<
       Read<readonly CartLineResolution[]>
     >();
+  });
+
+  it("types getPurchaseEligibility as the owner-scoped read of API-PUR-ELG-001 (input lines, never a Read<T>)", () => {
+    // Until B4b adds the method to PurchaseApi its type is read through the pending window.
+    type Method = PurchaseApi["getPurchaseEligibility"];
+    expectTypeOf<Method>().parameter(0).toEqualTypeOf<readonly CartLine[]>();
+    expectTypeOf<Method>().returns.resolves.toEqualTypeOf<PurchaseEligibilityRead>();
+    expectTypeOf<PurchaseEligibilityRead["kind"]>().toEqualTypeOf<
+      "ok" | "auth_required" | "email_unverified" | "unavailable"
+    >();
+    expectTypeOf<Extract<PurchaseEligibilityRead, { kind: "ok" }>["data"]>().toEqualTypeOf<
+      readonly PurchaseEligibility[]
+    >();
+    expectTypeOf<PurchaseEligibility>().toEqualTypeOf<{
+      lineKey: string;
+      purchasable: boolean;
+      reasons: readonly PurchaseReason[];
+      maxPurchasableQuantity: number;
+    }>();
+  });
+
+  it("returns a promise from getPurchaseEligibility and never answers a Cart line without an owner gate", async () => {
+    const { api } = createBackend();
+    const result = api.purchase.getPurchaseEligibility([
+      {
+        kind: "ENTRY_TICKET",
+        offeringRef: "e0000000-0000-4000-8000-000000000001" as Ref<"offering">,
+        quantity: 1,
+      },
+    ]);
+    expect(result).toBeInstanceOf(Promise);
+    expect(await result).toEqual({ kind: "auth_required" });
   });
 
   it("types the purchase and self port methods", () => {
@@ -301,6 +340,7 @@ describe("TC-DEV-WEB-010-103 port doc comments name the Operation ID or the UCR 
     "listGoods",
     "getGoods",
     "resolveCartLines",
+    "getPurchaseEligibility",
     "startCartPurchase",
     "startKaraokePurchase",
     "startCheckout",
@@ -324,21 +364,49 @@ describe("TC-DEV-WEB-010-103 port doc comments name the Operation ID or the UCR 
     return lines.slice(Math.max(0, index - 4), index + 1).join("\n");
   };
 
-  it("annotates every method with an API-* Operation ID or UCR-110-001", () => {
+  /** The comment block directly above a declaration (the doc comment of that method only). */
+  const annotationOf = (lines: string[], name: string): string => {
+    const index = lines.findIndex((line) => new RegExp(`^\\s*${name}\\(`).test(line));
+    expect(index, `${name} must be declared in port.ts`).toBeGreaterThanOrEqual(0);
+    const block: string[] = [];
+    for (let i = index - 1; i >= 0; i -= 1) {
+      const text = (lines[i] ?? "").trim();
+      if (!/^(\/\*|\*|\/\/)/.test(text)) break;
+      block.unshift(text);
+    }
+    return block.join("\n");
+  };
+
+  it("annotates every method with an API-* Operation ID (the UCR-110-001 stand-in is gone: it is INCORPORATED)", () => {
     const lines = portSource();
     for (const name of methods) {
-      expect(window(lines, name), name).toMatch(/API-[A-Z]+(-[A-Z]+)*-\d{3}|UCR-110-001/);
+      expect(annotationOf(lines, name), name).toMatch(/API-[A-Z]+(-[A-Z]+)*-\d{3}/);
     }
   });
 
-  it("marks only the ports whose viewer-specific part has no Operation ID yet as UCR-110-001 / Operation ID なし (until B4b)", () => {
+  it("leaves no UCR-110-001 and no Operation ID なし mark anywhere in port.ts (every method has a canonical Operation ID)", () => {
+    const source = portSource().join("\n");
+    expect(source).not.toContain("UCR-110-001");
+    expect(source).not.toMatch(/Operation ID\s*(なし|none|missing)/i);
+    expect(source).not.toMatch(/Methods without an Operation ID/);
+  });
+
+  it("cites the public Operation IDs for the two public reads and the owner Operation ID for the eligibility (SPEC-110 API-PUB-005 / 010 / 011, API-PUR-ELG-001; SPEC-050 12.1)", () => {
     const lines = portSource();
-    // listSponsorLogos has API-PUB-012 and startCartPurchase has API-PUR-CART-001; the viewer-specific
-    // Purchase Limit reads (listEntryOfferings, resolveCartLines) keep the mark until phase B4b.
-    for (const name of ["listEntryOfferings", "resolveCartLines"]) {
-      expect(window(lines, name), name).toContain("UCR-110-001");
-    }
-    expect(portSource().join("\n")).toMatch(/Operation ID\s*(なし|none|missing)/i);
+    const entryOfferings = annotationOf(lines, "listEntryOfferings");
+    expect(entryOfferings).toContain("API-PUB-005");
+    expect(entryOfferings).toMatch(/public/i);
+    expect(entryOfferings).toContain("getPurchaseEligibility");
+    const resolve = annotationOf(lines, "resolveCartLines");
+    for (const id of ["API-PUB-005", "API-PUB-010", "API-PUB-011"]) expect(resolve).toContain(id);
+    expect(resolve).toMatch(/public/i);
+    expect(resolve).toContain("getPurchaseEligibility");
+    const eligibility = annotationOf(lines, "getPurchaseEligibility");
+    expect(eligibility).toContain("API-PUR-ELG-001");
+    expect(eligibility).toMatch(/owner-scoped/);
+    expect(eligibility).toMatch(/read-only/);
+    expect(eligibility).toMatch(/no-store/);
+    expect(eligibility).toMatch(/not a reservation/);
   });
 
   it("cites API-PUR-CART-001 for startCartPurchase without the UCR or Operation ID なし wording (SPEC-110 API-PUR-CART-001, UCR-110-001 INCORPORATED)", () => {
