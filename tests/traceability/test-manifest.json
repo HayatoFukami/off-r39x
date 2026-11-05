@@ -8987,6 +8987,38 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-PG-CRT-001-626",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "PG-CRT-001",
+        "FR-CRT-005",
+        "SEC-API-029",
+        "API-PUR-ELG-001",
+        "TST-UNT-004",
+        "PG-TKT-001"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Pure chunkEligibilityTargets and readEligibilityOf over lists of 0, 50, 51, 101 and 120 lines with a recording port double",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "a list is split into requests of at most 50 items (API-PUR-ELG-001) in the input order; 50 lines are one request, 51 lines are 50 and 1, 101 lines are 50, 50 and 1; the input is not changed",
+        "the answers of all requests are joined in the input order and used only when every request succeeded",
+        "a failed, auth_required, email_unverified or rejected request makes the whole read unavailable (never a partial ok, never 'under the limit'); no line gives no request and an empty ok"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-PG-CRT-001-621",
       "level": "Unit",
       "suite": "unit",
