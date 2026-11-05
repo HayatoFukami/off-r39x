@@ -116,6 +116,16 @@ describe("TC-PG-PUB-001-213 sponsor links and images accept only safe URLs (SPEC
     ["trailing space", "https://sponsor.example.com/a "],
     ["backslash", "https:\\\\sponsor.example.com\\a"],
     ["protocol-relative", "//sponsor.example.com/a"],
+    [
+      "scheme without slashes (read against the page URL by a browser)",
+      "https:sponsor.example.com/a",
+    ],
+    [
+      "scheme with one slash (read against the page URL by a browser)",
+      "https:/sponsor.example.com/a",
+    ],
+    ["upper-case scheme without slashes", "HTTPS:sponsor.example.com/a"],
+    ["upper-case scheme with one slash", "HTTPS:/sponsor.example.com/a"],
     ["javascript scheme", "javascript:alert(1)"],
     ["data scheme", "data:image/svg+xml,<svg/>"],
     ["unparsable", "not a url"],
@@ -133,6 +143,7 @@ describe("TC-PG-PUB-001-213 sponsor links and images accept only safe URLs (SPEC
       "https://sponsor.example.com:443/a",
     );
     expect(externalHref("https://Sponsor.Example.com/a")).toBe("https://Sponsor.Example.com/a");
+    expect(externalHref("HTTPS://sponsor.example.com/a")).toBe("HTTPS://sponsor.example.com/a");
     expect(externalHref("https://a-b.sponsor.example.co.jp/a/b.html")).toBe(
       "https://a-b.sponsor.example.co.jp/a/b.html",
     );
@@ -161,6 +172,45 @@ describe("TC-PG-PUB-001-213 sponsor links and images accept only safe URLs (SPEC
     expect(imageSrc("https://img.example.com/a.png", MOCK)).toBe("https://img.example.com/a.png");
     expect(imageSrc("/\\evil.example.com/a.png", MOCK)).toBeNull();
   });
+
+  // The mock option is for the mock's own assets only: /mock/sponsors/<name>.svg. A browser removes tab and
+  // newline characters anywhere in a URL, so "/<tab>/host" would become the external "//host" (PR #25 review).
+  it("accepts only /mock/sponsors/<name>.svg as the same-origin path, including the broken-image fixture", () => {
+    for (const path of [
+      "/mock/sponsors/alpha.svg",
+      "/mock/sponsors/s1.svg",
+      "/mock/sponsors/__broken__.svg",
+    ]) {
+      expect(imageSrc(path, MOCK)).toBe(path);
+    }
+  });
+
+  it.each([
+    ["tab between the slashes", "/\t/evil.example.com/a.svg"],
+    ["newline between the slashes", "/\n/evil.example.com/a.svg"],
+    ["carriage return between the slashes", "/\r/evil.example.com/a.svg"],
+    ["tab inside the path", "/mock/sponsors/a\t.svg"],
+    ["leading newline", "\n/mock/sponsors/alpha.svg"],
+    ["space", "/mock/sponsors/a b.svg"],
+    ["protocol-relative", "//evil.example.com/a.svg"],
+    ["backslash after the slash", "/\\evil.example.com/a.svg"],
+    ["dot segment", "/mock/sponsors/../a.svg"],
+    ["encoded dot segment", "/mock/sponsors/%2e%2e/a.svg"],
+    ["another directory", "/api/v1/self/orders"],
+    ["a sibling directory", "/mock/other/alpha.svg"],
+    ["a longer directory name", "/mock/sponsors-x/alpha.svg"],
+    ["not an svg", "/mock/sponsors/alpha.png"],
+    ["a nested path", "/mock/sponsors/a/b.svg"],
+    ["no file name", "/mock/sponsors/"],
+    ["query", "/mock/sponsors/alpha.svg?x=1"],
+    ["fragment", "/mock/sponsors/alpha.svg#x"],
+  ] as const)(
+    "does not use the same-origin path with %s, even with the mock option",
+    (_label, path) => {
+      expect(imageSrc(path, MOCK)).toBeNull();
+      expect(imageSrc(path)).toBeNull();
+    },
+  );
 
   it.each(UNSAFE_URLS)(
     "does not use a URL with %s as the image, with or without the mock option, and falls back to the name",
