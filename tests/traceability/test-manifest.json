@@ -15843,7 +15843,9 @@
         "directory_uniqueness_removed",
         "directory_verified_projection_inverted",
         "directory_verified_not_null_removed",
-        "reconciliation_directory_read_denied"
+        "reconciliation_directory_read_denied",
+        "release_migration_hash_missing",
+        "database_unavailable"
       ],
       "expected_http": null,
       "expected_domain_postconditions": [
@@ -15854,7 +15856,7 @@
         "Valid quoted Provider identifiers match the direct view projection"
       ],
       "expected_provider_postconditions": [],
-      "expected_observability": [],
+      "expected_observability": ["Each readiness failure emits its fixed query name; API and both worker pools log release hash failure; unavailable database emits db.availability.failed"],
       "sensitivity_class": "synthetic",
       "critical": true
     },

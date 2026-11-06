@@ -6,7 +6,41 @@ import {
   computeMigrationSetHash,
   createDatabase,
 } from "../../packages/db/src/index.ts";
+import { observeDatabase } from "../../packages/db/src/observability.ts";
 import { installSyntheticDirectory, prepareFoundationDatabase } from "../harness/db/foundation.ts";
+
+it("TC-DB-AUDIT-001 records fixed readiness failure names", async () => {
+  const pool = new Pool({ connectionString: process.env.TEST_DATABASE_URL });
+  const events: { event_name: string; query_name?: string }[] = [];
+  observeDatabase(pool, { log: (event) => events.push(event) });
+  try {
+    const result = await checkReadiness(pool, {
+      environment: "test",
+      environmentMarkerSetting: "r39x.environment",
+    });
+    expect(result.failures).toContain("directory_mapping_unconfirmed");
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        event_name: "security.fail_closed.triggered",
+        query_name: "readiness.directory_mapping_unconfirmed",
+      }),
+    );
+  } finally {
+    await pool.end();
+  }
+  events.length = 0;
+  const unavailable = await checkReadiness(pool, {
+    environment: "test",
+    environmentMarkerSetting: "r39x.environment",
+  });
+  expect(unavailable.failures).toContain("database_unavailable");
+  expect(events).toContainEqual(
+    expect.objectContaining({
+      event_name: "db.availability.failed",
+      query_name: "readiness.database_unavailable",
+    }),
+  );
+});
 
 it("TC-DB-AUDIT-001 detects missing and altered release schema, constraints and indexes even with an intact journal", async () => {
   if (!process.env.TEST_DATABASE_URL) throw new Error("Real PG17 required");
@@ -78,6 +112,7 @@ it("TC-DB-AUDIT-001 detects missing and altered release schema, constraints and 
     // the auth Directory's rows. Exercise both least-privilege worker identities.
     const ca = await readFile(process.env.TEST_DATABASE_CA as string, "utf8");
     for (const [service, role] of [
+      ["api", "app_api_runtime"],
       ["email-worker", "app_email_runtime"],
       ["reconciliation-worker", "app_reconciliation_runtime"],
     ] as const) {
@@ -85,11 +120,13 @@ it("TC-DB-AUDIT-001 detects missing and altered release schema, constraints and 
       url.username = role;
       url.password = "";
       url.search = "";
+      const events: { event_name: string; query_name?: string }[] = [];
       const runtime = createDatabase({
         connectionString: url.href,
         environment: "test",
         service,
         ca,
+        logger: { log: (event) => events.push(event) },
       });
       try {
         await runtime.pool.query("SET r39x.environment='test'");
@@ -97,6 +134,15 @@ it("TC-DB-AUDIT-001 detects missing and altered release schema, constraints and 
           ready: true,
           failures: [],
         });
+        expect(
+          (await checkReadiness(runtime.pool, { ...expected, migrationSetHash: undefined })).ready,
+        ).toBe(false);
+        expect(events, service).toContainEqual(
+          expect.objectContaining({
+            event_name: "security.fail_closed.triggered",
+            query_name: "readiness.release_migration_hash_missing",
+          }),
+        );
         if (service === "reconciliation-worker")
           await expect(
             runtime.pool.query("SELECT auth_subject FROM auth_read.identity_directory"),

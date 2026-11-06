@@ -16,27 +16,59 @@ export type ReadinessExpectations = {
   /** Required for readiness; absent build/release identity fails closed. */
   migrationSetHash?: string;
 };
-export type DatabaseReadiness = { ready: boolean; failures: string[] };
+export type ReadinessFailure =
+  | "connection_budget"
+  | "database_contract_unverified"
+  | "database_unavailable"
+  | "deployment_marker_invalid"
+  | "deployment_marker_mismatch"
+  | "directory_columns"
+  | "directory_mapping_unconfirmed"
+  | "directory_owner_source_grants"
+  | "directory_projection"
+  | "directory_public_grants"
+  | "directory_source_integrity"
+  | "directory_source_mapping"
+  | "directory_view"
+  | "extensions"
+  | "migration_hash"
+  | "postgres_major"
+  | "release_migration_hash"
+  | "release_migration_hash_missing"
+  | "release_schema_contract"
+  | "runtime_privileges"
+  | "runtime_roles"
+  | "timezone";
+export type DatabaseReadiness = { ready: boolean; failures: ReadinessFailure[] };
 export async function checkReadiness(
   pool: Pool,
   expected: ReadinessExpectations,
 ): Promise<DatabaseReadiness> {
-  const failures: string[] = [];
-  const fail = (name: string, valid: boolean) => {
+  const failures: ReadinessFailure[] = [];
+  const fail = (name: ReadinessFailure, valid: boolean) => {
     if (!valid) failures.push(name);
+  };
+  const result = (): DatabaseReadiness => {
+    for (const name of new Set(failures)) {
+      logDatabase(databaseLogger(pool), {
+        event_name:
+          name === "database_unavailable"
+            ? "db.availability.failed"
+            : "security.fail_closed.triggered",
+        level: "ERROR",
+        result: "FAILED",
+        is_retry: false,
+        failure_class: name === "database_unavailable" ? "TEMPORARY_FAILURE" : "SECURITY_FAILURE",
+        query_name: `readiness.${name}`,
+      });
+    }
+    return { ready: failures.length === 0, failures };
   };
   if (!expected.directoryMapping) failures.push("directory_mapping_unconfirmed");
   const client = await pool.connect().catch(() => undefined);
   if (!client) {
-    logDatabase(databaseLogger(pool), {
-      event_name: "db.availability.failed",
-      level: "ERROR",
-      result: "FAILED",
-      is_retry: false,
-      failure_class: "TEMPORARY_FAILURE",
-      query_name: "readiness.catalog",
-    });
-    return { ready: false, failures: [...failures, "database_unavailable"] };
+    failures.push("database_unavailable");
+    return result();
   }
   try {
     const settings = (
@@ -239,5 +271,5 @@ export async function checkReadiness(
   } finally {
     client.release();
   }
-  return { ready: failures.length === 0, failures };
+  return result();
 }
