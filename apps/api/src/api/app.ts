@@ -190,7 +190,7 @@ export function createApp(dependencies: AppDependencies) {
   });
   app.use(
     "/api/v1/*",
-    bodyLimit({ maxSize: 65536, onError: (c) => failure(c, "MALFORMED_REQUEST", 413) }),
+    bodyLimit({ maxSize: 65536, onError: (c) => failure(c, "PAYLOAD_TOO_LARGE") }),
   );
   app.route(
     "/",

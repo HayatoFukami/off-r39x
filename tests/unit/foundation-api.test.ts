@@ -68,6 +68,11 @@ it("TC-DEV-API-003-050 JSON guards reject duplicate keys, media types and oversi
     });
   expect((await request('{"name":"a","na\\u006de":"b"}')).status).toBe(400);
   expect((await request("{}", "text/plain")).status).toBe(415);
-  expect((await request("x".repeat(65537))).status).toBe(413);
+  const oversized = await request("x".repeat(65537));
+  expect(oversized.status).toBe(413);
+  expect((await oversized.json()).error).toMatchObject({
+    code: "PAYLOAD_TOO_LARGE",
+    retryable: false,
+  });
   expect((await request('{"name":"ok"}')).status).toBe(200);
 });
