@@ -48,6 +48,7 @@ function lifecycle(overrides: Partial<Lifecycle> = {}): Lifecycle {
     subscribe: () => () => undefined,
     getSnapshot: () => ({ kind: "ready" }),
     beginExternalAuthentication: () => ({ kind: "ready" }),
+    finishExternalAuthentication: () => undefined,
     completeExternalAuthentication: () => undefined,
     ...overrides,
   };

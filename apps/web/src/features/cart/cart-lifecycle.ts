@@ -61,12 +61,19 @@ export interface CartLifecycle {
   getSnapshot(): CartLifecycleSnapshot;
   /**
    * The start of an external-completion sign-in (FR-CRT-012 external completion rule steps 2-4): cleans
-   * the Cart by provenance, then records `pending`. It is not a transition: nothing stays in flight.
+   * the Cart by provenance, records `pending`, and stops the Cart (an authentication transition) until
+   * `finishExternalAuthentication` is called when the start request is over.
    */
   beginExternalAuthentication(lockAcquired?: boolean): CartLifecycleSnapshot;
   /**
+   * The start request is over, whatever it answered or threw (step 4): resolves the transition and keeps the
+   * `pending` record. Does nothing when no start is in flight. Never throws.
+   */
+  finishExternalAuthentication(): void;
+  /**
    * The screen shown by the return of an external sign-in received a Session (steps 6 and 9). Decides on
-   * the metadata read when this lifecycle was created, once. Never throws.
+   * the provenance read when this lifecycle was created and on the record stored now (a success of another
+   * method may have been recorded since), once. Keeps another Tab's transition marker. Never throws.
    */
   completeExternalAuthentication(): void;
 }
@@ -384,12 +391,33 @@ export function createCartLifecycle(
         // Step 2: a Cart of unknown or authenticated provenance is cleared first; a Guest Cart is kept.
         // Step 3: only after that, and before the request, the record is written (replacing any record).
         if (metadata?.provenance !== "guest") clearCart();
-        write("guest", { external: "pending" });
+        // The start is an authentication transition until its request is over (steps 2 and 4): this document
+        // and, with Web Locks (the caller holds the lock), other Tabs stop the Cart meanwhile.
+        localTransition = true;
+        externalTransition = false;
+        orphanedTransition = false;
+        write("guest", { transitioning: coordinator.crossTab, external: "pending" });
         return READY;
       } catch {
+        localTransition = false;
         blocked = true;
         notify();
         return BLOCKED;
+      }
+    },
+    finishExternalAuthentication() {
+      if (!localTransition) return;
+      localTransition = false;
+      if (blocked) {
+        notify();
+        return;
+      }
+      try {
+        // Step 3 and 7: the record stays whatever the request answered; only the transition is resolved.
+        write("guest", { external: readMetadata()?.external ?? "pending" });
+      } catch {
+        blocked = true;
+        notify();
       }
     },
     completeExternalAuthentication() {
@@ -398,7 +426,11 @@ export function createCartLifecycle(
       externalCompleted = true;
       if (blocked || orphanedTransition) return;
       try {
-        const external = initialMetadata?.external;
+        // The provenance is the one before this return (a later Session observation is not used), but the
+        // record is the one stored now: another method may have succeeded (step 5) after this document was
+        // created and before it confirmed the Session.
+        const latest = readMetadata();
+        const external = latest?.external;
         // Step 6: with a record, `superseded` (another method succeeded) clears and `pending` keeps.
         // Step 9: without one, the provenance before this return decides.
         // An unknown provenance is cleared whatever the record says, and that resolves the record.
@@ -407,7 +439,13 @@ export function createCartLifecycle(
             ? initialMetadata?.provenance === "guest"
             : initialMetadata?.provenance !== "unknown" && external === "pending";
         if (!keep) clearCart();
-        write("authenticated");
+        // Another Tab's authentication transition is not ended by this receipt: its marker and the
+        // provenance it was written with stay, so that Tab's Cart stop is kept until that Tab finishes.
+        if (latest !== null && isTransitioning(latest)) {
+          write(latest.provenance, { transitioning: true });
+        } else {
+          write("authenticated");
+        }
       } catch {
         blocked = true;
         notify();

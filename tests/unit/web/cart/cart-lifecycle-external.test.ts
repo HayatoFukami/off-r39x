@@ -92,6 +92,9 @@ describe("TC-FR-CRT-012-017 beginExternalAuthentication is the authentication tr
     expect(s.lifecycle.beginExternalAuthentication()).toMatchObject({ kind: "ready" });
     expect(s.data.get(CART_STORAGE_KEY)).toBe(CART);
     expect(stored(s)).toEqual(PENDING);
+    // Step 2 and 4: the start is an authentication transition until the request is over.
+    expect(s.lifecycle.getSnapshot()).toEqual({ kind: "busy" });
+    s.lifecycle.finishExternalAuthentication();
     expect(s.lifecycle.getSnapshot()).toEqual({ kind: "ready" });
   });
 
@@ -111,6 +114,7 @@ describe("TC-FR-CRT-012-017 beginExternalAuthentication is the authentication tr
       expect(s.lifecycle.beginExternalAuthentication()).toMatchObject({ kind: "ready" });
       expectEmpty(s);
       expect(stored(s)).toEqual(PENDING);
+      s.lifecycle.finishExternalAuthentication();
       expect(s.lifecycle.getSnapshot()).toEqual({ kind: "ready" });
     },
   );
@@ -198,9 +202,11 @@ describe("TC-FR-CRT-012-017 beginExternalAuthentication is the authentication tr
     expect(s.lifecycle.beginExternalAuthentication()).toMatchObject({ kind: "ready" });
   });
 
-  it("step 4: no transition record remains, so another Tab sees a ready Cart (no orphaned transition), with and without Web Locks", async () => {
+  it("step 4: once the request is over no transition record remains, so another Tab sees a ready Cart (no orphaned transition), with and without Web Locks", async () => {
     const memory = setup(metadata("guest"));
     expect(memory.lifecycle.beginExternalAuthentication()).toMatchObject({ kind: "ready" });
+    expect(JSON.stringify(stored(memory))).not.toContain("transitioning");
+    memory.lifecycle.finishExternalAuthentication();
     expect(JSON.stringify(stored(memory))).not.toContain("transitioning");
     expect(memory.newDocument().getSnapshot()).toEqual({ kind: "ready" });
 
@@ -210,6 +216,8 @@ describe("TC-FR-CRT-012-017 beginExternalAuthentication is the authentication tr
     expect(lease.kind).toBe("acquired");
     if (lease.kind !== "acquired") return;
     expect(s.lifecycle.beginExternalAuthentication(true)).toMatchObject({ kind: "ready" });
+    s.lifecycle.finishExternalAuthentication();
+    expect(stored(s)).toEqual(PENDING);
     lease.release();
     const otherTab = s.newDocument();
     const stop = otherTab.subscribe(() => undefined);
@@ -221,6 +229,42 @@ describe("TC-FR-CRT-012-017 beginExternalAuthentication is the authentication tr
     expect(again.kind).toBe("acquired");
     if (again.kind === "acquired") again.release();
     stop();
+  });
+
+  it("steps 2 and 4: the Cart is stopped while the start request is in flight (this document and, with Web Locks, another Tab) and released when it is over", async () => {
+    const memory = setup(metadata("guest"));
+    expect(memory.lifecycle.beginExternalAuthentication()).toMatchObject({ kind: "ready" });
+    expect(memory.lifecycle.getSnapshot()).toEqual({ kind: "busy" });
+    expect(memory.lifecycle.beginTransition()).toEqual({ kind: "busy" });
+    expect(memory.lifecycle.beginExternalAuthentication()).toEqual({ kind: "busy" });
+    memory.lifecycle.finishExternalAuthentication();
+    expect(memory.lifecycle.getSnapshot()).toEqual({ kind: "ready" });
+    expect(stored(memory)).toEqual(PENDING);
+    // Finishing without a start in flight changes nothing.
+    const before = new Map(memory.data);
+    memory.lifecycle.finishExternalAuthentication();
+    expect(new Map(memory.data)).toEqual(before);
+
+    const s = setup(metadata("guest"), createWebCartTransitionCoordinator(new TestLockManager()));
+    const lease = await s.coordinator.acquire(false);
+    expect(lease.kind).toBe("acquired");
+    if (lease.kind !== "acquired") return;
+    expect(s.lifecycle.beginExternalAuthentication(true)).toMatchObject({ kind: "ready" });
+    expect(stored(s)).toEqual({ ...PENDING, transitioning: true });
+    const otherTab = s.newDocument();
+    expect(otherTab.getSnapshot()).toEqual({ kind: "busy" });
+    s.lifecycle.finishExternalAuthentication();
+    lease.release();
+    expect(stored(s)).toEqual(PENDING);
+    expect(otherTab.getSnapshot()).toEqual({ kind: "ready" });
+  });
+
+  it("steps 2 and 4: a start request that fails to leave the transition (metadata write fault) stops the Cart without throwing", () => {
+    const s = setup(metadata("guest"));
+    expect(s.lifecycle.beginExternalAuthentication()).toMatchObject({ kind: "ready" });
+    s.faults.write = true;
+    expect(() => s.lifecycle.finishExternalAuthentication()).not.toThrow();
+    expect(s.lifecycle.getSnapshot()).toEqual({ kind: "blocked" });
   });
 
   it("the record holds only the provenance and the pending state: no Account, email, role or credential (FR-CRT-012)", () => {
@@ -334,6 +378,80 @@ describe("TC-FR-CRT-012-017 completeExternalAuthentication decides on the metada
     returned.markAuthenticated();
     returned.completeExternalAuthentication();
     expect(s.data.get(CART_STORAGE_KEY)).toBe(kept ? CART : undefined);
+    expect(stored(s)).toEqual(AUTHENTICATED);
+  });
+
+  it("steps 5 and 6: a success of another method recorded after the returned document was created is seen at the receipt (the Cart is cleared)", () => {
+    const s = setup(metadataWithExternal("guest", "pending"));
+    const returned = s.newDocument();
+    // Another method succeeds in another Tab after the returned document read its metadata and before it confirms
+    // the Session.
+    const otherTab = s.newDocument();
+    expect(otherTab.beginTransition()).toEqual({ kind: "ready", provenance: "guest" });
+    otherTab.finishLogin("guest");
+    expect(stored(s)).toEqual(SUPERSEDED);
+    expect(s.data.get(CART_STORAGE_KEY)).toBe(CART);
+    returned.completeExternalAuthentication();
+    expectEmpty(s);
+    expect(stored(s)).toEqual(AUTHENTICATED);
+    expect(returned.getSnapshot()).toEqual({ kind: "ready" });
+  });
+
+  it("steps 5 and 6: a success recorded while the returned document is waiting for its Session confirmation is seen even after the session observation", () => {
+    const s = setup(metadataWithExternal("guest", "pending"));
+    const returned = s.newDocument();
+    s.lifecycle.finishLogin("guest");
+    returned.markAuthenticated();
+    expect(stored(s)).toEqual(SUPERSEDED);
+    returned.completeExternalAuthentication();
+    expectEmpty(s);
+    expect(stored(s)).toEqual(AUTHENTICATED);
+  });
+
+  it("step 6: the receipt does not overwrite another Tab's transition marker, so that Tab's Cart stop is kept until its authentication ends (Web Locks)", async () => {
+    const locks = new TestLockManager();
+    const s = setup(
+      metadataWithExternal("guest", "pending"),
+      createWebCartTransitionCoordinator(locks),
+    );
+    const returned = s.newDocument();
+    const otherTab = s.newDocument();
+    const lease = await s.coordinator.acquire(false);
+    expect(lease.kind).toBe("acquired");
+    if (lease.kind !== "acquired") return;
+    expect(otherTab.beginTransition(true)).toEqual({ kind: "ready", provenance: "guest" });
+    expect(stored(s)).toEqual({ ...PENDING, transitioning: true });
+
+    returned.completeExternalAuthentication();
+    // The marker (and the provenance it was written with) stays; only the record is resolved.
+    expect(stored(s)).toEqual({ version: 1, provenance: "guest", transitioning: true });
+    expect(returned.getSnapshot()).toEqual({ kind: "busy" });
+    expect(s.newDocument().getSnapshot()).toEqual({ kind: "busy" });
+    expect(s.data.get(CART_STORAGE_KEY)).toBe(CART);
+
+    otherTab.finishLogin("guest");
+    lease.release();
+    expect(stored(s)).toEqual(AUTHENTICATED);
+    expect(returned.getSnapshot()).toEqual({ kind: "ready" });
+  });
+
+  it("step 6: a receipt that must clear the Cart still keeps another Tab's transition marker (Web Locks)", async () => {
+    const s = setup(
+      metadataWithExternal("authenticated", "superseded"),
+      createWebCartTransitionCoordinator(new TestLockManager()),
+    );
+    const returned = s.newDocument();
+    const otherTab = s.newDocument();
+    const lease = await s.coordinator.acquire(false);
+    expect(lease.kind).toBe("acquired");
+    if (lease.kind !== "acquired") return;
+    expect(otherTab.beginTransition(true)).toEqual({ kind: "ready", provenance: "authenticated" });
+    returned.completeExternalAuthentication();
+    expect(s.data.has(CART_STORAGE_KEY)).toBe(false);
+    expect(stored(s)).toEqual({ version: 1, provenance: "authenticated", transitioning: true });
+    expect(returned.getSnapshot()).toEqual({ kind: "busy" });
+    otherTab.abortTransition("authenticated");
+    lease.release();
     expect(stored(s)).toEqual(AUTHENTICATED);
   });
 
@@ -462,6 +580,58 @@ const STARTERS: readonly Starter[] = [
 ];
 
 for (const starter of STARTERS) {
+  describe(`TC-FR-CRT-012-017 the Cart is stopped only while the start request of an external-completion method is in flight (FR-CRT-012 external completion rule steps 2 and 4) - ${starter.label}`, () => {
+    function deferred(s: Setup) {
+      let resolve: (value: { kind: string }) => void = () => undefined;
+      let reject: (reason: unknown) => void = () => undefined;
+      const pending = new Promise<{ kind: string }>((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
+      (s.raw as unknown as Record<string, unknown>)[starter.rawKey] = vi.fn(() => pending);
+      return { resolve, reject };
+    }
+
+    it("the lifecycle is busy during the raw request and ready again after it answers", async () => {
+      const s = setup(metadata("guest"));
+      const request = deferred(s);
+      const result = starter.start(s);
+      await settle();
+      expect(s.lifecycle.getSnapshot()).toEqual({ kind: "busy" });
+      expect(stored(s)).toEqual(PENDING);
+      request.resolve(starter.accepted);
+      await expect(result).resolves.toMatchObject(starter.accepted);
+      expect(s.lifecycle.getSnapshot()).toEqual({ kind: "ready" });
+      expect(stored(s)).toEqual(PENDING);
+      expect(s.data.get(CART_STORAGE_KEY)).toBe(CART);
+    });
+
+    it("a rejected request also releases the stop and keeps the record", async () => {
+      const s = setup(metadata("guest"));
+      const request = deferred(s);
+      const result = starter.start(s);
+      await settle();
+      expect(s.lifecycle.getSnapshot()).toEqual({ kind: "busy" });
+      request.reject(new Error("test-only start failure"));
+      await expect(result).rejects.toThrow("test-only start failure");
+      expect(s.lifecycle.getSnapshot()).toEqual({ kind: "ready" });
+      expect(stored(s)).toEqual(PENDING);
+    });
+
+    it("with Web Locks another Tab sees the stop during the request and a ready Cart after it", async () => {
+      const s = setup(metadata("guest"), createWebCartTransitionCoordinator(new TestLockManager()));
+      const request = deferred(s);
+      const result = starter.start(s);
+      await settle();
+      expect(stored(s)).toEqual({ ...PENDING, transitioning: true });
+      expect(s.newDocument().getSnapshot()).toEqual({ kind: "busy" });
+      request.resolve(starter.accepted);
+      await result;
+      expect(stored(s)).toEqual(PENDING);
+      expect(s.newDocument().getSnapshot()).toEqual({ kind: "ready" });
+    });
+  });
+
   describe(`TC-FR-CRT-012-019 a result of an external-completion method after another method succeeded clears the Cart, and the guarantee ends where the specification says (FR-CRT-012 external completion rule steps 3, 5, 6, 7, 9, 10) - ${starter.label}`, () => {
     /** A Guest with a Cart starts the external method in the sending Tab (the pending record). */
     async function started(marker: string | null = metadata("guest")) {

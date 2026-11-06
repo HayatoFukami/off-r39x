@@ -128,19 +128,25 @@ export function createCartLifecycleAuthPort(
       settleTransition = resolve;
     });
     let release: () => void = () => undefined;
+    let inFlight = false;
     try {
       const lock = await coordinator.acquire(false);
       if (lock.kind === "busy") return { kind: "cart_busy" };
       if (lock.kind === "unavailable") return { kind: "cart_blocked" };
       release = lock.release;
-      // Steps 2 and 3: the Cart is cleaned and the pending record written before the request.
+      // Steps 2 and 3: the Cart is cleaned and the pending record written before the request. The Cart
+      // stays stopped (this document and, with Web Locks, other Tabs) while the request is in flight.
       const begun = lifecycle.beginExternalAuthentication(true);
       if (begun.kind === "busy") return { kind: "cart_busy" };
       if (begun.kind === "blocked") return { kind: "cart_blocked" };
+      inFlight = true;
       // Step 3 and 7: whatever the request answers or throws, the record stays and the Cart that
-      // was cleaned is not restored. Step 4: nothing stays in flight once the request is over.
+      // was cleaned is not restored.
       return await request();
     } finally {
+      // Step 4: nothing stays in flight once the request is over; the transition is resolved before
+      // the lock is released.
+      if (inFlight) lifecycle.finishExternalAuthentication();
       completeTransition(release);
     }
   }
