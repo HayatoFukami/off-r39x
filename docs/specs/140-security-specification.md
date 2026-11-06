@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-140
 title: Security Specification
-version: 2.1.0
+version: 2.1.1
 status: provisional
 depends_on:
   - SPEC-000
@@ -1602,7 +1602,7 @@ Production startup / readinessで最低限次を検証する。
 
 本書作成時点で、Security Controlを成立させるために既存Canonical OwnerのState、Role、Capability、API endpoint、Database columnを変更する必要は確認されなかった。
 
-**SPEC-140から新規Upstream Change Requestは発行しない。**
+本書の初回作成時点では新規Upstream Change Requestを発行しなかった。後日の契約差異は下記に記録する。
 
 理由:
 
@@ -1610,6 +1610,15 @@ Production startup / readinessで最低限次を検証する。
 - QR `lookup_digest`, `protected_token_material`, `protection_key_version` は `SPEC-100` に既に存在し、本書へalgorithm / key rotationが明示委譲済み
 - Payment / Email webhook signature boundaryは上流に既に存在し、本書はSecurity Controlを具体化するだけである
 - Database principal / grant / Secret reader boundaryはphysical business schemaを変更せず設定可能である
+
+### UCR-140-001 — OPEN
+
+- 対象: SPEC-110 §21
+- 現在の仕様: SEC-API-022はunsupported methodに405、unsupported content typeに415を要求するが、SPEC-110 §21には対応する公開エラーコードがない。現行実装は両方に `MALFORMED_REQUEST` を用いHTTP statusを上書きする。
+- 要求する変更: 405と415に対応する公開エラーコード、意味、retryabilityをSPEC-110のCanonical Ownerが決定し、error mappingに追加する。
+- 理由: HTTP statusと公開エラーコードの対応を一意に検証可能にする。
+- 変更しない場合の影響: コードを新設できず、405・415の応答は暫定的なstatus上書きに依存する。
+- 影響を受ける可能性がある仕様書: SPEC-110, SPEC-140, SPEC-170
 
 ### 101.1 SPEC-130 UCRの反映状況
 
@@ -1662,5 +1671,5 @@ Production startup / readinessで最低限次を検証する。
 26. rate limit failureでDomain stateを変更しない。
 27. Security controlを安全に評価できない場合はFail Closedとする。
 28. Security failureで確定済みBusiness Dataを削除しない。
-29. `UCR-130-001〜004/006`、`UCR-150-001〜002`（SPEC-130該当範囲）、および `UCR-170-001` はCanonical化済みとして扱い、`UCR-130-005` のみ未反映として扱う。
+29. `UCR-130-001〜004/006`、`UCR-150-001〜002`（SPEC-130該当範囲）、および `UCR-170-001` はCanonical化済みとして扱う。`UCR-130-005` と `UCR-140-001` は未反映として扱う。
 30. `INV-010-01〜10` を維持する。
