@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-140
 title: Security Specification
-version: 2.1.0
+version: 2.2.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -461,14 +461,14 @@ Production Web responseは次を送る。
 | Header | Value |
 |---|---|
 | `X-Content-Type-Options` | `nosniff` |
-| `Referrer-Policy` | `strict-origin-when-cross-origin` |
+| `Referrer-Policy` | `no-referrer` |
 | `X-Frame-Options` | `DENY` |
 | `Strict-Transport-Security` | `max-age=63072000; includeSubDomains` |
 | `Cross-Origin-Opener-Policy` | `same-origin` |
 | `Permissions-Policy` | route別Policy |
 | `Content-Security-Policy` | §21 |
 
-`/account/*`, `/auth/*`, `/purchase/*`, `/mypage/*`, `/admin/*`, `/staff/*` は追加で `Referrer-Policy: no-referrer` を使用する。
+`Referrer-Policy: no-referrer` は `/account/*`, `/auth/*`, `/purchase/*`, `/mypage/*`, `/admin/*`, `/staff/*` を含む全Production Web responseへ適用し、pathごとの値を設けない。
 
 Hono API JSON responseは最低限次を送る。
 
@@ -511,11 +511,13 @@ Pragma: no-cache
 
 を使用する。
 
-**SEC-WEB-010:** Public Event / FAQ / Announcement等はBusiness stateに応じてcacheしてよいが、personalized / role-specific payloadをpublic cache keyへ混入させない。
+Browser-facing Webの静的応答では、本規則の適用をRequest pathの表記（percent-encoding、大文字小文字、末尾slash、連続slash等）に依存させない。静的hostのheader規則が、Routerが画面を解決するpathと同じ表現で照合されることを前提にせず、上記の `Cache-Control` / `Pragma` をcontent-hash付きの静的asset以外の全応答へ適用する。
+
+**SEC-WEB-010:** Public Event / FAQ / Announcement等はBusiness stateに応じてcacheしてよいが、personalized / role-specific payloadをpublic cache keyへ混入させない。Browser-facing Webの静的応答（HTML、SPA fallback、404、content-hash付き以外の静的asset等）には本規則のcache許可を適用せず、SEC-WEB-009のBrowser-facing Web静的応答に関する段落に従う（Browser-facing Webの静的応答でcache対象になるのは、content-hash付きの静的assetだけである）。本規則の許可は、Browser-facing Webの静的応答以外のresponse（Hono APIのPublic read response等）のうち、SEC-WEB-009その他no-storeを定める規則の対象外のものに適用する。
 
 **SEC-WEB-011:** Production browser source mapをpublicly downloadableにしない。Observability用source mapを保持する場合はprivate artifactとして扱い、公開Web assetへ配置しない。
 
-**SEC-WEB-012:** Production error pageへstack trace、environment variable、filesystem path、SQL、provider response bodyを表示しない。
+**SEC-WEB-012:** Production error pageへstack trace、environment variable、filesystem path、SQL、provider response bodyを表示しない。本規則は利用者へ表示する画面（DOMのtextと属性）を対象とし、Browser consoleへの出力を対象に含めない。これはapplication codeがconsoleへstack trace等を出力してよいことを意味しない（application codeのlog出力の制限は `SPEC-190` DEV-OBS-001 / §30 が定める）。
 
 ## 24. Open redirect / Host header
 
@@ -1625,6 +1627,20 @@ Production startup / readinessで最低限次を検証する。
 - `UCR-170-001` Operation ID completeness → `SPEC-110 §41 / §46〜§48`（INCORPORATED）
 
 `UCR-130-005`（Operational query index）のみ `DEFERRED_NONBLOCKING` としてcarry-forwardし、indexを先取りしない。
+
+### 101.2 UCR-140-001 — INCORPORATED
+
+本改訂（v2.2.0）で次の要求を本文へ取り込んだ。現在の契約は本文を正とし、以下の記録を別の契約として実装しない。本要求は本書自身を対象とし、他仕様書への新規Upstream Change Requestではない。
+
+- **Status:** `INCORPORATED`（`SPEC-140 v2.2.0`）
+- 対象: SPEC-140（§22 の `Referrer-Policy`、SEC-WEB-009、SEC-WEB-010）
+- 現在の仕様（改訂前）: §22 はProduction Web responseの `Referrer-Policy` を `strict-origin-when-cross-origin` とし、`/account/*`, `/auth/*`, `/purchase/*`, `/mypage/*`, `/admin/*`, `/staff/*` だけに追加で `no-referrer` を使用するとしていた。SEC-WEB-009 は同じ6 prefixにno-store / Pragmaを要求していた。保護pathの判定に使うpathの表現（percent-encodingのdecode前か後か、大文字小文字、末尾slash）と、静的hostのheader規則・React Routerの照合との一致は規定していなかった。
+- 要求する変更: `Referrer-Policy: no-referrer` を全Production Web responseへ適用する。SEC-WEB-009 の `Cache-Control` / `Pragma` は、Request pathの表記に依存させず、content-hash付きの静的asset以外の全応答へ適用する。SEC-WEB-010 のcache許可は、Browser-facing Webの静的応答には適用しないことを本文に明記する。
+- 理由: 静的SPAでは、静的hostのheader規則とReact Routerとで、同じ画面を解決するpathの表現（percent-encoding、大文字小文字、末尾slash、連続slash）が異なりうる。その場合、path表記ごとにResponse headerが変わりうるため、`/%6Dypage` 等の別表記のURLで保護Pageが保護pathのheaderなしに描画されうる。pathごとの規則では別表記の網羅を前提にできない。
+- 変更しない場合の影響: 別表記のURLで、Mypage等がno-store / no-referrerなしに描画されうる（SEC-WEB-009 / §22 の保護が迂回されうる）。
+- 影響を受ける可能性がある仕様書: SPEC-180, SPEC-170, SPEC-050
+- **本書側反映:** §22（表の `Referrer-Policy` と保護pathの文）、SEC-WEB-009。SEC-WEB-010 のcache許可をBrowser-facing Webの静的応答に適用しないことを本文に明記した。Hono API JSON responseのheaderは変更しない。
+- **残作業:** なし。`SPEC-180` §13.1（Pagesの静的headers設定で本書のheaderを適用する）、`SPEC-170` `TC-STACK-008`（静的CSP / cache / headers）、`SPEC-050` §5.4 / §19.1 は変更を要しない。
 
 ---
 

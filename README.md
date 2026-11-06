@@ -82,7 +82,7 @@ pnpm build:mock      # モック有効でビルド（出力: apps/web/dist）
 pnpm start:mock      # ビルド済みのモックを配信（既定: http://127.0.0.1:3100）
 ```
 
-`start:mock` は `apps/web/dist` を `scripts/serve-web-dist.mts` で配信し、`dist/_headers`（security header と no-store を含む）を適用します。ポートを変えるには `pnpm start:mock --port 3200` とします（`--` は付けません）。開発サーバー（Vite。モックが既定で有効）で確認する場合は、`pnpm dev` を実行します（URL は Vite が表示します）。
+`start:mock` は `apps/web/dist` を `scripts/serve-web-dist.mts` で配信し、`dist/_headers`（security header を含み、`Cache-Control: no-store` と `Pragma` は content-hash 付き asset の正規の path 以外の全応答に、`Referrer-Policy: no-referrer` は hash 付き asset を含む全応答に付く）を適用します。ポートを変えるには `pnpm start:mock --port 3200` とします（`--` は付けません）。開発サーバー（Vite。モックが既定で有効）で確認する場合は、`pnpm dev` を実行します（URL は Vite が表示します）。
 
 ### モックの使い方
 

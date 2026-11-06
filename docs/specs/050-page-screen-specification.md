@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-050
 title: Page and Screen Specification
-version: 2.1.0
+version: 2.1.1
 status: provisional
 depends_on:
   - SPEC-000
@@ -758,7 +758,7 @@ Karaokeはカートに入れられず、Slotごとに別の購入・別の支払
 Cart購入開始は `API-PUR-CART-001` を使用する。既存の単品購入APIは互換Operationとして存続するが、Cart画面からItemごとに分割呼出しして複数Orderを作ってはならない。
 
 - 成功してOrder `PREPARED` が作成された場合、当該OrderのItemをCartから除去し、`PG-XFN-001` へ遷移するか、そのOrderに対応するCheckout開始へ進む。外部Checkoutへ移る直前は「支払い画面を準備中」であり、購入成功表示をしない。
-- 一部のItemが成立しない場合（販売終了、停止、売り切れ、数量不足、Purchase Limit超過、Allocation競合）: Orderは作成されていないこと、「購入は開始されていません」、成立しなかったItemと理由を示す。Cart内容を保持し、数量変更・削除を可能にする。
+- 一部のItemが成立しない場合（販売終了、停止、売り切れ、数量不足、Purchase Limit超過、Allocation競合）: Orderは作成されていないこと、「購入は開始されていません」、成立しなかったItemと理由を示す。購入開始時の確保競合は `SOLD_OUT` または `INSUFFICIENT_QUANTITY` として示す（`SPEC-110` `API-PUR-ELG-001` の理由集合）。Cart内容を保持し、数量変更・削除を可能にする。
 - Checkout開始前のOrder作成Failure: 外部Checkoutへ進めない。Cart内容を保持する。
 - Checkout開始失敗かつOrder `PREPARED` が存在: `PG-XFN-001` で同一Order retryを提供する。
 - Action実行中: Buttonを処理中状態にし、「購入条件を確認しています」「購入試行を作成しています」等、未確定表示を行う。reload / double clickで複数Orderが無条件に作られない前提でUIも重複送信を抑止する。
@@ -1471,12 +1471,15 @@ Entry QRと同じPage title、同じ権利名称、同じ補助説明だけに�
 
 ### 20.5 Notification
 
-| Notification State | UI |
+本節の表示は `API-ORD-003.notification_summary` を入力とする。内部Notification State（`PENDING` / `SENT` / `FAILED_RETRYABLE` / `CANCELED`）を直接取得・表示しない（§16.2）。`notification_summary` はDomain Stateではない表示用DTOであり、内部Stateからの射影条件と優先順は `SPEC-120` §7.2（`EML-NTF-003`）がCanonical Ownerである。
+
+| `notification_summary` | UI |
 |---|---|
-| `PENDING` | 必要なら「確認Email送信処理中」。購入状態へ影響させない |
-| `SENT` | 通知送信済みを補助情報として表示してよい |
-| `FAILED_RETRYABLE` | 「Email未達の可能性があるが購入は確定済み」。Business successを維持 |
-| `CANCELED` | 通知不要化。購入権利には影響しない |
+| `status = ATTENTION_REQUIRED` | Order `CONFIRMED` では §16.7 の非阻害通知を表示する。Business successを維持し、購入・権利を取消表示しない |
+| `status = PENDING` | 必要なら「確認Email送信処理中」。購入状態へ影響させない |
+| `status = SENT` | 通知送信済みを補助情報として表示してよい。受信箱への配送成功と断言しない |
+| `status = NONE` | 有効な対象確認通知なし。送信成功と表示しない。購入権利には影響しない |
+| `null`（サマリー取得障害） | 通知状態不明。`NONE` / `SENT` と推測せず、Order／権利の取得成功を失敗に変えない |
 
 ## 21. Pending / Failure / Retry UX Matrix
 
@@ -1834,4 +1837,30 @@ SPEC-050では以下だけをCanonicalに定義する。
 
 ## 35. 上流仕様変更要求
 
-なし。
+他仕様書への新規Upstream Change Requestはない。
+
+本書内の記述の不整合を解消する次の要求を、本改訂（v2.1.1）で本文へ取り込んだ。現在の契約は本文を正とし、以下の記録を別の契約として実装しない。
+
+### UCR-050-001 — INCORPORATED
+
+- **Status:** `INCORPORATED`（`SPEC-050 v2.1.1`）
+- 対象: SPEC-050（§20.5）
+- 現在の仕様（改訂前）: §20.5 は内部Notification State（`PENDING` / `SENT` / `FAILED_RETRYABLE` / `CANCELED`）ごとのUIを定めていた。§16.2 は「内部Notification stateは直接取得しない」とし、§16.7 は `API-ORD-003.notification_summary`（`NONE` / `PENDING` / `SENT` / `ATTENTION_REQUIRED`、取得障害時null）で表示を定めていた。§20.5 には `NONE` とnullの行がなかった。
+- 要求する変更: §20.5 を `notification_summary.status`（`NONE` / `PENDING` / `SENT` / `ATTENTION_REQUIRED`）とnullの5行に書き換え、内部Stateとの対応は `SPEC-120` §7.2（`EML-NTF-003`）を参照する形にする。
+- 理由: 同一書内で、UIの入力を内部Stateとするか所有者向け射影とするかが二通りに読めるため。
+- 変更しない場合の影響: UI実装・Testが内部Stateを入力にした表示対応を残し、§16.2 に反する実装を誘発しうる。
+- 影響を受ける可能性がある仕様書: SPEC-120, SPEC-170
+- **本書側反映:** §20.5。§16.2 / §16.7 の意味は変更しない。
+- **残作業:** なし。`SPEC-120` §7.2、`SPEC-110` `API-ORD-003`、`SPEC-170` `TST-API-008` / `TC-API-008-001` は改訂前から同じ射影を定めており、変更を要しない。
+
+### UCR-050-002 — INCORPORATED
+
+- **Status:** `INCORPORATED`（`SPEC-050 v2.1.1`）
+- 対象: SPEC-050（§14A.1 Purchase start result）
+- 現在の仕様（改訂前）: §14A.1 Purchase start result は、一部Item不成立の例に「Allocation競合」を挙げていた。`SPEC-110` `API-PUR-CART-001` の `item_failures[].reasons` は `API-PUR-ELG-001` の9 codeの有限集合で、Allocation競合専用のcodeを持たない。
+- 要求する変更: §14A.1 の当該箇所に「購入開始時の確保競合は `SOLD_OUT` または `INSUFFICIENT_QUANTITY` として示す（`SPEC-110` `API-PUR-ELG-001` の理由集合）」と明記する。
+- 理由: UIが表示すべき理由の集合を、APIの有限集合と一対一に読めるようにするため。
+- 変更しない場合の影響: 実装者が、正本に無い競合専用の理由やcopyを作るおそれがある。
+- 影響を受ける可能性がある仕様書: SPEC-110, SPEC-170
+- **本書側反映:** §14A.1 Purchase start result。Cart Itemの購入不可理由の表、§21、§34 は変更しない。
+- **残作業:** なし。`SPEC-110` の理由集合と `SPEC-170` `TC-API-004-001` / `TC-API-005-001` は変更を要しない。`SPEC-040` §16.3 / §16A.3 のAllocation競合は事象の定義であり、理由codeを定めない。

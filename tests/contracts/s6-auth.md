@@ -41,7 +41,7 @@
 | `apps/web/src/routes/self/self-layout.tsx` | route layout | `AuthGate` で `children` を包む（Design §3 の `(self)/layout.tsx`）。`/mypage/*` と `/purchase/*` を覆う |
 | `apps/web/src/routes/self/mypage-overview.tsx` | route | **S6 の最小 placeholder**（S8 が PG-MYP-001 に置き換える。`h1` と AuthGate の配下を保つ）。`metadata.title = copy.mypage.pageTitle` |
 
-route module の位置は上の表のとおり。title は `copy.<...>.pageTitle` に置き、`copy.pageTitle` へ足さない（S4 の `s4-copy.test.ts` が全 key を固定している）。no-store ヘッダ（SEC-WEB-009 の 6 prefix: `/account`・`/auth`・`/purchase`・`/mypage`・`/admin`・`/staff`）は `dist/_headers`（`scripts/generate-web-headers.mts` が生成。`tests/contracts/s9-finalize.md` §8）が付ける。保護 path の `Referrer-Policy` は `/*` の既定値と連結されて実効値が `no-referrer`。
+route module の位置は上の表のとおり。title は `copy.<...>.pageTitle` に置き、`copy.pageTitle` へ足さない（S4 の `s4-copy.test.ts` が全 key を固定している）。no-store ヘッダ（SEC-WEB-009。content-hash 付き asset の正規の path 以外の全応答。保護 6 prefix `/account`・`/auth`・`/purchase`・`/mypage`・`/admin`・`/staff` を含む）は `dist/_headers` の `/*` 規則（`scripts/generate-web-headers.mts` が生成。`tests/contracts/s9-finalize.md` §8）が付ける。`Referrer-Policy` は全応答で `no-referrer`（`/*` の 1 つだけで、連結しない）。
 
 ## 1. 文言 `copy`（`ja.ts` に追加。既存 key は変えない）
 
@@ -339,7 +339,7 @@ export function describeContinuation(intent: ContinuationIntent | null): Continu
 
 ### 6.8 no-store と共通（`/account/*`、`/mypage`）
 
-- `/account/login`、`/account/register`、`/account/email-verification`、`/account/password-reset`、`/account/password-reset/complete`、`/mypage` の GET が **HTTP 200** で、`Cache-Control` が `no-store` と `private` を含み、`Pragma: no-cache`（SEC-WEB-009。`dist/_headers` の規則。静的 shell なので route が未実装でも 200 になる）。`/`、`/cart`、`/entry` は `private` を含まない（S4 / S5 のまま）。
+- `/account/login`、`/account/register`、`/account/email-verification`、`/account/password-reset`、`/account/password-reset/complete`、`/mypage` の GET が **HTTP 200** で、`Cache-Control` が `no-store` と `private` を含み、`Pragma: no-cache`（SEC-WEB-009。`dist/_headers` の規則。静的 shell なので route が未実装でも 200 になる）。`/` の navigation 応答も `no-store, private, max-age=0`（公開 page も同じ。S4 / S5 と TC-SEC-WEB-009-701 の後半）。
 - 各ページは title = `${copy.<…>.pageTitle} | ${SITE_NAME}`、`h1` が 1 つ、`pageerror` / `console.error`（resource load 失敗を除く）が無く、外部 origin へ要求せず、`/admin` / `/staff` への href が無く、390px 幅で横 scroll が無い。
 - 認証フローの前後で、localStorage / sessionStorage の全内容（key と value）、URL、`main` のテキストに、入力した Password（テストの sentinel）と verification / reset の context が現れない（SEC-AUTH-018）。root layout の `<ScrollRestoration />` は `getKey` を渡さず既定の location key を使うので、sessionStorage の保存値に URL・query（`context` など）が入らない（`tests/e2e/static-hosting.spec.ts` TC-STACK-008-306）。
 

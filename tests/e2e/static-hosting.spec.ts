@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
 import { copy } from "../../apps/web/src/presentation/copy/ja.ts";
 import { formatBusinessDate } from "../../apps/web/src/presentation/format/datetime.ts";
@@ -29,6 +29,7 @@ import {
   TICKET,
 } from "../harness/mock-seed.ts";
 import { REPO_ROOT } from "../harness/script-fixtures.ts";
+import { HASHED_ASSET, IMMUTABLE, NO_STORE, REFERRER_POLICY } from "../harness/web-dist.ts";
 
 // UI mock suite (TST-E2E-004: auxiliary, not G8). Contract: tests/contracts/s3-layout.md section 13 (static hosting)
 // and tests/contracts/s9-finalize.md section 8. The Web app is a static SPA served from apps/web/dist by
@@ -369,7 +370,7 @@ const PROTECTED_ROUTES = [
   "/staff/x",
 ];
 
-test.describe("TC-STACK-008-304 page responses carry the security headers, and no-store only on protected prefixes (SEC-WEB-003 / 007 / 008 / 009 / 010, SPEC-140 22)", () => {
+test.describe("TC-STACK-008-304 page responses carry the security headers, no-store and no-referrer on every page response (SEC-WEB-003 / 007 / 008 / 009 / 010, SPEC-140 22)", () => {
   test("(a)(d) the CSP equals dist/_headers, has no unsafe-inline / unsafe-eval in script-src, and the other security headers are present", async ({
     request,
   }) => {
@@ -404,28 +405,28 @@ test.describe("TC-STACK-008-304 page responses carry the security headers, and n
     );
   });
 
-  test("(b) public pages are not private / no-store and use the default Referrer-Policy", async ({
+  test("(b) public pages are no-store with Pragma, and their Referrer-Policy is exactly no-referrer", async ({
     request,
   }) => {
     for (const path of ["/", "/goods"]) {
       const response = await request.get(path, { maxRedirects: 0 });
       const headers = response.headers();
-      expect(headers["cache-control"] ?? "", path).not.toMatch(/private|no-store/);
-      expect(headers["referrer-policy"], path).toBe("strict-origin-when-cross-origin");
+      expect(headers["cache-control"], path).toBe(NO_STORE);
+      expect(headers.pragma, path).toBe("no-cache");
+      expect(headers["referrer-policy"], path).toBe(REFERRER_POLICY);
     }
   });
 
-  test("(c) every protected prefix is no-store with Pragma and an effective no-referrer", async ({
+  test("(c) every protected prefix is no-store with Pragma and a Referrer-Policy that is exactly no-referrer", async ({
     request,
   }) => {
     for (const path of PROTECTED_ROUTES) {
       const response = await request.get(path, { maxRedirects: 0 });
       const headers = response.headers();
       expect(response.status(), path).toBe(200);
-      expect(headers["cache-control"], path).toBe("no-store, private, max-age=0");
+      expect(headers["cache-control"], path).toBe(NO_STORE);
       expect(headers.pragma, path).toBe("no-cache");
-      const last = (headers["referrer-policy"] ?? "").split(",").pop()?.trim();
-      expect(last, path).toBe("no-referrer");
+      expect(headers["referrer-policy"], path).toBe(REFERRER_POLICY);
     }
   });
 });
@@ -648,5 +649,71 @@ test.describe("TC-STACK-008-308 scrolling, history and the skip link behave as b
     );
     await expect(main).toBeFocused();
     await expect(page.locator("main")).toHaveCount(1);
+  });
+});
+
+test.describe("TC-STACK-008-309 the real build gives a long cache to its content-hashed assets only (SEC-WEB-009, SPEC-140 22, SPEC-180 13.1)", () => {
+  /** File names directly under dist/assets/, in code unit order (the order of the generated rules). */
+  function assetNames(): string[] {
+    return readdirSync(join(DIST, "assets")).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  }
+
+  test("(a) dist/assets/ holds only hashed files, dist has no 404.html, and _headers has one rule per asset", () => {
+    expect(existsSync(DIST), "apps/web/dist was built by the webServer").toBe(true);
+    const names = assetNames();
+    expect(names.length).toBeGreaterThan(0);
+    // 99 asset rules plus the /* rule is the Cloudflare Pages limit of 100 rules.
+    expect(names.length).toBeLessThanOrEqual(99);
+    for (const name of names) {
+      expect(statSync(join(DIST, "assets", name)).isFile(), `${name} is a file`).toBe(true);
+      expect(HASHED_ASSET.test(name), `${name} is content-hashed`).toBe(true);
+    }
+    const notFoundPages = filesUnder(DIST).filter((f) => basename(f).toLowerCase() === "404.html");
+    expect(notFoundPages.map((f) => f.slice(DIST.length + 1))).toEqual([]);
+    const pathLines = readFileSync(join(DIST, "_headers"), "utf8")
+      .split("\n")
+      .filter((line) => line.startsWith("/"));
+    expect(pathLines).toEqual(["/*", ...names.map((name) => `/assets/${name}`)]);
+  });
+
+  // One real JS and one real CSS asset when the build has them (at least one asset must exist).
+  const sample = (): string[] =>
+    [".js", ".css"].flatMap((extension) => {
+      const name = assetNames().find((candidate) => candidate.endsWith(extension));
+      return name === undefined ? [] : [name];
+    });
+
+  test("(b) a real asset is 200 with the long cache, no Pragma and the other security headers", async ({
+    request,
+  }) => {
+    const names = sample();
+    expect(names.length).toBeGreaterThan(0);
+    for (const name of names) {
+      const response = await request.get(`/assets/${name}`, { maxRedirects: 0 });
+      expect(response.status(), name).toBe(200);
+      const headers = response.headers();
+      expect(headers["cache-control"], name).toBe(IMMUTABLE);
+      expect(headers.pragma, name).toBeUndefined();
+      expect(headers["content-security-policy"], name).toBeTruthy();
+      expect(headers["x-content-type-options"], name).toBe("nosniff");
+      expect(headers["referrer-policy"], name).toBe(REFERRER_POLICY);
+    }
+  });
+
+  test("(c) the same assets under /%61ssets/ are not exempt: no-store", async ({ request }) => {
+    const names = sample();
+    expect(names.length).toBeGreaterThan(0);
+    for (const name of names) {
+      const response = await request.get(`/%61ssets/${name}`, { maxRedirects: 0 });
+      expect(response.headers()["cache-control"], name).toBe(NO_STORE);
+    }
+  });
+
+  test("(d) a missing asset is a non-HTML 404 and is no-store", async ({ request }) => {
+    const response = await request.get("/assets/missing-r39x.js", { maxRedirects: 0 });
+    expect(response.status()).toBe(404);
+    expect(response.headers()["content-type"] ?? "").not.toMatch(/html/);
+    expect(await response.text()).not.toMatch(/<html|<!doctype/i);
+    expect(response.headers()["cache-control"]).toBe(NO_STORE);
   });
 });

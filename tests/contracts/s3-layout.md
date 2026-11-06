@@ -468,7 +468,7 @@ CSS・source のどこにも外部 origin（`http://`、`https://`、`//host`）
 - ページ読み込み中に `pageerror` が無く、`console.error`（`Failed to load resource` を除く）が無いこと。
 - ネットワーク要求の宛先は `127.0.0.1:3100`（と `data:` / `blob:`）だけ（外部 font・外部 CDN を使わない）。
 - Playwright の既定 workers は 2（`tests/playwright.config.ts`）。Windows host で 4 workers 並列時に loopback の停止（素の node http server でも再現、最大約 20 秒）が起き、アプリ起因でない timeout が散発したため。retry は 0 のまま（SPEC-170 §69）、各 test は新規 context（TST-FLK-001 / §65）。`--workers=N` で上書き可能。
-- 保護 6 prefix（`/account`・`/auth`・`/purchase`・`/mypage`・`/admin`・`/staff`）の `Cache-Control: no-store` と `Pragma: no-cache` は `dist/_headers`（§13）が付け、`tests/e2e/no-store.spec.ts`（TC-SEC-WEB-009-001）が 6 prefix すべてを検査する。
+- content-hash 付き asset の正規の path 以外の全応答の `Cache-Control: no-store, private, max-age=0`・`Pragma: no-cache`・`Referrer-Policy: no-referrer` は `dist/_headers`（§13）の `/*` 規則が付ける（保護 prefix ごとの規則は無い）。`tests/e2e/no-store.spec.ts`（TC-SEC-WEB-009-001 が保護 6 prefix と `/`、TC-SEC-WEB-009-002 が別表記の URL）が検査する。
 - E2E の webServer は `tests/harness/browser/start-mock-web.mjs`: `VITE_UI_MOCK=1` で `pnpm --filter @off-r39x/web build`（`APP_ENV`・`NODE_ENV`・`SPONSOR_IMAGE_ALLOWED_ORIGINS`・旧 `VERCEL_ENV`・`NEXT_PUBLIC_UI_MOCK` は除く）を行い、`apps/web/dist` を `scripts/serve-web-dist.mts --port 3100 --host 127.0.0.1` で配信する（`dist/_headers` を適用）。
 
 ## 11. テストファイルと契約の対応
@@ -528,12 +528,12 @@ CSS・source のどこにも外部 origin（`http://`、`https://`、`//host`）
 - `apps/web/vite.config.ts` は `defineConfig(({ command, mode }) => …)`。serve と build のどちらでも `assertUiMockNotInProductionBuild({ VITE_UI_MOCK, APP_ENV })` を呼び、`VITE_UI_MOCK=1` かつ `APP_ENV=production` なら `UI mock mode must not be enabled in a production build` で失敗する。serve で `VITE_UI_MOCK` が未設定なら `process.env.VITE_UI_MOCK = "1"`（dev 既定）。build は明示指定のときだけ有効。`build.sourcemap` は false、`outDir` は `dist`（SEC-WEB-011）。
 - `NEXT_PUBLIC_UI_MOCK` と `VERCEL_ENV` は参照しない。
 
-### 13.4 配信と `dist/_headers`（TC-STACK-008-101〜107、201〜207、301〜305）
+### 13.4 配信と `dist/_headers`（TC-STACK-008-101〜109、201〜210、301〜305、309）
 
 - `scripts/serve-web-dist.mts [--dir] [--port 0-65535] [--host]`（既定 `apps/web/dist`・3100・`127.0.0.1`）: 起動時に `ERROR dist-missing` / `index-missing` / `headers-missing` / `headers-invalid line=<n>` / `listen <code>`（終了コード 1）、不正な CLI は `USAGE`（2）。起動したら `READY http://<host>:<port>`。GET / HEAD のみ（他は 405 + `Allow: GET, HEAD`）。拡張子のない未知の path は `index.html` を 200、最後の segment に `.` がある不在 path は `text/plain` の 404（`Not Found`）。dist の外・NUL・バックスラッシュ・`.` 始まりの segment・`/_headers`・`/_redirects` は 404。request の URL・query・header を log に出さない。
-- `_headers` の対応構文は生成するものだけ（`#` 行、空行、`/` 始まりの path 行 = 完全一致または末尾 `/*` の前方一致、2 空白以上で字下げした `Name: value`）。`!` による除去・`:placeholder`・途中の `*`・絶対 URL は `headers-invalid`。複数の規則に一致した同名 header は記述順に `, ` で連結する（Pages と同じ）。`_headers` 以外の `Cache-Control` を付けない。
-- `scripts/generate-web-headers.mts [--dist] [--check]`（build の末尾で実行）: `dist/**/*.html` の src のない `<script>` 本文の SHA-256（base64）を `script-src` に重複なし・辞書順で入れ、`on*=` 属性・`javascript:` URL は `ERROR inline-handler <相対path>`、閉じていない `<script` は `ERROR html-unparsable`。`SPONSOR_IMAGE_ALLOWED_ORIGINS`（JSON の文字列配列。https・userinfo/port/path/query/fragment なし・IP literal / localhost / `*.local` / `*` なし）の origin だけを `img-src` に入れ、不正なら `ERROR sponsor-image-origin-invalid index=<n>`（値を出さず、`_headers` を書かない）。成功時 `OK headers inline-scripts=<n> img-origins=<n>`。`--check` は書き込まず、不一致なら `ERROR headers-stale`。
-- `dist/_headers` の内容（v2）は `tests/contracts/s9-finalize.md` §5。`tests/harness/web-dist.ts` の `expectedHeadersFile()` が期待値の正である。
+- `_headers` の対応構文は生成するものだけ（`#` 行、空行、`/` 始まりの path 行 = 完全一致または末尾 `/*` の前方一致、2 空白以上で字下げした `Name: value`）。`:placeholder`・途中の `*`・絶対 URL は `headers-invalid`。`! Name`（2 空白以上で字下げ）は OSS の Pages asset server（wrangler pages dev 相当）に合わせて解釈する（Pages 上での確認は Issue C）: 一致した規則を記述順に処理し、各規則で先に `! Name` の名前（大文字小文字を区別しない）をそれまでに積んだ header から取り除き、次にその規則の `Name: value` を積む（行の順序に関係なく除去が先。後続の規則には影響しない。存在しない header の除去は何もしない）。path 行より前の `!`、名前の無い `!`、名前に許されない文字がある `!`、`! Content-Type`・`! Content-Length`（このサーバーが規則の後に自分で設定するため再現できない）は `headers-invalid`。複数の規則に一致した同名 header は記述順に `, ` で連結する（Pages と同じ）。`_headers` 以外の `Cache-Control` を付けない。
+- `scripts/generate-web-headers.mts [--dist] [--check]`（build の末尾で実行）: `dist/**/*.html` の src のない `<script>` 本文の SHA-256（base64）を `script-src` に重複なし・辞書順で入れ、`on*=` 属性・`javascript:` URL は `ERROR inline-handler <相対path>`、閉じていない `<script` は `ERROR html-unparsable`。`SPONSOR_IMAGE_ALLOWED_ORIGINS`（JSON の文字列配列。https・userinfo/port/path/query/fragment なし・IP literal / localhost / `*.local` / `*` なし）の origin だけを `img-src` に入れ、不正なら `ERROR sponsor-image-origin-invalid index=<n>`（値を出さず、`_headers` を書かない）。成功時 `OK headers inline-scripts=<n> img-origins=<n>`。`--check` は書き込まず、不一致なら `ERROR headers-stale`。build の失敗条件（`html-404-present`・`asset-unhashed`・`headers-rule-limit`・`headers-line-too-long`。`_headers` を書かず、`--check` でも同じ検査）は `tests/contracts/s9-finalize.md` §8.1。
+- `dist/_headers` の内容（v3。方式 A: `/*` に CSP と §22 の header と no-store・Pragma、hash 付き asset の完全一致規則）は `tests/contracts/s9-finalize.md` §8.1。`tests/harness/web-dist.ts` の `expectedHeadersFile()` が期待値の正である。
 
 ### 13.5 静的 shell の不変条件（TC-STACK-008-305）
 
@@ -544,4 +544,4 @@ CSS・source のどこにも外部 origin（`http://`、`https://`、`//host`）
 1. 未知の URL・不正な ref の HTTP status は 200（静的 shell）。SPEC-050 §19.1 は status を規定しない。期待値の変更は本節と各 E2E の「Not Found」系に限る。
 2. JS 無効時の `SPEC-050 §25`: SPA は JS なしで内容を描画しない（SPEC-050 §5.4）。`TC-SPEC-050-25-003` は「演出が JS 無効時に見出しを隠さない」という CSS の契約だけを、静的 shell の `#root` に差し込んだ `data-reveal="static"` の見出しで検証する。
 3. 遷移後のフォーカス移動と route announcer は追加しない（現行の挙動も、先頭要素がフォーカス不能のため移動しない）。`TC-PG-MYP-001-722` は「何もフォーカスを強制しない」ことを要求している。
-4. `Referrer-Policy` は `/*`（`strict-origin-when-cross-origin`）と保護 prefix（`no-referrer`）の両方に一致して `, ` で連結され、実効値は最後の token の `no-referrer`。Pages 上で同じ連結になることの実地確認は deploy の作業に残る。
+4. `Referrer-Policy` は `/*` の `no-referrer` だけで、連結しない（SPEC-140 §22 改訂後。path ごとの値を設けない）。Pages 上で `/*` の header が別表記の URL にも付くこと、`!` が効くことの実地確認は deploy の作業に残る。
