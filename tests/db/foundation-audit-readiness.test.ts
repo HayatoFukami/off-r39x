@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import type { LogEvent } from "@off-r39x/observability";
 import { Pool } from "pg";
 import { expect, it } from "vitest";
 import {
@@ -11,7 +12,7 @@ import { installSyntheticDirectory, prepareFoundationDatabase } from "../harness
 
 it("TC-DB-AUDIT-001 records fixed readiness failure names", async () => {
   const pool = new Pool({ connectionString: process.env.TEST_DATABASE_URL });
-  const events: { event_name: string; query_name?: string }[] = [];
+  const events: LogEvent[] = [];
   observeDatabase(pool, { log: (event) => events.push(event) });
   try {
     const result = await checkReadiness(pool, {
@@ -120,7 +121,7 @@ it("TC-DB-AUDIT-001 detects missing and altered release schema, constraints and 
       url.username = role;
       url.password = "";
       url.search = "";
-      const events: { event_name: string; query_name?: string }[] = [];
+      const events: LogEvent[] = [];
       const runtime = createDatabase({
         connectionString: url.href,
         environment: "test",
@@ -134,9 +135,8 @@ it("TC-DB-AUDIT-001 detects missing and altered release schema, constraints and 
           ready: true,
           failures: [],
         });
-        expect(
-          (await checkReadiness(runtime.pool, { ...expected, migrationSetHash: undefined })).ready,
-        ).toBe(false);
+        const { migrationSetHash: _migrationSetHash, ...withoutHash } = expected;
+        expect((await checkReadiness(runtime.pool, withoutHash)).ready).toBe(false);
         expect(events, service).toContainEqual(
           expect.objectContaining({
             event_name: "security.fail_closed.triggered",
