@@ -20,9 +20,11 @@ exports Drizzle bigint-mode tables; reviewed SQL lives in `migrations/`.
 5. Package unchanged SQL at `/app/packages/db/migrations/` with OCI WORKDIR `/app`.
    Source commands may run from a repository subdirectory; migration resolution
    searches ancestors for that fixed source-controlled path, never environment
-   input or the bundled entrypoint directory. `migrationIdentity()` returns the version and
-   SHA-256 of source bytes. `computeMigrationSetHash()` returns the release set
-   identity using sorted filename, NUL, source bytes, NUL.
+   input or the bundled entrypoint directory. All SQL sources are ordered by filename,
+   hashed individually and checked against the applied journal as an exact prefix.
+   Only pending migrations are applied; altered, missing or unknown history fails.
+   Readiness requires the whole journal to match. `computeMigrationSetHash()` returns
+   the release set identity using sorted filename, NUL, source bytes, NUL.
 
 `createDatabase` requires a runtime-role URL with no query overrides and verifies
 TLS trust and hostname. Test harnesses alone use direct local non-TLS connections.

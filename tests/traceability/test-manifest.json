@@ -9,7 +9,12 @@
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
-      "fault_points": [],
+      "fault_points": [
+        "altered_migration",
+        "missing_history",
+        "unknown_history",
+        "migration_failure"
+      ],
       "expected_http": null,
       "expected_provider_postconditions": [],
       "expected_observability": [],
@@ -83,11 +88,16 @@
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
-      "fault_points": [],
+      "fault_points": [
+        "altered_migration",
+        "missing_history",
+        "unknown_history",
+        "migration_failure"
+      ],
       "expected_http": null,
       "expected_domain_postconditions": ["No business workflow tables or startup migration"],
       "expected_db_postconditions": [
-        "Repeated migration preserves one source-hashed journal entry; bigint beyond JS safe integer preserved; engine major17"
+        "Repeated migration preserves source-hashed journal entries; pending migrations apply in order; inconsistent history fails and failed migration rolls back; bigint beyond JS safe integer preserved; engine major17"
       ],
       "expected_provider_postconditions": [],
       "expected_observability": [],
@@ -15735,7 +15745,9 @@
       "expected_domain_postconditions": [
         "Fail closed within the canonical boundary; no unintended business mutation"
       ],
-      "expected_db_postconditions": ["A throwing logger leaves one committed row and a committed result"],
+      "expected_db_postconditions": [
+        "A throwing logger leaves one committed row and a committed result"
+      ],
       "expected_provider_postconditions": [],
       "expected_observability": [
         "db.transaction.retry_scheduled",
@@ -15856,7 +15868,9 @@
         "Valid quoted Provider identifiers match the direct view projection"
       ],
       "expected_provider_postconditions": [],
-      "expected_observability": ["Each readiness failure emits its fixed query name; API and both worker pools log release hash failure; unavailable database emits db.availability.failed"],
+      "expected_observability": [
+        "Each readiness failure emits its fixed query name; API and both worker pools log release hash failure; unavailable database emits db.availability.failed"
+      ],
       "sensitivity_class": "synthetic",
       "critical": true
     },

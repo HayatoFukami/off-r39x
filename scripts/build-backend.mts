@@ -1,22 +1,13 @@
 // INF-DEP-001 / DEV-REP-001: no runtime configuration or credential is read at build time.
-import { createHash } from "node:crypto";
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { computeMigrationSetHash } from "../packages/db/src/migrations.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const outdir = resolve(root, "dist");
-const migrationDir = resolve(root, "packages/db/migrations");
-const migrations = (await readdir(migrationDir)).filter((name) => name.endsWith(".sql")).sort();
-const digest = createHash("sha256");
-for (const name of migrations) {
-  digest.update(name);
-  digest.update("\0");
-  digest.update(await readFile(resolve(migrationDir, name)));
-  digest.update("\0");
-}
-const migrationSetHash = digest.digest("hex");
+const migrationSetHash = await computeMigrationSetHash(root);
 await mkdir(outdir, { recursive: true });
 await build({
   absWorkingDir: root,
