@@ -451,6 +451,7 @@ listも同じ`data`内に`items/page`を持つ。
 | 409 | `PURCHASE_LIMIT_EXCEEDED` | limit超過 | No |
 | 409 | `IDEMPOTENCY_KEY_REUSED` | transport key payload mismatch | No |
 | 410 | `BUSINESS_OPPORTUNITY_EXPIRED` | sales / hold / payment opportunity expiry | No |
+| 413 | `PAYLOAD_TOO_LARGE` | §13のrequest size上限超過 | No |
 | 422 | `DOMAIN_RULE_VIOLATION` | syntactically validだがBusiness Rule不成立 | No |
 | 422 | `OUTSIDE_CHECKIN_WINDOW` | Karaoke通常受付時間外 | No |
 | 424 | `STRIPE_TEMPORARY_FAILURE` | Stripe依存の一時失敗 | Yes |
