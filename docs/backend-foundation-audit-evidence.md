@@ -146,3 +146,15 @@ Directoryの最小権限probeを追加した際、Recon identityでreadinessが`
 - [Better Auth Magic Link](https://better-auth.com/docs/plugins/magic-link)
 
 - [Vitest 3 fileParallelism（root-only設定）](https://v3.vitest.dev/config/#fileparallelism)
+
+## PR #24 レビュー修正（2026-11-06）
+
+- TLS終端後の実Hono HTTP listenerで設定済みHostとportを検証し、偽装転送ヘッダー・異なるHostを拒否した（`TC-AUTH-AUDIT-003`）。実Neon Providerとの互換性は引き続き未検証。
+- Readinessは固定された失敗理由を`readiness.<理由>`として記録する。API・Email・Reconciliationの実DB roleで記録を確認し、DB接続不能は`db.availability.failed`、他の失敗は`security.fail_closed.triggered`とする。公開healthは汎用503を維持する。
+- migration sourceを共通列挙し、個別SHA-256と集合SHA-256をbuild・適用・Readinessで照合する。実PG17とテスト専用SQLで新規適用、0001からの追加、再実行、改変・欠落・未知履歴の拒否、rollbackおよび複数履歴のReadiness照合を確認した（`TC-DB-FOUNDATION-001`）。既存SQLは変更していない。
+- `SPEC-110 §13`の413 `PAYLOAD_TOO_LARGE`を公開型・schema・応答に反映し、§21にも既存契約を明記した。405/415の公開コード未定義は`UCR-140-001`として記録し、新コードの決定は保留した。
+- DBログ例外をDB処理から隔離した。実PG17でログ例外時のCOMMIT一回、rollback、`40001` retryを確認し、COMMIT応答喪失は従来どおり`commit_unknown`である（`TC-OBS-AUDIT-001`）。
+
+検証はNode 24.22.1 / corepack pnpm 12.3.4、専用PostgreSQL 17.11、UTC、合成CA・verified TLS、ファイル単位の独立DBで実施した。lint（既存warning 2件）、typecheck、boundaries、traceability（654 TC / 218 Rule）、migration静的検査、unit（106 files / 2303 tests）、backend（21 files / 80 tests）、backend build、`secret-scan --build-dir dist --require-build`（516 files）はPASS。build manifestとruntimeの集合ハッシュも一致した。後から追加したlogger例外時のrollback/retry assertionは同じ実DB suiteでPASS。最初に追加した回帰試験は修正前にそれぞれ失敗を確認した。初回logger例外試験は接続が解放されずtimeoutし、その後修正して通過した。
+
+#33は確認時点でOPENのため、計画の条件に従い`origin/dev`のmerge・競合解消とその後の全工程再検証は未実施。Web mock build・ヘッダー検査・E2Eはdev統合後の残作業である。push、PR投稿、先行PRのmergeは実施していない。上記のProvider、共有Rate Limit、業務handler、deploymentに関する既存の未検証事項は継続する。
