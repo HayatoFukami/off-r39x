@@ -131,7 +131,7 @@ export function createAuthProxy(
       const url = new URL(request.url),
         path = url.pathname.replace(/^\/auth\//, "");
       if (
-        url.origin !== publicOrigin.origin ||
+        url.host !== publicOrigin.host ||
         !url.pathname.startsWith("/auth/") ||
         !Object.hasOwn(AUTH_ROUTES, path)
       )

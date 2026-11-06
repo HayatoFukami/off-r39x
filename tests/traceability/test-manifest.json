@@ -15871,7 +15871,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "Limited Neon transport candidate; synthetic provider only; public allowlist, exact origin, no-store, host-only cookies, safe redirects, deadlines and mandatory enforcement",
+      "preconditions": "Limited Neon transport candidate; synthetic provider only; public allowlist, exact origin, no-store, host-only cookies, safe redirects, deadlines, mandatory enforcement and actual HTTP listener after TLS termination",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -15880,7 +15880,8 @@
         "redirect_rejected",
         "provider_unavailable",
         "response_body_stalled",
-        "shared_guard_missing"
+        "shared_guard_missing",
+        "host_and_forwarded_header_spoofing"
       ],
       "expected_http": [200, 201, 400, 403, 404, 405, 503],
       "expected_domain_postconditions": [

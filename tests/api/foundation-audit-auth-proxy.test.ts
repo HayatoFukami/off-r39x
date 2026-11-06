@@ -1,3 +1,6 @@
+import { request as httpRequest } from "node:http";
+import { createRequire } from "node:module";
+import type { AddressInfo } from "node:net";
 import { expect, it, vi } from "vitest";
 import { createAuthProxy } from "../../apps/api/src/api/auth-proxy.ts";
 
@@ -169,4 +172,66 @@ it("TC-AUTH-AUDIT-003 mounts all four auth transports behind mandatory shared en
   expect(unavailable.status).toBe(503);
   expect(await unavailable.text()).not.toContain("synthetic-shared-store-down");
   expect(calls).toBe(4);
+});
+
+it("TC-AUTH-AUDIT-003 accepts the configured host after TLS termination on a real HTTP listener", async () => {
+  const { createApp } = await import("../../apps/api/src/api/app.ts");
+  const require = createRequire(new URL("../../apps/api/package.json", import.meta.url));
+  const { serve } =
+    require("@hono/node-server") as typeof import("../../apps/api/node_modules/@hono/node-server");
+  const transport = vi.fn(async () => Response.json({ ok: true }));
+  const proxy = createAuthProxy(
+    {
+      baseUrl: "https://neon.example.test/auth",
+      publicAuthOrigin: "https://api.example.test:8443",
+      webOrigin: "https://web.example.test",
+    },
+    transport,
+  );
+  const app = createApp({
+    webOrigin: "https://web.example.test",
+    ready: async () => true,
+    authProxy: proxy,
+    enforcement: {
+      assertAvailable: async () => {},
+      middleware: async (_c, next) => {
+        await next();
+      },
+    },
+  });
+  const server = serve({ fetch: app.fetch, port: 0, hostname: "127.0.0.1" });
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  const port = (server.address() as AddressInfo).port;
+  const send = (host: string, extra: Record<string, string> = {}) =>
+    new Promise<number>((resolve, reject) => {
+      const req = httpRequest(
+        {
+          hostname: "127.0.0.1",
+          port,
+          path: "/auth/token",
+          headers: { Host: host, Origin: "https://web.example.test", ...extra },
+        },
+        (res) => {
+          res.resume();
+          res.once("end", () => resolve(res.statusCode ?? 0));
+        },
+      );
+      req.on("error", reject);
+      req.end();
+    });
+  try {
+    expect(await send("api.example.test:8443")).toBe(200);
+    expect(
+      await send("evil.example.test", {
+        "x-forwarded-host": "api.example.test:8443",
+        "x-forwarded-proto": "https",
+      }),
+    ).toBe(404);
+    expect(await send("api.example.test")).toBe(404);
+    expect(transport).toHaveBeenCalledTimes(1);
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  }
 });
