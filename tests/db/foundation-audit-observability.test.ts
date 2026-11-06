@@ -4,6 +4,33 @@ import { transaction } from "../../packages/db/src/transaction.ts";
 import { createLogger } from "../../packages/observability/src/index.ts";
 import { startCommitAcknowledgementDropProxy } from "../harness/db/commit-proxy.ts";
 
+it("TC-OBS-AUDIT-001 logger failures cannot change a committed transaction", async () => {
+  const pool = new Pool({ connectionString: process.env.TEST_DATABASE_URL });
+  const logger = {
+    log: () => {
+      throw new Error("synthetic logger failure");
+    },
+  };
+  try {
+    await pool.query("CREATE TABLE public.audit_logger_test (value integer NOT NULL)");
+    const result = await transaction(
+      pool,
+      async (client) => {
+        await client.query("INSERT INTO public.audit_logger_test VALUES (1)");
+        return "done";
+      },
+      { logger },
+    );
+    expect(result).toEqual({ status: "committed", value: "done" });
+    expect(
+      (await pool.query("SELECT count(*)::int AS count FROM public.audit_logger_test")).rows[0]
+        .count,
+    ).toBe(1);
+  } finally {
+    await pool.end();
+  }
+});
+
 it("TC-OBS-AUDIT-001 real DB retry, constraint, unavailability and unknown COMMIT emit distinct safe events", async () => {
   const url = process.env.TEST_DATABASE_URL;
   if (!url) throw new Error("Real PG17 required");

@@ -2,7 +2,7 @@ import { checkServerIdentity } from "node:tls";
 import { TIMEOUTS } from "@off-r39x/reliability";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import { type DatabaseLogger, observeDatabase } from "./observability.ts";
+import { type DatabaseLogger, logDatabase, observeDatabase } from "./observability.ts";
 import * as schema from "./schema.ts";
 
 export type DatabaseOptions = {
@@ -59,7 +59,7 @@ export function createDatabase(options: DatabaseOptions) {
   // Pool errors must not leak connection strings through an unhandled event.
   if (options.logger) observeDatabase(pool, options.logger);
   pool.on("error", () =>
-    options.logger?.log({
+    logDatabase(options.logger, {
       event_name: "db.availability.failed",
       level: "ERROR",
       result: "FAILED",

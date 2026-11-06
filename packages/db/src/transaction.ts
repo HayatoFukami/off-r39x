@@ -2,7 +2,7 @@ import { performance } from "node:perf_hooks";
 import { setTimeout as sleep } from "node:timers/promises";
 import { isDatabaseRetryable, RETRY_POLICIES, retryDelay, TIMEOUTS } from "@off-r39x/reliability";
 import type { Pool, PoolClient } from "pg";
-import { type DatabaseLogger, databaseLogger } from "./observability.ts";
+import { type DatabaseLogger, databaseLogger, logDatabase } from "./observability.ts";
 
 export type TransactionResult<T> = { status: "committed"; value: T } | { status: "commit_unknown" };
 export class TransactionDeadlineError extends Error {
@@ -66,7 +66,7 @@ export async function transaction<T>(
       const work = async (): Promise<TransactionResult<T>> => {
         const acquiring = performance.now();
         const acquired = await pool.connect();
-        logger?.log({
+        logDatabase(logger, {
           event_name: "db.pool.acquire.completed",
           level: "INFO",
           result: "SUCCESS",
@@ -109,7 +109,7 @@ export async function transaction<T>(
         return { status: "committed", value };
       };
       const result = await Promise.race([work(), deadline]);
-      logger?.log({
+      logDatabase(logger, {
         event_name: "db.transaction.completed",
         level: "INFO",
         result: "SUCCESS",
@@ -129,7 +129,7 @@ export async function transaction<T>(
         commitAcknowledgementUnknown(error)
       ) {
         discard = true;
-        logger?.log({
+        logDatabase(logger, {
           event_name: "reliability.unknown_result.opened",
           level: "ERROR",
           result: "PENDING",
@@ -164,7 +164,7 @@ export async function transaction<T>(
               ].includes(code))));
       if (unavailable) discard = true;
       const constraint = code === "23505" || code === "23P01";
-      logger?.log({
+      logDatabase(logger, {
         event_name: timeout
           ? "reliability.timeout.occurred"
           : unavailable
@@ -199,7 +199,7 @@ export async function transaction<T>(
       detachConnectionListeners();
       client?.release();
       client = undefined;
-      logger?.log({
+      logDatabase(logger, {
         event_name: "db.transaction.retry_scheduled",
         level: "WARN",
         result: "PENDING",

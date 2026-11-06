@@ -15728,13 +15728,14 @@
         "sqlstate_40P01",
         "constraint_loser",
         "database_unavailable",
-        "commit_acknowledgement_lost"
+        "commit_acknowledgement_lost",
+        "logger_throws"
       ],
       "expected_http": null,
       "expected_domain_postconditions": [
         "Fail closed within the canonical boundary; no unintended business mutation"
       ],
-      "expected_db_postconditions": [],
+      "expected_db_postconditions": ["A throwing logger leaves one committed row and a committed result"],
       "expected_provider_postconditions": [],
       "expected_observability": [
         "db.transaction.retry_scheduled",

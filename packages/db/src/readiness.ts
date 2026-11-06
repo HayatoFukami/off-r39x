@@ -2,7 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 import type { Pool } from "pg";
 import type { DirectorySourceMapping } from "./directory.ts";
 import { computeMigrationSetHash, migrationIdentity } from "./migrations.ts";
-import { databaseLogger } from "./observability.ts";
+import { databaseLogger, logDatabase } from "./observability.ts";
 import { catalogQuery, requiredCatalog } from "./schema-contract.ts";
 
 export type ReadinessExpectations = {
@@ -28,7 +28,7 @@ export async function checkReadiness(
   if (!expected.directoryMapping) failures.push("directory_mapping_unconfirmed");
   const client = await pool.connect().catch(() => undefined);
   if (!client) {
-    databaseLogger(pool)?.log({
+    logDatabase(databaseLogger(pool), {
       event_name: "db.availability.failed",
       level: "ERROR",
       result: "FAILED",
