@@ -26,6 +26,36 @@ it("TC-OBS-AUDIT-001 logger failures cannot change a committed transaction", asy
       (await pool.query("SELECT count(*)::int AS count FROM public.audit_logger_test")).rows[0]
         .count,
     ).toBe(1);
+    await expect(
+      transaction(
+        pool,
+        async (client) => {
+          await client.query("INSERT INTO public.audit_logger_test VALUES (2)");
+          throw new Error("synthetic rollback");
+        },
+        { logger },
+      ),
+    ).rejects.toThrow("synthetic rollback");
+    let attempts = 0;
+    expect(
+      await transaction(
+        pool,
+        async (client) => {
+          attempts++;
+          await client.query("INSERT INTO public.audit_logger_test VALUES (3)");
+          if (attempts === 1)
+            await client.query("DO $$ BEGIN RAISE EXCEPTION 'retry' USING ERRCODE='40001'; END $$");
+          return "retried";
+        },
+        { logger },
+      ),
+    ).toEqual({ status: "committed", value: "retried" });
+    expect(attempts).toBe(2);
+    expect(
+      (await pool.query("SELECT value FROM public.audit_logger_test ORDER BY value")).rows.map(
+        (row) => row.value,
+      ),
+    ).toEqual([1, 3]);
   } finally {
     await pool.end();
   }
