@@ -104,11 +104,17 @@ rule（rule-id: 検出）:
 
 `node scripts/mock-web.mts <build|start> [--port <1-65535>] [--dry-run]`。モック用のビルドと起動を、OS 非依存で行う。
 
-- 子プロセスの env に `VITE_UI_MOCK=1` を設定する。`build` は `pnpm --filter @off-r39x/web build`、`start` は `node scripts/serve-web-dist.mts --port <port> --host 127.0.0.1`（`--port` 既定 3100、`cwd` は repo root、`process.execPath` と引数配列で起動し shell を使わない）。子の終了コードを返す。`build` は pnpm.cmd を解決するため `shell: true` で起動してよい。
-- 親の環境の `APP_ENV` が `production` のときは拒否する: 終了コード 1、`ERROR mock-web-production ...` を stdout か stderr に出し、子を起動しない（DEV-WEB-011。本番 deploy 用 build でフラグを有効にしない）。`VERCEL_ENV` は見ない。`--dry-run` でも同じ検査を行う。
-- `--dry-run`: 子を起動せず、stdout へ**ちょうど** `DRY-RUN mock-web <mode>` / `ENV VITE_UI_MOCK=1` / `COMMAND <上記コマンド>` の 3 行だけを出し、終了コード 0。他の環境変数の値は出さない。
+- 子プロセスの env に `VITE_UI_MOCK=1` を設定する（`APP_ENV` は親の値をそのまま渡す。下の「`APP_ENV` の解決」）。`build` は `pnpm --filter @off-r39x/web build`、`start` は `node scripts/serve-web-dist.mts --port <port> --host 127.0.0.1`（`--port` 既定 3100、`cwd` は repo root、`process.execPath` と引数配列で起動し shell を使わない）。子の終了コードを返す。`build` は pnpm.cmd を解決するため `shell: true` で起動してよい。
+- 【`APP_ENV` の解決。fail closed。TC-DEV-WEB-011-203 / 207】親の環境の `APP_ENV` を、引数の検査（USAGE、終了コード 2）の**後**で次の順に判定する。値は `development` / `staging` / `test` と完全一致（大文字小文字を区別、trim しない）。子は起動しない。`--dry-run` でも同じ検査を行う。`VERCEL_ENV` は見ない（`APP_ENV` の代わりにもならない）。
+  - `production`（`build` と `start` の両方）: 終了コード 1、`ERROR mock-web-production UI mock must not be enabled in a production environment`（DEV-WEB-011。本番 deploy 用 build でフラグを有効にしない）。
+  - 許可値: そのまま子に渡す（上書きしない）。
+  - **`build` で未設定、または不正値（上記以外）**: 終了コード 1、`ERROR mock-web-app-env-invalid APP_ENV must be development, staging or test`。**build は既定値を与えない**（`APP_ENV` の明示が必須。launcher が `development` を補うと、本番の build で `APP_ENV` の設定を忘れても mock 入りの成果物が通ってしまう。PR #23 のレビュー指摘 [High]、Issue #29）。値は出力しない。
+  - **`start`**: build をしないので、設定されていて `production` または不正値のときだけ拒否し（上の 2 つの ERROR）、未設定は通す（既定値も与えない）。
+  - `dev` / `serve` のモードは無い（dev server の既定は `apps/web/vite.config.ts` の `serve` だけ。`tests/contracts/s3-layout.md` §13.3）。
+  - 未設定の扱いが `build` と `start` で違うこと、未設定の `build` にも `mock-web-app-env-invalid` の ERROR を使うことは、DEV-AI-003 によるリポジトリの選択（仕様本文は変えない）。
+- `--dry-run`: 子を起動せず、stdout へ `DRY-RUN mock-web <mode>` / `ENV VITE_UI_MOCK=1` / **`ENV APP_ENV=<渡す値>`（`APP_ENV` を子に渡すときだけ。`build` は常に、`start` は設定されているときだけ。`start` で未設定なら、この行は出さない）** / `COMMAND <上記コマンド>` の行だけを順に出し（build は 4 行、`start` で `APP_ENV` 未設定なら 3 行）、終了コード 0。他の環境変数の値は出さない。拒否するときは `ENV` 行も `COMMAND` 行も出さない。値（不正な `APP_ENV`）は stdout にも stderr にも出さない。
 - 引数誤り（mode 欠落・不明、未知のオプション、`--port` が整数でないか範囲外）は終了コード 2、`USAGE` を含む行を stderr か stdout に出す（`--dry-run` が付いていても同じ）。
-- 本番ガードは `apps/web/vite.config.ts` の `assertUiMockNotInProductionBuild`（`VITE_UI_MOCK=1` かつ `APP_ENV=production` で build と dev server の起動を失敗させる。serve と build の両方で呼ぶ）。`TC-DEV-WEB-011-201` が `vite.config.ts` を子プロセスで読み込み（default export を `{ command, mode }` で呼ぶ）、`TC-DEV-WEB-011-204` が dev 既定（serve で未設定なら `VITE_UI_MOCK=1`、build では未設定のまま）を固定する。
+- 本番ガードは `apps/web/vite.config.ts` の `assertUiMockNotInProductionBuild`（`VITE_UI_MOCK=1` のとき、`APP_ENV` が `development` / `staging` / `test` 以外（未設定・不正値・`production`）なら build と dev server の起動を失敗させる。serve と build の両方で呼ぶ。許可値・message・既定値は `tests/contracts/s3-layout.md` §13.3）。`TC-DEV-WEB-011-201` が `vite.config.ts` を子プロセスで読み込み（default export を `{ command, mode }` で呼ぶ。出力に `DEFINE_APP_ENV=<define の値>` の行を含む）、`TC-DEV-WEB-011-205` が許可値・拒否・値を出さないこと、`TC-DEV-WEB-011-206` と `TC-DEV-WEB-011-204` が既定（serve で `VITE_UI_MOCK` が未設定なら `1`、serve で `APP_ENV` が未設定なら `development`。build はどちらも未設定のまま）を固定する。空文字の `APP_ENV` は子プロセスの扱いが OS で異なるため、純粋関数の Unit（TC-DEV-WEB-011-003、TC-DEV-WEB-012-101）だけで確かめ、子プロセスを使う test には入れない。
 
 ## 5. E2E 21（`tests/e2e/journeys.spec.ts`）
 
@@ -133,6 +139,10 @@ rule（rule-id: 検出）:
 | `TC-DEV-SEC-004-001`〜`008` | `tests/unit/scripts/secret-scan.test.ts` | §3 |
 | `TC-DEV-SEC-004-009` | `tests/unit/scripts/root-scripts.test.ts` | `secret-scan` entry |
 | `TC-DEV-WEB-011-201`〜`204` | `tests/unit/scripts/root-scripts.test.ts` | 本番ガード（`vite.config.ts`）/ mock script entry / `mock-web.mts` / dev 既定 |
+| `TC-DEV-WEB-011-205` | `tests/unit/scripts/root-scripts.test.ts` | `vite.config.ts`: mock 有効の build は `APP_ENV` が許可値のときだけ通る（未設定・不正値・`production` は失敗、値を出さない） |
+| `TC-DEV-WEB-011-206` | `tests/unit/scripts/root-scripts.test.ts` | dev server だけ未設定の `APP_ENV` を `development` にする。build は既定を与えない |
+| `TC-DEV-WEB-011-207` | `tests/unit/scripts/root-scripts.test.ts` | `mock-web.mts` の `APP_ENV` の解決（`build` は明示が必須、`start` は未設定を通す、dry-run の行） |
+| `TC-DEV-WEB-011-208` | `tests/unit/harness/mock-web-env.test.ts` | E2E harness の env（`tests/harness/browser/mock-web-env.mts`。常に `APP_ENV=test`） |
 | `TC-STACK-008-001`〜`004` | `tests/unit/web/routes/route-table-static.test.ts` | s3-layout.md §13.1〜13.3 |
 | `TC-STACK-008-101`〜`109` | `tests/unit/scripts/serve-web-dist.test.ts` | §8（108: `! Name` の意味、109: 別表記の URL） |
 | `TC-STACK-008-201`〜`210` | `tests/unit/scripts/generate-web-headers.test.ts` | §8（208: asset の完全一致規則、209: build の失敗条件、210: Vite の既定命名） |

@@ -75,11 +75,20 @@ pnpm install --frozen-lockfile
 
 ## モックの起動
 
-モックは `VITE_UI_MOCK=1` のときだけ有効です。このフラグが無いと、実 API の生成が失敗して画面は動きません（fail closed。`SPEC-190` DEV-WEB-011）。次のスクリプトがフラグを設定します。Windows でも追加の設定は不要です。
+モックは `VITE_UI_MOCK=1` のときだけ有効です。このフラグが無いと、実 API の生成が失敗して画面は動きません（fail closed。`SPEC-190` DEV-WEB-011）。次のスクリプトがフラグを設定するので、フラグのために追加の設定は要りません（Windows でも同じです）。ただし `pnpm build:mock` には、フラグとは別に `APP_ENV` の指定が必要です（下記）。
+
+`pnpm build:mock` は環境名の変数 `APP_ENV` の明示が必須です（`development` / `staging` / `test` のどれか。未設定でも通る既定値はありません）。
+
+```sh
+# bash
+APP_ENV=development pnpm build:mock   # モック有効でビルド（出力: apps/web/dist）
+pnpm start:mock                       # ビルド済みのモックを配信（既定: http://127.0.0.1:3100）
+```
 
 ```powershell
-pnpm build:mock      # モック有効でビルド（出力: apps/web/dist）
-pnpm start:mock      # ビルド済みのモックを配信（既定: http://127.0.0.1:3100）
+# PowerShell
+$env:APP_ENV = "development"; pnpm build:mock   # モック有効でビルド（出力: apps/web/dist）
+pnpm start:mock                                 # ビルド済みのモックを配信（既定: http://127.0.0.1:3100）
 ```
 
 `start:mock` は `apps/web/dist` を `scripts/serve-web-dist.mts` で配信し、`dist/_headers`（security header を含み、`Cache-Control: no-store` と `Pragma` は content-hash 付き asset の正規の path 以外の全応答に、`Referrer-Policy: no-referrer` は hash 付き asset を含む全応答に付く）を適用します。ポートを変えるには `pnpm start:mock --port 3200` とします（`--` は付けません）。開発サーバー（Vite。モックが既定で有効）で確認する場合は、`pnpm dev` を実行します（URL は Vite が表示します）。
@@ -92,7 +101,17 @@ pnpm start:mock      # ビルド済みのモックを配信（既定: http://127
 - **状態のリセット:** データはブラウザの localStorage に保存されます（`r39x.mock.*` と Cart 用の `r39x.cart.v1`）。リセットするには、開発者ツールでこのサイトの localStorage を削除します。
 - **使ってはいけないもの:** モックに、パスワード、Secret、実際の QR Token、実際の個人情報を入れないでください。QR は合成のプレースホルダです。
 
-`VITE_UI_MOCK=1` と `APP_ENV=production` を同時に指定した場合は、ビルドが失敗します。実 API・実認証を導入するときは、`apps/web/src/mock/` と `apps/web/src/routes/dev/` を削除でき、画面側の変更が要らない形（port）を保ちます（`SPEC-190` DEV-WEB-012・013）。
+モックを有効にする（`VITE_UI_MOCK=1`）ビルドは、fail closed です。`APP_ENV` が `development` / `staging` / `test` と完全一致するときだけ通り、未設定、空文字、大文字小文字違いや前後の空白付き、別名（`prod`、`dev` など）、`production` では失敗します（エラー文言に `APP_ENV` の値は出ません）。開発サーバーは、未設定のときだけ `development` を補う点がビルドと違います（空文字、不正な値、`production` は失敗します）。経路ごとの未設定の扱いは次のとおりです。
+
+- `pnpm build:mock`（`scripts/mock-web.mts build`）は既定値を与えません。`APP_ENV` を明示しないと失敗します（`production` は `ERROR mock-web-production`、未設定と不正な値は `ERROR mock-web-app-env-invalid`）。`VITE_UI_MOCK=1` を付けた `pnpm build` の直接実行も同じ判定を受け、`APP_ENV` が許可値でなければ Vite の設定の読み込みで失敗します（許可値なら成功します）。
+- `pnpm dev` だけは、`APP_ENV` が未設定のときに `development` を補います（手元専用で、deploy する成果物を作りません）。明示した値は上書きせず、不正な値と `production` は起動に失敗します。
+- `pnpm start:mock` は build を行わないので、`APP_ENV` が未設定なら通ります。設定されているときは、`production` と不正な値を拒否します。
+- `pnpm test:e2e` は、`APP_ENV=test` で build と配信を行います（親の `APP_ENV` は無視します）。
+- 実行時の `/dev/*` も同じ許可値のときだけ開きます。
+
+この判定は、`APP_ENV` を静的な Web の build に使うという、このリポジトリの選択です（`SPEC-190` DEV-AI-003）。`SPEC-180 §9` は `APP_ENV` を server process の変数として挙げており、Web の静的 build 用とは書いていません。仕様本文は変えていません。upload 時にも判定するか、UCR にするかは Issue #29 で検討を続けます。
+
+実 API・実認証を導入するときは、`apps/web/src/mock/` と `apps/web/src/routes/dev/` を削除でき、画面側の変更が要らない形（port）を保ちます（`SPEC-190` DEV-WEB-012・013）。
 
 ## 品質確認のコマンド
 
@@ -106,9 +125,9 @@ pnpm secret-scan              # Secret・実 QR・PII らしい値の検出（�
 pnpm test:e2e                 # Playwright（モック用の補助 suite）
 ```
 
-- `pnpm secret-scan` は、ビルド出力も走査するなら `pnpm build:mock` の後に実行します。
+- `pnpm secret-scan` は、ビルド出力も走査するなら `APP_ENV=development pnpm build:mock`（PowerShell では `$env:APP_ENV = "development"; pnpm build:mock`）の後に実行します。
 - `pnpm secret-scan` は、リポジトリ直下のファイル、`.github/**`、`apps/**`、`packages/**`、`scripts/**`、`tests/**`、`traceability/**` と、ビルド出力の `apps/web/dist/**` を走査します。ビルド出力では値を検出する rule を全ファイルに適用し、`mock-seed-field` は dist の HTML に限定します。`OK` は、これらの走査範囲に問題がないことだけを示します。
-- `pnpm test:e2e` は、`apps/web/dist` のビルドと配信を自動で行います（`127.0.0.1:3100`。`start:mock` の既定と同じポートなので、同時には使えません）。desktop と mobile の 2 project で動き、再試行はしません。
+- `pnpm test:e2e` は、`VITE_UI_MOCK=1` と `APP_ENV=test` で `apps/web/dist` のビルドと配信を自動で行います（`127.0.0.1:3100`。`start:mock` の既定と同じポートなので、同時には使えません）。desktop と mobile の 2 project で動き、再試行はしません。
 - この Windows 開発機では、並列度 2 の E2E が稀にホストの接続障害で失敗します。その場合は `cd tests; pnpm exec playwright test --workers=1` で実行してください。
 - E2E は UI mock の補助 suite です。実 DB・実 API・Provider を使う正規の E2E（`SPEC-170` の G8）の代わりにはなりません。
 

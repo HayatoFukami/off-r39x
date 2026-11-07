@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-050
 title: Page and Screen Specification
-version: 2.1.1
+version: 2.2.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -782,6 +782,8 @@ Cart購入開始は `API-PUR-CART-001` を使用する。既存の単品購入AP
 - Google: Google認証開始Button。取消・閉じるはGuestのまま同画面へ戻し、別方式を選べる。
 - Email OTP: Email入力、送信後のOTP入力、明示的再送を提供する。期限切れ・誤入力・attempt上限では未認証のまま説明し、Neonが許す場合だけ再送/再開始する。Neon適用期限とattempt上限はProduction gateで検証記録する。
 - Magic Link: Email入力と送信状態を示す。Linkは5分有効。期限切れ・無効・不達は未認証とし再送または別方式を選べる。別端末でLinkを開いても元画面は自動認証済みとせず、Neonが同一Browser Sessionを成立させた確認前はGuestのままとする。
+- GoogleとMagic Linkは `FR-CRT-012` の外部完了認証である。Guestでない利用者（Email未確認のSessionを持つ利用者を含む）にはGoogleとMagic Linkの開始を無効として示し、別のAccountで利用するにはLogoutが必要であることを示す。Guestでない利用者のSession中にEmail+PasswordまたはEmail OTPによるLoginが成立した場合、Cartの扱いは `FR-CRT-012` の有効Session中の再Loginに従う。
+- GoogleとMagic Linkの結果は、外部完了認証の戻りで表示された `PG-AUTH-001` または `PG-AUTH-003`（開始した画面と同じPage）で受ける。外部完了認証を開始した元の画面（Magic Linkの送信状態を表示している画面を含む）、外部完了認証の戻りの遷移が起きていない他のTab、および再読込またはBrowserの履歴の移動で再表示された画面は結果を受けず、Sessionを確認しても `FR-CRT-012` の外部完了認証の規則による判定を行わない。外部完了認証の戻りで表示された画面で外部完了認証によって成立したSessionを確認した後は、`SPEC-060` §13 の順序に従い、Email未確認なら `PG-AUTH-002` へ、確認済みならContinuation Intentの復帰先へ、Continuation Intentがなければ `PG-MYP-001` へ進む。§15.3 Success / Navigation Out は、この順序のうちEmail確認済みの場合に当たる。`PG-AUTH-001` で結果を受けた場合もこの順序で進み、§15.1 Success の遷移先（`PG-AUTH-002`、Continuation Intentの安全な復帰先）はこの順序の中で適用する。外部完了認証の戻りで表示された画面でSessionを確認できない場合は、認証の状態を変えずに（Guestの場合はGuestのまま）認証未成立として同画面に留まる。取消・失敗・期限切れは外部完了認証の戻りで表示された画面で認証未成立として示し、再試行と別方式の選択を可能にする。結果を受けた時点のCartの保持・clearと外部完了認証の結果待ち記録の扱いは `FR-CRT-012` の外部完了認証の規則に従う。新しいPage IDを追加しない。
 - 送信先の表示や送信済み表示を本人確認の証拠にしない。送信結果の文言からアカウントの存在を明かさない。
 
 方式間連携はNeonが本人性と確認済みEmailを保証する場合に限る。Email文字列一致だけで別Auth IDへ連携したり、既存Order等の履歴を移転・統合したりしない。採用する認証中継、Google方式連携、Cookie / Session連携を検証済みとはみなさず、Safariを含む全方式の実動作確認をProduction公開の必須条件とする。
@@ -1837,9 +1839,9 @@ SPEC-050では以下だけをCanonicalに定義する。
 
 ## 35. 上流仕様変更要求
 
-他仕様書への新規Upstream Change Requestはない。
+他仕様書への新規Upstream Change Requestはない。上流の `FR-CRT-012` への要求は `UCR-020-001` として `SPEC-020` §22 に記録し、`SPEC-020 v2.1.0` で本文へ取り込んだ。
 
-本書内の記述の不整合を解消する次の要求を、本改訂（v2.1.1）で本文へ取り込んだ。現在の契約は本文を正とし、以下の記録を別の契約として実装しない。
+本書内の記述の不整合と不足を解消する次の要求を本文へ取り込んだ（`UCR-050-001` / `UCR-050-002` は v2.1.1、`UCR-050-003` は v2.2.0）。現在の契約は本文を正とし、以下の記録を別の契約として実装しない。
 
 ### UCR-050-001 — INCORPORATED
 
@@ -1864,3 +1866,15 @@ SPEC-050では以下だけをCanonicalに定義する。
 - 影響を受ける可能性がある仕様書: SPEC-110, SPEC-170
 - **本書側反映:** §14A.1 Purchase start result。Cart Itemの購入不可理由の表、§21、§34 は変更しない。
 - **残作業:** なし。`SPEC-110` の理由集合と `SPEC-170` `TC-API-004-001` / `TC-API-005-001` は変更を要しない。`SPEC-040` §16.3 / §16A.3 のAllocation競合は事象の定義であり、理由codeを定めない。
+
+### UCR-050-003 — INCORPORATED
+
+- **Status:** `INCORPORATED`（`SPEC-050 v2.2.0`）
+- 対象: SPEC-050（§15.0）
+- 現在の仕様（改訂前）: §15.0 は `PG-AUTH-001` / `PG-AUTH-003` でEmail+Password、Google、Email OTP、Magic Linkの4方式を共通提供し、Googleの取消・閉じるはGuestのまま同画面へ戻す、Magic Linkは別端末で開いても元画面を自動認証済みとしない、と定めていた。Guestでない利用者がGoogle / Magic Linkを選んだ場合の表示と、本画面の外で成立した結果をどの画面で受けるかは定めていなかった。
+- 要求する変更: GoogleとMagic Linkを `FR-CRT-012` の外部完了認証と位置付け、Guestでない利用者（Email未確認のSessionを持つ利用者を含む）にはGoogleとMagic Linkの開始を無効として示しLogoutが必要であることを示すこと、Guestでない利用者のSession中にEmail+PasswordまたはEmail OTPによるLoginが成立した場合のCartは `FR-CRT-012` の有効Session中の再Loginに従うこと、結果は外部完了認証の戻りで表示された `PG-AUTH-001` / `PG-AUTH-003` で受け、元の画面・戻りの遷移が起きていない他のTab・再読込または履歴の移動で再表示された画面では受けないこと、結果を受けた画面では `SPEC-060` §13 の順序で進めること、Sessionを確認できない場合と取消・失敗・期限切れを同画面で認証未成立として示すことを明記する。新しいPage IDを追加しない。
+- 理由: `SPEC-060` §13 の順序をGoogle / Magic Linkにも適用し、`SPEC-110` §23.1 の「最終SPA復帰先は既存の安全なContinuation」を保ったまま、Email未確認のIdentityを直接Continuationへ戻さないため。Guestでない利用者の開始を無効にすることで、`FR-CRT-012` の再LoginのCart clearを本画面の外で完了する方式でも成り立たせるため。結果を受ける画面を一つに定め、同じBrowserに結果を確認しうる画面が複数ある場合の判定を一つにするため。
+- 変更しない場合の影響: 方式ごとに戻り先と未確認時の扱いが分かれ、有効Session中の再LoginでCartの分離（`FR-CRT-012`）が成り立たない実装や、後から結果を確認した画面で初回LoginのGuest Cartをclearする実装を誘発しうる。
+- 影響を受ける可能性がある仕様書: SPEC-020, SPEC-040, SPEC-060, SPEC-110, SPEC-170
+- **本書側反映:** §15.0（2項目の追加）。§15.1 / §15.3 の文、Page ID、Route は変更しない。
+- **残作業:** なし。`FR-CRT-012` の規則は `UCR-020-001`（`SPEC-020 v2.1.0`）で反映した。`SPEC-040` UF-AUTH-001 / UF-AUTH-003（Precondition: Guest）と UF-AUTH-002（同画面で方式選択・再試行）、`SPEC-060` §6.1 / §7.1（GuestとEmail未確認のSessionの区別）、§11.1.1（各方式は既存 `PG-AUTH-001/002/003` の中で提供）と §13、`SPEC-110` §23.1、`SPEC-170` `TC-STACK-001` / `TC-STACK-005` は確認の結果、変更を要しない。

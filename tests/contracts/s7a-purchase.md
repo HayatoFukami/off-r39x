@@ -256,7 +256,7 @@ DOM（`CartPurchaseFeedback`。`ready` / `unavailable` の Cart で表示）:
 
 ## 5. mock Checkout（`/dev/mock-checkout/[orderRef]`）
 
-- route module（`src/routes/dev/mock-checkout.tsx`）: `useParams()` の値を `parseOrderRef` で検査し、null なら `NotFoundView`（HTTP 200 の静的 shell。mock-checkout の見出しを出さない）。それ以外は `key` 付きの `MockCheckoutScreen`。mock 無効時、または `APP_ENV=production` は `src/routes/dev/dev-layout.tsx` が `NotFoundView` を返す。
+- route module（`src/routes/dev/mock-checkout.tsx`）: `useParams()` の値を `parseOrderRef` で検査し、null なら `NotFoundView`（HTTP 200 の静的 shell。mock-checkout の見出しを出さない）。それ以外は `key` 付きの `MockCheckoutScreen`。mock 無効時、または `APP_ENV` が `development` / `staging` / `test` 以外（未設定・不正値・`production`）は `src/routes/dev/dev-layout.tsx` が `NotFoundView` を返す。
 - DOM: `h1` = `copy.mockCheckout.heading`（大きく表示。1 つだけ）、`copy.mockCheckout.note`、Link `copy.mockCheckout.pay`（name exact）と Link `copy.mockCheckout.back`（name exact）。**どちらも `href = purchaseOrderHref(orderRef)`**（PG-XFN-001 へ戻るだけ）。入力欄（`input` / `textarea` / `select`、role `textbox` / `spinbutton` / `combobox`）を**置かない**（カード番号等を扱わない）。`main` 内に `role="alert"` を置かない。
 - **この画面は mock DB を読み書きしない**（`self.getOrder` を含め port を一切呼ばない）。Order の state と `webhookReads` はこの画面の表示・操作の前後で変わらない。Browser Return（pay / back のどちらでも）は Order を確定しない（PAY-BRW-001〜003）。Order の状態は、PG-XFN-001 の `getOrder` が scenario `paymentOutcome` に従って決める。
 - 一般 Navigation から到達できない。`/admin` / `/staff` への href、外部 origin への要求、外部 font を持たない。

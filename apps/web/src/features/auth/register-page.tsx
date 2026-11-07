@@ -16,8 +16,11 @@ import { Link } from "../../routing/link";
 import { useRouter, useSearchParams } from "../../routing/navigation";
 import { CartRecovery } from "../cart/cart-recovery";
 import { useCart } from "../cart/use-cart";
+import { type AuthMethod, DEFAULT_AUTH_METHOD } from "./auth-methods";
+import { parseFailureNotice, parseReturned, RETURNED_PARAM } from "./auth-return";
 import { ContinuationNoticeView } from "./continuation-notice";
 import { describeContinuation } from "./continuation-view";
+import { EmailOtpForm } from "./email-otp-form";
 import {
   type FieldError,
   type FieldName,
@@ -25,8 +28,13 @@ import {
   normalizeEmail,
   validateRegisterForm,
 } from "./form-validation";
+import { GoogleSignIn } from "./google-sign-in";
+import { NOTICE_PARAM } from "./login-notice";
+import { MagicLinkForm } from "./magic-link-form";
+import { MethodSelector } from "./method-selector";
 import { ServiceFailure } from "./service-failure";
 import { useErrorSummaryFocus } from "./use-error-summary-focus";
+import { useExternalReturn } from "./use-external-return";
 
 const linkClass = "text-brand underline underline-offset-4";
 
@@ -41,13 +49,21 @@ function RegisterForm() {
   const searchParams = useSearchParams();
   const intent = parseContinuation(searchParams.get(CONTINUATION_PARAM));
   const notice = describeContinuation(intent);
+  // A return from Google or a login link is read here, once, by the screen the user comes back to (SPEC-050 15.0).
+  const { failedMethod, clearFailed } = useExternalReturn({
+    returned: parseReturned(searchParams.get(RETURNED_PARAM)),
+    failed: parseFailureNotice(searchParams.get(NOTICE_PARAM)),
+    intent,
+  });
 
   const baseId = useId();
   const ids: Record<FieldName, string> = {
     email: `${baseId}-email`,
     password: `${baseId}-password`,
     passwordConfirm: `${baseId}-confirm`,
+    code: `${baseId}-code`,
   };
+  const [method, setMethod] = useState<AuthMethod>(DEFAULT_AUTH_METHOD);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
@@ -65,9 +81,20 @@ function RegisterForm() {
     return found === undefined ? null : fieldErrorMessage(found);
   };
 
+  // Switching method drops the passwords and every message of the other method.
+  const onMethodChange = (next: AuthMethod): void => {
+    clearFailed();
+    setMethod(next);
+    setPassword("");
+    setPasswordConfirm("");
+    setErrors([]);
+    setFailure(null);
+  };
+
   const onSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     if (submittingRef.current) return;
+    clearFailed();
     const validation = validateRegisterForm({ email, password, passwordConfirm });
     if (!validation.ok) {
       setErrors(validation.errors);
@@ -112,53 +139,97 @@ function RegisterForm() {
     <div className="mx-auto flex w-full max-w-md flex-col gap-4">
       <h1 className="text-2xl font-bold">{copy.auth.register.heading}</h1>
       <ContinuationNoticeView notice={notice} />
-      {errors.length > 0 ? <ErrorSummary items={summaryItems} summaryRef={summaryRef} /> : null}
-      {failure === "rejected" ? <ServiceFailure message={copy.auth.register.rejected} /> : null}
-      {failure === "unavailable" ? (
-        <ServiceFailure message={copy.auth.register.unavailable} />
+      <MethodSelector
+        legend={copy.auth.method.legendRegister}
+        value={method}
+        onChange={onMethodChange}
+        disabled={submitting}
+      />
+      {failedMethod === "google" ? <ServiceFailure message={copy.auth.google.failed} /> : null}
+      {failedMethod === "magic-link" ? (
+        <ServiceFailure message={copy.auth.magicLink.failed} />
+      ) : null}
+      {method === "password" ? (
+        <>
+          {errors.length > 0 ? <ErrorSummary items={summaryItems} summaryRef={summaryRef} /> : null}
+          {failure === "rejected" ? <ServiceFailure message={copy.auth.register.rejected} /> : null}
+          {failure === "unavailable" ? (
+            <ServiceFailure message={copy.auth.register.unavailable} />
+          ) : null}
+        </>
       ) : null}
       {cartBusy ? <p role="status">{copy.auth.register.cartBusy}</p> : null}
       {cartNeedsRecovery ? <CartRecovery onRecovered={() => setFailure(null)} /> : null}
-      <form
-        noValidate
-        onSubmit={onSubmit}
-        aria-busy={submitting ? true : undefined}
-        className="flex flex-col gap-4"
-      >
-        <FormField
-          id={ids.email}
-          label={copy.auth.field.email.label}
-          type="email"
-          autoComplete="email"
-          value={email}
-          onChange={setEmail}
-          error={errorOf("email")}
+      {method === "google" ? (
+        <GoogleSignIn
+          page="register"
+          intent={intent}
+          cartBlocked={cartBlocked}
+          onCartFailure={setFailure}
+          onAttempt={clearFailed}
         />
-        <FormField
-          id={ids.password}
-          label={copy.auth.field.password.label}
-          type="password"
-          autoComplete="new-password"
-          value={password}
-          onChange={setPassword}
-          hint={copy.auth.field.password.hint}
-          error={errorOf("password")}
+      ) : null}
+      {method === "password" ? (
+        <form
+          noValidate
+          onSubmit={onSubmit}
+          aria-busy={submitting ? true : undefined}
+          className="flex flex-col gap-4"
+        >
+          <FormField
+            id={ids.email}
+            label={copy.auth.field.email.label}
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={setEmail}
+            error={errorOf("email")}
+          />
+          <FormField
+            id={ids.password}
+            label={copy.auth.field.password.label}
+            type="password"
+            autoComplete="new-password"
+            value={password}
+            onChange={setPassword}
+            hint={copy.auth.field.password.hint}
+            error={errorOf("password")}
+          />
+          <FormField
+            id={ids.passwordConfirm}
+            label={copy.auth.field.passwordConfirm.label}
+            type="password"
+            autoComplete="new-password"
+            value={passwordConfirm}
+            onChange={setPasswordConfirm}
+            error={errorOf("passwordConfirm")}
+          />
+          <div>
+            <Button type="submit" disabled={submitting || cartBlocked}>
+              {submitting ? copy.auth.form.submitting : copy.auth.register.submit}
+            </Button>
+          </div>
+        </form>
+      ) : null}
+      {method === "magic-link" ? (
+        <MagicLinkForm
+          page="register"
+          intent={intent}
+          cartBlocked={cartBlocked}
+          onCartFailure={setFailure}
+          onAttempt={clearFailed}
         />
-        <FormField
-          id={ids.passwordConfirm}
-          label={copy.auth.field.passwordConfirm.label}
-          type="password"
-          autoComplete="new-password"
-          value={passwordConfirm}
-          onChange={setPasswordConfirm}
-          error={errorOf("passwordConfirm")}
+      ) : null}
+      {method === "email-otp" ? (
+        <EmailOtpForm
+          mode="register"
+          intent={intent}
+          email={email}
+          onEmailChange={setEmail}
+          cartBlocked={cartBlocked}
+          onCartFailure={setFailure}
         />
-        <div>
-          <Button type="submit" disabled={submitting || cartBlocked}>
-            {submitting ? copy.auth.form.submitting : copy.auth.register.submit}
-          </Button>
-        </div>
-      </form>
+      ) : null}
       <p className="text-sm">
         <Link href={accountPath("login", intent)} prefetch={false} className={linkClass}>
           {copy.auth.register.toLogin}

@@ -4,6 +4,17 @@ import { stringLeaves } from "../../../harness/presentation.ts";
 
 // Contract: tests/contracts/s6-auth.md section 1 (SPEC-050 15, 25, SPEC-140 SEC-API-027, SPEC-060 AR-CONT-004).
 
+/** The Google wording as one object: the method label, copy.auth.google.* and the stand-in's copy.mockGoogle. */
+const googleCopy = () => ({
+  method: copy.auth.method.google,
+  ...copy.auth.google,
+  mock: copy.mockGoogle,
+});
+const googleCopyKeys = () => ({
+  google: Object.keys(copy.auth.google).sort(),
+  mock: Object.keys(copy.mockGoogle).sort(),
+});
+
 describe("TC-PG-AUTH-003-401 the S6 copy is the contracted wording (SPEC-050 15.1-15.5, 24.3)", () => {
   it("names the five Pages and the Mypage", () => {
     expect(copy.auth.register.heading).toBe("アカウント登録");
@@ -125,5 +136,373 @@ describe("TC-PG-AUTH-003-402 failure and result wording separates what must be s
       expect(value.length, value).toBeGreaterThan(0);
       expect(value, value).not.toMatch(/[<>]/);
     }
+  });
+});
+
+// B5 C1 (tests/contracts/s6-auth.md section 1): the method selection and Email OTP wording. SPEC-050 15.0
+// (no account existence in the sent wording, no GitHub / Discord), SPEC-140 SEC-API-027.
+describe("TC-PG-AUTH-003-403 the method selection and Email OTP wording is the contracted wording and keeps what must be separated apart (SPEC-050 15.0, SEC-API-027)", () => {
+  const otp = () => copy.auth.otp;
+
+  it("has the method legends and labels literally", () => {
+    expect(copy.auth.method.legendLogin).toBe("ログイン方法");
+    expect(copy.auth.method.legendRegister).toBe("登録方法");
+    expect(copy.auth.method.password).toBe("メールアドレスとパスワード");
+    expect(copy.auth.method.emailOtp).toBe("メールで届く確認コード");
+    // C2 added the Google method label and C3 adds the Magic Link label: the four methods' labels and two legends.
+    expect(Object.keys(copy.auth.method).sort()).toEqual(
+      ["emailOtp", "google", "legendLogin", "legendRegister", "magicLink", "password"].sort(),
+    );
+    for (const value of stringLeaves(copy.auth.method)) {
+      expect(value, value).not.toMatch(/github|discord|\bline\b|\bapple\b/i);
+    }
+  });
+
+  // B5 C2 (tests/contracts/s6-auth.md section 1): Google. The strings that the plan fixes are literal; the others are
+  // pinned by what they must be and must not say.
+  it("has the Google method label, the start actions and the result wording (SPEC-050 15.0)", () => {
+    const g = googleCopy();
+    expect(g.method).toContain("Google");
+    expect(g.startLogin).toBe("Googleでログイン");
+    expect(g.startRegister).toBe("Googleで登録");
+    expect(g.failed).toBe(
+      "Googleでの認証は完了しませんでした。もう一度お試しいただくか、別の方法を選んでください",
+    );
+    expect(g.signedIn).toBe(
+      "ログイン中は Google でのログインを使えません。別のアカウントで利用するには、ログアウトしてください",
+    );
+    expect(g.unavailable).toMatch(/できません/);
+    // The reason shown beside the disabled start while the Session cannot be confirmed (SPEC-050 25) is the sixth key.
+    expect(googleCopyKeys().google).toEqual(
+      [
+        "failed",
+        "sessionUnavailable",
+        "signedIn",
+        "startLogin",
+        "startRegister",
+        "unavailable",
+      ].sort(),
+    );
+  });
+
+  it("the Google wording states how to continue, names no account existence and no number, and the signed-in hint names Logout (SPEC-050 15.0, SEC-API-027)", () => {
+    const g = googleCopy();
+    expect(g.failed).toMatch(/もう一度/);
+    expect(g.failed).toMatch(/別の方法/);
+    expect(g.signedIn).toMatch(/ログアウト/);
+    for (const value of [
+      g.method,
+      g.startLogin,
+      g.startRegister,
+      g.failed,
+      g.unavailable,
+      g.signedIn,
+    ]) {
+      expect(value, value).toBe(value.trim());
+      expect(value.length, value).toBeGreaterThan(0);
+      expect(value, value).not.toMatch(/[<>]/);
+      expect(value, value).not.toMatch(/[0-9０-９]/);
+      expect(value, value).not.toMatch(
+        /登録されていません|存在しません|見つかりません|登録されている/,
+      );
+      expect(value, value).not.toMatch(/github|discord|\bline\b|\bapple\b/i);
+    }
+    // The Google wordings are separate: a failure, an outage, the Logout hint and the two actions.
+    const distinct = [g.failed, g.unavailable, g.signedIn, g.startLogin, g.startRegister];
+    expect(new Set(distinct).size).toBe(distinct.length);
+    // The start button names do not collide with the existing action names (getByRole name matching is exact).
+    for (const other of [
+      copy.auth.login.submit,
+      copy.auth.register.submit,
+      copy.auth.otp.send,
+      copy.auth.otp.submitLogin,
+      copy.auth.otp.submitRegister,
+      copy.auth.otp.resend,
+      copy.auth.otp.changeEmail,
+    ]) {
+      expect([g.startLogin, g.startRegister]).not.toContain(other);
+    }
+  });
+
+  it("the dev stand-in screen names its three actions literally and says it is a stand-in (DEV-WEB-012, DEV-WEB-013)", () => {
+    const m = googleCopy().mock;
+    expect(m.allowDemo).toBe("demo@example.com として許可");
+    expect(m.allowNew).toBe("新しいアカウント（google.new@example.com）として許可");
+    expect(m.cancel).toBe("キャンセル");
+    expect(googleCopyKeys().mock).toEqual(
+      ["allowDemo", "allowNew", "cancel", "heading", "note", "pageTitle"].sort(),
+    );
+    for (const value of Object.values(m)) {
+      expect(value, value).toBe(value.trim());
+      expect(value.length, value).toBeGreaterThan(0);
+      expect(value, value).not.toMatch(/[<>]/);
+    }
+    // Like the Stripe Checkout stand-in: the heading says it is a stand-in and that nothing real happens.
+    expect(m.heading).toMatch(/モック|代替/);
+    expect(m.pageTitle).toMatch(/モック/);
+    expect(new Set([m.allowDemo, m.allowNew, m.cancel]).size).toBe(3);
+    // The addresses are reserved synthetic ones.
+    for (const value of [m.allowDemo, m.allowNew]) {
+      const emails = value.match(/[A-Za-z0-9._-]+@[A-Za-z0-9.-]+/g) ?? [];
+      expect(emails.length, value).toBe(1);
+      expect(emails[0], value).toMatch(/@example\.com$/);
+    }
+  });
+
+  it("has the code field and the action wording literally", () => {
+    expect(copy.auth.field.otpCode.label).toBe("確認コード");
+    expect(copy.auth.field.otpCode.required).toBe("確認コードを入力してください");
+    expect(otp().send).toBe("確認コードを送る");
+    expect(otp().submitLogin).toBe("確認コードでログインする");
+    expect(otp().submitRegister).toBe("確認コードで登録する");
+    expect(otp().resend).toBe("確認コードを再送する");
+    expect(otp().changeEmail).toBe("メールアドレスを変更する");
+    expect(Object.keys(otp()).sort()).toEqual(
+      [
+        "changeEmail",
+        "codeExpired",
+        "codeInvalid",
+        "resend",
+        "send",
+        "sent",
+        "submitLogin",
+        "submitRegister",
+        "unavailable",
+      ].sort(),
+    );
+  });
+
+  it("has the result wording literally", () => {
+    expect(otp().sent).toBe("確認コードを送信しました。メールに記載されたコードを入力してください");
+    expect(otp().codeInvalid).toBe("確認コードが正しくありません。もう一度入力してください");
+    expect(otp().codeExpired).toBe(
+      "確認コードの有効期限が切れたか、入力できる回数を超えました。確認コードを再送してください",
+    );
+    expect(otp().unavailable).toBe(
+      "確認コードを処理できません。時間をおいて、もう一度お試しください",
+    );
+  });
+
+  it("the sent wording never discloses whether the email is registered (SEC-API-027, SPEC-050 15.0)", () => {
+    expect(otp().sent).not.toMatch(/登録|存在|見つかり|アカウント|場合/);
+    for (const value of stringLeaves(copy.auth.otp)) {
+      expect(value, value).not.toMatch(
+        /登録されていません|存在しません|見つかりません|登録されている/,
+      );
+    }
+  });
+
+  it("states no expiry time and no attempt count: those values belong to the provider and are checked at the Production gate (SPEC-050 15.0)", () => {
+    const leaves = stringLeaves(copy.auth.otp);
+    expect(leaves, "copy.auth.otp must exist").toHaveLength(9);
+    for (const value of leaves) {
+      expect(value, value).not.toMatch(/[0-9０-９]/);
+      expect(value, value).not.toMatch(/[0-9０-９一二三四五六七八九十]+\s*(分|秒|回|桁)/);
+    }
+  });
+
+  it("a wrong code and an expired or exhausted code are separate messages with their own next step", () => {
+    expect(otp().codeInvalid).not.toBe(otp().codeExpired);
+    expect(otp().codeInvalid).not.toContain("再送");
+    expect(otp().codeExpired).toContain("再送");
+    expect(otp().unavailable).toMatch(/できません/);
+    const distinct = [
+      otp().sent,
+      otp().codeInvalid,
+      otp().codeExpired,
+      otp().unavailable,
+      copy.auth.login.credentialFailure,
+      copy.auth.login.unavailable,
+      copy.auth.register.unavailable,
+    ];
+    expect(new Set(distinct).size).toBe(distinct.length);
+  });
+
+  it("every new leaf is a trimmed, non-empty string without markup, and the buttons have distinct names", () => {
+    const leaves = stringLeaves({
+      method: copy.auth.method,
+      code: copy.auth.field.otpCode,
+      otp: copy.auth.otp,
+    });
+    expect(leaves).toHaveLength(6 + 2 + 9);
+    for (const value of leaves) {
+      expect(value, value).toBe(value.trim());
+      expect(value.length, value).toBeGreaterThan(0);
+      expect(value, value).not.toMatch(/[<>]/);
+    }
+    // getByRole name matching in the E2E suite is exact; these names must not collide with each other
+    // or with the existing submit buttons.
+    const names = [
+      otp().send,
+      otp().submitLogin,
+      otp().submitRegister,
+      otp().resend,
+      otp().changeEmail,
+      copy.auth.login.submit,
+      copy.auth.register.submit,
+    ];
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  // B5 C3 (tests/contracts/s6-auth.md section 1): Magic Link. The method label, the four action and result strings
+  // and the dev stand-in's wording are literal; the rules about what they must not say are pinned separately.
+  it("has the Magic Link method label, the send and resend actions and the result wording literally (SPEC-050 15.0)", () => {
+    const m = copy;
+    expect(m.auth.method.magicLink).toBe("メールで届くログインリンク");
+    expect(m.auth.magicLink.send).toBe("ログインリンクを送る");
+    expect(m.auth.magicLink.resend).toBe("ログインリンクを再送する");
+    expect(m.auth.magicLink.sent).toBe(
+      "ログインリンクを送信しました。メールに記載されたリンクを開いてください。リンクの有効期限は5分です",
+    );
+    expect(m.auth.magicLink.failed).toBe(
+      "ログインリンクでの認証は完了しませんでした。リンクが無効か、期限が切れた可能性があります。ログインリンクを再送するか、別の方法を選んでください",
+    );
+    expect(m.auth.magicLink.unavailable).toBe(
+      "ログインリンクを送信できません。時間をおいて、もう一度お試しください",
+    );
+    expect(m.auth.magicLink.signedIn).toBe(
+      "ログイン中はログインリンクを使えません。別のアカウントで利用するには、ログアウトしてください",
+    );
+    // The reason shown beside the disabled send while the Session cannot be confirmed (SPEC-050 25) is the seventh key.
+    expect(Object.keys(m.auth.magicLink).sort()).toEqual(
+      ["failed", "resend", "send", "sent", "sessionUnavailable", "signedIn", "unavailable"].sort(),
+    );
+  });
+
+  // F-4 (tests/contracts/s6-auth.md section 1, 6.1C, 6.1D): SPEC-050 25 "a disabled Action gives its reason in text
+  // around it". While the Session cannot be confirmed the start / send is disabled, and this is the reason.
+  it("has the reason for a disabled Google start and a disabled Magic Link send while the Session cannot be confirmed literally", () => {
+    expect(copy.auth.google.sessionUnavailable).toBe(
+      "ログイン状態を確認できないため、Google でのログインを開始できません。ページを再読み込みするか、時間をおいて、もう一度お試しください",
+    );
+    expect(copy.auth.magicLink.sessionUnavailable).toBe(
+      "ログイン状態を確認できないため、ログインリンクを送信できません。ページを再読み込みするか、時間をおいて、もう一度お試しください",
+    );
+  });
+
+  it("the Session-unavailable reasons name the cause and the next step, claim neither a Logout nor an account, and differ from every other message of the two methods (SPEC-050 25, SEC-API-027)", () => {
+    // Widened to string[]: `copy` is `as const`, so the literal types would reject `includes` below.
+    const reasons: string[] = [
+      copy.auth.google.sessionUnavailable,
+      copy.auth.magicLink.sessionUnavailable,
+    ];
+    for (const value of reasons) {
+      expect(value, value).toBe(value.trim());
+      expect(value, value).toMatch(/ログイン状態を確認できない/);
+      expect(value, value).toMatch(/再読み込み/);
+      // The visitor is not known to be signed in: the Logout hint belongs to the signed-in message.
+      expect(value, value).not.toMatch(/ログアウト/);
+      expect(value, value).not.toMatch(/[<>]/);
+      expect(value, value).not.toMatch(/[0-9０-９]/);
+      expect(value, value).not.toMatch(
+        /登録されていません|存在しません|見つかりません|登録されている/,
+      );
+      expect(value, value).not.toMatch(/github|discord|\bline\b|\bapple\b/i);
+    }
+    const everyMessage = [
+      ...reasons,
+      ...stringLeaves(copy.auth.google).filter((value) => !reasons.includes(value)),
+      ...stringLeaves(copy.auth.magicLink).filter((value) => !reasons.includes(value)),
+      ...stringLeaves(copy.auth.otp),
+      copy.auth.login.unavailable,
+      copy.auth.register.unavailable,
+    ];
+    expect(new Set(everyMessage).size).toBe(everyMessage.length);
+  });
+
+  it("the Magic Link wording states the 5 minute validity only in the sent status, discloses no account, names how to continue and the Logout (SPEC-050 15.0, SEC-API-027)", () => {
+    const m = copy.auth;
+    // The sent status states the validity period of the link (SPEC-050 15.0: 5 minutes), and says nothing about whether
+    // the address is registered.
+    expect(m.magicLink.sent).toContain("5分");
+    expect(m.magicLink.sent).not.toMatch(/登録|存在|場合/);
+    expect(m.magicLink.sent).not.toMatch(/[<>]/);
+    // Failure: a link that is invalid, expired or never arrived leaves the user unauthenticated with a next step.
+    expect(m.magicLink.failed).toMatch(/再送/);
+    expect(m.magicLink.failed).toMatch(/別の方法/);
+    expect(m.magicLink.unavailable).toMatch(/できません/);
+    expect(m.magicLink.signedIn).toMatch(/ログアウト/);
+    for (const value of [
+      m.method.magicLink,
+      m.magicLink.send,
+      m.magicLink.resend,
+      m.magicLink.failed,
+      m.magicLink.unavailable,
+      m.magicLink.signedIn,
+    ]) {
+      expect(value, value).toBe(value.trim());
+      expect(value.length, value).toBeGreaterThan(0);
+      expect(value, value).not.toMatch(/[<>]/);
+      expect(value, value).not.toMatch(/[0-9０-９]/);
+      expect(value, value).not.toMatch(
+        /登録されていません|存在しません|見つかりません|登録されている/,
+      );
+      expect(value, value).not.toMatch(/github|discord|\bline\b|\bapple\b/i);
+    }
+    // The status, the failure, the outage and the Logout hint are separate messages.
+    const distinct = [
+      m.magicLink.sent,
+      m.magicLink.failed,
+      m.magicLink.unavailable,
+      m.magicLink.signedIn,
+      copy.auth.otp.sent,
+      copy.auth.otp.unavailable,
+      copy.auth.google.failed,
+      copy.auth.google.unavailable,
+      copy.auth.google.signedIn,
+      copy.auth.login.unavailable,
+    ];
+    expect(new Set(distinct).size).toBe(distinct.length);
+  });
+
+  it("the Magic Link buttons do not collide with any other button name and the method label differs from every other method label (exact name matching)", () => {
+    const m = copy.auth;
+    const others = [
+      copy.auth.login.submit,
+      copy.auth.register.submit,
+      copy.auth.otp.send,
+      copy.auth.otp.submitLogin,
+      copy.auth.otp.submitRegister,
+      copy.auth.otp.resend,
+      copy.auth.otp.changeEmail,
+      copy.auth.google.startLogin,
+      copy.auth.google.startRegister,
+    ];
+    expect(new Set([m.magicLink.send, m.magicLink.resend, ...others]).size).toBe(others.length + 2);
+    expect(
+      new Set([
+        copy.auth.method.password,
+        copy.auth.method.google,
+        copy.auth.method.emailOtp,
+        m.method.magicLink,
+      ]).size,
+    ).toBe(4);
+  });
+
+  it("the dev stand-in for the link names its two actions literally and says it is a stand-in (DEV-WEB-012, DEV-WEB-013)", () => {
+    const m = copy.mockMagicLink;
+    expect(m.openValid).toBe("有効なリンクとして開く");
+    expect(m.openExpired).toBe("期限切れのリンクとして開く");
+    expect(m.emailLabel).toBe("リンクを開く利用者のメールアドレス");
+    expect(m.pageTitle).toBe("ログインリンク（モック）");
+    expect(m.heading).toBe("ログインリンクの代替モック。実際のメールは送信されません");
+    expect(m.note).toBe(
+      "ここで開くリンクは実際のメールのリンクではありません。選んだ結果に従って、元の画面へ戻ります",
+    );
+    expect(Object.keys(m).sort()).toEqual(
+      ["emailLabel", "heading", "note", "openExpired", "openValid", "pageTitle"].sort(),
+    );
+    for (const value of Object.values(m)) {
+      expect(value, value).toBe(value.trim());
+      expect(value.length, value).toBeGreaterThan(0);
+      expect(value, value).not.toMatch(/[<>]/);
+    }
+    expect(m.heading).toMatch(/モック|代替/);
+    expect(m.pageTitle).toMatch(/モック/);
+    expect(m.openValid).not.toBe(m.openExpired);
+    // The stand-in's field label must not be the sign-in forms' email label (a stand-in is never mistaken for a form).
+    expect(m.emailLabel).not.toBe(copy.auth.field.email.label);
+    // No email address is written in the wording: the address comes from the developer's input.
+    for (const value of Object.values(m)) expect(value, value).not.toMatch(/@/);
   });
 });
