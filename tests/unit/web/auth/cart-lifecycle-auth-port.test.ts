@@ -515,6 +515,38 @@ describe("TC-FR-CRT-012-017 startGoogleSignIn is an authentication transition of
     expect(new Map(s.data)).toEqual(before);
   });
 
+  // PR #33 review: the Guest judgement of step 1 is made before the lock is taken. A Login of another Tab can
+  // succeed between that judgement and the lock, so the Session is confirmed again once the lock is held and before
+  // the Cart or the metadata is touched.
+  it.each([
+    ["verified", asSession(true), { kind: "already_signed_in" }],
+    ["unverified", asSession(false), { kind: "already_signed_in" }],
+    [
+      "unconfirmable",
+      vi.fn(async () => ({ kind: "unavailable" }) as const),
+      { kind: "unavailable" },
+    ],
+  ] as const)(
+    "step 1 (re-check under the lock): a Session that became %s after the Guest judgement stops the start: no request, no clear, no record, the lock is released",
+    async (_name, later, expected) => {
+      const s = setupCartLifecycle(metadata("authenticated"));
+      const acquire = s.coordinator.acquire.bind(s.coordinator);
+      s.coordinator.acquire = async (wait) => {
+        // Another Tab's Login succeeds after the first judgement and before this Tab holds the lock.
+        s.raw.getSession = later;
+        return acquire(wait);
+      };
+      const before = new Map(s.data);
+      await expect(s.port.startGoogleSignIn(start)).resolves.toEqual(expected);
+      expect(s.raw.startGoogleSignIn).not.toHaveBeenCalled();
+      expect(new Map(s.data)).toEqual(before);
+      expect(s.lifecycle.getSnapshot()).toEqual({ kind: "ready" });
+      const lock = await s.coordinator.acquire(false);
+      expect(lock.kind).toBe("acquired");
+      if (lock.kind === "acquired") lock.release();
+    },
+  );
+
   it("is cart_busy while another transition is active (lifecycle, another Tab's Web Lock, this port's own sign-in), without a request or a write", async () => {
     // lifecycle transition
     const lifecycleBusy = setupCartLifecycle(metadata("guest"));
@@ -775,6 +807,35 @@ describe("TC-FR-CRT-012-019 requestMagicLink is an authentication transition of 
     expect(rawCalls(s)).not.toHaveBeenCalled();
     expect(new Map(s.data)).toEqual(before);
   });
+
+  // PR #33 review: same re-check under the lock as the Google start (see above).
+  it.each([
+    ["verified", asSession(true), { kind: "already_signed_in" }],
+    ["unverified", asSession(false), { kind: "already_signed_in" }],
+    [
+      "unconfirmable",
+      vi.fn(async () => ({ kind: "unavailable" }) as const),
+      { kind: "unavailable" },
+    ],
+  ] as const)(
+    "step 1 (re-check under the lock): a Session that became %s after the Guest judgement stops the send: no request, no clear, no record, the lock is released",
+    async (_name, later, expected) => {
+      const s = setupCartLifecycle(metadata("authenticated"));
+      const acquire = s.coordinator.acquire.bind(s.coordinator);
+      s.coordinator.acquire = async (wait) => {
+        s.raw.getSession = later;
+        return acquire(wait);
+      };
+      const before = new Map(s.data);
+      await expect(link(s).requestMagicLink(send)).resolves.toEqual(expected);
+      expect(rawCalls(s)).not.toHaveBeenCalled();
+      expect(new Map(s.data)).toEqual(before);
+      expect(s.lifecycle.getSnapshot()).toEqual({ kind: "ready" });
+      const lock = await s.coordinator.acquire(false);
+      expect(lock.kind).toBe("acquired");
+      if (lock.kind === "acquired") lock.release();
+    },
+  );
 
   it("is cart_busy while another transition is active (lifecycle, another Tab's Web Lock, this port's own sign-in), without a request or a write", async () => {
     const lifecycleBusy = setupCartLifecycle(metadata("guest"));

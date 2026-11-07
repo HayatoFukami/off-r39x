@@ -134,6 +134,12 @@ export function createCartLifecycleAuthPort(
       if (lock.kind === "busy") return { kind: "cart_busy" };
       if (lock.kind === "unavailable") return { kind: "cart_blocked" };
       release = lock.release;
+      // Step 1 again, under the lock: a Login of another Tab can succeed between the Guest judgement above
+      // and the lock, and a judgement that old must not start the sign-in or touch the Cart. Nothing has
+      // been written yet, so stopping here leaves the Cart and the metadata as they were.
+      const confirmed = await rawAuth.getSession();
+      if (confirmed.kind !== "ok") return { kind: "unavailable" };
+      if (confirmed.session.kind !== "guest") return { kind: "already_signed_in" };
       // Steps 2 and 3: the Cart is cleaned and the pending record written before the request. The Cart
       // stays stopped (this document and, with Web Locks, other Tabs) while the request is in flight.
       const begun = lifecycle.beginExternalAuthentication(true);

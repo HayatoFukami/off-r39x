@@ -397,6 +397,42 @@ test.describe("TC-PG-AUTH-003-309 Magic Link on Login and Registration: the link
     await expect(alertsIn(page)).toHaveCount(0);
   });
 
+  test("the sent state belongs to the address the link was sent to: changing the address drops the sent status and the re-send button, and returning to that address shows them again (PR #33 review, SPEC-050 15.0)", async ({
+    page,
+  }) => {
+    await openAuthPage(page, "login");
+    await chooseMethod(page, copy.auth.method.magicLink);
+    const email = field(page, copy.auth.field.email.label);
+    await email.fill(SENDER_EMAIL);
+    await magicSendButton(page).click();
+    await expect(statusesIn(page)).toHaveText(copy.auth.magicLink.sent);
+    await expect(magicResendButton(page)).toBeEnabled();
+
+    // Another address: nothing was sent to it, so the page does not say so and offers the first send.
+    await email.fill(NEW_LINK_EMAIL);
+    await expect(statusesIn(page)).toHaveCount(0);
+    await expect(magicResendButton(page)).toHaveCount(0);
+    await expect(magicSendButton(page)).toBeEnabled();
+    await expect(alertsIn(page)).toHaveCount(0);
+
+    // The same address again (the port gets the trimmed address, so padding does not count as a change).
+    await email.fill(`  ${SENDER_EMAIL} `);
+    await expect(statusesIn(page)).toHaveText(copy.auth.magicLink.sent);
+    await expect(magicResendButton(page)).toBeEnabled();
+    await expect(magicSendButton(page)).toHaveCount(0);
+
+    // Sending to the other address makes that address the sent one.
+    await email.fill(NEW_LINK_EMAIL);
+    await magicSendButton(page).click();
+    await expect(statusesIn(page)).toHaveCount(1);
+    await expect(statusesIn(page)).toHaveText(copy.auth.magicLink.sent);
+    await expect(magicResendButton(page)).toBeEnabled();
+    await email.fill(SENDER_EMAIL);
+    await expect(statusesIn(page)).toHaveCount(0);
+    await expect(magicSendButton(page)).toBeEnabled();
+    expect((await lifecycleOf(page))?.external).toBe("pending");
+  });
+
   test("an empty or malformed address is refused before the port: one error summary naming the field, no status, and the Cart lifecycle is not touched", async ({
     page,
   }) => {

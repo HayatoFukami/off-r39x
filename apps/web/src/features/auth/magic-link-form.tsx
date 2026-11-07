@@ -46,8 +46,10 @@ export function MagicLinkForm({
   const [errors, setErrors] = useState<readonly FieldError[]>([]);
   const [sent, setSent] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
-  // Once a link was sent, the button offers a resend (it stays so when a later send does not succeed).
-  const [hasSent, setHasSent] = useState(false);
+  // The normalized address the last link was sent to (null before any send). The sent state and the resend
+  // belong to that address: while the field holds another one nothing was sent to it, so the status is
+  // not shown and the button offers the first send again. It is kept in this component's memory only.
+  const [sentTo, setSentTo] = useState<string | null>(null);
   const [signedInSeen, setSignedInSeen] = useState(false);
   const [pending, setPending] = useState(false);
   const pendingRef = useRef(false);
@@ -56,6 +58,9 @@ export function MagicLinkForm({
   // A Session that cannot be confirmed is not a Guest; an Email-unverified Session is not either.
   const signedIn = signedInSeen || (state.status === "ready" && state.session.kind !== "guest");
   const canSend = state.status === "ready" && !signedIn && !cartBlocked && !pending;
+  // Once a link was sent to the address in the field, the button offers a resend (it stays so when a later
+  // send to the same address does not succeed).
+  const sentToThisAddress = sentTo !== null && normalizeEmail(email) === sentTo;
   // The reason of a disabled send is text around it (SPEC-050 25). `loading` is brief, so it gives none.
   const hint =
     state.status === "unavailable"
@@ -82,14 +87,15 @@ export function MagicLinkForm({
     setUnavailable(false);
     onAttempt?.();
     try {
+      const address = normalizeEmail(email);
       const result = await auth.requestMagicLink({
-        email: normalizeEmail(email),
+        email: address,
         successPath: externalReturnPath("magic-link", page, intent),
         failurePath: externalFailurePath("magic-link", page, intent),
       });
       if (result.kind === "sent") {
         setSent(true);
-        setHasSent(true);
+        setSentTo(address);
       } else if (result.kind === "unavailable") setUnavailable(true);
       else if (result.kind === "already_signed_in") setSignedInSeen(true);
       else onCartFailure(result.kind);
@@ -135,7 +141,7 @@ export function MagicLinkForm({
           onChange={setEmail}
           error={emailError === undefined ? null : fieldErrorMessage(emailError)}
         />
-        {sent ? (
+        {sent && sentToThisAddress ? (
           <p role="status" className="rounded-base border border-border bg-muted p-3 text-sm">
             {copy.auth.magicLink.sent}
           </p>
@@ -148,7 +154,7 @@ export function MagicLinkForm({
           >
             {pending
               ? copy.auth.form.submitting
-              : hasSent
+              : sentToThisAddress
                 ? copy.auth.magicLink.resend
                 : copy.auth.magicLink.send}
           </Button>
