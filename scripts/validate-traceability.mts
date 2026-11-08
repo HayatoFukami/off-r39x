@@ -273,23 +273,89 @@ function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+interface SpecHeading {
+  readonly level: number;
+  readonly title: string;
+  /** Body lines: after the heading, up to the next heading of the same or a shallower level. */
+  readonly body: readonly string[];
+}
+
+/** Markdown headings of one specification. Lines inside a code fence are not headings. */
+function parseHeadings(source: string): SpecHeading[] {
+  const lines = source.split(/\r?\n/);
+  const found: { level: number; title: string; start: number }[] = [];
+  let fenced = false;
+  lines.forEach((line, index) => {
+    if (/^\s*(```|~~~)/.test(line)) {
+      fenced = !fenced;
+      return;
+    }
+    if (fenced) return;
+    const heading = /^(#{1,6})\s+(.*)$/.exec(line);
+    if (heading !== null) {
+      found.push({ level: (heading[1] ?? "").length, title: heading[2] ?? "", start: index });
+    }
+  });
+  return found.map((heading, position) => {
+    const next = found.slice(position + 1).find((other) => other.level <= heading.level);
+    return {
+      level: heading.level,
+      title: heading.title,
+      body: lines.slice(heading.start + 1, next?.start ?? lines.length),
+    };
+  });
+}
+
+// Issue #15: `SPEC-NNN-<section>` is a heading and `SPEC-NNN-<section>-<n>` a numbered item of that section.
+const SPEC_SECTION = String.raw`\d+[A-Z]?(?:\.\d+)*`;
+const SPEC_ANCHOR = new RegExp(`^(${SPEC_SECTION})(?:-(\\d+))?$`);
+
+function specAnchorExists(
+  headings: readonly SpecHeading[],
+  section: string,
+  item?: string,
+): boolean {
+  // "8" matches "8. Title" but not "8.5 Title" or "80 Title"; the contract (s9-finalize.md) lists the delimiters.
+  const heading = new RegExp(`^(?:§\\s*)?${escapeRegExp(section)}(?:\\.(?!\\d)|[\\s:：、]|$)`);
+  const itemLine = item === undefined ? undefined : new RegExp(`^\\s*${item}\\.\\s`);
+  return headings.some(
+    (candidate) =>
+      heading.test(candidate.title) &&
+      (itemLine === undefined || candidate.body.some((line) => itemLine.test(line))),
+  );
+}
+
 function checkUpstreamIds(root: string, cases: readonly ManifestCase[]): void {
   const specsDir = join(root, "docs", "specs");
   if (!existsSync(specsDir)) return;
   const specFiles = walk(specsDir, (name) => name.endsWith(".md"), new Set());
-  const specNumbers = new Set(
-    specFiles.map((file) => /^(\d{3})-/.exec(file.split(/[\\/]/).pop() ?? "")?.[1] ?? ""),
-  );
+  const specHeadings = new Map<string, SpecHeading[]>();
+  for (const file of specFiles) {
+    const number = /^(\d{3})-/.exec(file.split(/[\\/]/).pop() ?? "")?.[1];
+    if (number === undefined) continue;
+    specHeadings.set(number, [
+      ...(specHeadings.get(number) ?? []),
+      ...parseHeadings(readFileSync(file, "utf8")),
+    ]);
+  }
   const text = specFiles.map((file) => readFileSync(file, "utf8")).join("\n");
+  const literal = (id: string): boolean =>
+    new RegExp(`(?<![A-Za-z0-9-])${escapeRegExp(id)}(?![A-Za-z0-9])`).test(text);
   const known = new Map<string, boolean>();
   const isKnown = (id: string): boolean => {
     const cached = known.get(id);
     if (cached !== undefined) return cached;
-    const anchor = /^SPEC-(\d{3})-/.exec(id);
-    const found =
-      anchor !== null
-        ? specNumbers.has(anchor[1] ?? "")
-        : new RegExp(`(?<![A-Za-z0-9-])${escapeRegExp(id)}(?![A-Za-z0-9])`).test(text);
+    const anchor = /^SPEC-(\d{3})-(.*)$/.exec(id);
+    let found: boolean;
+    if (anchor === null) {
+      found = literal(id);
+    } else {
+      const headings = specHeadings.get(anchor[1] ?? "");
+      const parts = SPEC_ANCHOR.exec(anchor[2] ?? "");
+      if (headings === undefined) found = false;
+      else if (parts === null) found = literal(id);
+      else found = specAnchorExists(headings, parts[1] ?? "", parts[2]);
+    }
     known.set(id, found);
     return found;
   };
