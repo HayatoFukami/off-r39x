@@ -447,7 +447,9 @@ describe("TC-PG-XFN-001-104 the notification summary is the owner projection of 
     ["failed_retryable", { status: "ATTENTION_REQUIRED" }],
     ["pending", { status: "PENDING" }],
     ["sent", { status: "SENT" }],
-    ["canceled", { status: "NONE" }],
+    // CANCELED is not aggregated, so the CONFIRMED Entry + Goods Order has no confirmation notification: it is
+    // missing, not suppressed (only a Karaoke Reservation that is already CANCELED is, EML-NTF-003).
+    ["canceled", { status: "ATTENTION_REQUIRED" }],
     ["summary_unavailable", null],
   ] as const;
 
@@ -465,6 +467,31 @@ describe("TC-PG-XFN-001-104 the notification summary is the owner projection of 
       expect(hasLegacyNotice(detail)).toBe(false);
     },
   );
+
+  it("scenario canceled: a CONFIRMED Karaoke Order is NONE only when its Reservation is already CANCELED (regular suppression), otherwise the missing confirmation is ATTENTION_REQUIRED (EML-NTF-003)", async () => {
+    const backend = createBackend();
+    backend.setScenario(notificationScenario("canceled"));
+    await backend.signInAs(EMAIL.demo);
+    const summaryOf = async (orderRef: Ref<"order">) =>
+      okData(await backend.api.self.getOrder(orderRef)).notificationSummary;
+    expect(await summaryOf(ORDER.kCanceled)).toEqual({ status: "NONE" });
+    expect(await summaryOf(ORDER.kValid)).toEqual({ status: "ATTENTION_REQUIRED" });
+    expect(await summaryOf(ORDER.confirmedEntry)).toEqual({ status: "ATTENTION_REQUIRED" });
+    expect(await summaryOf(ORDER.confirmedGoods)).toEqual({ status: "ATTENTION_REQUIRED" });
+    // The exception belongs to scenario canceled only: the other scenarios keep their own status.
+    backend.setScenario(notificationScenario("sent"));
+    expect(await summaryOf(ORDER.kCanceled)).toEqual({ status: "SENT" });
+  });
+
+  it("scenario canceled: an Order that is not CONFIRMED stays NONE", async () => {
+    const backend = createBackend();
+    backend.setScenario(notificationScenario("canceled"));
+    await backend.signInAs(EMAIL.demo);
+    for (const ref of [ORDER.prepared, ORDER.awaiting, ORDER.paymentFailed, ORDER.canceled]) {
+      const detail = okData(await backend.api.self.getOrder(ref));
+      expect(detail.notificationSummary, String(ref)).toEqual({ status: "NONE" });
+    }
+  });
 
   it("is NONE for an Order that is not CONFIRMED yet, whatever the simulated notification state (EML-NTF-003)", async () => {
     const backend = await freshBackend({

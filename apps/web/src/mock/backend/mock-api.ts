@@ -178,7 +178,7 @@ function orderDetail(state: DbState, order: OrderRow, scenario: Scenario): Order
         }
       : { entryTicketRefs: [], reservationRef: null, goodsItems: [] },
     receiptUrl: order.receiptUrl,
-    notificationSummary: notificationSummary(order, scenario),
+    notificationSummary: notificationSummary(order, reservation, scenario),
   };
 }
 
@@ -186,16 +186,23 @@ function orderDetail(state: DbState, order: OrderRow, scenario: Scenario): Order
  * The owner projection of the simulated confirmation-notification state (SPEC-120 7.2 EML-NTF-003;
  * the mock is not the contract, DEV-WEB-010). It is derived on read and never written to the DB.
  * `summary_unavailable` models a summary-only failure: the Order itself is still returned.
+ * `canceled` leaves no live confirmation notification (CANCELED is not aggregated), so a CONFIRMED Order
+ * is missing it (ATTENTION_REQUIRED) unless this is the regular suppression of a Karaoke Reservation
+ * that is already CANCELED (NONE).
  */
 function notificationSummary(
   order: OrderRow,
+  reservation: DbState["reservations"][number] | undefined,
   scenario: Scenario,
 ): { status: NotificationSummaryStatus } | null {
   switch (scenario.notification) {
     case "summary_unavailable":
       return null;
     case "canceled":
-      return { status: "NONE" };
+      if (order.state !== "CONFIRMED") return { status: "NONE" };
+      return {
+        status: reservation?.reservationState === "CANCELED" ? "NONE" : "ATTENTION_REQUIRED",
+      };
     case "failed_retryable":
       return { status: order.state === "CONFIRMED" ? "ATTENTION_REQUIRED" : "NONE" };
     case "pending":

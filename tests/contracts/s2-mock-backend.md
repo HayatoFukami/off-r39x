@@ -561,8 +561,10 @@ webhook 待ち（`startCheckout` が `redirect` を返した Order）で、state
   | `failed_retryable` | `{ status: "ATTENTION_REQUIRED" }` | `{ status: "NONE" }` |
   | `pending` | `{ status: "PENDING" }` | `{ status: "NONE" }` |
   | `sent`（既定） | `{ status: "SENT" }` | `{ status: "NONE" }` |
-  | `canceled` | `{ status: "NONE" }`（CANCELED は集約対象外） | `{ status: "NONE" }` |
+  | `canceled` | 下記（CANCELED は集約対象外なので、確認通知が欠落した状態になる） | `{ status: "NONE" }` |
   | `summary_unavailable` | `null` | `null` |
+
+  `canceled` の `CONFIRMED` Order は、確認通知の欠落として `{ status: "ATTENTION_REQUIRED" }` を返す。ただし Karaoke の正規取消による suppression（その Order の Reservation が既に `CANCELED`）だけは `{ status: "NONE" }`（EML-NTF-003、SPEC-120 §7.2）。Entry / Goods / 複合 Order や、Reservation が `CONFIRMED` の Karaoke Order に suppression は適用しない。
 
   `summary_unavailable` でも `getOrder` は `ok` を返し、state・entitlements・receiptUrl は通常どおり（部分障害を Order の失敗にしない）。state と entitlements は scenario の影響を受けない。read は DB を書き換えない。
 - `listOrders`: 本人の Order だけを `createdAt` 降順（非増加）で返す。guest / 未確認は §10。`getOrder`: 本人の Order 以外は `not_found`。

@@ -2710,7 +2710,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "notificationSummary is ATTENTION_REQUIRED / PENDING / SENT / NONE / null for failed_retryable / pending / sent / canceled / summary_unavailable on a CONFIRMED Order, which stays CONFIRMED with all entitlements and an ok read; a not CONFIRMED Order is NONE (null for summary_unavailable); seeded CONFIRMED Orders get it at read time without a DB change; the notice property no longer exists"
+        "notificationSummary is ATTENTION_REQUIRED / PENDING / SENT / ATTENTION_REQUIRED / null for failed_retryable / pending / sent / canceled / summary_unavailable on a CONFIRMED Entry + Goods Order, which stays CONFIRMED with all entitlements and an ok read; scenario canceled is NONE only for a CONFIRMED Karaoke Order whose Reservation is already CANCELED (regular suppression, EML-NTF-003) and ATTENTION_REQUIRED for any other CONFIRMED Order; a not CONFIRMED Order is NONE (null for summary_unavailable); seeded CONFIRMED Orders get it at read time without a DB change; the notice property no longer exists"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -3013,7 +3013,13 @@
       "test_case_id": "TC-PG-PUB-001-213",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-PUB-001", "SPEC-050-8.5", "SEC-WEB-016", "TST-UNT-004"],
+      "upstream_rule_ids": [
+        "PG-PUB-001",
+        "SPEC-050-8.5",
+        "SEC-WEB-016",
+        "SEC-WEB-026",
+        "TST-UNT-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -3024,7 +3030,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "only https links without credentials and same-origin / https images are accepted; others (http, javascript:, data:, protocol-relative, credentials, unparsable) fall back to null; the image URL input is a non-null string"
+        "a link and an image are accepted only as an absolute https URL written with https:// that SEC-WEB-026 allows (https:host and https:/host are rejected because a browser reads them against the page URL; port 443 only, and no userinfo, query, fragment, IP literal incl. normalised hex/decimal IPv4 and IPv6, localhost / *.localhost / *.local host, control character, whitespace or backslash); a same-origin image path is accepted only when the mock option allowSameOriginImagePath is on and only as /mock/sponsors/<name>.svg (no control character or whitespace, protocol-relative, backslash, dot segment, other directory, query or fragment); every other value (http, javascript:, data:, protocol-relative, unparsable, or any rejected shape above) falls back to null; the image URL input is a non-null string"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -3101,7 +3107,8 @@
       "expected_domain_postconditions": [
         "every img of the Sponsor Logo view sets referrerPolicy no-referrer",
         "the external link keeps target _blank and rel noopener noreferrer and nothing is proxied",
-        "SponsorLogo.imageUrl and toImageSrc take a required string"
+        "SponsorLogo.imageUrl and toImageSrc take a required string",
+        "the Sponsor footer container derives allowSameOriginImagePath only from isUiMockEnabled(readBuildEnv()) and never hard-codes true"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -10101,14 +10108,15 @@
       "system_invariant_ids": ["INV-010-07"],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "Mock mode; notification failed_retryable",
+      "preconditions": "Mock mode; notification failed_retryable, or canceled on a CONFIRMED Entry Order and on a CONFIRMED Karaoke Order whose Reservation is already CANCELED",
       "fixture_ids": [],
       "clock_instant": "2027-03-01T03:00:00Z",
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "CONFIRMED and the rights are kept; the ATTENTION_REQUIRED notice (copy.notification.ATTENTION_REQUIRED) is non-blocking; no alert and no Business retry button"
+        "CONFIRMED and the rights are kept; the ATTENTION_REQUIRED notice (copy.notification.ATTENTION_REQUIRED) is non-blocking; no alert and no Business retry button",
+        "scenario canceled is a missing confirmation notification on a CONFIRMED Entry Order and shows the same notice; only the regular suppression (Karaoke Reservation already CANCELED) shows none (EML-NTF-003)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -10187,7 +10195,7 @@
       "system_invariant_ids": ["INV-010-06"],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "Mock mode (desktop and mobile Chromium); contract tests/contracts/s7a-purchase.md; notification scenario sent / pending / canceled / summary_unavailable on a CONFIRMED Order; DB postconditions are the mock DB; UI mock test double (not API/DB/Provider coverage)",
+      "preconditions": "Mock mode (desktop and mobile Chromium); contract tests/contracts/s7a-purchase.md; notification scenario sent / pending / summary_unavailable on a CONFIRMED Order (canceled is covered by TC-PG-XFN-001-667); DB postconditions are the mock DB; UI mock test double (not API/DB/Provider coverage)",
       "fixture_ids": [],
       "clock_instant": "2027-03-01T03:00:00Z",
       "concurrency_seed": null,

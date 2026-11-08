@@ -626,6 +626,31 @@ test.describe("TC-PG-XFN-001-667 an Email failure is a non-blocking notice and n
     expect((await orderByRef(page, ORDER.confirmedEntry))?.state).toBe("CONFIRMED");
   });
 
+  test("a missing confirmation notification (scenario canceled) on a CONFIRMED Entry Order shows the same notice and keeps the rights", async ({
+    page,
+  }) => {
+    await openAs(page, `/purchase/orders/${ORDER.confirmedEntry}`, {
+      scenario: { notification: "canceled" },
+    });
+    await expect(outcomeRegion(page)).toContainText(label.CONFIRMED);
+    await expect(outcomeRegion(page)).toContainText(copy.notification.ATTENTION_REQUIRED.message);
+    await expect(entitlementsRegion(page).getByRole("link")).toHaveCount(4);
+    await expect(alertsOf(page)).toHaveCount(0);
+    await expect(mainOf(page).getByRole("button")).toHaveCount(0);
+  });
+
+  test("the regular suppression (scenario canceled, Karaoke Reservation already CANCELED) shows no notice", async ({
+    page,
+  }) => {
+    await openAs(page, `/purchase/orders/${ORDER.kCanceled}`, {
+      scenario: { notification: "canceled" },
+    });
+    await expect(outcomeRegion(page)).toContainText(label.CONFIRMED);
+    await expect(mainOf(page)).not.toContainText(copy.notification.ATTENTION_REQUIRED.message);
+    await expect(mainOf(page)).not.toContainText(copy.notification.ATTENTION_REQUIRED.label);
+    await expect(alertsOf(page)).toHaveCount(0);
+  });
+
   test("without a delayed Email there is no notice", async ({ page }) => {
     await openAs(page, `/purchase/orders/${ORDER.confirmedEntry}`);
     await expect(outcomeRegion(page)).toContainText(label.CONFIRMED);
@@ -646,8 +671,11 @@ test.describe("TC-PG-XFN-001-667 an Email failure is a non-blocking notice and n
 });
 
 // The simulated internal state maps to notification_summary NONE / PENDING / SENT / null, none of which is shown
-// (SPEC-050 16.7). Only ATTENTION_REQUIRED (scenario failed_retryable) shows the notice.
-const QUIET_NOTIFICATION_SCENARIOS = NOTIFICATION_SCENARIOS.filter((v) => v !== "failed_retryable");
+// (SPEC-050 16.7). ATTENTION_REQUIRED shows the notice: scenario failed_retryable, and scenario canceled on an
+// Order other than a Karaoke one whose Reservation is already CANCELED (EML-NTF-003), so both are left out here.
+const QUIET_NOTIFICATION_SCENARIOS = NOTIFICATION_SCENARIOS.filter(
+  (v) => v !== "failed_retryable" && v !== "canceled",
+);
 const DELIVERY_CLAIMS = /届きました|配信されました|送信しました|送信済み|メールが届/;
 
 test.describe("TC-PG-XFN-001-670 PENDING, SENT, NONE and an unavailable summary show no notice and leave the Order untouched (E2E 19, SPEC-050 16.2 / 16.7, INV-010-06, EML-NTF-003)", () => {

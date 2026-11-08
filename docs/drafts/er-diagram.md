@@ -1,10 +1,10 @@
 # データベース ER 図ガイド（初心者向け）
 
 - 対象: off r39'x in 大阪らへん2027 のBusiness Database（Neon PostgreSQL の `app` スキーマ）
-- 根拠: `SPEC-100 Database Design`（version 1.0.2、`provisional`）の現行本文。`SPEC-100` が未反映の変更要求（UCR）は、実装の根拠にしないため、図には含めない（§8）。
+- 根拠: `SPEC-100 Database Design`（version 2.1.0、`provisional`）の現行本文。`UCR-100-001`（Display name）・`UCR-100-002`（Sponsor Logo）・`UCR-100-003`（複合Order）は `SPEC-100` §70 で本文へ取り込み済み（`INCORPORATED`）であり、図に反映している。
 - 位置づけ: **理解のための解説資料**であり、正式仕様ではない。table / column / 制約の正は常に `SPEC-100` である。食い違いがあれば `SPEC-100` を優先する。
-- Neon への変更: DB の提供元は Supabase から **Neon** に変更する方針である。ただし `SPEC-010` と `SPEC-100` の現行本文は Supabase PostgreSQL / Supabase Auth のままで、仕様への反映は済んでいない。本書は仕様書を変更せず、提供元の呼称だけを Neon に読み替えている。テーブル構成・列・制約は現行の `SPEC-100` のままで、変えていない。
-- 認証基盤: **Neon Auth** を正とする。Better Auth を自前運用する場合の違いは §8 の「認証基盤ごとの違い」にまとめた（`d1-migration-review.md` §6、`fg-stack-summary.md`）。
+- 構成: Business Database は **Neon PostgreSQL**（シンガポール）で、Web は Cloudflare Pages の静的 SPA、API は Railway 上の Hono である（`SPEC-010` §8.1.1、`SPEC-180`）。旧版の本書は Supabase 構成と `SPEC-100` v1.0.2 を前提にしていたが、現行の v2.1.0 に合わせて更新した。
+- 認証基盤: **Neon Auth**（Neon 管理の Better Auth）である。Better Auth の自前運用は採用していない。業務 DB から認証情報を読む経路は、限定ビュー `auth_read.identity_directory` だけである（§8、`SPEC-100` §5.1）。
 - 図の簡略化: 読みやすさのため、図には主要なカラムだけを載せている。`created_at` / `updated_at`、`public_ref` などの共通カラムは §3 でまとめて説明し、図では省略する（省略した図には明記する）。
 
 ## 目次
@@ -12,9 +12,9 @@
 1. データベースの基本用語（これだけ読めば図が読める）
 2. ER 図の読み方
 3. 全テーブル共通のルール
-4. 全体マップ（30テーブルの関係）
+4. 全体マップ（31テーブルの関係）
 5. 領域別 ER 図と解説
-   - 5.1 公開情報（イベント / FAQ / お知らせ）
+   - 5.1 公開情報（イベント / FAQ / お知らせ / 協賛ロゴ）
    - 5.2 ユーザーと権限
    - 5.3 販売設定（入場券 / カラオケ / グッズ）
    - 5.4 注文と在庫確保
@@ -101,7 +101,7 @@ erDiagram
 
 | ルール | 内容 | 理由 |
 |---|---|---|
-| スキーマ | 業務テーブルは `app` スキーマに置く。`public` スキーマには置かない | Neon Auth が使う `neon_auth` スキーマなど、他が管理する領域と混ざらないようにするため |
+| スキーマ | 業務テーブルは `app` スキーマに置く。`public` スキーマには置かない。認証情報の読み取り用ビューは別スキーマ `auth_read` に置く（§8）| Neon Auth が使う `neon_auth` スキーマなど、他が管理する領域と混ざらないようにするため |
 | 主キー `id` | `bigint` の自動採番（`GENERATED ALWAYS AS IDENTITY`）。通常は更新しない | 内部の結び付けに使う番号 |
 | 公開用ID `public_ref` | `uuid`（ランダムな識別子）。主要なテーブルだけが持つ。重複不可 | URLやAPIでブラウザへ渡す用。連番の `id` は外へ出さない。**知っているだけでは権限にならない**（DB-ID-001） |
 | 日時 | `timestamptz`（タイムゾーン付き）。DB接続はUTC、表示のときに `Asia/Tokyo` へ変換 | 日時のずれを防ぐ |
@@ -114,7 +114,7 @@ erDiagram
 
 ---
 
-## 4. 全体マップ（30テーブルの関係）
+## 4. 全体マップ（31テーブルの関係）
 
 線だけを描いた全体図。まず「どの表がどの表とつながるか」を俯瞰する。カラムは省略している。
 
@@ -122,6 +122,7 @@ erDiagram
 erDiagram
     events ||--o{ faq_items : ""
     events ||--o{ announcements : ""
+    events ||--o{ sponsor_logos : ""
     events ||--o{ entry_ticket_offerings : ""
     events ||--o{ karaoke_sales_configurations : ""
     events ||--o{ goods : ""
@@ -176,7 +177,7 @@ erDiagram
 
 ## 5. 領域別 ER 図と解説
 
-### 5.1 公開情報（イベント / FAQ / お知らせ）
+### 5.1 公開情報（イベント / FAQ / お知らせ / 協賛ロゴ）
 
 ログインなしで誰でも見られる、イベントの案内情報。
 
@@ -184,6 +185,7 @@ erDiagram
 erDiagram
     events ||--o{ faq_items : "event_id"
     events ||--o{ announcements : "event_id"
+    events ||--o{ sponsor_logos : "event_id"
 
     events {
         bigint id PK
@@ -212,6 +214,17 @@ erDiagram
         text state "DRAFT PUBLISHED ARCHIVED"
         timestamptz published_at
     }
+    sponsor_logos {
+        bigint id PK
+        uuid public_ref UK
+        bigint event_id FK
+        text display_name "表示名称 必須 1〜200文字"
+        text image_url "画像のHTTPS URL"
+        text link_url "リンク先 任意"
+        int sort_order "表示順"
+        text state "DRAFT PUBLISHED ARCHIVED"
+        timestamptz published_at
+    }
 ```
 
 （`events` は他にも `summary`、`venue_details`、`access_information`、`participant_notices` を持つ。図では省略。）
@@ -221,8 +234,9 @@ erDiagram
 | `events` | イベント本体（名前、日時、会場など） | 日時は「未定」を許すため NULL 可。`starts_at < ends_at` を CHECK で守る。`business_timezone` は `Asia/Tokyo` 以外を入れられない |
 | `faq_items` | よくある質問 | `state` が `PUBLISHED` のものだけを公開側に返す（DRAFT / ARCHIVED は返さない）。表示順は `sort_order` |
 | `announcements` | お知らせ | 同上。新しい順に並べるため `published_at` を使う |
+| `sponsor_logos` | 協賛ロゴ（スポンサーの表示名称・画像・リンク先） | `state` が `PUBLISHED` のものだけを公開側に返す。表示順は `sort_order`、同順位は `public_ref` の順。`PUBLISHED` のとき `published_at` が必須（CHECK）。画像は**外部HTTPS URLの参照だけ**で、アップロードやサーバー側の取得はしない。URLの形式・許可originの検証はAPI側の責務（`SPEC-140`、`SPEC-110`）。`display_name` は必須で1〜200文字（`business_profiles.display_name` の任意・80文字とは別物）|
 
-- 3つとも**削除せず**、`ARCHIVED`（保管）にして管理する。
+- 4つとも**削除せず**、`ARCHIVED`（保管）にして管理する。
 
 ### 5.2 ユーザーと権限
 
@@ -237,6 +251,7 @@ erDiagram
         bigint id PK
         uuid public_ref UK
         uuid auth_subject UK "Neon Authのユーザー識別子"
+        text display_name "表示名 任意 1〜80文字"
     }
     role_assignments {
         bigint id PK
@@ -253,7 +268,7 @@ erDiagram
 
 | テーブル | 役割 | ポイント |
 |---|---|---|
-| `business_profiles` | Neon Authのログイン情報と、このシステムの「お客さん」を1対1で結び付ける | パスワード等は**一切持たない**（認証はNeon Authの担当）。`auth_subject` に重複不可の制約があり、同じログイン者から2つのProfileができない。氏名や電話番号などの列は、現行仕様では**意図的に持たない** |
+| `business_profiles` | Neon Authのログイン情報と、このシステムの「お客さん」を1対1で結び付ける | パスワード等は**一切持たない**（認証はNeon Authの担当）。`auth_subject` に重複不可の制約があり、同じログイン者から2つのProfileができない。本人が編集できる列は任意の `display_name`（NULLまたは1〜80文字）だけで、Neon Authから氏名やメールを複写して埋めることはしない。氏名・電話番号・住所などの列は**意図的に持たない** |
 | `role_assignments` | 「誰が、いつ、どの役割（スタッフ / 管理者）を持ったか」の履歴 | 取り消しても行は消さず、`state` を `REVOKED` にする。同じ人に同じ役割が**有効（ACTIVE）なまま2件**できないよう、部分一意制約を使う（§6参照） |
 
 - `business_profiles` から `role_assignments` への線が2本あるのは、同じ表が「役割を持つ人」「付与した人」「取り消した人」の3通りで `business_profiles` を指しているため。
@@ -356,7 +371,7 @@ erDiagram
         uuid public_ref UK
         uuid purchase_cause_key UK "購入開始のやり直し判定用"
         bigint customer_profile_id FK
-        text purpose "ENTRY_TICKET_PURCHASE KARAOKE_PURCHASE GOODS_PURCHASE"
+        text purpose "ENTRY_TICKET_PURCHASE KARAOKE_PURCHASE GOODS_PURCHASE ENTRY_GOODS_PURCHASE"
         text state "PREPARED AWAITING_PAYMENT CONFIRMED ほか"
         text currency
         bigint total_amount
@@ -370,6 +385,7 @@ erDiagram
         int line_no "明細番号"
         int quantity
         bigint unit_amount
+        text currency
         bigint line_total_amount "自動計算 単価x数量"
         text item_name_snapshot "購入時の商品名の写し"
         bigint entry_offering_id FK "入場券のとき"
@@ -380,6 +396,7 @@ erDiagram
         bigint id PK
         bigint order_item_id FK, UK
         bigint order_id FK
+        text purpose "ENTRY_TICKET_PURCHASE ENTRY_GOODS_PURCHASE"
         bigint offering_id FK
         int quantity
         text state "HELD COMMITTED RELEASED"
@@ -391,8 +408,9 @@ erDiagram
 
 #### orders（注文）と order_items（注文の明細）
 
-- **1つの注文は、1つの目的（purpose）だけ**を持つ。現行の `SPEC-100` は目的を上の3値に限り、入場券とグッズを同じ注文にまとめる形（複合Order、purpose は `ENTRY_GOODS_PURCHASE`）を、まだDBの制約として定義していない。複合Order自体は `SPEC-030` §11.2・§11.9 が定めており、DB側は**未反映の変更要求 `UCR-100-003`** で検討中である。反映されるまで、DBの `CHECK` 制約は複合Orderを拒否する。
+- **1つの注文は、1つの目的（purpose）だけ**を持つ。`SPEC-100` v2.1.0 は目的を4値（入場券 / カラオケ / グッズ / 入場券+グッズ）とし、カートから入場券とグッズをまとめて買う**複合Order**（purpose は `ENTRY_GOODS_PURCHASE`）をDBで表現できる（`UCR-100-003` を取り込み済み）。お客さん・目的・通貨・合計金額は、作成後に変更しない（`DB-ORD-001`）。
 - カラオケは、複合Orderにしない。1つの注文には、1つの排他的な枠の購入だけが入る（`SPEC-030` `BR-ORD-013`）。
+- 各明細（`order_items`）の `purpose` は、所属する注文の `purpose` と同じ値である。複合Orderでも明細ごとの別の目的列は持たず、入場券の明細かグッズの明細かは、下の「どれか1つだけ」の外部キーで見分ける（`DB-ORD-004`）。
 - 注文の `state`（状態）は次の7種類:
 
 | state | 意味 |
@@ -419,10 +437,13 @@ erDiagram
 | 入場券 | 入る | NULL | NULL | - |
 | カラオケ | NULL | 入る | NULL | 数量は必ず1 |
 | グッズ | NULL | NULL | 入る | - |
+| 入場券+グッズ（複合） | 明細ごとにどちらか1つ | NULL | 明細ごとにどちらか1つ | 1明細につき `entry_offering_id` と `goods_id` の**どちらか一方だけ**を入れる |
+
+複合Orderに「入場券とグッズが両方1件以上ある」ことや、注文の合計金額と明細合計の一致は、1行だけを見るCHECK制約では守れない。購入開始・決済開始・確定の各トランザクションで再確認する（`DB-ORD-003`・`DB-ORD-004`）。1件でも確保できなければ、カウンタも含めて全体を取り消す。
 
 #### entry_sales_allocations（入場券の確保記録）
 
-- 「どの注文明細が、どの入場券商品の枠を、何枚確保したか」の記録。`order_items` と1対1（`order_item_id` が重複不可）。
+- 「どの注文明細が、どの入場券商品の枠を、何枚確保したか」の記録。`order_items` と1対1（`order_item_id` が重複不可）。`purpose` は `ENTRY_TICKET_PURCHASE` か `ENTRY_GOODS_PURCHASE` のどちらかで、複合Orderの入場券明細も扱える。
 - 状態は `HELD`（確保中）→ `COMMITTED`（確定）または `RELEASED`（解放）。**一度 `COMMITTED` / `RELEASED` になったら `HELD` へは戻さない**。
 - 枠の確保は、商品の行（`entry_ticket_offerings`）をロックしてから、カウンタの更新と同じトランザクションで行う。
 
@@ -508,6 +529,7 @@ erDiagram
         uuid public_ref UK
         bigint order_id FK
         bigint order_item_id FK
+        text order_purpose "ENTRY_TICKET_PURCHASE ENTRY_GOODS_PURCHASE"
         bigint owner_profile_id FK
         int issuance_ordinal "同じ明細内の何枚目か"
         text state "VALID USED CANCELED EXPIRED"
@@ -536,7 +558,7 @@ erDiagram
 
 | テーブル | 役割 | ポイント |
 |---|---|---|
-| `entry_tickets` | 入場券1枚ごとの行 | 数量 N の購入なら、`issuance_ordinal` が 1〜N の N 行が作られる。同じ明細内で番号が重複しないよう一意制約がある。持ち主（`owner_profile_id`）は注文のお客さんと同じ人であることを、複合外部キーでDBが保証する |
+| `entry_tickets` | 入場券1枚ごとの行 | 数量 N の購入なら、`issuance_ordinal` が 1〜N の N 行が作られる。同じ明細内で番号が重複しないよう一意制約がある。持ち主（`owner_profile_id`）は注文のお客さんと同じ人であることを、複合外部キーでDBが保証する。同じ明細の入場券確保記録（`entry_sales_allocations`）を指す外部キーも持つため、複合Orderのグッズ明細に入場券を誤って発行することはDBが拒否する。入場券の商品（Offering）は券に重ねて持たず、確保記録→注文明細の経路で辿る |
 | `qr_tokens` | 入場券・カラオケ券に付くQRの記録 | **QR本体（平文）は保存しない**。検索用のハッシュ（`lookup_digest`）と、アプリ側で暗号化したデータだけを持つ。入場用（ENTRY）とカラオケ用（KARAOKE）で目的を分けている |
 | `entry_checkins` | 入場受付の記録 | 1枚の入場券につき**最大1件**（`entry_ticket_id` が一意）。受付した後に更新・削除しない |
 
@@ -682,6 +704,7 @@ erDiagram
         bigint order_item_id PK, FK
         uuid public_ref UK
         bigint order_id FK
+        text order_purpose "GOODS_PURCHASE ENTRY_GOODS_PURCHASE"
         bigint customer_profile_id FK
         bigint goods_id FK
         text state "PENDING_PAYMENT FULFILLABLE CANCELED"
@@ -707,7 +730,7 @@ erDiagram
 
 | テーブル | 役割 | ポイント |
 |---|---|---|
-| `goods_order_items` | `order_items` の「グッズ版の追加情報」 | `order_items` と1対1。主キーが `order_item_id` 自体で、「基本の明細に、グッズ専用の列を足した表」と考えるとよい。お客さんが注文のお客さんと一致することを複合外部キーで保証 |
+| `goods_order_items` | `order_items` の「グッズ版の追加情報」 | `order_items` と1対1。主キーが `order_item_id` 自体で、「基本の明細に、グッズ専用の列を足した表」と考えるとよい。お客さんが注文のお客さんと一致することを複合外部キーで保証。`order_purpose` は `GOODS_PURCHASE` か `ENTRY_GOODS_PURCHASE`（複合Orderのグッズ明細）|
 | `goods_sales_allocations` | グッズ在庫の確保記録 | 入場券の `entry_sales_allocations` と同じ考え方。`goods_inventory` の行をロックし、カウンタと同時に更新する |
 | `goods_handoffs` | 会場での手渡しの記録 | 明細1件につき1件。購入開始時に `PENDING` で同時に作る。`COMPLETED` になった行は、`PENDING` に戻さず、更新も削除もしない。手渡しの完了にはスタッフの記録が必要 |
 
@@ -815,6 +838,8 @@ erDiagram
 | 6 | 会場でスタッフがQRを読み取る | `entry_tickets`（`VALID` → `USED`）、`entry_checkins`（1行追加） |
 | 7 | 同じQRをもう一度読み取る | 状態が `USED` のため、既存の受付記録を返すだけで、新しい行は作らない |
 
+カートで入場券とグッズをまとめて買った場合（複合Order）は、手順2で入場券とグッズの両方の確保記録とカウンタを同じトランザクションで更新する。手順5では入場券の発行、グッズの履行可能化、注文の確定を1つのトランザクションで確定し、片方だけが確定した状態は残さない。
+
 支払いの期限が切れた場合は、手順5の代わりに `orders` が `EXPIRED`、`entry_sales_allocations` が `RELEASED` になり、カウンタの `held` が減って枠が戻る。
 
 ---
@@ -823,31 +848,32 @@ erDiagram
 
 | 項目 | 内容 |
 |---|---|
-| ログイン情報（パスワード等） | **`app` スキーマ（Business Database）には保存しない**。Neon Auth が管理する。`business_profiles.auth_subject` は Neon Auth のユーザー表への外部キーも張らない（認証側の削除が業務履歴に波及しないため）。Neon Auth のユーザーとセッションは、同じ Neon DB の別スキーマ `neon_auth` に入る。このため、業務DBに資格情報を置かないルール（`AR-AUTH-011`、`SEC-AUTH-006`）との関係は、解釈または分離の方法を決める必要がある（`d1-migration-review.md` §6） |
+| ログイン情報（パスワード等） | **`app` / `auth_read` スキーマには保存しない**（`DB-ARC-004`、`AR-SES-001`、`SEC-AUTH-006`）。Neon Auth が管理し、ユーザーとセッションは同じ Neon DB の別スキーマ `neon_auth`（Provider所有）に入る。`business_profiles.auth_subject` は `neon_auth` のユーザー表への外部キーを張らない（認証側の削除が業務履歴に波及しないため）。業務側から認証情報を読む経路は、下の `auth_read.identity_directory` だけである |
 | QRの平文 | 保存しない。検索用ハッシュと暗号化済みデータのみ |
 | Stripeの生Webhook本文 | 保存しない。必要最小限の写しだけを `canonical_snapshot` に持つ |
-| 氏名・電話・住所 | 現行の `business_profiles` には**ない**。表示名（Display name）は、**未反映の変更要求 `UCR-100-001`** で検討中。正式な仕様に反映されるまで、実装の根拠にしない |
-| 協賛ロゴ（Sponsor Logo）の表 | 現行の `SPEC-100` には**ない**（`SPEC-030` §8.4 は定義済み）。**未反映の変更要求 `UCR-100-002`** で検討中。本書の30テーブルにも含めない |
-| 入場券とグッズの複合Order | 現行の `SPEC-100` の `orders.purpose` は3値で、複合Orderは拒否される（§5.4）。**未反映の変更要求 `UCR-100-003`** で検討中 |
+| 氏名・電話・住所 | `business_profiles` には**ない**。持つのは任意の表示名 `display_name`（NULLまたは1〜80文字）だけ（`UCR-100-001` 取り込み済み）。Neon Auth から氏名・メールを複写しない |
+| 画像ファイルそのもの | 協賛ロゴ（`sponsor_logos`）は外部HTTPS URLの参照だけを持ち、画像のアップロードやサーバー側の取得はしない（`DB-SAL-002`） |
 | 汎用の監査ログ表 | `SPEC-100` では作らない（`SPEC-160` が後から追加する） |
 | PostgreSQLのenum型 | 使わない。`text` + CHECK で表す |
 | 保留中のindex | `UCR-130-005`（運用向けの検索index）は保留中。先回りして追加しない |
-| 実装状況 | UI mock（`apps/web`）はあるが、migration / スキーマのコードはまだない（`packages/db` は空）。この図は**計画上の設計**である |
+| 実装状況 | UI mock（`apps/web`）はあるが、migration / スキーマのコードはまだない（`packages/db` にソースはない）。この図は**計画上の設計**である |
 
-### 認証基盤ごとの違い
+### 認証情報の読み取り境界（`auth_read.identity_directory`）
 
-認証は **Neon Auth** を正とする。Better Auth を自前運用する場合に変わる点は次のとおり。`business_profiles` を含む `app` スキーマの構成は、どちらでも変わらない。
+業務側（Hono API と Email Worker）が、ログイン中のユーザーの現在のメールと確認状態を知る必要があるとき、`neon_auth` スキーマの表を直接読むことは**できない**。`SPEC-100` §5.1 が定める限定ビュー `auth_read.identity_directory` だけを読む。
 
-| 項目 | Neon Auth（正） | Better Auth（自前運用） |
+| 列 | 型 | 意味 |
 |---|---|---|
-| 位置づけ | Better Auth のマネージド版 | OSS の Better Auth を Hono にマウントして自分で運用する |
-| ユーザー・セッションの置き場 | 同じ Neon DB の `neon_auth` スキーマ | 自分で決める。パスワードは `account` テーブルに入るため、業務DBとは別DBまたは別スキーマ・別ロールに分ける |
-| `business_profiles` との関係 | `auth_subject` がユーザーの識別子を指す。外部キーは張らない | 同じ。`auth_subject` が Better Auth のユーザーの識別子を指し、外部キーは張らない |
-| `auth_subject` の型 | 現行仕様は `uuid`。Neon Auth のユーザー識別子の型は未確認 | 同じく、型の確認が必要 |
-| 運用責任 | 提供元 | 自分 |
-| 業務DBへの影響 | `neon_auth` スキーマが同じDBに入る点の解釈または分離が必要 | 認証用のテーブルを別に用意する分、設計と運用が増える |
+| `auth_subject` | uuid | Neon Auth が発行する安定したユーザー識別子（`business_profiles.auth_subject` と同じ値）|
+| `email` | text（NULL可）| 現在の主メールアドレス |
+| `email_verified` | boolean | そのメールが確認済みか |
 
-どちらを選んでも、`SPEC-060` の認証要件（JWT の寿命、パスワード長など）を満たせるかの確認が残っている。詳細は `d1-migration-review.md` §6.3・§6.5 を参照。
+- ビューは `security_barrier` 付きの読み取り専用で、ユーザー表の必要な3列だけを出す。1つの識別子につき最大1行。メールを写す別の表（キャッシュ）は作らない。
+- 読めるのは、API 用と Email Worker 用の専用 DB ロールだけ。ブラウザ、公開(PUBLIC)、Reconciliation Worker、バックアップ用ロールには権限を与えない。実行用ロールが `neon_auth` の元の表やセッション・パスワードの表を読める状態にしない（`SPEC-100` §5.1、`SPEC-180` §22）。
+- 0行は「そのユーザーが存在しない」、メールがない・未確認は「宛先にできない」、DB が読めないときは「一時的な参照失敗」として扱う（`SPEC-060`、`SPEC-120`）。互換性が崩れたら止まる（fail closed）設計で、`neon_auth` 全体を読む代替手段は作らない。
+- 業務側の実行用ロールに `neon_auth` への書き込み権限は与えない。本システムの migration で `neon_auth` にテーブルを足したり変えたりもしない（`SPEC-100` §5、`SPEC-140` `SEC-DB`）。
+
+`auth_subject` の型（uuid）と、ビューが指す元の列・UUID形式がNeon Authの提供する実体と合っていることは、Provider契約テストで確認する対象である（`SPEC-100` §5.1）。
 
 ---
 
