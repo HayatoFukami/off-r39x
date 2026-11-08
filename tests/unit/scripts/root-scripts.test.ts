@@ -40,7 +40,7 @@ describe("TC-DEV-WEB-011-202 mock build scripts are cross-platform and the plain
   });
 
   it("the plain build and dev scripts (root and apps/web) set no mock flag (mock stays opt-in)", () => {
-    expect(pkg.scripts.build).toBe("pnpm --filter @off-r39x/web build");
+    expect(pkg.scripts.build).toBe("pnpm build:backend && pnpm --filter @off-r39x/web build");
     for (const [owner, scripts] of [
       ["root", pkg.scripts],
       ["apps/web", webPkg.scripts],

@@ -1,0 +1,6 @@
+# Select the common immutable image digest; do not build a different image per service.
+[deploy]
+startCommand = "node dist/apps/api/server.js"
+healthcheckPath = "/internal/health/ready"
+healthcheckTimeout = 180
+restartPolicyType = "ON_FAILURE"

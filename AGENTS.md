@@ -2,7 +2,7 @@
 
 ## 1. Current repository, not the planned system
 
-- Only the UI mock (a Vite + React Router static SPA, output `apps/web/dist`) and pure domain types are implemented. Hono API, database, real auth, Stripe and Resend integrations are not implemented; mock tests do not prove those contracts.
+- The UI mock is a Vite + React Router static SPA (output `apps/web/dist`) on the old frontend contract. Backend foundation now includes Hono, PG17/Drizzle/pg, verified JWT Principal/Capability, provider adapters, and worker startup/shutdown. The API-AUTH-001 route and a limited Neon Auth transport candidate are now wired, but shared rate-limit infrastructure, live provider compatibility, remaining business operations, and production readiness are not implemented/proven; mock tests do not prove those contracts. See `docs/backend-foundation.md`.
 - `README.md` is the setup overview; executable configuration wins for commands and current behavior. Business requirements remain owned by `docs/specs/` (`SPEC-000`–`SPEC-200`), not existing code or `docs/drafts/`.
 - `.claude/agents/*.md` still contain obsolete claims that source/test directories do not exist. They are not canonical specifications or a required OpenCode orchestration scheme. `CLAUDE.md` only points here.
 
@@ -29,7 +29,7 @@ pnpm start:mock --port 3200       # no extra -- separator
 - `apps/web/src/routes/root-layout.tsx` mounts API/session providers and owns the **single `<main>`**. Pages must not introduce another main landmark.
 - `packages/domain` exports TypeScript source directly (`src/index.ts`); Vite bundles the TypeScript source directly. It must not import external packages or app/framework code.
 - Features use API/auth ports, never `src/mock/` directly. Mock imports are allowed only in `src/api-client/index.ts`, `src/auth/index.ts`, `src/routes/dev/**`, mock internals, and the root layout's `MockModeBadge`. Presentation must not import features, mock implementations or provider hooks. Import `react-router` only from `src/routing/`, `src/routes/` and `src/main.tsx` (a convention, not enforced by the boundary script). Exact exceptions are enforced by `scripts/check-import-boundaries.mts`.
-- Planned business data flow is `Browser → React SPA → Hono API → Supabase PostgreSQL` (`SPEC-010`). Browser/Web never query the Business DB directly; Hono owns business mutation/authorization, Supabase Auth owns authentication. Do not treat client IDs, roles, prices or payment results as authority.
+- Canonical business flow is `Browser → React SPA → Railway Hono API → Neon PostgreSQL` (`SPEC-010`). Browser/Web never query the Business DB directly; Hono owns business mutation/authorization, Neon Auth owns identity. Do not treat client IDs, roles, prices or payment results as authority.
 - For backend work, preserve verified-provider payment confirmation (never browser redirects), external calls outside DB transactions, and reconciliation instead of blind retries after unknown outcomes (`SPEC-070`, `SPEC-150`). Entry/Karaoke QR purposes stay separate and check-in atomic/single-use (`SPEC-080`).
 
 ## 4. Implementation workflow
@@ -47,7 +47,10 @@ pnpm lint                        # biome check, not a separate ESLint/Prettier s
 pnpm typecheck                   # recursive workspace checks
 pnpm check:boundaries            # separate gate, not included in lint
 pnpm validate:traceability       # separate gate, not included in typecheck
+pnpm validate:migrations         # static review aid, not a real PG17 migration test
 pnpm test:unit                   # Vitest unit AND security projects, Node environment
+pnpm test:backend                # foundation tests, real PG17 and TEST_DATABASE_URL/TEST_DATABASE_CA required
+pnpm build:backend               # bundles all three server processes without runtime Secrets
 pnpm test:e2e                    # Playwright UI-mock suite; builds apps/web/dist and serves it itself
 APP_ENV=development pnpm build:mock   # UI-mock build (APP_ENV is required); standard non-mock command is pnpm build
 pnpm secret-scan --require-build # run after build to require and inspect build output
@@ -66,8 +69,9 @@ pnpm --dir tests exec playwright install chromium  # if the browser binary is mi
 - `dist/_headers` puts the protective headers (no-store, Pragma, `Referrer-Policy: no-referrer`) on `/*`; only the exact paths of content-hashed files in `dist/assets/` detach no-store and Pragma with `!` and get a long immutable cache (they keep `Referrer-Policy: no-referrer`). Cloudflare Pages is expected (per the OSS asset server; unverified on Pages, Issue C) to match `_headers` against the URL pathname without percent-decoding, so a path rule cannot cover every spelling: do not reintroduce per-prefix protective rules or a `dist/404.html`.
 - Use `gotoHydrated`/`waitForHydration` from `tests/harness/browser/hydration.ts` before interactive assertions; navigation completing does not mean React is ready.
 - E2E is the auxiliary `e2e-ui-mock` suite, not real DB/API/provider coverage or SPEC-170 G8. Tests needing constraints, locks or transaction races require real PostgreSQL; provider contract tests require nonproduction credentials.
+- Backend DB tests require disposable PostgreSQL 17 at port 5432, verified test TLS with a synthetic CA, UTC, and a setup identity able to install test roles and create/drop disposable test databases. Each backend DB test file gets its own database; do not run competing DDL fault cases against a shared database. Missing DB settings fail rather than skip. Run from the repository root; see `docs/backend-foundation.md`. Unbundled server source has no build-bound migration hash and cannot become Ready.
 - Both runners have retries=0. Do not skip/quarantine critical tests or rewrite expectations to match a spec-violating implementation. Report unexecuted checks with reasons and release impact, never as passed.
-- Secret scan covers root files, `.github/**`, `apps/`, `packages/`, `scripts/`, `tests/`, `traceability/`, plus the whole build output `apps/web/dist/**`. `OK` is not a full-bundle audit. Never put real secrets, raw QR, credentials, webhook bodies or unnecessary PII in source, fixtures, logs, screenshots or reports. Synthetic email domains must be reserved (`example.com`, `.test`, `.invalid`, etc.).
+- Secret scan covers root files, `.github/**`, `apps/`, `packages/`, `scripts/`, `tests/`, `traceability/`, plus the whole build output (`apps/web/dist/**`; pass `--build-dir dist --require-build` for bundled backend output). `OK` is a pattern scan of that scope, not a complete secret or bundle audit. Never put real secrets, raw QR, credentials, webhook bodies or unnecessary PII in source, fixtures, logs, screenshots or reports. Synthetic email domains must be reserved (`example.com`, `.test`, `.invalid`, etc.).
 
 ## 6. Git policy
 
