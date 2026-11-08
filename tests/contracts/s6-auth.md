@@ -481,7 +481,8 @@ export function parseFailureNotice(raw: string | null | undefined): ExternalMeth
     - `code_expired` → `role="alert"` + `copy.auth.otp.codeExpired`（再送を促す。`codeInvalid` と別の文言）。再送 button は有効。
     - `unavailable` → `role="alert"` + `copy.auth.otp.unavailable`。コード欄は残る。
     - いずれの失敗でも Session は guest、URL と mock DB は不変。`main` 内の `role="alert"` は同時に 1 つ。
-  - `copy.auth.otp.resend` → `requestEmailOtp` を同じ email で呼び、`sent` なら新しい `copy.auth.otp.sent` の status を出して step 2 に留まる（前の alert は消える）。`copy.auth.otp.changeEmail` → step 1 へ戻る（status / alert を消し、コード欄を消す）。
+  - 【PR #33 レビュー】**コードを要求した宛先を固定する**。email 欄はコード要求の最中も編集でき、応答が来た時点の欄の値は要求した値と違いうる。`EmailOtpForm` は `sent` になった要求の宛先（`normalizeEmail` 済みの値）を自分の state にだけ持ち（URL・storage・log に出さない）、step 2 の**コードの検証（`signInWithEmailOtp`）と再送（`requestEmailOtp`）はその宛先を使い**、欄の現在の値を読み直さない（再送は欄を検証し直さない）。`changeEmail` で step 1 へ戻るとその宛先を捨て、次の要求は欄の値を検証して使う。E2E: `auth-login.spec.ts` の TC-PG-AUTH-003-306（要求と同じ task で欄を別の宛先に書き換え、検証・再送後も最初の宛先で Session が成立し、書き換えた宛先の user ができない）。登録（§6.2A）も同じ。
+  - `copy.auth.otp.resend` → `requestEmailOtp` を（上の固定した宛先で）呼び、`sent` なら新しい `copy.auth.otp.sent` の status を出して step 2 に留まる（前の alert は消える）。`copy.auth.otp.changeEmail` → step 1 へ戻る（status / alert を消し、コード欄を消す）。
 - 【B5 レビュー I-1】**step が変わるときの focus**: step 1 の送信 button（`copy.auth.otp.send`）は step 2 へ移ると DOM から消え、step 2 の `copy.auth.otp.changeEmail` は step 1 へ戻ると消える。focus が `body` に落ちないように（SPEC-050 §25 の「主要 Action と Form control は Keyboard 操作可能」「Focus 順序を DOM 上の論理順序と一致させる」。落ちるとキーボード利用者は Tab を文書の先頭からやり直すことになる）、**step 2 へ移ったらコード欄へ、step 1 へ戻ったら email 欄へ focus を移す**。移すのは step が変わった直後の 1 回だけで、初期表示・方式の切替（focus は選んだ radio に残る。§6.1A）・検証エラー（error summary へ focus を移す）・再送（step 2 に留まる）では focus を動かさない。Login（§6.1B）と登録（§6.2A）の両方で同じ。E2E は `auth-login.spec.ts`（TC-PG-AUTH-003-306）と `auth-register-verify.spec.ts`（TC-PG-AUTH-001-305）。
 - 未確認 User も、コードで Login すると確認済みになる（mailbox の証明。stored user と Session が `emailVerified: true`）。
 

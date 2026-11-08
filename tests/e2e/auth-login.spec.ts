@@ -500,6 +500,50 @@ test.describe("TC-PG-AUTH-003-306 Email OTP Login: send the code, enter it, and 
     expect(await readSession(page)).toEqual({ kind: "guest" });
   });
 
+  // PR #33 review: the code is requested for one address, so the code step verifies and resends with that same address,
+  // also when the email field was edited while the request was still running.
+  for (const resend of [false, true]) {
+    test(`an address typed while the code request is running does not change the address the code is verified${resend ? " and resent" : ""} for`, async ({
+      page,
+    }) => {
+      const typedLater = "otp.typed.later@example.com";
+      await openLogin(page);
+      await chooseMethod(page, method().emailOtp);
+      const emailField = field(page, copy.auth.field.email.label);
+      await emailField.fill(EMAIL.demo);
+      const emailHandle = await emailField.elementHandle();
+      const sendHandle = await otpButton(page, otp().send).elementHandle();
+      // One task: the request starts with the first address and the field already holds another one when the
+      // answer arrives (the answer is a microtask that runs after this script).
+      await page.evaluate(
+        ([input, button, value]) => {
+          (button as HTMLButtonElement).click();
+          const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+          setter?.call(input, value);
+          (input as HTMLInputElement).dispatchEvent(new Event("input", { bubbles: true }));
+        },
+        [emailHandle, sendHandle, typedLater] as const,
+      );
+      await expect(statusesIn(page)).toHaveText(otp().sent);
+      await expect(otpCodeField(page)).toBeVisible();
+
+      if (resend) {
+        await otpButton(page, otp().resend).click();
+        await expect(statusesIn(page)).toHaveText(otp().sent);
+      }
+      await submitOtpCode(page, OTP_CODE, otp().submitLogin);
+      await expect(page).toHaveURL(/\/mypage$/);
+      expect(await readSession(page)).toEqual({
+        kind: "authenticated",
+        email: EMAIL.demo,
+        emailVerified: true,
+      });
+      expect(await readUsers(page)).not.toContainEqual(
+        expect.objectContaining({ email: typedLater }),
+      );
+    });
+  }
+
   // I-1: the control that had the focus (the send button, the change-email button) leaves the DOM at a step change, which
   // would drop the focus onto the body. The step that appears receives it (SPEC-050 25: keyboard operation and a logical focus order).
   test("the focus follows the step: the code field after the code is requested, the email field after changing the email", async ({

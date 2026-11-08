@@ -56,6 +56,10 @@ export function EmailOtpForm({
   const [errors, setErrors] = useState<readonly FieldError[]>([]);
   const [failure, setFailure] = useState<Failure>(null);
   const [sent, setSent] = useState(false);
+  // The address the code was requested for. The email field stays editable while the request runs, so the
+  // code step must not read the field again: verifying and resending use this address, the one the code was
+  // sent to. Kept in this component's memory only (never a URL, a storage or a log).
+  const [requestedEmail, setRequestedEmail] = useState<string | null>(null);
   const [pending, setPending] = useState<Pending>(null);
   const pendingRef = useRef(false);
   const { summaryRef, requestFocus } = useErrorSummaryFocus();
@@ -97,15 +101,23 @@ export function EmailOtpForm({
 
   const requestCode = async (): Promise<void> => {
     if (pendingRef.current) return;
-    const validation = validateResetRequestForm({ email });
-    if (!validation.ok) {
-      showInputErrors(validation.errors);
-      return;
+    // A resend in the code step goes to the address the code was first requested for.
+    let address: string;
+    if (step === "code" && requestedEmail !== null) {
+      address = requestedEmail;
+    } else {
+      const validation = validateResetRequestForm({ email });
+      if (!validation.ok) {
+        showInputErrors(validation.errors);
+        return;
+      }
+      address = normalizeEmail(email);
     }
     begin("request");
     try {
-      const result = await auth.requestEmailOtp({ email: normalizeEmail(email) });
+      const result = await auth.requestEmailOtp({ email: address });
       if (result.kind === "sent") {
+        setRequestedEmail(address);
         setStep("code");
         setSent(true);
       } else if (result.kind === "cart_busy" || result.kind === "cart_blocked") {
@@ -131,7 +143,7 @@ export function EmailOtpForm({
     begin("verify");
     try {
       const result = await auth.signInWithEmailOtp({
-        email: normalizeEmail(email),
+        email: requestedEmail ?? normalizeEmail(email),
         code: submitted,
       });
       if (result.kind === "signed_in") {
@@ -159,6 +171,7 @@ export function EmailOtpForm({
   };
 
   const changeEmail = (): void => {
+    setRequestedEmail(null);
     setStep("request");
     setCode("");
     setErrors([]);
