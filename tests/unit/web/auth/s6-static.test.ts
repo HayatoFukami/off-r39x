@@ -36,6 +36,8 @@ const PURE = [
   "src/auth/gate-decision.ts",
   "src/features/auth/form-validation.ts",
   "src/features/auth/continuation-view.ts",
+  "src/features/auth/auth-methods.ts", // B5 C1
+  "src/features/auth/auth-return.ts", // B5 C2: the return and failure paths of an external-completion method
 ] as const;
 
 const CONTAINERS = [
@@ -44,6 +46,9 @@ const CONTAINERS = [
   "src/features/auth/email-verification-page.tsx",
   "src/features/auth/password-reset-request-page.tsx",
   "src/features/auth/password-reset-complete-page.tsx",
+  "src/features/auth/email-otp-form.tsx", // B5 C1: the Email OTP steps; calls the port through useAuth()
+  "src/features/auth/google-sign-in.tsx", // B5 C2: the Google start button; calls the port through useAuth()
+  "src/features/auth/magic-link-form.tsx", // B5 C3: the Magic Link send form; calls the port through useAuth()
 ] as const;
 
 const MODULES = [
@@ -51,6 +56,7 @@ const MODULES = [
   "src/auth/auth-gate.tsx",
   "src/auth/use-auth.ts",
   ...CONTAINERS,
+  "src/features/auth/method-selector.tsx", // B5 C1: the method radio group (a client part, no port)
   "src/presentation/components/form-field.tsx",
   "src/presentation/components/error-summary.tsx",
 ] as const;
@@ -258,10 +264,11 @@ describe("TC-DEV-WEB-001-505 S6 copy, colour and dependency direction (SPEC-050 
 });
 
 describe("TC-PG-AUTH-003-511 forms follow SPEC-050 25 (error summary, aria-invalid, no browser validation)", () => {
-  // PG-AUTH-002 has no input field (SPEC-050 15.2, contract 6.3), so it is not a form container.
-  const forms = CONTAINERS.filter((p) => !p.includes("email-verification")).map(
-    (p) => [p, stripComments(read(p))] as const,
-  );
+  // PG-AUTH-002 has no input field (SPEC-050 15.2, contract 6.3), so it is not a form container. The Google start
+  // (B5 C2) is a button with no input either.
+  const forms = CONTAINERS.filter(
+    (p) => !p.includes("email-verification") && !p.includes("google-sign-in"),
+  ).map((p) => [p, stripComments(read(p))] as const);
   it("every form is noValidate and links its error summary to the fields", () => {
     for (const [path, code] of forms) {
       expect(code, path).toMatch(/noValidate/);
@@ -293,6 +300,348 @@ describe("TC-PG-AUTH-003-511 forms follow SPEC-050 25 (error summary, aria-inval
       expect(code, name).toMatch(/parseContinuation/);
       expect(code, name).toMatch(/continuationPath/);
       expect(code, name).toMatch(/describeContinuation/);
+    }
+  });
+});
+
+// B5 C1 (tests/contracts/s6-auth.md sections 5A, 6.1A, 6.2A): the method radio group and the Email OTP steps.
+describe("TC-PG-AUTH-003-512 the method selection and the Email OTP steps are wired as contracted: radio group, one-time-code field, the port only through useAuth(), the code never leaves state (SPEC-050 15.0 / 25, SEC-AUTH-018)", () => {
+  const code = (path: string): string => stripComments(read(path));
+  const otpForm = (): string => code("src/features/auth/email-otp-form.tsx");
+
+  it("the method selector is a fieldset with a legend and radio inputs named by labels, and it does not move focus", () => {
+    const selector = code("src/features/auth/method-selector.tsx");
+    expect(selector).toMatch(/^\s*["']use client["']/);
+    expect(selector).toMatch(/<fieldset\b/);
+    expect(selector).toMatch(/<legend\b/);
+    expect(selector).toMatch(/type=["']radio["']/);
+    expect(selector).toMatch(/<label\b/);
+    expect(selector).toMatch(/\buseId\b/);
+    expect(selector).toMatch(/AUTH_METHODS/);
+    expect(selector).toMatch(/authMethodLabel/);
+    expect(selector).not.toMatch(/\.focus\s*\(|autoFocus/);
+    expect(selector).not.toMatch(/\buseAuth\b|createAuthPort|from\s+["'][^"']*\/mock\//);
+    expect(selector).not.toMatch(/\b(fetch|localStorage|sessionStorage)\b|\bconsole\s*\./);
+  });
+
+  it("the method list is pure data: the exports the pages and the selector use", () => {
+    const methods = code("src/features/auth/auth-methods.ts");
+    expect(methods).toMatch(/export\s+(const|type)\s+AUTH_METHODS\b/);
+    expect(methods).toMatch(/export\s+const\s+DEFAULT_AUTH_METHOD\b/);
+    expect(methods).toMatch(/export\s+(function|const)\s+authMethodLabel\b/);
+    expect(methods).toMatch(/export\s+type\s+AuthMethod\b/);
+    expect(methods).toMatch(/["']email-otp["']/);
+    expect(methods).not.toMatch(/github|discord/i);
+  });
+
+  it("Login and Register show the selector with their own legend and start on the default method", () => {
+    const login = code("src/features/auth/login-page.tsx");
+    const register = code("src/features/auth/register-page.tsx");
+    for (const [name, page] of [
+      ["login-page", login],
+      ["register-page", register],
+    ] as const) {
+      expect(page, name).toMatch(/\bMethodSelector\b/);
+      expect(page, name).toMatch(/\bEmailOtpForm\b/);
+      expect(page, name).toMatch(/\bDEFAULT_AUTH_METHOD\b/);
+    }
+    expect(login).toMatch(/copy\.auth\.method\.legendLogin/);
+    expect(register).toMatch(/copy\.auth\.method\.legendRegister/);
+    expect(login).not.toMatch(/copy\.auth\.method\.legendRegister/);
+    expect(register).not.toMatch(/copy\.auth\.method\.legendLogin/);
+  });
+
+  it("the Email OTP steps call both OTP port methods, validate before calling, and show the contracted wording", () => {
+    const form = otpForm();
+    expect(form).toMatch(/\.requestEmailOtp\s*\(/);
+    expect(form).toMatch(/\.signInWithEmailOtp\s*\(/);
+    expect(form).toMatch(/validateOtpCodeForm/);
+    expect(form).toMatch(/validateResetRequestForm/);
+    expect(form).toMatch(/copy\.auth\.otp\.send\b/);
+    expect(form).toMatch(/copy\.auth\.otp\.sent\b/);
+    expect(form).toMatch(/copy\.auth\.otp\.resend\b/);
+    expect(form).toMatch(/copy\.auth\.otp\.changeEmail\b/);
+    expect(form).toMatch(/copy\.auth\.otp\.codeInvalid\b/);
+    expect(form).toMatch(/copy\.auth\.otp\.codeExpired\b/);
+    expect(form).toMatch(/copy\.auth\.otp\.unavailable\b/);
+    expect(form).toMatch(/copy\.auth\.otp\.submitLogin\b/);
+    expect(form).toMatch(/copy\.auth\.otp\.submitRegister\b/);
+    expect(form).toMatch(/role=["']status["']/);
+  });
+
+  it("the code field is autoComplete one-time-code and numeric, has no maxLength, and the email field keeps autoComplete email", () => {
+    const form = otpForm();
+    expect(form).toMatch(/autoComplete=["']one-time-code["']/);
+    expect(form).toMatch(/inputMode=["']numeric["']/);
+    expect(form).toMatch(/autoComplete=["']email["']/);
+    expect(form).not.toMatch(/\bmaxLength\b/);
+    expect(form).toMatch(/copy\.auth\.field\.otpCode\.label/);
+  });
+
+  it("the one-time code is held in component state only: it never reaches a URL, a navigation target, a storage or the console", () => {
+    const form = otpForm();
+    expect(form, "email-otp-form.tsx must exist and not be empty").not.toBe("");
+    expect(form).not.toMatch(/\b(localStorage|sessionStorage|document\.cookie)\b|\bconsole\s*\./);
+    expect(form).not.toMatch(
+      /(router\.(push|replace)|location\.(assign|replace|href)|replaceState|accountPath|continuationPath|URLSearchParams|setSearchParams)\s*\([^)]*\bcode\b/,
+    );
+    expect(form).not.toMatch(/searchParams\.set\s*\(/);
+  });
+
+  it("the Email OTP steps follow the same Cart rule as password Login: the recovery is shown through the page and the buttons are natively disabled while the Cart is stopped", () => {
+    const form = otpForm();
+    expect(form).toMatch(/cartBlocked/);
+    expect(form).toMatch(/cart_busy/);
+    expect(form).toMatch(/cart_blocked/);
+    expect(form).toMatch(/disabled=/);
+    for (const name of ["login-page", "register-page"]) {
+      const page = code(`src/features/auth/${name}.tsx`);
+      expect(page, name).toMatch(/CartRecovery/);
+    }
+  });
+});
+
+// B5 C2 (tests/contracts/s6-auth.md sections 0, 3B, 5B, 6.1C, 6.2B, 10A): Google, the first external-completion method.
+describe("TC-PG-AUTH-003-512 Google is wired as contracted: the start through useAuth(), the return read once and removed from the URL, the result received through the Cart lifecycle only by the screen shown by the return, and a dev-only stand-in (SPEC-050 15.0, FR-CRT-012, DEV-WEB-012, SEC-WEB-013)", () => {
+  const code = (path: string): string => stripComments(read(path));
+  const authSources = (): string =>
+    walk(abs("src/features/auth"))
+      .filter((f) => /\.(ts|tsx)$/.test(f))
+      .map((f) => stripComments(readFileSync(f, "utf8")))
+      .join("\n");
+
+  it("the Google start is a client container that calls only startGoogleSignIn through useAuth(), builds both paths with auth-return, hands off with window.location.assign and shows the contracted wording", () => {
+    const start = code("src/features/auth/google-sign-in.tsx");
+    expect(start, "google-sign-in.tsx must exist and not be empty").not.toBe("");
+    expect(start).toMatch(/\.startGoogleSignIn\s*\(/);
+    expect(start).toMatch(/externalReturnPath/);
+    expect(start).toMatch(/externalFailurePath/);
+    expect(start).toMatch(/window\.location\.assign\s*\(/);
+    expect(start).toMatch(/copy\.auth\.google\.startLogin\b/);
+    expect(start).toMatch(/copy\.auth\.google\.startRegister\b/);
+    expect(start).toMatch(/copy\.auth\.google\.signedIn\b/);
+    expect(start).toMatch(/copy\.auth\.google\.unavailable\b/);
+    // F-4: the reason for a start that is disabled because the Session cannot be confirmed (SPEC-050 25).
+    expect(start).toMatch(/copy\.auth\.google\.sessionUnavailable\b/);
+    expect(start).toMatch(/aria-describedby/);
+    expect(start).toMatch(/disabled=/);
+    expect(start).toMatch(/cart_busy/);
+    expect(start).toMatch(/cart_blocked/);
+    expect(start).not.toMatch(/router\.(push|replace)\s*\(/);
+    expect(start).not.toMatch(/\b(fetch|XMLHttpRequest|WebSocket)\b/);
+  });
+
+  // F-1 (tests/contracts/s6-auth.md section 6.1C; SPEC-140 SEC-WEB-013): the URL the port answers is checked again at the
+  // last moment, with the same condition as isSafeCheckoutUrl (a same-origin relative path or an https URL without
+  // credentials). A value that does not pass is never followed and is shown as the unavailable alert.
+  it("the Google start checks the URL the port returned with isSafeCheckoutUrl before window.location.assign and hands off exactly the checked value", () => {
+    const start = code("src/features/auth/google-sign-in.tsx");
+    const assign = start.search(/window\.location\.assign\s*\(/);
+    expect(assign, "window.location.assign must be called").toBeGreaterThan(-1);
+    const guard = start.match(/\bisSafeCheckoutUrl\s*\(\s*result\.url\s*\)/);
+    expect(guard, "isSafeCheckoutUrl(result.url) must be called").not.toBeNull();
+    expect(
+      guard?.index ?? Number.POSITIVE_INFINITY,
+      "the check comes before the hand-off",
+    ).toBeLessThan(assign);
+    // Imported (the condition is not copied), and the hand-off takes the very value that was checked.
+    expect(start).toMatch(
+      /import[^;]*\bisSafeCheckoutUrl\b[^;]*from\s*["'][^"']*cart-purchase-flow["']/,
+    );
+    expect(start).toMatch(/window\.location\.assign\s*\(\s*result\.url\s*\)/);
+    // The alert for a URL that does not pass is the contracted one; its display is covered by the contract (6.1C)
+    // and by review: no suite has a DOM or a mock path that makes the port answer an unsafe URL.
+    expect(start).toMatch(/copy\.auth\.google\.unavailable\b/);
+  });
+
+  it("auth-return.ts is pure data and functions: it names returned / notice, builds on accountPath and keeps the Continuation", () => {
+    const pure = code("src/features/auth/auth-return.ts");
+    expect(pure, "auth-return.ts must exist and not be empty").not.toBe("");
+    for (const name of [
+      "RETURNED_PARAM",
+      "externalReturnPath",
+      "externalFailurePath",
+      "parseReturned",
+      "parseFailureNotice",
+    ]) {
+      expect(pure, name).toMatch(new RegExp(`export\\s+(const|function)\\s+${name}\\b`));
+    }
+    expect(pure).toMatch(/accountPath/);
+    expect(pure).toMatch(/["']google-failed["']/);
+    expect(pure).toMatch(/["']returned["']/);
+  });
+
+  it("Login and Register pass the Google start their own page, read the return once, remove it from the URL with replaceState and report a failure with the contracted alert", () => {
+    for (const name of ["login-page", "register-page"]) {
+      const page = code(`src/features/auth/${name}.tsx`);
+      expect(page, name).toMatch(/\bGoogleSignIn\b/);
+      expect(page, name).toMatch(/\bparseReturned\b/);
+      expect(page, name).toMatch(/\bparseFailureNotice\b/);
+      expect(page, name).toMatch(/copy\.auth\.google\.failed\b/);
+    }
+    const all = authSources();
+    expect(all).toMatch(/history\.replaceState\s*\(/);
+  });
+
+  it("the result is received through the Cart lifecycle by the auth screens only (completeExternalAuthentication), and never by the session provider, the header or the cart features", () => {
+    expect(authSources()).toMatch(/\.completeExternalAuthentication\s*\(/);
+    expect(authSources()).toMatch(/\bgetBrowserCartLifecycle\b/);
+    for (const path of [
+      "src/auth/session-provider.tsx",
+      "src/auth/auth-gate.tsx",
+      "src/features/shell/site-header.tsx",
+      "src/features/cart/cart-page.tsx",
+      "src/features/cart/use-cart.ts",
+    ]) {
+      expect(code(path), path).not.toMatch(/completeExternalAuthentication/);
+    }
+  });
+
+  it("the Cart lifecycle and its Auth decorator define the external-completion methods", () => {
+    const lifecycle = code("src/features/cart/cart-lifecycle.ts");
+    expect(lifecycle).toMatch(/\bbeginExternalAuthentication\b/);
+    expect(lifecycle).toMatch(/\bcompleteExternalAuthentication\b/);
+    expect(lifecycle).toMatch(/["']pending["']/);
+    expect(lifecycle).toMatch(/["']superseded["']/);
+    const decorator = code("src/features/shell/cart-lifecycle-auth-port.ts");
+    expect(decorator).toMatch(/startGoogleSignIn/);
+    expect(decorator).toMatch(/beginExternalAuthentication/);
+    expect(decorator).toMatch(/already_signed_in/);
+  });
+
+  it("the stand-in route and screen exist, are dev-only (the route is a thin shell, the screen lives under mock/dev-ui) and keep copy in ja.ts", () => {
+    const route = code("src/routes/dev/mock-google.tsx");
+    expect(route, "routes/dev/mock-google.tsx must exist").not.toBe("");
+    expect(route).toMatch(/mock\/dev-ui\/mock-google-screen/);
+    expect(route).toMatch(/export\s+const\s+handle/);
+    expect(route).toMatch(/copy\.mockGoogle\.pageTitle/);
+    expect(route).not.toMatch(/<main[\s>]/);
+    const screen = code("src/mock/dev-ui/mock-google-screen.tsx");
+    expect(screen, "mock/dev-ui/mock-google-screen.tsx must exist").not.toBe("");
+    expect(screen).toMatch(/allowMockGoogleSignIn/);
+    expect(screen).toMatch(/window\.location\.assign\s*\(/);
+    expect(screen).toMatch(/isSafeRelativePath/);
+    expect(screen).toMatch(/copy\.mockGoogle\.allowDemo\b/);
+    expect(screen).toMatch(/copy\.mockGoogle\.allowNew\b/);
+    expect(screen).toMatch(/copy\.mockGoogle\.cancel\b/);
+    expect(screen).not.toMatch(/\bconsole\s*\./);
+    expect(screen).not.toMatch(/\b(fetch|XMLHttpRequest|WebSocket)\b/);
+    const japanese = /[぀-ヿ㐀-䶿一-鿿ｦ-ﾟ]/;
+    expect(screen.split("\n").find((line) => japanese.test(line)) ?? null).toBeNull();
+    // Nothing outside the dev area, the mock and the ports may reach the stand-in.
+    for (const file of walk(abs("src/features")).filter((f) => /\.(ts|tsx)$/.test(f))) {
+      expect(readFileSync(file, "utf8"), rel(file)).not.toMatch(
+        /mock-google-screen|allowMockGoogleSignIn/,
+      );
+    }
+  });
+});
+
+// B5 C3 (tests/contracts/s6-auth.md sections 0, 3C, 5B, 6.1D, 6.2C, 6.10, 10A): Magic Link, the second external-completion
+// method. The link is opened outside the page (in another Tab or on another device), so the form never navigates.
+describe("TC-PG-AUTH-003-512 Magic Link is wired as contracted: the send through useAuth() without any navigation, the return read once by the screen shown by the return, the Cart lifecycle shared with Google, and a dev-only stand-in for opening the link (SPEC-050 15.0, FR-CRT-012, DEV-WEB-012, SEC-WEB-013)", () => {
+  const code = (path: string): string => stripComments(read(path));
+  const authSources = (): string =>
+    walk(abs("src/features/auth"))
+      .filter((f) => /\.(ts|tsx)$/.test(f))
+      .map((f) => stripComments(readFileSync(f, "utf8")))
+      .join("\n");
+
+  it("the Magic Link form is a client container that calls only requestMagicLink through useAuth(), builds both paths with auth-return, validates the email first and never navigates", () => {
+    const form = code("src/features/auth/magic-link-form.tsx");
+    expect(form, "magic-link-form.tsx must exist and not be empty").not.toBe("");
+    expect(form).toMatch(/\.requestMagicLink\s*\(/);
+    expect(form).toMatch(/externalReturnPath\s*\(\s*["']magic-link["']/);
+    expect(form).toMatch(/externalFailurePath\s*\(\s*["']magic-link["']/);
+    expect(form).toMatch(/validateResetRequestForm/);
+    expect(form).toMatch(/normalizeEmail/);
+    expect(form).toMatch(/noValidate/);
+    expect(form).toMatch(/aria-busy/);
+    expect(form).toMatch(/ErrorSummary/);
+    expect(form).toMatch(/copy\.auth\.magicLink\.send\b/);
+    expect(form).toMatch(/copy\.auth\.magicLink\.resend\b/);
+    expect(form).toMatch(/copy\.auth\.magicLink\.sent\b/);
+    expect(form).toMatch(/copy\.auth\.magicLink\.unavailable\b/);
+    expect(form).toMatch(/copy\.auth\.magicLink\.signedIn\b/);
+    // F-4: the reason for a send that is disabled because the Session cannot be confirmed (SPEC-050 25).
+    expect(form).toMatch(/copy\.auth\.magicLink\.sessionUnavailable\b/);
+    expect(form).toMatch(/aria-describedby/);
+    expect(form).toMatch(/cart_busy/);
+    expect(form).toMatch(/cart_blocked/);
+    expect(form).toMatch(/already_signed_in/);
+    // The link is opened elsewhere: sending moves nobody (no hand-off, no router, no fetch, no link).
+    expect(form).not.toMatch(/window\.location|location\.(assign|replace|href)/);
+    expect(form).not.toMatch(/router\.(push|replace)\s*\(/);
+    expect(form).not.toMatch(/\b(fetch|XMLHttpRequest|WebSocket)\b/);
+    expect(form).not.toMatch(/<a\b|\bhref\s*=/);
+  });
+
+  it("auth-return.ts names the Magic Link marker words and the Cart lifecycle decorator covers requestMagicLink with the same external-completion start as Google", () => {
+    const pure = code("src/features/auth/auth-return.ts");
+    expect(pure).toMatch(/["']magic-link["']/);
+    expect(pure).toMatch(/["']link-failed["']/);
+    expect(pure).toMatch(/["']google-failed["']/);
+    const decorator = code("src/features/shell/cart-lifecycle-auth-port.ts");
+    expect(decorator).toMatch(/requestMagicLink/);
+    expect(decorator).toMatch(/beginExternalAuthentication/);
+    expect(decorator).toMatch(/already_signed_in/);
+  });
+
+  it("Login and Register show the Magic Link form, read the return and report a failed link with the contracted alert", () => {
+    for (const name of ["login-page", "register-page"]) {
+      const page = code(`src/features/auth/${name}.tsx`);
+      expect(page, name).toMatch(/\bMagicLinkForm\b/);
+      expect(page, name).toMatch(/\bparseReturned\b/);
+      expect(page, name).toMatch(/\bparseFailureNotice\b/);
+    }
+    expect(authSources()).toMatch(/copy\.auth\.magicLink\.failed\b/);
+  });
+
+  it("the result of a Magic Link is received through the Cart lifecycle by the auth screens only, as Google's is (R11: no navigation inside the SPA opens a returned URL)", () => {
+    const callers = walk(abs("src"))
+      .filter((f) => /\.(ts|tsx)$/.test(f))
+      .filter((f) =>
+        /\.completeExternalAuthentication\s*\(/.test(stripComments(readFileSync(f, "utf8"))),
+      )
+      .map(rel);
+    expect(callers.length).toBeGreaterThan(0);
+    for (const caller of callers) expect(caller, caller).toMatch(/^src\/features\/auth\//);
+    // No router call builds a returned URL.
+    for (const file of walk(abs("src/features")).filter((f) => /\.(ts|tsx)$/.test(f))) {
+      expect(stripComments(readFileSync(file, "utf8")), rel(file)).not.toMatch(
+        /(router\.(push|replace)|navigate)\s*\(\s*externalReturnPath/,
+      );
+    }
+  });
+
+  it("the stand-in route and screen exist, are dev-only (a thin route, the screen under mock/dev-ui), keep the address out of the URL and keep copy in ja.ts", () => {
+    const route = code("src/routes/dev/mock-magic-link.tsx");
+    expect(route, "routes/dev/mock-magic-link.tsx must exist").not.toBe("");
+    expect(route).toMatch(/mock\/dev-ui\/mock-magic-link-screen/);
+    expect(route).toMatch(/export\s+const\s+handle/);
+    expect(route).toMatch(/copy\.mockMagicLink\.pageTitle/);
+    expect(route).not.toMatch(/<main[\s>]/);
+    const screen = code("src/mock/dev-ui/mock-magic-link-screen.tsx");
+    expect(screen, "mock/dev-ui/mock-magic-link-screen.tsx must exist").not.toBe("");
+    expect(screen).toMatch(/openMockMagicLink/);
+    expect(screen).toMatch(/window\.location\.assign\s*\(/);
+    expect(screen).toMatch(/isSafeRelativePath/);
+    expect(screen).toMatch(/copy\.mockMagicLink\.openValid\b/);
+    expect(screen).toMatch(/copy\.mockMagicLink\.openExpired\b/);
+    expect(screen).toMatch(/copy\.mockMagicLink\.emailLabel\b/);
+    expect(screen).toMatch(/type=["']email["']/);
+    // The address is typed into a field and goes to the mock backend call only: never into a URL or a form submission.
+    expect(screen).not.toMatch(/searchParams\.set|history\.(push|replace)State/);
+    expect(screen).not.toMatch(/<form\b/);
+    expect(screen).not.toMatch(/\bconsole\s*\./);
+    expect(screen).not.toMatch(/\b(fetch|XMLHttpRequest|WebSocket)\b/);
+    const japanese = /[぀-ヿ㐀-䶿一-鿿ｦ-ﾟ]/;
+    expect(screen.split("\n").find((line) => japanese.test(line)) ?? null).toBeNull();
+    // Nothing outside the dev area, the mock and the ports may reach the stand-in.
+    for (const file of walk(abs("src/features")).filter((f) => /\.(ts|tsx)$/.test(f))) {
+      expect(readFileSync(file, "utf8"), rel(file)).not.toMatch(
+        /mock-magic-link-screen|openMockMagicLink|\/dev\/mock-magic-link/,
+      );
     }
   });
 });

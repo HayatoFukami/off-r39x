@@ -3,6 +3,7 @@ import type { AuthPort } from "../../apps/web/src/auth/port.ts";
 import { CART_STORAGE_KEY } from "../../apps/web/src/features/cart/cart-count.ts";
 import {
   CART_LIFECYCLE_STORAGE_KEY,
+  type CartLifecycle,
   createCartLifecycle,
 } from "../../apps/web/src/features/cart/cart-lifecycle.ts";
 import { type CartStorage, createCartStore } from "../../apps/web/src/features/cart/cart-store.ts";
@@ -22,6 +23,12 @@ export const CART = JSON.stringify({
 export const metadata = (provenance: "guest" | "authenticated") =>
   JSON.stringify({ version: 1, provenance });
 export const input = { email: "new@example.com", password: "test-only" };
+
+/** The metadata value of a Guest Cart with an external-completion record (FR-CRT-012 external completion rule). */
+export const metadataWithExternal = (
+  provenance: "guest" | "authenticated",
+  external: "pending" | "superseded",
+) => JSON.stringify({ version: 1, provenance, external });
 
 export function setupCartLifecycle(
   marker: string | null = metadata("guest"),
@@ -61,7 +68,14 @@ export function setupCartLifecycle(
     },
     coordinator,
   );
-  const raw: AuthPort = {
+  /**
+   * A new document of the same Browser (FR-CRT-012 external completion, step 6 and 9): a new lifecycle on the same
+   * storage, Cart store and coordinator. Its creation time is when the "document" reads its metadata. A document
+   * that is "the screen shown by the return" calls completeExternalAuthentication() on this instance.
+   */
+  const newDocument = (): CartLifecycle =>
+    createCartLifecycle(storage, store, undefined, coordinator);
+  const raw = {
     getSession: vi.fn(async () => ({ kind: "ok", session: { kind: "guest" } }) as const),
     onSessionChange: vi.fn(() => () => undefined),
     signIn: vi.fn(async () => ({ kind: "signed_in", emailVerified: true }) as const),
@@ -70,12 +84,29 @@ export function setupCartLifecycle(
     verifyEmail: vi.fn(async () => ({ kind: "verified" }) as const),
     requestPasswordReset: vi.fn(async () => ({ kind: "accepted" }) as const),
     completePasswordReset: vi.fn(async () => ({ kind: "updated" }) as const),
-  };
+    requestEmailOtp: vi.fn(async () => ({ kind: "sent" }) as const),
+    signInWithEmailOtp: vi.fn(async () => ({ kind: "signed_in", emailVerified: true }) as const),
+    startGoogleSignIn: vi.fn(
+      async (
+        _input: Parameters<AuthPort["startGoogleSignIn"]>[0],
+      ): ReturnType<AuthPort["startGoogleSignIn"]> => ({
+        kind: "redirect",
+        url: "/dev/mock-google?success=%2Faccount%2Flogin&failure=%2Faccount%2Flogin",
+      }),
+    ),
+    requestMagicLink: vi.fn(
+      async (
+        _input: Parameters<AuthPort["requestMagicLink"]>[0],
+      ): ReturnType<AuthPort["requestMagicLink"]> => ({ kind: "sent" }),
+    ),
+  } as AuthPort;
   return {
     data,
     faults,
+    storage,
     store,
     lifecycle,
+    newDocument,
     coordinator,
     raw,
     port: createCartLifecycleAuthPort(raw, lifecycle, coordinator),

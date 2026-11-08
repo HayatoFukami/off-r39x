@@ -124,7 +124,7 @@ describe("TC-STACK-008-001 no Next.js remnants and no server runtime remain in a
   });
 });
 
-// The 31 URL patterns of the application (28 general + 3 under /dev), as React Router paths.
+// The 33 URL patterns of the application (28 general + 5 under /dev), as React Router paths.
 const GENERAL_PATHS = [
   "/",
   "/announcements",
@@ -157,7 +157,13 @@ const MYPAGE_PATHS = [
   "/mypage/goods",
   "/mypage/goods/:goodsItemRef",
 ] as const;
-const DEV_PATHS = ["/dev/scenarios", "/dev/mock-checkout/:orderRef", "/dev/error-probe"] as const;
+const DEV_PATHS = [
+  "/dev/scenarios",
+  "/dev/mock-checkout/:orderRef",
+  "/dev/mock-google", // B5 C2: the stand-in for the Google sign-in screen
+  "/dev/mock-magic-link", // B5 C3: the stand-in for opening the Magic Link
+  "/dev/error-probe",
+] as const;
 const ALL_PATHS = [...GENERAL_PATHS, ...PURCHASE_PATHS, ...MYPAGE_PATHS, ...DEV_PATHS] as const;
 
 const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
@@ -186,8 +192,8 @@ function childrenOf(source: string, element: string): string {
 describe("TC-STACK-008-002 route-table.tsx declares every application URL once, with the specified nesting (SPEC-050 7, DEV-WEB-001)", () => {
   const table = read("src/routes/route-table.tsx");
 
-  it("has 31 distinct absolute paths of the application", () => {
-    expect(new Set(ALL_PATHS).size).toBe(31);
+  it("has 33 distinct absolute paths of the application", () => {
+    expect(new Set(ALL_PATHS).size).toBe(33);
     expect(GENERAL_PATHS.length + PURCHASE_PATHS.length + MYPAGE_PATHS.length).toBe(28);
   });
 
@@ -201,7 +207,7 @@ describe("TC-STACK-008-002 route-table.tsx declares every application URL once, 
 
   it("declares no other path: every path literal is absolute or the catch-all", () => {
     const literals = [...table.matchAll(/\bpath\s*:\s*["']([^"']*)["']/g)].map((m) => m[1] ?? "");
-    expect(literals.length).toBe(32);
+    expect(literals.length).toBe(34);
     for (const literal of literals) {
       expect(literal === "*" || (ALL_PATHS as readonly string[]).includes(literal), literal).toBe(
         true,
@@ -209,7 +215,7 @@ describe("TC-STACK-008-002 route-table.tsx declares every application URL once, 
     }
   });
 
-  it("matches case-sensitively: every route with a path except the catch-all has caseSensitive: true (31 times, never false)", () => {
+  it("matches case-sensitively: every route with a path except the catch-all has caseSensitive: true (33 times, never false)", () => {
     // The object literal around a `path: "/…"` property: from the nearest unmatched `{` before it to its closing `}`.
     const literalAround = (index: number): string => {
       let depth = 0;
@@ -237,7 +243,7 @@ describe("TC-STACK-008-002 route-table.tsx declares every application URL once, 
     const catchAll = table.search(/\bpath\s*:\s*["']\*["']/);
     expect(catchAll).toBeGreaterThan(-1);
     expect(literalAround(catchAll)).not.toMatch(/\bcaseSensitive\b/);
-    expect((table.match(/\bcaseSensitive\s*:\s*true\b/g) ?? []).length).toBe(31);
+    expect((table.match(/\bcaseSensitive\s*:\s*true\b/g) ?? []).length).toBe(33);
     expect(table).not.toMatch(/\bcaseSensitive\s*:\s*false\b/);
   });
 

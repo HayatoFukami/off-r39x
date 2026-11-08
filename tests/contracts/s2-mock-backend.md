@@ -223,7 +223,7 @@ export function eligibilityTargetKey(target: EligibilityTarget): string;   // Ca
 
 ## 3. AuthPort `apps/web/src/auth/port.ts`
 
-設計書 Design §3 の `Session` と `AuthPort` をそのまま（`getSession`, `onSessionChange`, `signUp`, `verifyEmail`, `signIn`, `signOut`, `requestPasswordReset`, `completePasswordReset`）。
+設計書 Design §3 の `Session` と `AuthPort` をそのまま（`getSession`, `onSessionChange`, `signUp`, `verifyEmail`, `signIn`, `signOut`, `requestPasswordReset`, `completePasswordReset`）。【B5 C1】Email OTP のために `requestEmailOtp` と `signInWithEmailOtp` を加える（B5 C1 の時点で合計 10 method。型と Cart lifecycle の扱いは `s6-auth.md` §3A、mock の意味論は §14。Neon Auth の transport で、業務 Operation ID は無い。SPEC-110 §23.1）。【B5 C2】Google のために `startGoogleSignIn` を加える（合計 **11 method**。型と decorator の扱いは `s6-auth.md` §3B、mock の意味論は §14.2。同じく Neon Auth の transport で、業務 Operation ID も API ID も無い。【B5 C3】Magic Link のために `requestMagicLink` を加える（合計 **12 method**。型と decorator の扱いは `s6-auth.md` §3C、mock の意味論は §14.3。同じく Neon Auth の transport で、業務 Operation ID も API ID も無い）。既存の method の名前・シグネチャは変えない。
 
 `apps/web/src/auth/password-policy.ts`（mock ではなく本番の UI 規則。SEC-AUTH-016/017）:
 
@@ -621,6 +621,50 @@ export function createMockAuth(deps: MockAuthDeps): AuthPort;
 - `requestPasswordReset({ email })`: `auth.reset === "unavailable"` → `unavailable`、`ok` → **email が既知でも未知でも**同一の `{ kind: "accepted" }`（`toEqual` で等しい）。user を作らず、DB と session を変えない。同じ呼び出し回数の `sleep` 以外に挙動の差を作らない（SEC-API-027）。
 - `completePasswordReset({ context, newPassword })`: `validatePassword(newPassword)` が不合格なら Promise を **reject**（`RangeError`、メッセージに `password policy` を含む）。UI が先に検査する。次に `auth.reset === "unavailable"` → `unavailable`。`context` が `null` / 空文字、または `auth.resetContext === "invalid"` → `{ kind: "invalid_context" }`。それ以外は `{ kind: "updated" }`。password を保存しない。session を変えない。
 
+### 14.1 Email OTP（B5 C1。`requestEmailOtp` / `signInWithEmailOtp`。TC-PG-AUTH-003-102 / -103、TC-SEC-AUTH-018-101）
+
+新しい scenario 値・storage key・State は作らない。成否は既存の `auth.login`（`unavailable` / `credential_failure`）と `auth.verify`（`invalid_or_expired`）を再利用する（Q2。scenario 値は password 向けの名前だが、mock の内部の切替で意味は広げない）。code は**保存・記録・返却しない**（SEC-AUTH-018）。mock は code を比較しない（空でなければ受理する）。メールを実際には送らない。
+
+- `requestEmailOtp({ email })`: email の形式（`^[^@\s]+@[^@\s]+$`）が不正なら `RangeError` で reject（メッセージに email を含めない。UI が先に検査する）。`auth.login === "unavailable"`、または scenario / DB / session が corrupted → `{ kind: "unavailable" }`（何も書かない）。それ以外は、登録済み・未確認・未登録のどの email でも**同一の** `{ kind: "sent" }`（`toEqual` で等しい。SEC-API-027）。DB・保存済み session・`pendingVerificationEmail`・storage のどの write も起こさず、`onSessionChange` の cb を呼ばず、user を作らない。`auth.login === "credential_failure"` と `auth.verify === "invalid_or_expired"` はこの要求に影響しない。
+- `signInWithEmailOtp({ email, code })`: 判定の順は、`auth.login === "unavailable"` / corrupted → `unavailable`、`code` が空 → `code_invalid`、`auth.login === "credential_failure"` → `code_invalid`、`auth.verify === "invalid_or_expired"` → `code_expired`（両方が成り立つときは `code_invalid`）。失敗では DB・session・storage への write と cb 呼び出しは 0 回。成功のとき:
+  - 既存の確認済み user → session を `authenticated(emailVerified:true)` にし `{ kind: "signed_in", emailVerified: true }`。cb を 1 回呼ぶ。DB は不変。
+  - 既存の未確認 user → コードは mailbox の証明なので（Q7）user を `emailVerified:true` にし、session も `emailVerified:true`。`{ kind: "signed_in", emailVerified: true }`。
+  - 未登録の email → 初回登録: `displayName: null`（`signUp` と同じ。email から推測しない。TC-PG-MYP-002-103）、`emailVerified:true` の user を 1 人作り、session を `authenticated(emailVerified:true)` にして `{ kind: "signed_in", emailVerified: true }`。
+
+### 14.2 Google（B5 C2。`startGoogleSignIn` と stand-in 用の `allowMockGoogleSignIn`。TC-PG-AUTH-003-104）
+
+新しい scenario 値・storage key・State は作らない。開始の成否は既存の `auth.login = "unavailable"` を再利用する（`credential_failure` と `auth.verify` はこの method を決めない）。email・token・code・Google の識別子を URL にも storage にも返却値にも出さない（SEC-AUTH-018）。
+
+- `startGoogleSignIn({ successPath, failurePath }): Promise<StartGoogleResult>`（`mock-auth.ts` の `createMockAuth` が返す `AuthPort` の method。mock 単体の結果は `redirect` と `unavailable` だけで、`already_signed_in` / `cart_busy` / `cart_blocked` は Cart lifecycle の decorator が返す）:
+  1. 2 つの path を検査する。どちらも `isSafeRelativePath`（`auth/continuation.ts`）を通り、pathname が `/account/login` または `/account/register` でなければならない。満たさなければ Promise を **`RangeError` で reject**（programmer error。メッセージに path を含めない。UI は `auth-return.ts` の path を渡す）。拒否する例: 絶対 URL、`//…`、backslash、`javascript:`、空、dot segment（`/account/../admin`）、制御文字、`%2e%2e`、`/account/email-verification`、`/account/password-reset`、`/mypage`、`/dev/scenarios`、`/admin`、`/`。
+  2. scenario が読めない（corrupted）または `auth.login === "unavailable"` → `{ kind: "unavailable" }`。
+  3. それ以外は `{ kind: "redirect", url }`。`url` = `/dev/mock-google?success=${encodeURIComponent(successPath)}&failure=${encodeURIComponent(failurePath)}`（この順、query はこの 2 つだけ。同一 origin の相対 path で `isSafeRelativePath` を通る）。
+  - DB・保存済み session・`pendingVerificationEmail`・storage のどの write も起こさず、`onSessionChange` の cb を呼ばない（Guest でも Authenticated でも同じ。開始は何も成立させない）。`getSession` の結果も変わらない。
+- `allowMockGoogleSignIn(deps: MockAuthDeps, email: string): Promise<{ kind: "signed_in" } | { kind: "unavailable" }>`（`mock-auth.ts` が export する。**stand-in 画面（`mock/dev-ui/mock-google-screen.tsx`）だけ**が呼ぶ。`AuthPort` の method ではなく、`features/**` から使わない。`scripts/check-import-boundaries.mts` が許す mock の import に限る）:
+  - email の形式（`^[^@\s]+@[^@\s]+$`）が不正（空、空白だけ、`@` なし、空白を含む、local part なし）→ **`RangeError` で reject**（何も書かない）。
+  - DB または保存済み session が corrupted → `{ kind: "unavailable" }`（何も書かない）。
+  - 既存の user → session を `authenticated`（その user の `emailVerified`）にして `{ kind: "signed_in" }`。DB は不変。別の user の session が既にあれば置き換える。
+  - 未登録の email → `displayName: null`、`emailVerified: true` の user を 1 人作り（email から名前を推測しない。`signUp` / OTP の初回登録と同じ。TC-PG-MYP-002-103）、session を `authenticated(emailVerified:true)` にして `{ kind: "signed_in" }`。同じ email で 2 回呼んでも user は増えない。
+  - password・code・token を扱わない。`console.*` を使わない。
+
+### 14.3 Magic Link（B5 C3。`requestMagicLink` と stand-in 用の `openMockMagicLink`。TC-PG-AUTH-003-105）
+
+新しい scenario 値・storage key・State は作らない。送信の成否は既存の `auth.login = "unavailable"` を再利用する（`credential_failure` と `auth.verify` はこの method を決めない）。email・リンク・token を URL にも storage にも返却値にも出さない（SEC-AUTH-018、SEC-API-027）。mock は**実際にはメールを送らず、リンクを保持しない**。
+
+- `requestMagicLink({ email, successPath, failurePath }): Promise<RequestMagicLinkResult>`（`createMockAuth` が返す `AuthPort` の method。mock 単体の結果は `sent` と `unavailable` だけで、`already_signed_in` / `cart_busy` / `cart_blocked` は Cart lifecycle の decorator が返す）:
+  1. 検査。`email` の形式（`^[^@\s]+@[^@\s]+$`。呼び出し側が `normalizeEmail` 済みで渡す）が不正（空、空白だけ、`@` なし、空白を含む、local part なし）なら Promise を **`RangeError` で reject**（programmer error。メッセージに email を含めない）。2 つの path は §14.2 と同じ規則（`isSafeRelativePath` を通り、pathname が `/account/login` または `/account/register`）で、満たさなければ `RangeError` で reject（メッセージに path を含めない）。何も書かない。
+  2. scenario が読めない（corrupted）または `auth.login === "unavailable"` → `{ kind: "unavailable" }`。
+  3. それ以外は `{ kind: "sent" }`。**登録済み・未確認・未登録のどの email でも同じ値**（SEC-API-027）。
+  - DB・保存済み session・`pendingVerificationEmail`・storage のどの write も起こさず、`onSessionChange` の cb を呼ばない（Guest でも Authenticated でも同じ。送信は何も成立させない）。`getSession` の結果も変わらない。返却値に email・path・リンクを含めない。
+- `openMockMagicLink(deps: MockAuthDeps, email: string): Promise<{ kind: "signed_in" } | { kind: "unavailable" }>`（`mock-auth.ts` が export する。**stand-in 画面（`mock/dev-ui/mock-magic-link-screen.tsx`）だけ**が呼ぶ。`AuthPort` の method ではなく、`features/**` から使わない。`scripts/check-import-boundaries.mts` が許す mock の import に限る）。「リンクの持ち主 `email` が有効なリンクを開いた」ことを表す:
+  - email の形式が不正 → **`RangeError` で reject**（何も書かない）。
+  - DB または保存済み session が corrupted → `{ kind: "unavailable" }`（何も書かない）。
+  - 既存の確認済み user → session を `authenticated(emailVerified:true)` にして `{ kind: "signed_in" }`。DB は不変。別の user の session が既にあれば置き換える。
+  - 既存の未確認 user → リンクは mailbox の証明なので（Q7 と同じ）user を `emailVerified:true` にし、session も `emailVerified:true`。user は増えない。
+  - 未登録の email → `displayName: null`、`emailVerified: true` の user を 1 人作り（email から名前を推測しない。TC-PG-MYP-002-103）、session を `authenticated(emailVerified:true)` にして `{ kind: "signed_in" }`。同じ email で 2 回呼んでも user は増えない。
+  - 書くのは DB と session の key だけ（scenario・Cart・metadata・その他の key を書かない）。password・code・token を扱わない。`console.*` を使わない。
+- 期限切れ・無効なリンクを開く操作に対応する mock の関数は無い（stand-in の `openExpired` は何も呼ばず `failure` へ遷移するだけ。`s6-auth.md` §6.10）。
+
 ## 15. 受入との対応（テストファイル）
 
 | ファイル | 内容 |
@@ -635,8 +679,8 @@ export function createMockAuth(deps: MockAuthDeps): AuthPort;
 | `tests/unit/web/mock/karaoke-purchase.test.ts` | §11.2、§11.5（KARAOKE の対象。TC-PG-KRK-003-107） |
 | `tests/unit/web/mock/checkout-payment.test.ts` | §11.3（key のみの replay を含む）, §11.4（在庫の確保と戻りは保存済み DB の `remaining`、本人別上限の消費は §11.5 の `getPurchaseEligibility` で確かめる。公開 read は本人の消費を反映しない） |
 | `tests/unit/web/mock/self-api.test.ts` | §10, §12 |
-| `tests/unit/web/mock/mock-auth.test.ts` | §14 |
-| `tests/unit/web/ports/ports.test.ts` | §1, §2, §3 の型、`zod` 依存、Hold TTL の不在 |
+| `tests/unit/web/mock/mock-auth.test.ts` | §14、§14.1（B5 C1。Email OTP）、§14.2（B5 C2。Google。TC-PG-AUTH-003-104）、§14.3（B5 C3。Magic Link。TC-PG-AUTH-003-105） |
+| `tests/unit/web/ports/ports.test.ts` | §1, §2, §3 の型（B5 C3 で AuthPort は 12 method）、`zod` 依存、Hold TTL の不在 |
 | `tests/unit/web/ports/eligibility-target-key.test.ts` | §2（`eligibilityTargetKey`。TC-PG-KRK-003-617） |
 
 ## 16. 仕様の曖昧さについてテスト担当が決めたこと

@@ -4,6 +4,7 @@ import {
   fieldErrorMessage,
   normalizeEmail,
   validateLoginForm,
+  validateOtpCodeForm,
   validateRegisterForm,
   validateResetCompleteForm,
   validateResetRequestForm,
@@ -223,5 +224,47 @@ describe("TC-PG-AUTH-001-204 validators do not mutate or echo their input (SEC-A
       passwordConfirm: `${secret}x`,
     });
     expect(JSON.stringify(result)).not.toContain(secret);
+  });
+});
+
+// B5 C1 (tests/contracts/s6-auth.md section 4). The Email OTP code is not a password: it may be trimmed, it
+// has no length or digit rule (the spec defines none), and it never appears in an error.
+describe("TC-PG-AUTH-003-202 the one-time code is validated for presence only, after trimming (SPEC-050 15.0 / 25, SEC-AUTH-018)", () => {
+  it.each(["", " ", "   ", "\t", "　", " \n "])(
+    "the blank code %j is required, on the code field only",
+    (code) => {
+      expect(validateOtpCodeForm({ code })).toEqual({
+        ok: false,
+        errors: [{ field: "code", code: "required" }],
+      });
+    },
+  );
+
+  it.each(["123456", " 123456 ", "1", "a", "x".repeat(200), "12 34 56", "ＡＢＣ"])(
+    "the non-blank code %j is accepted without a length, digit or format rule",
+    (code) => {
+      expect(validateOtpCodeForm({ code })).toEqual({ ok: true });
+    },
+  );
+
+  it("never echoes the code in a result", () => {
+    const secret = "Sentinel-Otp-Code-7531";
+    expect(JSON.stringify(validateOtpCodeForm({ code: secret }))).not.toContain(secret);
+    expect(JSON.stringify(validateOtpCodeForm({ code: ` ${secret} ` }))).not.toContain(secret);
+  });
+
+  it("maps the required error of the code field to its own wording and rejects impossible combinations", () => {
+    expect(fieldErrorMessage({ field: "code", code: "required" })).toBe(
+      copy.auth.field.otpCode.required,
+    );
+    expect(copy.auth.field.otpCode.required).toBe("確認コードを入力してください");
+    for (const code of ["invalid_format", "too_short", "too_long", "mismatch"] as const) {
+      expect(() => fieldErrorMessage({ field: "code", code }), code).toThrow(RangeError);
+    }
+    // Existing mappings are unchanged and distinct from the new one.
+    expect(fieldErrorMessage({ field: "email", code: "required" })).toBe(
+      copy.auth.field.email.required,
+    );
+    expect(copy.auth.field.otpCode.required).not.toBe(copy.auth.field.email.required);
   });
 });
