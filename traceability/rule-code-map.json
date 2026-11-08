@@ -75,7 +75,11 @@
         "apps/web/src/config/site.ts",
         "apps/web/src/mock/dev-ui/mock-checkout-screen.tsx",
         "apps/web/src/routes/dev/mock-checkout.tsx",
-        "apps/web/src/routes/dev"
+        "apps/web/src/routes/dev",
+        "apps/web/src/mock/dev-ui/mock-google-screen.tsx",
+        "apps/web/src/mock/dev-ui/mock-magic-link-screen.tsx",
+        "apps/web/src/routes/dev/mock-google.tsx",
+        "apps/web/src/routes/dev/mock-magic-link.tsx"
       ],
       "test_case_ids": [
         "TC-DEV-WEB-012-001",
@@ -93,7 +97,9 @@
         "TC-DEV-WEB-001-602",
         "TC-PAY-BRW-001-601",
         "TC-PAY-BRW-001-611",
-        "TC-DEV-WEB-012-611"
+        "TC-DEV-WEB-012-611",
+        "TC-PG-AUTH-003-308",
+        "TC-PG-AUTH-003-309"
       ],
       "notes": "implementation mapping only: mock-allowlist"
     },
@@ -115,9 +121,24 @@
         "TC-DEV-WEB-011-203",
         "TC-DEV-WEB-012-101",
         "TC-DEV-WEB-011-202",
-        "TC-DEV-WEB-011-204"
+        "TC-DEV-WEB-011-204",
+        "TC-DEV-WEB-011-003",
+        "TC-DEV-WEB-011-205",
+        "TC-DEV-WEB-011-206",
+        "TC-DEV-WEB-011-207"
       ],
       "notes": "implementation mapping only"
+    },
+    {
+      "rule_id": "INF-ENV-001",
+      "code_paths": ["apps/web/src/config/ui-mock.ts", "scripts/mock-web.mts"],
+      "test_case_ids": [
+        "TC-DEV-WEB-011-003",
+        "TC-DEV-WEB-011-205",
+        "TC-DEV-WEB-011-206",
+        "TC-DEV-WEB-011-207"
+      ],
+      "notes": "implementation mapping only: exact canonical environment names for the UI mock guard"
     },
     {
       "rule_id": "DEV-TS-010",
@@ -165,16 +186,23 @@
       ],
       "test_case_ids": [
         "TC-SEC-WEB-009-001",
+        "TC-SEC-WEB-009-002",
         "TC-SEC-WEB-009-602",
         "TC-SEC-WEB-009-701",
         "TC-SEC-WEB-009-711",
         "TC-PG-XFN-003-704",
         "TC-SEC-WEB-009-721",
         "TC-STACK-008-103",
+        "TC-STACK-008-108",
+        "TC-STACK-008-109",
         "TC-STACK-008-201",
-        "TC-STACK-008-304"
+        "TC-STACK-008-208",
+        "TC-STACK-008-209",
+        "TC-STACK-008-210",
+        "TC-STACK-008-304",
+        "TC-STACK-008-309"
       ],
-      "notes": "implementation mapping only: no-store headers; verified by TC-SEC-WEB-009-001 (E2E header check); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
+      "notes": "implementation mapping only: Cache-Control no-store / Pragma on every static response except the canonical paths of content-hashed assets, and Referrer-Policy no-referrer on every static response including content-hashed assets (SEC-WEB-009, SPEC-140 22); verified locally by serve-web-dist and the UI mock E2E; not a Pages deployment check; S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
     {
       "rule_id": "SEC-WEB-004",
@@ -436,7 +464,11 @@
         "apps/web/src/features/karaoke/use-karaoke-purchase.ts",
         "apps/web/src/features/karaoke/karaoke-slot-page.tsx",
         "apps/web/src/features/public/route-params.ts",
-        "apps/web/src/presentation/copy/ja.ts"
+        "apps/web/src/presentation/copy/ja.ts",
+        "apps/web/src/api-client/eligibility-target-key.ts",
+        "apps/web/src/mock/backend/purchase-conditions.ts",
+        "apps/web/src/features/purchase/eligibility-model.ts",
+        "apps/web/src/features/purchase/read-eligibility.ts"
       ],
       "test_case_ids": [
         "TC-PG-KRK-003-001",
@@ -474,7 +506,12 @@
         "TC-PG-KRK-003-662",
         "TC-PG-KRK-003-663",
         "TC-PG-KRK-003-664",
-        "TC-PG-KRK-003-615"
+        "TC-PG-KRK-003-615",
+        "TC-PG-KRK-003-107",
+        "TC-PG-KRK-003-617",
+        "TC-PG-KRK-003-616",
+        "TC-PG-KRK-003-646",
+        "TC-PG-KRK-003-647"
       ],
       "notes": "implementation mapping only: hold presentation; S2 mock backend"
     },
@@ -550,7 +587,9 @@
         "apps/web/src/mock/backend/purchase-conditions.ts",
         "apps/web/src/features/cart/can-proceed.ts",
         "apps/web/src/features/cart/cart-view-model.ts",
-        "apps/web/src/features/purchase/cart-purchase-flow.ts"
+        "apps/web/src/features/purchase/cart-purchase-flow.ts",
+        "apps/web/src/features/purchase/eligibility-model.ts",
+        "apps/web/src/features/purchase/read-eligibility.ts"
       ],
       "test_case_ids": [
         "TC-PG-CRT-001-001",
@@ -575,7 +614,12 @@
         "TC-PG-CRT-001-623",
         "TC-PG-CRT-001-513",
         "TC-BR-ORD-014-112",
-        "TC-PG-CRT-001-616"
+        "TC-PG-CRT-001-616",
+        "TC-PG-CRT-001-004",
+        "TC-PG-CRT-001-105",
+        "TC-PG-CRT-001-433",
+        "TC-PG-CRT-001-446",
+        "TC-PG-CRT-001-514"
       ],
       "notes": "implementation mapping only: distinct purchase unavailable reasons; S2 mock backend"
     },
@@ -602,7 +646,9 @@
         "apps/web/src/presentation/components/ui/input.tsx",
         "apps/web/src/features/purchase/cart-purchase-flow.ts",
         "apps/web/src/features/purchase/use-cart-purchase.ts",
-        "apps/web/src/features/purchase/cart-purchase-feedback.tsx"
+        "apps/web/src/features/purchase/cart-purchase-feedback.tsx",
+        "apps/web/src/features/purchase/eligibility-model.ts",
+        "apps/web/src/features/purchase/read-eligibility.ts"
       ],
       "test_case_ids": [
         "TC-PG-CRT-001-001",
@@ -673,7 +719,14 @@
         "TC-PG-CRT-001-407",
         "TC-PG-CRT-001-427",
         "TC-PG-CRT-001-615",
-        "TC-PG-CRT-001-616"
+        "TC-PG-CRT-001-616",
+        "TC-PG-CRT-001-004",
+        "TC-PG-CRT-001-105",
+        "TC-PG-CRT-001-433",
+        "TC-PG-CRT-001-446",
+        "TC-PG-CRT-001-514",
+        "TC-PG-CRT-001-625",
+        "TC-PG-CRT-001-626"
       ],
       "notes": "implementation mapping only: availability and money formatting; S2 mock backend"
     },
@@ -882,7 +935,9 @@
         "TC-AR-AZ-011-101",
         "TC-AR-AZ-011-102",
         "TC-PG-XFN-001-106",
-        "TC-PG-XFN-003-702"
+        "TC-PG-XFN-003-702",
+        "TC-PG-CRT-001-105",
+        "TC-PG-KRK-003-107"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
@@ -1050,7 +1105,9 @@
         "apps/web/src/routes/dev/scenarios.tsx",
         "apps/web/src/routes/dev",
         "apps/web/src/config/browser-storage.ts",
-        "apps/web/public/mock/sponsors"
+        "apps/web/public/mock/sponsors",
+        "apps/web/src/mock/dev-ui/mock-google-screen.tsx",
+        "apps/web/src/mock/dev-ui/mock-magic-link-screen.tsx"
       ],
       "test_case_ids": [
         "TC-SEC-AUTH-018-101",
@@ -1072,7 +1129,10 @@
         "TC-DEV-WEB-013-202",
         "TC-DEV-WEB-013-203",
         "TC-DEV-WEB-013-204",
-        "TC-PG-PUB-001-231"
+        "TC-PG-PUB-001-231",
+        "TC-PG-AUTH-003-104",
+        "TC-PG-AUTH-003-308",
+        "TC-PG-AUTH-003-105"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
@@ -1478,7 +1538,9 @@
         "apps/web/src/features/entry/entry-page.tsx",
         "apps/web/src/features/entry/entry-model.ts",
         "apps/web/src/features/cart/add-to-cart-form.tsx",
-        "apps/web/src/routes/public/entry.tsx"
+        "apps/web/src/routes/public/entry.tsx",
+        "apps/web/src/features/purchase/eligibility-model.ts",
+        "apps/web/src/features/purchase/read-eligibility.ts"
       ],
       "test_case_ids": [
         "TC-PG-TKT-001-101",
@@ -1502,7 +1564,9 @@
         "TC-PG-CRT-001-534",
         "TC-SEC-WEB-009-602",
         "TC-PG-TKT-001-509",
-        "TC-PG-TKT-001-510"
+        "TC-PG-TKT-001-510",
+        "TC-PG-TKT-001-413",
+        "TC-PG-TKT-001-511"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
@@ -1554,7 +1618,9 @@
         "apps/web/src/features/goods/goods-detail-model.ts",
         "apps/web/src/features/public/route-params.ts",
         "apps/web/src/features/cart/add-to-cart-form.tsx",
-        "apps/web/src/routes/public/goods-detail.tsx"
+        "apps/web/src/routes/public/goods-detail.tsx",
+        "apps/web/src/features/purchase/eligibility-model.ts",
+        "apps/web/src/features/purchase/read-eligibility.ts"
       ],
       "test_case_ids": [
         "TC-PG-GDS-001-101",
@@ -1573,7 +1639,11 @@
         "TC-PG-CRT-001-531",
         "TC-PG-CRT-001-532",
         "TC-PG-CRT-001-533",
-        "TC-PG-CRT-001-534"
+        "TC-PG-CRT-001-534",
+        "TC-PG-GDS-002-413",
+        "TC-PG-GDS-002-507",
+        "TC-PG-GDS-002-508",
+        "TC-PG-CRT-001-625"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
@@ -1862,7 +1932,15 @@
         "apps/web/src/features/auth/service-failure.tsx",
         "apps/web/src/features/auth/continuation-notice.tsx",
         "apps/web/src/features/auth/continuation-view.ts",
-        "apps/web/src/auth/use-auth.ts"
+        "apps/web/src/auth/use-auth.ts",
+        "apps/web/src/features/auth/auth-methods.ts",
+        "apps/web/src/features/auth/method-selector.tsx",
+        "apps/web/src/features/auth/email-otp-form.tsx",
+        "apps/web/src/presentation/copy/ja.ts",
+        "apps/web/src/features/auth/auth-return.ts",
+        "apps/web/src/features/auth/google-sign-in.tsx",
+        "apps/web/src/features/auth/magic-link-form.tsx",
+        "apps/web/src/features/auth/use-external-return.ts"
       ],
       "test_case_ids": [
         "TC-PG-AUTH-001-101",
@@ -1871,7 +1949,17 @@
         "TC-PG-AUTH-001-301",
         "TC-PG-AUTH-001-302",
         "TC-PG-AUTH-001-303",
-        "TC-PG-AUTH-001-304"
+        "TC-PG-AUTH-001-304",
+        "TC-PG-AUTH-003-212",
+        "TC-PG-AUTH-003-512",
+        "TC-PG-AUTH-001-305",
+        "TC-PG-AUTH-003-104",
+        "TC-PG-AUTH-003-213",
+        "TC-PG-AUTH-003-308",
+        "TC-PG-AUTH-003-310",
+        "TC-PG-AUTH-003-313",
+        "TC-PG-AUTH-003-105",
+        "TC-PG-AUTH-003-309"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
@@ -1901,7 +1989,15 @@
         "apps/web/src/presentation/components/form-field.tsx",
         "apps/web/src/presentation/components/error-summary.tsx",
         "apps/web/src/features/auth/use-error-summary-focus.ts",
-        "apps/web/src/features/auth/service-failure.tsx"
+        "apps/web/src/features/auth/service-failure.tsx",
+        "apps/web/src/features/auth/auth-methods.ts",
+        "apps/web/src/features/auth/method-selector.tsx",
+        "apps/web/src/features/auth/email-otp-form.tsx",
+        "apps/web/src/presentation/copy/ja.ts",
+        "apps/web/src/features/auth/auth-return.ts",
+        "apps/web/src/features/auth/google-sign-in.tsx",
+        "apps/web/src/features/auth/magic-link-form.tsx",
+        "apps/web/src/features/auth/use-external-return.ts"
       ],
       "test_case_ids": [
         "TC-AR-SES-009-101",
@@ -1918,7 +2014,23 @@
         "TC-PG-AUTH-003-502",
         "TC-PG-AUTH-003-503",
         "TC-PG-AUTH-003-504",
-        "TC-PG-AUTH-003-511"
+        "TC-PG-AUTH-003-511",
+        "TC-PG-AUTH-003-102",
+        "TC-PG-AUTH-003-103",
+        "TC-PG-AUTH-003-202",
+        "TC-PG-AUTH-003-212",
+        "TC-PG-AUTH-003-403",
+        "TC-PG-AUTH-003-512",
+        "TC-PG-AUTH-003-305",
+        "TC-PG-AUTH-003-306",
+        "TC-PG-AUTH-003-307",
+        "TC-PG-AUTH-003-104",
+        "TC-PG-AUTH-003-213",
+        "TC-PG-AUTH-003-308",
+        "TC-PG-AUTH-003-310",
+        "TC-PG-AUTH-003-313",
+        "TC-PG-AUTH-003-105",
+        "TC-PG-AUTH-003-309"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
@@ -1957,8 +2069,25 @@
     },
     {
       "rule_id": "SEC-API-027",
-      "code_paths": ["apps/web/src/mock/backend/mock-auth.ts"],
-      "test_case_ids": ["TC-SEC-API-027-101", "TC-PG-AUTH-001-101", "TC-PG-AUTH-003-101"],
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-auth.ts",
+        "apps/web/src/auth/port.ts",
+        "apps/web/src/features/auth/email-otp-form.tsx",
+        "apps/web/src/presentation/copy/ja.ts"
+      ],
+      "test_case_ids": [
+        "TC-SEC-API-027-101",
+        "TC-PG-AUTH-001-101",
+        "TC-PG-AUTH-003-101",
+        "TC-PG-AUTH-003-102",
+        "TC-PG-AUTH-003-403",
+        "TC-PG-AUTH-003-306",
+        "TC-PG-AUTH-001-305",
+        "TC-PG-AUTH-003-105",
+        "TC-PG-AUTH-003-309",
+        "TC-SEC-AUTH-018-702",
+        "TC-PG-AUTH-003-310"
+      ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     },
     {
@@ -1999,14 +2128,22 @@
         "apps/web/src/features/auth/context-param.ts",
         "apps/web/src/features/mypage/profile-page.tsx",
         "apps/web/src/features/mypage/profile-model.ts",
-        "apps/web/src/routes/root-layout.tsx"
+        "apps/web/src/routes/root-layout.tsx",
+        "apps/web/src/auth/port.ts",
+        "apps/web/src/features/auth/email-otp-form.tsx",
+        "apps/web/src/features/auth/form-validation.ts"
       ],
       "test_case_ids": [
         "TC-SEC-AUTH-018-101",
         "TC-SEC-AUTH-018-501",
         "TC-SEC-AUTH-018-701",
         "TC-DEV-WEB-001-801",
-        "TC-STACK-008-306"
+        "TC-STACK-008-306",
+        "TC-PG-AUTH-003-202",
+        "TC-PG-AUTH-003-512",
+        "TC-SEC-AUTH-018-702",
+        "TC-PG-AUTH-003-105",
+        "TC-PG-AUTH-003-309"
       ],
       "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
@@ -2303,6 +2440,8 @@
         "TC-STACK-008-105",
         "TC-STACK-008-106",
         "TC-STACK-008-107",
+        "TC-STACK-008-108",
+        "TC-STACK-008-109",
         "TC-STACK-008-301",
         "TC-STACK-008-302",
         "TC-STACK-008-303",
@@ -2497,7 +2636,13 @@
         "apps/web/src/auth/auth-gate.tsx",
         "apps/web/src/features/purchase/use-cart-purchase.ts",
         "apps/web/src/features/karaoke/use-karaoke-purchase.ts",
-        "apps/web/src/features/karaoke/karaoke-slot-page.tsx"
+        "apps/web/src/features/karaoke/karaoke-slot-page.tsx",
+        "apps/web/src/features/auth/email-otp-form.tsx",
+        "apps/web/src/features/auth/login-page.tsx",
+        "apps/web/src/features/auth/register-page.tsx",
+        "apps/web/src/features/auth/google-sign-in.tsx",
+        "apps/web/src/features/auth/magic-link-form.tsx",
+        "apps/web/src/features/auth/use-external-return.ts"
       ],
       "test_case_ids": [
         "TC-PG-CRT-001-424",
@@ -2521,7 +2666,19 @@
         "TC-FR-CRT-012-011",
         "TC-FR-CRT-012-012",
         "TC-FR-CRT-012-013",
-        "TC-FR-CRT-012-014"
+        "TC-FR-CRT-012-014",
+        "TC-FR-CRT-012-015",
+        "TC-PG-CRT-001-543",
+        "TC-FR-CRT-012-016",
+        "TC-PG-AUTH-003-306",
+        "TC-FR-CRT-012-017",
+        "TC-FR-CRT-012-018",
+        "TC-FR-CRT-012-019",
+        "TC-FR-CRT-012-020",
+        "TC-PG-AUTH-003-308",
+        "TC-PG-AUTH-003-310",
+        "TC-PG-AUTH-003-313",
+        "TC-PG-AUTH-003-309"
       ],
       "notes": "Browser Cart isolation across authentication and protected boundaries; real CartStore unit faults and UI mock E2E only, not API/DB/provider coverage."
     },
@@ -2569,7 +2726,8 @@
         "apps/web/src/features/karaoke/karaoke-slot-page.tsx",
         "apps/web/src/features/public/route-params.ts",
         "apps/web/src/routes/self/mypage-layout.tsx",
-        "apps/web/src/config/mypage-routes.ts"
+        "apps/web/src/config/mypage-routes.ts",
+        "apps/web/src/features/auth/auth-return.ts"
       ],
       "test_case_ids": [
         "TC-AR-CONT-001-101",
@@ -2581,7 +2739,9 @@
         "TC-PG-XFN-001-682",
         "TC-PG-KRK-003-621",
         "TC-PG-KRK-003-651",
-        "TC-PG-MYP-001-714"
+        "TC-PG-MYP-001-714",
+        "TC-PG-AUTH-003-213",
+        "TC-PG-AUTH-003-308"
       ],
       "notes": "implementation mapping only: S6 authentication (UI mock, not API/DB/provider coverage); S8 Mypage (UI mock): implementation mapping only; not API / DB / provider coverage"
     },
@@ -2613,13 +2773,24 @@
       "code_paths": [
         "apps/web/src/auth/continuation.ts",
         "apps/web/src/config/purchase-routes.ts",
-        "apps/web/src/features/purchase/cart-purchase-flow.ts"
+        "apps/web/src/features/purchase/cart-purchase-flow.ts",
+        "apps/web/src/features/auth/auth-return.ts",
+        "apps/web/src/features/auth/google-sign-in.tsx",
+        "apps/web/src/mock/dev-ui/mock-google-screen.tsx",
+        "apps/web/src/mock/dev-ui/mock-magic-link-screen.tsx"
       ],
       "test_case_ids": [
         "TC-SEC-WEB-013-101",
         "TC-SEC-WEB-013-102",
         "TC-PG-XFN-001-612",
-        "TC-SEC-WEB-005-602"
+        "TC-SEC-WEB-005-602",
+        "TC-PG-AUTH-003-104",
+        "TC-PG-AUTH-003-213",
+        "TC-PG-AUTH-003-308",
+        "TC-PG-AUTH-003-310",
+        "TC-PG-AUTH-003-105",
+        "TC-PG-AUTH-003-309",
+        "TC-PG-AUTH-003-512"
       ],
       "notes": "implementation mapping only: S6 authentication (UI mock, not API/DB/provider coverage)"
     },
@@ -2737,6 +2908,118 @@
         "TC-PG-PUB-001-232"
       ],
       "notes": "implementation mapping only: Sponsor image origin validation for img-src, no-referrer images and the name fallback for a CSP-blocked image, and https-only images outside the UI mock (a same-origin path only from the mock build flag); the Sponsor image and link URL shape (absolute https, no userinfo, non-standard port, query, fragment, IP literal, localhost or .local host, or control character) is re-checked in the UI as defence in depth because the external link is not covered by the CSP; the image origin allowlist stays with the CSP img-src; not API URL validation (SPEC-140)"
+    },
+    {
+      "rule_id": "SEC-API-029",
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-api.ts",
+        "apps/web/src/features/purchase/eligibility-model.ts",
+        "apps/web/src/features/purchase/read-eligibility.ts",
+        "apps/web/src/features/cart/cart-page.tsx",
+        "apps/web/src/features/cart/cart-view-model.ts",
+        "apps/web/src/features/entry/entry-page.tsx",
+        "apps/web/src/api-client/eligibility-target-key.ts",
+        "apps/web/src/features/goods/goods-detail-page.tsx",
+        "apps/web/src/features/karaoke/karaoke-slot-page.tsx"
+      ],
+      "test_case_ids": [
+        "TC-PG-CRT-001-105",
+        "TC-PG-CRT-001-625",
+        "TC-PG-CRT-001-626",
+        "TC-PG-CRT-001-514",
+        "TC-PG-CRT-001-446",
+        "TC-PG-TKT-001-511",
+        "TC-PG-KRK-003-107",
+        "TC-PG-GDS-002-508",
+        "TC-PG-KRK-003-647"
+      ],
+      "notes": "implementation mapping only: owner-scoped eligibility in the UI mock test double (no DB / idempotency write) and the browser side (shown to verified owners only, never persisted, re-read on session change); not API coverage (TC-API-005-001 not executed)"
+    },
+    {
+      "rule_id": "SPEC-050-15.0",
+      "code_paths": [
+        "apps/web/src/auth/port.ts",
+        "apps/web/src/mock/backend/mock-auth.ts",
+        "apps/web/src/features/auth/auth-methods.ts",
+        "apps/web/src/features/auth/method-selector.tsx",
+        "apps/web/src/features/auth/email-otp-form.tsx",
+        "apps/web/src/features/auth/login-page.tsx",
+        "apps/web/src/features/auth/register-page.tsx",
+        "apps/web/src/presentation/copy/ja.ts",
+        "apps/web/src/features/auth/auth-return.ts",
+        "apps/web/src/features/auth/google-sign-in.tsx",
+        "apps/web/src/features/auth/magic-link-form.tsx",
+        "apps/web/src/features/auth/use-external-return.ts",
+        "apps/web/src/mock/dev-ui/mock-google-screen.tsx",
+        "apps/web/src/mock/dev-ui/mock-magic-link-screen.tsx",
+        "apps/web/src/routes/dev/mock-google.tsx",
+        "apps/web/src/routes/dev/mock-magic-link.tsx"
+      ],
+      "test_case_ids": [
+        "TC-PG-AUTH-003-102",
+        "TC-PG-AUTH-003-212",
+        "TC-PG-AUTH-003-403",
+        "TC-PG-AUTH-003-512",
+        "TC-PG-AUTH-003-305",
+        "TC-PG-AUTH-003-306",
+        "TC-PG-AUTH-003-307",
+        "TC-PG-AUTH-001-305",
+        "TC-PG-AUTH-003-104",
+        "TC-PG-AUTH-003-213",
+        "TC-PG-AUTH-003-308",
+        "TC-PG-AUTH-003-310",
+        "TC-PG-AUTH-003-313",
+        "TC-FR-CRT-012-017",
+        "TC-FR-CRT-012-018",
+        "TC-FR-CRT-012-019",
+        "TC-FR-CRT-012-020",
+        "TC-PG-AUTH-003-105",
+        "TC-PG-AUTH-003-309"
+      ],
+      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
+    },
+    {
+      "rule_id": "SPEC-050-25",
+      "code_paths": [
+        "apps/web/src/features/auth/email-otp-form.tsx",
+        "apps/web/src/features/auth/form-validation.ts",
+        "apps/web/src/features/auth/google-sign-in.tsx",
+        "apps/web/src/features/auth/login-page.tsx",
+        "apps/web/src/features/auth/magic-link-form.tsx",
+        "apps/web/src/features/auth/register-page.tsx",
+        "apps/web/src/presentation/copy/ja.ts"
+      ],
+      "test_case_ids": [
+        "TC-PG-AUTH-003-202",
+        "TC-PG-AUTH-003-512",
+        "TC-PG-AUTH-003-307",
+        "TC-PG-AUTH-003-403",
+        "TC-PG-AUTH-003-313",
+        "TC-PG-AUTH-003-306",
+        "TC-PG-AUTH-001-305"
+      ],
+      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
+    },
+    {
+      "rule_id": "AR-AUTH-008",
+      "code_paths": [
+        "apps/web/src/auth/port.ts",
+        "apps/web/src/mock/backend/mock-auth.ts",
+        "apps/web/src/features/shell/cart-lifecycle-auth-port.ts",
+        "apps/web/src/features/auth/email-otp-form.tsx"
+      ],
+      "test_case_ids": ["TC-PG-AUTH-003-103", "TC-PG-AUTH-003-306", "TC-PG-AUTH-003-307"],
+      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
+    },
+    {
+      "rule_id": "FR-AUTH-001",
+      "code_paths": [
+        "apps/web/src/mock/backend/mock-auth.ts",
+        "apps/web/src/features/auth/email-otp-form.tsx",
+        "apps/web/src/features/auth/register-page.tsx"
+      ],
+      "test_case_ids": ["TC-PG-AUTH-003-103", "TC-PG-AUTH-001-305"],
+      "notes": "implementation mapping only: UI mock test double (not API/DB/provider coverage)"
     }
   ]
 }

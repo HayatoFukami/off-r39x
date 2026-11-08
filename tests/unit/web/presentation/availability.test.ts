@@ -7,6 +7,7 @@ import { copy } from "../../../../apps/web/src/presentation/copy/ja.ts";
 import {
   type AvailabilityInput,
   presentAvailability,
+  presentPurchaseReasons,
   presentRejectionReason,
 } from "../../../../apps/web/src/presentation/state-mapping/availability.ts";
 import { stringLeaves, TONES, utc } from "../../../harness/presentation.ts";
@@ -162,5 +163,79 @@ describe("TC-PG-CRT-001-002 presentRejectionReason covers the 9 API-PUR-ELG-001 
         /Unexpected value/,
       );
     }
+  });
+});
+
+describe("TC-PG-CRT-001-004 presentPurchaseReasons shows every reason of an owner-scoped eligibility answer (API-PUR-ELG-001, SPEC-050 14A.1, FR-CRT-005)", () => {
+  const label = copy.availability.label;
+  const description = copy.availability.description;
+
+  it("labels by the first reason and lists every description in order, with the maximum for a quantity shortage", () => {
+    const presented = presentPurchaseReasons(
+      ["INSUFFICIENT_QUANTITY", "PURCHASE_LIMIT_EXCEEDED"],
+      1,
+    );
+    expect(presented.label).toBe(label.INSUFFICIENT_QUANTITY);
+    expect(presented.label).toBe("数量不足");
+    const shortage = copy.availability.insufficientQuantity("1");
+    const limit = description.PURCHASE_LIMIT_EXCEEDED;
+    expect(presented.description).toContain(shortage);
+    expect(presented.description).toContain(limit);
+    expect(presented.description.indexOf(shortage)).toBeLessThan(
+      presented.description.indexOf(limit),
+    );
+    expect(presented.description).toBe(`${shortage} ${limit}`);
+    expect(presented.tone).toBe("failure");
+    expect(presented.purchasable).toBe(false);
+  });
+
+  it("shows the purchase limit alone with the neutral tone", () => {
+    const presented = presentPurchaseReasons(["PURCHASE_LIMIT_EXCEEDED"], 0);
+    expect(presented.label).toBe(label.PURCHASE_LIMIT_EXCEEDED);
+    expect(presented.description).toBe(description.PURCHASE_LIMIT_EXCEEDED);
+    expect(presented.tone).toBe("neutral");
+    expect(presented.purchasable).toBe(false);
+  });
+
+  it("uses the generic quantity description when no quantity can be bought (maximum 0)", () => {
+    const presented = presentPurchaseReasons(["INSUFFICIENT_QUANTITY"], 0);
+    expect(presented.label).toBe(label.INSUFFICIENT_QUANTITY);
+    expect(presented.description).toBe(description.INSUFFICIENT_QUANTITY);
+    expect(presented.tone).toBe("failure");
+  });
+
+  it("falls back to the cannot-confirm presentation for an empty reason list (never purchasable)", () => {
+    for (const max of [0, 3]) {
+      expect(presentPurchaseReasons([], max)).toEqual(presentAvailability({ kind: "unavailable" }));
+    }
+    expect(presentPurchaseReasons([], 3).purchasable).toBe(false);
+  });
+
+  it.each(PURCHASE_REASONS.filter((reason) => reason !== "INSUFFICIENT_QUANTITY"))(
+    "presents %s alone like the rejection reason: same label and description, neutral, not purchasable",
+    (reason) => {
+      const presented = presentPurchaseReasons([reason], 0);
+      const rejection = presentRejectionReason(reason);
+      expect(presented.label).toBe(rejection.label);
+      expect(presented.description).toBe(rejection.description);
+      expect(presented.tone).toBe("neutral");
+      expect(presented.purchasable).toBe(false);
+    },
+  );
+
+  it("never shows the on-sale label or the success tone for a non-empty reason list", () => {
+    for (const reason of PURCHASE_REASONS) {
+      const presented = presentPurchaseReasons([reason], 2);
+      expect(presented.label).not.toBe(label.ON_SALE);
+      expect(presented.tone).not.toBe("success");
+      expect(presented.purchasable).toBe(false);
+    }
+  });
+
+  it("does not mutate its input", () => {
+    const reasons = Object.freeze(["SOLD_OUT", "PURCHASE_LIMIT_EXCEEDED"] as const);
+    const presented = presentPurchaseReasons(reasons, 0);
+    expect(presented.label).toBe(label.SOLD_OUT);
+    expect(reasons).toEqual(["SOLD_OUT", "PURCHASE_LIMIT_EXCEEDED"]);
   });
 });

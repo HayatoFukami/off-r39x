@@ -1,7 +1,10 @@
-import type { Locator, Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 import { copy } from "../../../apps/web/src/presentation/copy/ja.ts";
 import { TEST_PASSWORD } from "../mock-seed.ts";
-import { KEYS, scenarioJson } from "./shell.ts";
+import { cartEntries, type StoredLine } from "./cart.ts";
+import { gotoHydrated, waitForHydration } from "./hydration.ts";
+import { fixClock } from "./public.ts";
+import { KEYS, scenarioJson, seedLocalStorage, sessionJson } from "./shell.ts";
 
 // Browser-side helpers for the S6 authentication suite (tests/contracts/s6-auth.md section 7).
 // Test-only. All data is synthetic: example.com addresses and sentinel passwords that exist nowhere else,
@@ -185,4 +188,276 @@ export function watchConsole(page: Page): { messages: string[] } {
     messages.push(error.message);
   });
   return { messages };
+}
+
+// ---- B5 C1: method selection and Email OTP (tests/contracts/s6-auth.md sections 6.1A, 6.2A) ----------------
+
+/** A one-time code that is no seed value. It must never appear in a URL, storage, DOM text or console. */
+export const SENTINEL_OTP_CODE = "Sentinel-Otp-Code-7531";
+/** An ordinary synthetic code. The mock never compares a code, so any non-empty value signs in. */
+export const OTP_CODE = "246810";
+
+export const methodGroup = (page: Page, legend: string): Locator =>
+  mainOf(page).getByRole("group", { name: legend, exact: true });
+export const methodRadio = (page: Page, label: string): Locator =>
+  mainOf(page).getByRole("radio", { name: label, exact: true });
+/** Chooses a method by its radio label. Nothing else is touched: no focus move, no navigation. */
+export async function chooseMethod(page: Page, label: string): Promise<void> {
+  await methodRadio(page, label).check();
+}
+
+export const otpButton = (page: Page, name: string): Locator =>
+  mainOf(page).getByRole("button", { name, exact: true });
+export const otpCodeField = (page: Page): Locator => field(page, copy.auth.field.otpCode.label);
+/** The <form> that contains the given control (to submit it without the native button: requestSubmit). */
+export const formOf = (control: Locator): Locator => control.locator("xpath=ancestor::form");
+
+/** Step 1 on the Email OTP method: fills the email and presses "send code". Does not wait for the result. */
+export async function sendOtp(page: Page, email: string): Promise<void> {
+  await field(page, copy.auth.field.email.label).fill(email);
+  await otpButton(page, copy.auth.otp.send).click();
+}
+
+/** Step 2: fills the code and presses the submit button of the page (Login or Registration). */
+export async function submitOtpCode(page: Page, code: string, submitName: string): Promise<void> {
+  await otpCodeField(page).fill(code);
+  await otpButton(page, submitName).click();
+}
+
+/** The users of the stored mock DB, or null while the mock DB has not been written yet. */
+export async function readUsers(
+  page: Page,
+): Promise<{ email: string; displayName: string | null; emailVerified: boolean }[] | null> {
+  const raw = await page.evaluate((key) => window.localStorage.getItem(key), KEYS.db);
+  if (raw === null) return null;
+  return (
+    JSON.parse(raw) as {
+      users: { email: string; displayName: string | null; emailVerified: boolean }[];
+    }
+  ).users;
+}
+
+/** Replaces the stored mock scenario's auth switches (the mock reads the scenario on every call). */
+export async function setAuthScenario(page: Page, auth: Record<string, string>): Promise<void> {
+  const [[key, value]] = Object.entries(authScenario(auth)) as [[string, string]];
+  await page.evaluate(
+    ([k, v]) => window.localStorage.setItem(k as string, v as string),
+    [key, value],
+  );
+}
+
+// ---- B5 C2: Google (tests/contracts/s6-auth.md sections 5B, 6.1C, 6.2B, 7, 10A; s2-mock-backend.md section 14.2) -------
+
+/**
+ * The method radios in the specified order (SPEC-050 15.0): Email+Password, Google, Email OTP, Magic Link - exactly
+ * these four. Email+Password is the default and the only checked radio.
+ */
+export async function expectMethodRadios(group: Locator): Promise<void> {
+  const labels: string[] = [
+    copy.auth.method.password,
+    copy.auth.method.google,
+    copy.auth.method.emailOtp,
+    copy.auth.method.magicLink,
+  ];
+  const radios = group.getByRole("radio");
+  await expect(radios).toHaveCount(labels.length);
+  for (const [index, label] of labels.entries()) {
+    await expect(radios.nth(index)).toHaveAccessibleName(label);
+    if (index === 0) await expect(radios.nth(index)).toBeChecked();
+    else await expect(radios.nth(index)).not.toBeChecked();
+  }
+}
+
+export type AuthPageName = "login" | "register";
+
+/** Opens Login or Registration with a fixed clock and seeded storage. */
+export async function openAuthPage(
+  page: Page,
+  name: AuthPageName,
+  query = "",
+  entries: Record<string, string> = {},
+): Promise<void> {
+  await fixClock(page);
+  await seedLocalStorage(page, entries);
+  await gotoHydrated(page, `/account/${name}${query}`);
+  await expect(heading1(page)).toHaveText(
+    name === "login" ? copy.auth.login.heading : copy.auth.register.heading,
+  );
+}
+
+export const googleRadio = (page: Page): Locator => methodRadio(page, copy.auth.method.google);
+/** The start button of the Google method: "Googleでログイン" on Login, "Googleで登録" on Registration. */
+export const googleStartButton = (page: Page, name: AuthPageName): Locator =>
+  mainOf(page).getByRole("button", {
+    name: name === "login" ? copy.auth.google.startLogin : copy.auth.google.startRegister,
+    exact: true,
+  });
+export const standInButton = (page: Page, which: "allowDemo" | "allowNew" | "cancel"): Locator =>
+  mainOf(page).getByRole("button", { name: copy.mockGoogle[which], exact: true });
+
+/** `?continue=<value>` plus the given extra query, as accountPath builds it ("" when there is nothing). */
+function accountQuery(continueValue: string | null, extra: string): string {
+  const parts = [
+    ...(continueValue === null ? [] : [`continue=${encodeURIComponent(continueValue)}`]),
+    ...(extra === "" ? [] : [extra]),
+  ];
+  return parts.length === 0 ? "" : `?${parts.join("&")}`;
+}
+
+/**
+ * The paths of the contract (s6-auth.md section 5B), written out literally so that the E2E does not depend on the
+ * production builder that the unit test (TC-PG-AUTH-003-213) already pins.
+ */
+export const googleReturnPath = (name: AuthPageName, continueValue: string | null = null): string =>
+  `/account/${name}${accountQuery(continueValue, "returned=google")}`;
+export const googleFailurePath = (
+  name: AuthPageName,
+  continueValue: string | null = null,
+): string => `/account/${name}${accountQuery(continueValue, "notice=google-failed")}`;
+
+export const MOCK_GOOGLE_PATH = "/dev/mock-google";
+
+/** The stand-in screen's URL (s2-mock-backend.md section 14.2): both paths are percent-encoded query values. */
+export function mockGoogleUrl(
+  name: AuthPageName,
+  continueValue: string | null = null,
+  override: { success?: string; failure?: string } = {},
+): string {
+  const success = override.success ?? googleReturnPath(name, continueValue);
+  const failure = override.failure ?? googleFailurePath(name, continueValue);
+  return `${MOCK_GOOGLE_PATH}?success=${encodeURIComponent(success)}&failure=${encodeURIComponent(failure)}`;
+}
+
+/** Opens the stand-in directly (a full page load) and waits until it is hydrated and shows its heading. */
+export async function openMockGoogle(
+  page: Page,
+  name: AuthPageName,
+  continueValue: string | null = null,
+  override: { success?: string; failure?: string } = {},
+): Promise<void> {
+  await gotoHydrated(page, mockGoogleUrl(name, continueValue, override));
+  await expect(heading1(page)).toHaveText(copy.mockGoogle.heading);
+}
+
+/**
+ * Chooses Google on the open Login / Registration page, presses the start button and waits for the full-page
+ * transition to the stand-in screen (the mock returns its URL and the page hands off with window.location.assign).
+ */
+export async function startGoogle(page: Page, name: AuthPageName): Promise<void> {
+  await chooseMethod(page, copy.auth.method.google);
+  await googleStartButton(page, name).click();
+  await page.waitForURL((url) => url.pathname === MOCK_GOOGLE_PATH);
+  await waitForHydration(page);
+  await expect(heading1(page)).toHaveText(copy.mockGoogle.heading);
+}
+
+/** Every main-frame document request (path and query), in order. A full-page load of `returned=google` shows here. */
+export function watchDocumentRequests(page: Page): string[] {
+  const urls: string[] = [];
+  page.on("request", (request) => {
+    if (request.resourceType() !== "document") return;
+    if (request.frame() !== page.mainFrame()) return;
+    const url = new URL(request.url());
+    urls.push(url.pathname + url.search);
+  });
+  return urls;
+}
+
+/** The stored Cart lifecycle metadata, raw (null while the key is absent). Never goes through the Cart key. */
+export async function readCartLifecycleRaw(page: Page): Promise<string | null> {
+  return page.evaluate((key) => window.localStorage.getItem(key), KEYS.cartLifecycle);
+}
+
+/** The parsed Cart lifecycle metadata; null while absent. */
+export async function readCartLifecycle(page: Page): Promise<Record<string, unknown> | null> {
+  const raw = await readCartLifecycleRaw(page);
+  return raw === null ? null : (JSON.parse(raw) as Record<string, unknown>);
+}
+
+/** localStorage entries for a Cart plus lifecycle metadata that carries an external-completion record. */
+export function cartEntriesWithExternal(
+  lines: readonly StoredLine[],
+  external: "pending" | "superseded",
+  provenance: "guest" | "authenticated" = "guest",
+): Record<string, string> {
+  return {
+    ...cartEntries(lines, provenance),
+    [KEYS.cartLifecycle]: JSON.stringify({ version: 1, provenance, external }),
+  };
+}
+
+/** A stored session for the given user (verified by default). */
+export function sessionEntry(email: string, emailVerified = true): Record<string, string> {
+  return { [KEYS.session]: sessionJson({ kind: "authenticated", email, emailVerified }) };
+}
+
+// ---- B5 C3: Magic Link (tests/contracts/s6-auth.md sections 5B, 6.1D, 6.2C, 6.10, 7, 10A; s2-mock-backend.md section 14.3) --
+
+export const magicRadio = (page: Page): Locator => methodRadio(page, copy.auth.method.magicLink);
+/** The send button of the Magic Link method: "ログインリンクを送る" before a send, "ログインリンクを再送する" after one. */
+export const magicSendButton = (page: Page): Locator =>
+  mainOf(page).getByRole("button", { name: copy.auth.magicLink.send, exact: true });
+export const magicResendButton = (page: Page): Locator =>
+  mainOf(page).getByRole("button", { name: copy.auth.magicLink.resend, exact: true });
+/** The stand-in's address field and its two actions (the stand-in is the developer's replacement for the mailbox). */
+export const standInEmailField = (page: Page): Locator =>
+  mainOf(page).getByLabel(copy.mockMagicLink.emailLabel, { exact: true });
+export const standInLinkButton = (page: Page, which: "openValid" | "openExpired"): Locator =>
+  mainOf(page).getByRole("button", { name: copy.mockMagicLink[which], exact: true });
+
+/** The paths of the contract (s6-auth.md section 5B) written out literally, like the Google ones. */
+export const magicReturnPath = (name: AuthPageName, continueValue: string | null = null): string =>
+  `/account/${name}${accountQuery(continueValue, "returned=magic-link")}`;
+export const magicFailurePath = (name: AuthPageName, continueValue: string | null = null): string =>
+  `/account/${name}${accountQuery(continueValue, "notice=link-failed")}`;
+
+export const MOCK_MAGIC_LINK_PATH = "/dev/mock-magic-link";
+
+/** The stand-in screen's URL (s2-mock-backend.md section 14.3): both paths are percent-encoded query values. */
+export function mockMagicLinkUrl(
+  name: AuthPageName,
+  continueValue: string | null = null,
+  override: { success?: string; failure?: string } = {},
+): string {
+  const success = override.success ?? magicReturnPath(name, continueValue);
+  const failure = override.failure ?? magicFailurePath(name, continueValue);
+  return `${MOCK_MAGIC_LINK_PATH}?success=${encodeURIComponent(success)}&failure=${encodeURIComponent(failure)}`;
+}
+
+/** Opens the stand-in directly (a full page load: the developer opening the link) and waits for its heading. */
+export async function openMockMagicLink(
+  page: Page,
+  name: AuthPageName,
+  continueValue: string | null = null,
+  override: { success?: string; failure?: string } = {},
+): Promise<void> {
+  await gotoHydrated(page, mockMagicLinkUrl(name, continueValue, override));
+  await expect(heading1(page)).toHaveText(copy.mockMagicLink.heading);
+}
+
+/**
+ * On the open Login / Registration page: chooses Magic Link, types the address and presses the send button, then
+ * waits for the sent status. Nothing navigates.
+ */
+export async function sendMagicLink(page: Page, email: string): Promise<void> {
+  await chooseMethod(page, copy.auth.method.magicLink);
+  await field(page, copy.auth.field.email.label).fill(email);
+  await magicSendButton(page).click();
+  await expect(statusesIn(page)).toHaveText(copy.auth.magicLink.sent);
+}
+
+/**
+ * Opens the link the way the developer does (the stand-in), as the owner of `email`: a full page load of the stand-in,
+ * the address typed into its field, then "有効なリンクとして開く". Returns once the full-page hand-off to the return path
+ * has started; the caller waits for the destination.
+ */
+export async function openValidLink(
+  page: Page,
+  name: AuthPageName,
+  email: string,
+  continueValue: string | null = null,
+): Promise<void> {
+  await openMockMagicLink(page, name, continueValue);
+  await standInEmailField(page).fill(email);
+  await standInLinkButton(page, "openValid").click();
 }

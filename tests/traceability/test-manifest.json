@@ -356,7 +356,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "assertUiMockNotInProductionBuild throws (message contains 'UI mock') only when mock is enabled and APP_ENV is production (VERCEL_ENV is not the signal)"
+        "with VITE_UI_MOCK=1, assertUiMockNotInProductionBuild throws for APP_ENV production (production message) and for APP_ENV unset (unset message), and does not throw for development, staging or test; VERCEL_ENV is not a signal in either direction (an allowed APP_ENV plus VERCEL_ENV=production passes); without the flag it never throws"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -490,8 +490,39 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "/account/login, /auth/anything, /purchase/anything, /mypage, /admin and /staff/anything (the six SEC-WEB-009 prefixes) answer 200 with Cache-Control containing no-store and private, and Pragma no-cache, from dist/_headers",
-        "GET / is marked neither private nor no-store"
+        "/account/login, /auth/anything, /purchase/anything, /mypage, /admin and /staff/anything answer 200 with Cache-Control exactly no-store, private, max-age=0 and Pragma no-cache, from the /* rule of dist/_headers",
+        "GET / also carries Cache-Control no-store, private, max-age=0 and Pragma no-cache (SEC-WEB-009 as revised: every response except content-hashed assets)"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-SEC-WEB-009-002",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "SEC-WEB-009",
+        "SPEC-140-22",
+        "SEC-AUTH-013",
+        "DEV-WEB-007",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s3-layout.md section 13",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "alternative spellings of protected paths (/%6Dypage, /MYPAGE, /mypage/, /%61ccount/login, /%6Dypage/orders/<synthetic uuid>, /%70urchase/orders/<synthetic uuid>) answer 200 text/html with Cache-Control exactly no-store, private, max-age=0, Pragma no-cache and Referrer-Policy exactly no-referrer",
+        "//mypage and /x/%2e%2e/mypage, sent unnormalised over a raw request, carry the same three values (status recorded, not asserted)",
+        "the browser document response for /%6Dypage carries the same three values (the rendered screen is not checked)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -922,7 +953,8 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "no storage entry, console call or return value contains the password",
-        "storage has no password field"
+        "storage has no password field",
+        "B5 C1: a sentinel one-time code appears in no storage entry, no return value and no console call across Email OTP success, a wrong code, an expired code, an outage and an empty code"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -1300,7 +1332,7 @@
       "test_case_id": "TC-BR-ORD-014-102",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["BR-ORD-014", "BR-ORD-018", "TST-UNT-004"],
+      "upstream_rule_ids": ["BR-ORD-014", "BR-ORD-018", "TST-UNT-004", "API-PUR-ELG-001"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -1312,7 +1344,8 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "one PREPARED Order with a price Snapshot and exact total",
-        "allocation and per-account quota are consumed",
+        "allocation is consumed: stored remaining regular 10 -> 8 and tshirt 20 -> 19 (public listGoods max for tshirt 19)",
+        "the per-account quota is consumed and read through getPurchaseEligibility, not the public read: regular maxPurchasableQuantity 2 after 2 of 4; after a PREPARED Order of 4, regular is not purchasable with reasons [PURCHASE_LIMIT_EXCEEDED] and maxPurchasableQuantity 0 while listEntryOfferings still shows ON_SALE (max 4), and a second start is rejected with PURCHASE_LIMIT_EXCEEDED",
         "the result is created { orderRef } only: every sent line is in the Order (all-or-nothing)"
       ],
       "expected_db_postconditions": [],
@@ -1463,7 +1496,15 @@
       "test_case_id": "TC-DEV-WEB-010-102",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["DEV-WEB-010", "DEV-WEB-013", "TST-UNT-004", "API-PUR-CART-001"],
+      "upstream_rule_ids": [
+        "DEV-WEB-010",
+        "DEV-WEB-013",
+        "TST-UNT-004",
+        "API-PUR-CART-001",
+        "API-PUR-ELG-001",
+        "PG-KRK-003",
+        "SEC-API-027"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -1476,7 +1517,14 @@
       "expected_domain_postconditions": [
         "exactly the documented methods and types (expectTypeOf)",
         "Cart cannot express Karaoke or prices; QR presentation carries a mock seed only",
-        "CartPurchaseStart is created { orderRef } | rejected { itemFailures: { lineKey, reasons: PurchaseReason[] }[] } | auth_required | email_unverified | unavailable; PurchaseReason is the 9 API-PUR-ELG-001 codes in the canonical order; types.ts keeps no includedLineKeys / ALLOCATION_CONFLICT / rejections"
+        "CartPurchaseStart is created { orderRef } | rejected { itemFailures: { lineKey, reasons: PurchaseReason[] }[] } | auth_required | email_unverified | unavailable; PurchaseReason is the 9 API-PUR-ELG-001 codes in the canonical order; types.ts keeps no includedLineKeys / ALLOCATION_CONFLICT / rejections",
+        "PurchaseApi.getPurchaseEligibility takes 1..50 Cart lines or KARAOKE slots (quantity 1), keyed by eligibilityTargetKey (EligibilityTarget = CartLine | { kind: KARAOKE; slotRef; quantity: 1 }; CartLine never holds Karaoke), and returns ok { purchasable === (reasons.length === 0), reasons, maxPurchasableQuantity } per target in input order, auth_required, email_unverified or unavailable; it is a read-only method (no idempotencyKey, no ids); a guest asking for a KARAOKE target gets auth_required",
+        "B5 C1: AuthPort also exposes exactly requestEmailOtp and signInWithEmailOtp; both return promises; the result kinds are sent | unavailable | cart_busy | cart_blocked and signed_in { emailVerified } | code_invalid | code_expired | unavailable | cart_busy | cart_blocked (expectTypeOf)",
+        "B5 C2: AuthPort also exposes startGoogleSignIn (11 methods); it returns a promise whose result kinds are redirect { url } | unavailable | already_signed_in | cart_busy | cart_blocked (expectTypeOf)",
+        "B5 C2: auth/port.ts annotates startGoogleSignIn as a Neon Auth transport with no business Operation ID and no API ID, whose outcome is decided by the screen shown by the return, with a same-origin redirect URL (AR-CONT-001, SEC-WEB-013)",
+        "B5 C1: auth/port.ts annotates both methods as a Neon Auth transport (SPEC-110 23.1) with no business Operation ID, the request as never disclosing the account (SEC-API-027) and the sign-in as never keeping the code (SEC-AUTH-018) with code_expired covering an expired or exhausted code",
+        "B5 C3: AuthPort also exposes requestMagicLink (12 methods); it returns a promise whose result kinds are sent | unavailable | already_signed_in | cart_busy | cart_blocked and whose input is the address and both return paths (expectTypeOf)",
+        "B5 C3: auth/port.ts annotates requestMagicLink as a Neon Auth transport with no business Operation ID and no API ID, whose answer never discloses the account, whose link is opened outside the page and whose outcome is decided by the screen shown by that opening (AR-CONT-001, SEC-WEB-013, SEC-API-027)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -1494,7 +1542,9 @@
         "API-ORD-003",
         "API-PUB-012",
         "TST-UNT-004",
-        "API-PUR-CART-001"
+        "API-PUR-CART-001",
+        "API-PUB-005",
+        "API-PUR-ELG-001"
       ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
@@ -1506,12 +1556,12 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "every method names an Operation ID or UCR-110-001",
-        "ports without an Operation ID are marked and no new Operation ID is invented",
+        "every method names a canonical API-* Operation ID; no UCR-110-001 and no Operation ID なし mark remains anywhere in port.ts, and no new Operation ID is invented",
         "the Profile ports cite API-AUTH-002 / API-AUTH-004 and no longer cite the superseded UCR-100-001",
         "getOrder cites API-ORD-003 (notification_summary) without UCR-110-001 or Operation ID なし",
         "listSponsorLogos cites API-PUB-012 (PUBLISHED only, public_ref ASC tie-break) without UCR-110-001 or Operation ID なし",
-        "startCartPurchase cites API-PUR-CART-001 (all-or-nothing, API-CHK-001 hand-off) without UCR-110-001 or Operation ID なし; only listEntryOfferings and resolveCartLines stay marked UCR-110-001 until B4b"
+        "startCartPurchase cites API-PUR-CART-001 (all-or-nothing, API-CHK-001 hand-off) without UCR-110-001 or Operation ID なし",
+        "listEntryOfferings cites API-PUB-005 and resolveCartLines cites API-PUB-005 / API-PUB-010 / API-PUB-011 as public reads that point to getPurchaseEligibility; getPurchaseEligibility cites API-PUR-ELG-001 as owner-scoped, read-only, no-store and not a reservation; its annotation also names the KARAOKE slot target (quantity 1) and cites no other Operation ID"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -1523,7 +1573,7 @@
       "test_case_id": "TC-DEV-WEB-013-101",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["DEV-WEB-013", "DEV-TS-004", "TST-UNT-004"],
+      "upstream_rule_ids": ["DEV-WEB-013", "DEV-TS-004", "TST-UNT-004", "API-PUR-ELG-001"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -1534,7 +1584,8 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "every switch has its documented default; schema is strict at every level; notification accepts exactly sent / pending / failed_retryable / canceled / summary_unavailable (the simulated internal state), rejects the summary statuses, and round-trips through storage; sponsorLogos accepts image_disallowed_origin"
+        "every switch has its documented default; schema is strict at every level; notification accepts exactly sent / pending / failed_retryable / canceled / summary_unavailable (the simulated internal state), rejects the summary statuses, and round-trips through storage; sponsorLogos accepts image_disallowed_origin",
+        "cart.state accepts exactly ok / fail / partial / eligibility_fail (default ok) and round-trips eligibility_fail through storage"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -1667,7 +1718,13 @@
       "test_case_id": "TC-PAY-BRW-001-102",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PAY-BRW-001", "PAY-BRW-003", "BR-ORD-016", "TST-UNT-004"],
+      "upstream_rule_ids": [
+        "PAY-BRW-001",
+        "PAY-BRW-003",
+        "BR-ORD-016",
+        "TST-UNT-004",
+        "API-PUR-ELG-001"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -1678,7 +1735,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "outcome changes only through the scenario; failure outcomes release allocations; review / awaiting hold them"
+        "outcome changes only through the scenario; failure outcomes (payment_failed, expire, cancel) release allocations: stored remaining regular 10 and tshirt 20, getPurchaseEligibility maxPurchasableQuantity for regular 4; confirm / remain_awaiting / review_required hold them: stored remaining regular 8 and tshirt 19, maxPurchasableQuantity 2"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -1710,21 +1767,50 @@
       "critical": false
     },
     {
-      "test_case_id": "TC-PG-CRT-001-101",
+      "test_case_id": "TC-PG-CRT-001-004",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-005", "TST-UNT-004"],
+      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-005", "API-PUR-ELG-001", "TST-UNT-004"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "resolveCartLines; contract tests/contracts/s2-mock-backend.md; UI mock test double (not API/DB/Provider coverage)",
+      "preconditions": "Pure presentPurchaseReasons over owner-scoped eligibility answers; contract tests/contracts/s1-presentation.md",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "the label follows the first reason and every description is listed in order (an INSUFFICIENT_QUANTITY description carries the maximum); a single reason is presented exactly like the rejection reason of startCartPurchase; a non-empty reason list is never on sale and never success; an empty reason list falls back to the cannot-confirm presentation and is never purchasable; the input is not mutated"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-CRT-001-101",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "PG-CRT-001",
+        "FR-CRT-005",
+        "TST-UNT-004",
+        "API-PUB-005",
+        "API-PUR-ELG-001"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "resolveCartLines for guest, demo, new user and a broken session; contract tests/contracts/s2-mock-backend.md; UI mock test double (not API/DB/Provider coverage)",
       "fixture_ids": ["MOCK-SEED-PUBLIC"],
       "clock_instant": "2027-03-01T03:00:00Z",
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "per-line availability including the 7 reasons, not_public and per-account quota"
+        "per-line public availability including the 7 public reasons and not_public; the answer does not depend on the viewer (no per-account quota, a broken session does not make it unavailable); the owner-scoped limit is read only through getPurchaseEligibility"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -1736,7 +1822,7 @@
       "test_case_id": "TC-PG-CRT-001-102",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-CRT-001", "TST-UNT-004"],
+      "upstream_rule_ids": ["PG-CRT-001", "TST-UNT-004", "API-PUR-ELG-001"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -1747,7 +1833,8 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "fail -> unavailable (not empty); partial -> first line unavailable"
+        "fail -> unavailable (not empty); partial -> first line unavailable",
+        "eligibility_fail leaves resolveCartLines (the public read) untouched and makes only getPurchaseEligibility fail with unavailable"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -1759,7 +1846,13 @@
       "test_case_id": "TC-PG-CRT-001-103",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-CRT-001", "FR-XFN-012", "TST-UNT-004", "API-PUR-CART-001"],
+      "upstream_rule_ids": [
+        "PG-CRT-001",
+        "FR-XFN-012",
+        "TST-UNT-004",
+        "API-PUR-CART-001",
+        "API-PUR-ELG-001"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -1770,7 +1863,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "same key and same content (in any line order): the same orderRef, no second Order, no second allocation, no new id, stored state unchanged",
+        "same key and same content (in any line order): the same orderRef, no second Order, no second allocation (stored remaining regular stays 8 and getPurchaseEligibility maxPurchasableQuantity stays 2), no new id, stored state unchanged",
         "same key with different content (quantity, added line, other item): the promise rejects and nothing is created",
         "a replay whose recorded Order cannot be found is refused: the promise rejects, stored state and ids are unchanged",
         "key is user-scoped; rejections are not memoized"
@@ -1798,6 +1891,40 @@
       "expected_domain_postconditions": [
         "no lines, 51 lines, a duplicate line key or a quantity outside 1..2147483647 reject the promise and change nothing",
         "50 lines and quantity 2147483647 are business results: an unknown ref is NOT_PUBLIC_OR_NOT_FOUND, an excess quantity INSUFFICIENT_QUANTITY"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-CRT-001-105",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "PG-CRT-001",
+        "FR-CRT-005",
+        "AR-AZ-011",
+        "SEC-API-029",
+        "API-PUR-ELG-001",
+        "TST-UNT-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "getPurchaseEligibility for guest, unverified user, broken session, verified users and the eligibility_fail scenario; contract tests/contracts/s2-mock-backend.md; UI mock test double (not API/DB/Provider coverage)",
+      "fixture_ids": ["MOCK-SEED-PUBLIC", "MOCK-SEED-DEMO"],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "guest -> auth_required, unverified -> email_unverified, broken session -> unavailable, checked before the eligibility_fail scenario (a guest never sees unavailable); a verified user gets one { purchasable, reasons, maxPurchasableQuantity } per item in input order with purchasable === (reasons.length === 0)",
+        "the quota counts the signed-in account only; maximum 0 with the reason outside the sales window and when sold out; a non-public item and an unknown ref are identical (NOT_PUBLIC_OR_NOT_FOUND alone, maximum 0); reasons keep the canonical order and match what the purchase start would reject for the same lines",
+        "50 lines and quantity 2147483647 are business answers; empty input, more than 50 lines, quantity outside 1..2147483647 and a duplicate cartLineKey reject with a RangeError",
+        "the read is not a reservation: the mock DB fingerprint, the stored keys and values, the write log and the id count are unchanged, no idempotency record appears and no id is drawn; only a purchase start takes the allocation",
+        "cart.state = eligibility_fail makes a verified user's read unavailable while resolveCartLines still works; a corrupted stored scenario also answers unavailable and writes nothing"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -2055,6 +2182,42 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-PG-KRK-003-107",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "PG-KRK-003",
+        "FR-KRK-007",
+        "BR-KRK-003",
+        "KRK-AVL-003",
+        "AR-AZ-011",
+        "SEC-API-029",
+        "API-PUR-ELG-001",
+        "TST-UNT-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Mock backend with a verified user (demo); getPurchaseEligibility with KARAOKE targets over every seed slot, every karaokeSales value and every karaokeHold value; contract tests/contracts/s2-mock-backend.md 11.5 and 16; UI mock test double (not API/DB/Provider coverage)",
+      "fixture_ids": ["MOCK-SEED-KARAOKE"],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "expected_domain_postconditions": [
+        "an AVAILABLE slot under ON_SALE is purchasable with no reason and a maximum of 1, keyed KARAOKE:<slotRef>; HELD, SOLD and SALES_STOPPED slots give SLOT_UNAVAILABLE with a maximum of 0",
+        "karaokeSales BEFORE_SALES / SALES_ENDED / SUSPENDED give SALES_NOT_STARTED / SALES_CLOSED / SALES_STOPPED; scenario karaokeHold limit gives PURCHASE_LIMIT_EXCEEDED while conflict and expire_before_checkout (purchase-start-only scenarios) do not matter; co-occurring reasons keep the canonical order without a duplicate; an unknown slot gives NOT_PUBLIC_OR_NOT_FOUND alone",
+        "PAYMENT_WINDOW_TOO_SHORT never appears (the mock has no payment window); purchasable === (reasons.length === 0) and the maximum is 0 or 1; a mixed ENTRY / KARAOKE / GOODS input is answered in input order with cartLineKey / KARAOKE:<slotRef> keys",
+        "a KARAOKE quantity other than 1, the same slot twice and an empty input reject with RangeError; reads leave the mock DB JSON, the Slot states, the storage writes, the id counter and the idempotency records unchanged (SEC-API-029)",
+        "a guest gets auth_required, an unverified user email_unverified, and scenario cart.state eligibility_fail makes a verified user's read unavailable for every target including KARAOKE (authentication is checked first)"
+      ]
+    },
+    {
       "test_case_id": "TC-PG-MYP-002-101",
       "level": "Unit",
       "suite": "unit",
@@ -2151,7 +2314,8 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "a newly registered user (confirmation_required and signed_in) is stored with displayName null; getProfile returns null and nothing derived from the email; seed users unchanged"
+        "a newly registered user (confirmation_required and signed_in) is stored with displayName null; getProfile returns null and nothing derived from the email; seed users unchanged",
+        "B5 C1: an Email OTP first registration stores displayName null and getProfile returns null, not the local part"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -2445,18 +2609,18 @@
       "test_case_id": "TC-PG-TKT-001-102",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-TKT-001", "UCR-110-001", "TST-UNT-004"],
+      "upstream_rule_ids": ["PG-TKT-001", "API-PUB-005", "API-PUR-ELG-001", "TST-UNT-004"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "Entry offerings for guest / demo / new user; contract tests/contracts/s2-mock-backend.md; UI mock test double (not API/DB/Provider coverage)",
+      "preconditions": "Entry offerings for guest / demo / new user and a broken session; contract tests/contracts/s2-mock-backend.md; UI mock test double (not API/DB/Provider coverage)",
       "fixture_ids": ["MOCK-SEED-DEMO"],
       "clock_instant": "2027-03-01T03:00:00Z",
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "PURCHASE_LIMIT_EXCEEDED only for the viewer who used the limit"
+        "listEntryOfferings is a public read that does not depend on the viewer: guest, demo, new user and a broken session see the same offerings and the same states, and PURCHASE_LIMIT_EXCEEDED never appears in it; the per-account limit of the owner is read only through getPurchaseEligibility"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -2468,7 +2632,13 @@
       "test_case_id": "TC-PG-XFN-001-102",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-XFN-001", "SPEC-050-16.6", "SPEC-050-21", "TST-UNT-004"],
+      "upstream_rule_ids": [
+        "PG-XFN-001",
+        "SPEC-050-16.6",
+        "SPEC-050-21",
+        "TST-UNT-004",
+        "API-PUR-ELG-001"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -2479,7 +2649,8 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "Order stays PREPARED and the retry reuses the same Order (no new Order)"
+        "Order stays PREPARED and the retry reuses the same Order (no new Order)",
+        "the allocation stays held after start_failed: stored remaining regular 8 and tshirt 19; getPurchaseEligibility maxPurchasableQuantity for regular 2"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -2491,7 +2662,13 @@
       "test_case_id": "TC-PG-XFN-001-103",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-XFN-001", "BR-ORD-016", "SPEC-050-16.4", "TST-UNT-004"],
+      "upstream_rule_ids": [
+        "PG-XFN-001",
+        "BR-ORD-016",
+        "SPEC-050-16.4",
+        "TST-UNT-004",
+        "API-PUR-ELG-001"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -2502,7 +2679,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "Order EXPIRED, allocations released, later checkout is state_conflict"
+        "Order EXPIRED, allocations released (stored remaining regular 8 -> 10 and tshirt 19 -> 20; getPurchaseEligibility maxPurchasableQuantity for regular 2 -> 4), later checkout is state_conflict"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -3006,7 +3183,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "isDevAreaEnabled is true only for VITE_UI_MOCK=1 outside APP_ENV=production; false otherwise (NEXT_PUBLIC_UI_MOCK is not read)"
+        "isDevAreaEnabled is true only for VITE_UI_MOCK=1 together with APP_ENV exactly development, staging or test; false for any other flag value, and with the flag on false for APP_ENV unset, empty, malformed, an alias or production (NEXT_PUBLIC_UI_MOCK and VERCEL_ENV are not read)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -3096,7 +3273,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "scenario control list covers every scenario switch and matches the S2 zod schema values"
+        "scenario control list covers every scenario switch and matches the S2 zod schema values (cart.state includes eligibility_fail)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -3907,7 +4084,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "every scenario switch (including the five notification values) has a labelled control with exactly the schema values and is persisted immediately to r39x.mock.scenario.v1; a change survives reload and drives the footer sponsor area; invalid latencyLongMs is not persisted"
+        "every scenario switch (including the five notification values and cart.state eligibility_fail) has a labelled control with exactly the schema values and is persisted immediately to r39x.mock.scenario.v1; a change survives reload and drives the footer sponsor area; invalid latencyLongMs is not persisted"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -5450,7 +5627,7 @@
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
-      "expected_domain_postconditions": ["Cache-Control contains neither private nor no-store"],
+      "expected_domain_postconditions": ["Cache-Control is exactly no-store, private, max-age=0"],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
       "expected_observability": [],
@@ -5904,6 +6081,30 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-PG-CRT-001-433",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-005", "API-PUR-ELG-001", "TST-UNT-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Pure canProceed with resolved lines and an eligibility state (loading / failed / ok / not applicable)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "proceeding is enabled only when every line is on sale publicly and the owner-scoped eligibility says purchasable with a maximum that covers the quantity; while the eligibility loads or when it failed, the lines are unconfirmed and proceeding is blocked (counted once as unresolved, never as purchasable)",
+        "the first reason of a line the eligibility refuses is named per line in Cart order; a purchasable line without an eligibility entry is unknown; a line that is not purchasable publicly keeps its public reason whatever the eligibility says; inputs are not mutated"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-PG-CRT-001-441",
       "level": "Unit",
       "suite": "unit",
@@ -6015,6 +6216,38 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-PG-CRT-001-446",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "PG-CRT-001",
+        "FR-CRT-005",
+        "API-PUR-ELG-001",
+        "TST-UNT-004",
+        "SEC-API-029",
+        "DEV-WEB-007"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Pure buildCartPageModel with resolutions and an eligibility state (loading / failed / ok / not applicable)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "the model is loading while the first eligibility is read; when it failed, names and amounts stay, unconfirmed lines say so and proceeding is blocked with only the unknown reason; once ok, each line is shown from its own answer (on sale with the maximum, or all of its reasons); an unconfirmed line is never shown as on sale",
+        "the eligibility is ignored in the states that come before it: corrupted, empty, loading and failed resolutions",
+        "while the lines or the session are re-read, a pending eligibility keeps the rows with their public parts (name, kind, quantity, prices, total) and shows the publicly open lines as 'cannot confirm', never on sale, with proceeding blocked; a line missing from the given eligibility (its quantity changed) is 'cannot confirm' while a line still in it keeps its answer"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-PG-CRT-001-451",
       "level": "Unit",
       "suite": "unit",
@@ -6041,7 +6274,7 @@
       "test_case_id": "TC-PG-CRT-001-461",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-001", "BR-ORD-020"],
+      "upstream_rule_ids": ["PG-CRT-001", "FR-CRT-001", "BR-ORD-020", "PG-GDS-002"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -6052,7 +6285,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "no purchase operation, Order creation, idempotency key or navigation in the Entry or Goods detail UI, the add form or the Cart store; handleProceed seam present (the Cart page is covered by S7a)"
+        "no purchase operation, Order creation, idempotency key or navigation in the Entry or Goods detail UI, the add form or the Cart store (the Entry and Goods detail pages may call only the read-only getPurchaseEligibility on the purchase port); the Cart store does not read the eligibility; handleProceed seam present (the Cart page is covered by S7a)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -6075,7 +6308,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "exactly one strict stored-Cart body schema; a separate FR-CRT-012 provenance metadata schema may validate metadata but cannot redefine Cart lines; no price / stock / owner field; no Karaoke or session in the store and Cart UI (the store knows no account; Logout clearing lives in the shell)"
+        "exactly one strict stored-Cart body schema; a separate FR-CRT-012 provenance metadata schema may validate metadata but cannot redefine Cart lines; no price / stock / owner field; no Karaoke or session in the store and Cart UI (the store knows no account; Logout clearing lives in the shell); no eligibility answer in the stored Cart, and no feature or presentation source that mentions the eligibility touches localStorage, sessionStorage, indexedDB, caches or cookies"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -6097,7 +6330,9 @@
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
-      "expected_domain_postconditions": ["S5 modules and routes exist at the contracted paths"],
+      "expected_domain_postconditions": [
+        "S5 modules and routes exist at the contracted paths, including src/features/purchase/eligibility-model.ts"
+      ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
       "expected_observability": [],
@@ -6131,7 +6366,7 @@
       "test_case_id": "TC-DEV-WEB-001-403",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["DEV-WEB-001", "DEV-DEP-006"],
+      "upstream_rule_ids": ["DEV-WEB-001", "DEV-DEP-006", "PG-GDS-002", "SEC-API-029"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -6142,7 +6377,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "containers are client components that read through useApi after mount; Header and Cart page share one store"
+        "containers are client components that read through useApi after mount; Header and Cart page share one store; the Cart page, the Entry page and the Goods detail page read the owner-scoped eligibility through useApi().purchase only for a verified session, decided by eligibilityMode and re-read with the session (the Goods detail page uses the answer only through eligibilityForSession); the eligibility model is pure and persists nothing"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -6220,6 +6455,30 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-PG-TKT-001-413",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-TKT-001", "FR-TKT-026", "API-PUR-ELG-001", "TST-UNT-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Pure buildEntryModel with public offerings and an eligibility state (loading / failed / ok / not applicable)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "an offering that is on sale publicly can be added with the smaller of the public maximum and the owner's maximum when the eligibility says purchasable; when it refuses, its reasons are shown and add is disabled; an unconfirmed offering is never shown as on sale",
+        "an offering that is not on sale publicly stays as it is whatever the eligibility says; the per-account limit text input, the order and the price are kept; loading, empty and unavailable are kept and inputs are not mutated"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-PG-TKT-001-461",
       "level": "Unit",
       "suite": "unit",
@@ -6285,6 +6544,39 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-GDS-002-413",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "PG-GDS-002",
+        "FR-GDS-004",
+        "SEC-API-029",
+        "API-PUR-ELG-001",
+        "SPEC-050-12.1",
+        "SPEC-050-14.2",
+        "TST-UNT-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Pure buildGoodsDetailModel with an eligibility argument and goodsEligibilityTarget; contract tests/contracts/s5-cart.md 4.2; UI mock test double (not API/DB/Provider coverage)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "expected_domain_postconditions": [
+        "for not_applicable (Guest and unverified) the model equals the public model; for an on-sale Goods a loading, unavailable or missing owner answer is 'cannot confirm' (not the on-sale label) with add disabled and no maximum while the name, description, price, period and pickup notice stay",
+        "an owner answer that is purchasable shows on sale with the smaller of the public and the owner maximum; one that is not purchasable shows its reasons with add disabled; a Goods that is not on sale publicly keeps its public state whatever the answer",
+        "loading, not_found and unavailable reads keep their kind whatever the answer; goodsEligibilityTarget is the quantity-1 GOODS line of an on-sale Goods and null otherwise; inputs are not mutated"
+      ]
     },
     {
       "test_case_id": "TC-PG-TKT-001-501",
@@ -6517,6 +6809,40 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-PG-TKT-001-511",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-TKT-001",
+        "FR-TKT-026",
+        "SEC-API-029",
+        "API-PUR-ELG-001",
+        "DEV-WEB-007"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock mode; Entry sales page; verified, unverified and Guest sessions; cart.state eligibility_fail; second tab changes the session; scenario latency long (5000 ms) written after the first display for the in-between checks",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "a verified user whose eligibility cannot be read cannot add the open offerings while the others keep their public state; a retry recovers without a reload and shows the owner's own limit and the open offering",
+        "after a reload with a working eligibility the owner sees their own limit and may add the open offering; nothing owner-specific is stored in localStorage or sessionStorage",
+        "a Guest and an unverified user get the public state only: the eligibility is not read, so its failure is invisible",
+        "a session change in another tab turns the eligibility on and off without a reload; the previous owner's answer does not stay",
+        "from a session change (Guest to verified, or to another verified user) until the re-read completes, the publicly open offerings are 'cannot confirm' with add disabled and no quantity guidance, never on sale and never the previous owner's purchase-limit answer; no alert; the list does not return to loading",
+        "after a switch from a verified owner to Guest the previous owner's purchase-limit answer is gone at once and add follows the public state"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-PG-GDS-002-501",
       "level": "E2E",
       "suite": "e2e-ui-mock",
@@ -6653,6 +6979,74 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-GDS-002-507",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-GDS-002",
+        "SEC-API-029",
+        "API-PUR-ELG-001",
+        "SPEC-050-12.1",
+        "SPEC-050-14.2",
+        "SPEC-050-21",
+        "TST-E2E-003",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Mock mode (desktop and mobile Chromium); Goods detail; verified, unverified and Guest sessions; scenario cart.state eligibility_fail; contract tests/contracts/s5-cart.md 5.2; DB postconditions are the mock DB",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "expected_domain_postconditions": [
+        "a verified user whose eligibility cannot be read sees 'cannot confirm' (not on sale) with Add disabled and the reason attached, no quantity guidance, one alert naming the purchase conditions with a retry button, while the name, description, price and period stay; retrying only reads (Cart, mock DB and storage keys unchanged, nothing owner-specific stored)",
+        "a retry with a working eligibility recovers without a reload: on sale, Add enabled, the maximum announced again; a verified user with a working eligibility sees and adds as before",
+        "a Guest and an unverified user get the public state only (the eligibility is not read, so its failure is invisible); a Goods that is not on sale publicly keeps its public state even when the eligibility fails",
+        "a session that cannot be determined (scenario auth.session unavailable, K-Q4) fails closed: 'cannot confirm', Add disabled with the reason attached, no quantity guidance, one alert naming the purchase conditions with a retry button, the facts of the public read stay; a forced press of Add stores nothing (Cart empty, mock DB unchanged, nothing owner-specific stored)"
+      ]
+    },
+    {
+      "test_case_id": "TC-PG-GDS-002-508",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-GDS-002",
+        "SEC-API-029",
+        "DEV-WEB-007",
+        "API-PUR-ELG-001",
+        "SPEC-050-12.1",
+        "SPEC-050-26.2",
+        "TST-E2E-003",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Mock mode (desktop and mobile Chromium); Goods detail; second tab changes the session; scenario cart.state eligibility_fail; scenario latency long (5000 ms) written after the first display for the in-between checks; contract tests/contracts/s5-cart.md 5.2; DB postconditions are the mock DB",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "expected_domain_postconditions": [
+        "from a Guest to a verified user until the re-read completes, the Goods is 'cannot confirm' with Add disabled and no quantity guidance, never on sale; no alert; the name, price and typed quantity stay (the form is not unmounted); afterwards on sale with Add enabled; the first recorded state is 'cannot confirm'",
+        "from a verified user whose eligibility failed to a Guest, the alert disappears at once and is never shown again, and the public state returns with Add enabled; the Cart and the mock DB stay unchanged"
+      ]
     },
     {
       "test_case_id": "TC-PG-CRT-001-501",
@@ -6954,6 +7348,41 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-PG-CRT-001-514",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-CRT-001",
+        "FR-CRT-005",
+        "SEC-API-029",
+        "DEV-WEB-007",
+        "API-PUR-ELG-001"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock mode; Cart page with several lines; verified, unverified and Guest sessions; cart.state eligibility_fail; second tab changes the session; scenario latency long (5000 ms) written after the first display for the in-between checks",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "a verified user whose eligibility cannot be read sees 'cannot confirm' for the lines open publicly, keeps the public reason of the rest and cannot proceed; a retry recovers without a reload",
+        "once the eligibility works, the owner's own limit and the open line on sale are shown; nothing owner-specific (eligibility, purchasable, maximum, reasons) is stored in localStorage or sessionStorage",
+        "a Guest and an unverified user get the public conditions only: the eligibility is not read, so its failure is invisible",
+        "a session change in another tab turns the eligibility on and off without a reload; the previous owner's answer does not stay",
+        "from a session change (Guest to verified, or to another verified user) until the re-read completes, the publicly open lines are 'cannot confirm', never on sale and never the previous owner's purchase-limit answer; no alert; names and amounts stay; proceeding is disabled with the unknown reason",
+        "after a switch from a verified owner to Guest the previous owner's purchase-limit answer is gone at once and the public state is shown while proceeding stays disabled until the public re-read completes",
+        "a verified owner who changes a quantity sees that line as 'cannot confirm' until it is re-read for the new quantity, while an unchanged line keeps its answer and the field keeps focus and value"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-PG-CRT-001-521",
       "level": "E2E",
       "suite": "e2e-ui-mock",
@@ -7155,7 +7584,7 @@
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": 200,
-      "expected_domain_postconditions": ["Cache-Control contains neither private nor no-store"],
+      "expected_domain_postconditions": ["Cache-Control is exactly no-store, private, max-age=0"],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
       "expected_observability": [],
@@ -7224,6 +7653,47 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "unreadable store reported as failure, never as an empty Cart; on the Entry page the sale stays visible while quantity and Cart addition are natively disabled and described by the Cart stop reason with a Cart link; no add result or success announcement; Header count hidden; stored Cart key unchanged (absent)"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-CRT-001-543",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "FR-CRT-012",
+        "PG-TKT-001",
+        "PG-GDS-002",
+        "PG-CRT-001",
+        "AR-SES-007",
+        "SPEC-050-12.1",
+        "SPEC-050-14.2",
+        "SPEC-050-14A.1",
+        "SPEC-050-15.6",
+        "SPEC-050-25",
+        "TST-E2E-003",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Mock mode; Cart key getItem throws (init script; the tests of Q-1 can switch it off from the page); valid guest / authenticated Cart lifecycle metadata seeded; contracts tests/contracts/s5-cart.md 5.1 and tests/contracts/s6-auth.md section 10",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "With valid guest or authenticated lifecycle metadata, an unreadable Cart key stops Cart additions on Entry and Goods detail exactly as without metadata: the sale stays visible while quantity and Cart addition are natively disabled and described by the Cart stop reason with a Cart link, not the damaged-Cart alert",
+        "No add result, success announcement or Header count; the Cart key is never created",
+        "The Cart page shows the lifecycle stop (alert, no rows, no proceed button, no empty wording, no count)",
+        "Q-1 (user decision: stop; no UCR): valid guest metadata alone is not taken as proof that an unreadable Cart is safe. A Guest on a protected page (/mypage) gets the Cart recovery instead of a redirect to Login (URL kept, no protected content, no navigation); a Guest's Karaoke purchase start becomes the Cart recovery instead of a hand-off (no navigation to Login, no Order or Hold, slot AVAILABLE, mock database unchanged, action disabled); Login and Registration show the recovery with submit disabled, and a forced submit is cart_blocked (still on the page, still Guest, the mock session key is never written, no credential or service failure text)",
+        "After the Cart can be read again the explicit recovery lifts the stop in each case: the protected page redirects to Login (continue=mypage), the Karaoke action hands off to Login (continue=karaoke-slot) with no Order created, and Login signs in and reaches Mypage",
+        "B5 C1 (Q-1): Email OTP follows the same stop: with an unreadable Cart key the code request is natively disabled and a forced request is cart_blocked (no sent status, no code step, no session write); a Cart that becomes unreadable after the request makes the forced code submit cart_blocked with the submit natively disabled; after the explicit recovery OTP Login succeeds; Registration by Email OTP is stopped the same way"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -7729,7 +8199,10 @@
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
-      "expected_domain_postconditions": ["S6 modules and routes exist at the contracted paths"],
+      "expected_domain_postconditions": [
+        "S6 modules and routes exist at the contracted paths",
+        "B5 C1: auth-methods.ts, method-selector.tsx and email-otp-form.tsx exist at the contracted paths"
+      ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
       "expected_observability": [],
@@ -7774,7 +8247,8 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "pure modules free of React/Next/storage/mock; containers reach AuthPort only through useAuth()"
+        "pure modules free of React/Next/storage/mock; containers reach AuthPort only through useAuth()",
+        "B5 C1: auth-methods.ts is pure; email-otp-form.tsx is a client container that reaches the port only through useAuth()"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -7878,7 +8352,7 @@
       "test_case_id": "TC-PG-AUTH-003-511",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["PG-AUTH-003", "SPEC-050-25"],
+      "upstream_rule_ids": ["PG-AUTH-003", "SPEC-050-25", "PG-AUTH-001"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -7889,7 +8363,9 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "forms are noValidate with error summary, aria-busy; validators used"
+        "forms are noValidate with error summary, aria-busy; validators used",
+        "B5 C1: the Email OTP steps are forms too: noValidate, error summary, aria-busy; the OTP forms validate through validateResetRequestForm (email) and validateOtpCodeForm (code)",
+        "B5 C3: the Magic Link form is a form too: noValidate, error summary, aria-busy; it validates the address through validateResetRequestForm before the port"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -8404,7 +8880,9 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "no horizontal overflow; register form controls inside the viewport"
+        "no horizontal overflow; register form controls inside the viewport",
+        "B5 C1: on Login and Registration at 390px the method group, the Email OTP email step and the code step (field, submit, resend, change email) stay inside the viewport with no horizontal scroll",
+        "B5 C3: on Login and Registration at 390px the Magic Link address field, the send button, the sent status and the re-send button stay inside the viewport with no horizontal scroll"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -8427,7 +8905,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "HTTP 200 with Cache-Control no-store, private, max-age=0 and Pragma no-cache; public pages not private"
+        "HTTP 200 with Cache-Control no-store, private, max-age=0 and Pragma no-cache; the browser navigation response of / is no-store as well"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -8520,6 +8998,75 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "each Purpose maps to its entitlement list path; composite leads with Entry Tickets"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-CRT-001-625",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "PG-CRT-001",
+        "FR-CRT-005",
+        "SEC-API-029",
+        "DEV-WEB-007",
+        "API-PUR-ELG-001",
+        "TST-UNT-004",
+        "PG-TKT-001",
+        "PG-GDS-002"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Pure eligibilityMode / eligibilityTargets / toEligibilityInput / findEligibility / eligibilityForSession / eligibilityForLines over session states, public resolutions and eligibility answers and decideSaleState over SaleAvailability kinds",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "only a verified Authenticated User reads the eligibility: loading waits, guest and unverified users never trigger a read (the public conditions only), an undeterminable session fails closed without a call",
+        "only lines that are on sale publicly and fit the public maximum are sent, in Cart order; not-public, unavailable, not-on-sale, over-maximum, purchase-limit and quantity-shortage lines and lines without a resolution are dropped",
+        "anything but an ok answer is a failure (never 'under the limit'); an item is found by its line key only in an ok answer; inputs and answers are not mutated",
+        "an answer is used only under the session state it was read for: for a verified user a different, missing or merely equal session state gives loading and never the previous answer; Guest and unverified give not_applicable, an undeterminable session gives unavailable and a loading session gives loading",
+        "of an ok answer only the items whose line is still in the Cart with the quantity it was read for are kept, in their order; other answers are returned as they are; inputs are not mutated",
+        "decideSaleState keeps the public state unless the item is on sale publicly; on sale it shows the owner answer, and a pending, failed or missing answer is 'cannot confirm' with add disabled and no maximum"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-CRT-001-626",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "PG-CRT-001",
+        "FR-CRT-005",
+        "SEC-API-029",
+        "API-PUR-ELG-001",
+        "TST-UNT-004",
+        "PG-TKT-001"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Pure chunkEligibilityTargets and readEligibilityOf over lists of 0, 50, 51, 101 and 120 lines with a recording port double",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "a list is split into requests of at most 50 items (API-PUR-ELG-001) in the input order; 50 lines are one request, 51 lines are 50 and 1, 101 lines are 50, 50 and 1; the input is not changed",
+        "the answers of all requests are joined in the input order and used only when every request succeeded",
+        "a failed, auth_required, email_unverified or rejected request makes the whole read unavailable (never a partial ok, never 'under the limit'); no line gives no request and an empty ok"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -9862,7 +10409,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "contracted slot detail wording including the not-purchasable label, description and reason, trimmed non-empty"
+        "contracted slot detail wording including the not-purchasable label, description and reason, trimmed non-empty; the two pre-check reasons PURCHASE_LIMIT_EXCEEDED (purchase limit reached) and UNCONFIRMED (conditions cannot be confirmed) of disabledReason"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -9885,7 +10432,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "no copy fragment (including the not-purchasable reason and description) contains another; the purchasable and not-purchasable labels are in none of them"
+        "no copy fragment (including the not-purchasable reason and description) contains another; the purchasable and not-purchasable labels are in none of them; the PURCHASE_LIMIT_EXCEEDED and UNCONFIRMED reasons are part of the group"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -10051,6 +10598,66 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-PG-KRK-003-616",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "PG-KRK-003",
+        "FR-KRK-007",
+        "BR-KRK-003",
+        "KRK-AVL-003",
+        "SEC-API-029",
+        "API-PUR-ELG-001",
+        "SPEC-050-12.1",
+        "SPEC-050-13.3",
+        "TST-UNT-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Pure buildKaraokeSlotModel with an eligibility argument and karaokeEligibilityTarget over the seed slot d1_1000 and public variations; contract tests/contracts/s7b-karaoke.md 3.2; UI mock test double (not API/DB/Provider coverage)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "expected_domain_postconditions": [
+        "a slot that is not purchasable publicly (HELD, SOLD, SALES_STOPPED, a sale status other than ON_SALE, a false port flag) keeps its public model whatever the owner answer is; not_applicable (Guest and unverified) equals the public model",
+        "for a publicly purchasable slot a loading, unavailable, missing, other-slot or inconsistent (purchasable with a maximum of 0) answer is 'cannot confirm' with the button disabled and the unconfirmed reason; a purchasable answer is the purchasable model",
+        "a purchase limit shows the purchase-limit label and description with its own disabled reason; each of the nine reason codes shows its own label and maps to the sale or not-purchasable disabled reason by the first reason, with every description listed in the received order; purchasable is true exactly when disabledReason is null",
+        "karaokeEligibilityTarget is the quantity-1 KARAOKE target of a publicly purchasable slot and null otherwise; loading, not_found and unavailable keep their kind; inputs are not mutated"
+      ]
+    },
+    {
+      "test_case_id": "TC-PG-KRK-003-617",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-KRK-003", "FR-CRT-002", "API-PUR-ELG-001", "TST-UNT-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Pure eligibilityTargetKey over Cart lines and a KARAOKE target; static check of apps/web/src/api-client/eligibility-target-key.ts; contract tests/contracts/s2-mock-backend.md 2; UI mock test double (not API/DB/Provider coverage)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "expected_domain_postconditions": [
+        "a KARAOKE target is keyed KARAOKE:<slotRef>; an ENTRY_TICKET or GOODS line is keyed exactly as cartLineKey; the same UUID in the three kinds gives three different keys; the input is not mutated",
+        "the key function lives in api-client/eligibility-target-key.ts and imports only api-client types, cart-line-key and @off-r39x/domain"
+      ]
+    },
+    {
       "test_case_id": "TC-PG-KRK-003-621",
       "level": "Unit",
       "suite": "unit",
@@ -10184,7 +10791,13 @@
       "test_case_id": "TC-DEV-WEB-001-704",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["DEV-WEB-001", "DEV-DEP-006", "PG-KRK-003"],
+      "upstream_rule_ids": [
+        "DEV-WEB-001",
+        "DEV-DEP-006",
+        "PG-KRK-003",
+        "SEC-API-029",
+        "API-PUR-ELG-001"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -10194,7 +10807,10 @@
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
-      "expected_domain_postconditions": ["container and hook via port only, apart from the Cart"],
+      "expected_domain_postconditions": [
+        "container and hook via port only, apart from the Cart",
+        "the container reads the owner-scoped eligibility only for a verified session (eligibilityMode, re-read with the session, used only through eligibilityForSession) and calls nothing else on the purchase port; the purchase start stays in the hook"
+      ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
       "expected_observability": [],
@@ -10311,6 +10927,78 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-KRK-003-646",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-KRK-003",
+        "FR-KRK-007",
+        "KRK-AVL-003",
+        "SEC-API-029",
+        "API-PUR-ELG-001",
+        "SPEC-050-12.1",
+        "SPEC-050-13.3",
+        "SPEC-050-21",
+        "TST-E2E-003",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Mock mode (desktop and mobile Chromium); Karaoke slot detail; verified, unverified and Guest sessions; scenario karaokeHold limit and cart.state eligibility_fail; contract tests/contracts/s7b-karaoke.md 4.1 and 8; DB postconditions are the mock DB",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "expected_domain_postconditions": [
+        "a verified user at the limit sees the purchase-limit label and description before any purchase start, with the button disabled and described by the limit reason (not the purchase-start failure text), no alert, no status, no Order, the slot AVAILABLE and the mock DB unchanged; the date, time, price and the generic limit guidance stay",
+        "a Guest and an unverified user at the same scenario get the public state (purchasable label, action enabled, no alert): the eligibility is not read",
+        "a verified user whose eligibility cannot be read sees 'cannot confirm' with the button disabled and the unconfirmed reason and one alert with retry; no Order; a retry with a working eligibility recovers; a Guest and an unverified user do not see the failure; a slot that is not purchasable publicly keeps its public state; nothing owner-specific is stored",
+        "a session that cannot be determined (scenario auth.session unavailable, K-Q4) fails closed: 'cannot confirm', the button disabled with the unconfirmed reason attached, one alert with retry, the facts of the public read stay; a forced press starts nothing (no Order or Hold, the slot AVAILABLE, the mock DB unchanged, nothing owner-specific stored)"
+      ]
+    },
+    {
+      "test_case_id": "TC-PG-KRK-003-647",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-KRK-003",
+        "SEC-API-029",
+        "DEV-WEB-007",
+        "API-PUR-ELG-001",
+        "SPEC-050-12.1",
+        "SPEC-050-13.3",
+        "SPEC-050-26.2",
+        "TST-E2E-003",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Mock mode (desktop and mobile Chromium); Karaoke slot detail; second tab changes the session; scenario karaokeHold limit; scenario latency long (5000 ms) written after the first display for the in-between checks; contract tests/contracts/s7b-karaoke.md 4.1; DB postconditions are the mock DB",
+      "fixture_ids": [],
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "expected_domain_postconditions": [
+        "from a Guest to a verified user until the re-read completes, the slot is 'cannot confirm' with the button disabled, never purchasable; no alert; the date, time and price stay; afterwards purchasable with the button enabled; the first recorded state is 'cannot confirm'",
+        "from a verified user at the limit to a Guest the previous user's purchase limit disappears at once and the public state returns; no recorded state shows the limit afterwards",
+        "from one verified user to another the new owner sees 'cannot confirm' (never the previous owner's limit and never purchasable) until their own answer arrives; no Order is created in any case"
+      ]
     },
     {
       "test_case_id": "TC-PG-KRK-003-651",
@@ -10452,7 +11140,7 @@
       "test_case_id": "TC-PG-KRK-003-663",
       "level": "E2E",
       "suite": "e2e-ui-mock",
-      "upstream_rule_ids": ["PG-KRK-003", "SPEC-050-21"],
+      "upstream_rule_ids": ["PG-KRK-003", "SPEC-050-21", "API-PUR-ELG-001"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -10462,7 +11150,10 @@
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
-      "expected_domain_postconditions": ["limit and not-on-sale are separate failures"],
+      "expected_domain_postconditions": [
+        "limit and not-on-sale are separate failures",
+        "the limit is found at purchase start after the pre-check passed (the scenario is switched after the page rendered)"
+      ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
       "expected_observability": [],
@@ -13903,7 +14594,7 @@
       "preconditions": "apps/web/vite.config.ts loaded in a child process with controlled env and called with command and mode",
       "expected_http": null,
       "expected_domain_postconditions": [
-        "APP_ENV=production with VITE_UI_MOCK=1 throws in build and serve; staging and unflagged production load; VERCEL_ENV and NEXT_PUBLIC_UI_MOCK are not honoured; sourcemap false and outDir dist"
+        "APP_ENV=production with VITE_UI_MOCK=1 throws in build and serve; staging and unflagged production load; an allowed APP_ENV plus VERCEL_ENV=production loads and NEXT_PUBLIC_UI_MOCK is not the flag; sourcemap false and outDir dist"
       ]
     },
     {
@@ -13949,7 +14640,7 @@
       "preconditions": "scripts/mock-web.mts --dry-run with controlled env",
       "expected_http": null,
       "expected_domain_postconditions": [
-        "prints VITE_UI_MOCK=1 and the command only (start = node scripts/serve-web-dist.mts); refuses APP_ENV=production and ignores VERCEL_ENV; USAGE exit 2"
+        "with an explicit APP_ENV the dry-run prints exactly the DRY-RUN, ENV VITE_UI_MOCK=1, ENV APP_ENV=<value> and COMMAND lines (start = node scripts/serve-web-dist.mts); refuses APP_ENV=production; VERCEL_ENV is ignored and cannot stand in for APP_ENV; USAGE exit 2"
       ]
     },
     {
@@ -14627,6 +15318,40 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-FR-CRT-012-015",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "FR-CRT-012",
+        "PG-TKT-001",
+        "PG-GDS-002",
+        "PG-CRT-001",
+        "SPEC-050-12.1",
+        "SPEC-050-14A.1",
+        "TST-UNT-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real CartStore and CartLifecycle on one fault-injecting storage: Cart key read fault with guest, authenticated and absent metadata; contract tests/contracts/s5-cart.md 2.4 and s6-auth.md 10; UI mock test double (not API/DB/Provider coverage)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "A Cart key that cannot be read stops the Cart (blocked) with guest, authenticated and absent metadata, including a fault that starts after initialization, without writing or deleting the stored Cart or metadata; the stop is sticky when reads recover",
+        "Explicit recovery fails and keeps the stop while the Cart key still cannot be read, and returns recovered (empty Cart, ready) only once it can be read again",
+        "Login and registration are cart_blocked and the raw Auth call is not made, so a Guest Cart is not carried into Login",
+        "The Cart store alone still reports an unreadable key as corrupted, never as an empty Cart (TC-PG-CRT-001-422)"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-FR-CRT-012-005",
       "level": "E2E",
       "suite": "e2e-ui-mock",
@@ -14832,9 +15557,9 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "route-table.tsx has the 31 absolute paths once each plus the catch-all, no other path literal, two errorElements (root and pathless)",
-        "purchase route is under SelfLayout, the 12 Mypage routes under MypageLayout, the 3 dev routes under DevLayout; the catch-all renders NotFoundView outside SelfLayout",
-        "every route with a path except the catch-all has caseSensitive: true (31 occurrences, none false, none on the catch-all or the pathless layouts), so URLs differing only in letter case fall to the catch-all"
+        "route-table.tsx has the 33 absolute paths once each plus the catch-all, no other path literal, two errorElements (root and pathless)",
+        "purchase route is under SelfLayout, the 12 Mypage routes under MypageLayout, the 5 dev routes under DevLayout (scenarios, mock-checkout, error-probe, mock-google, mock-magic-link); the catch-all renders NotFoundView outside SelfLayout",
+        "every route with a path except the catch-all has caseSensitive: true (33 occurrences, none false, none on the catch-all or the pathless layouts), so URLs differing only in letter case fall to the catch-all"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -14928,7 +15653,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v2); requests sent with node:http so the path is not normalised",
+      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v3 approach A); requests sent with node:http so the path is not normalised",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -14957,7 +15682,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v2); requests sent with node:http so the path is not normalised",
+      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v3 approach A); requests sent with node:http so the path is not normalised",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -14986,15 +15711,15 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v2); requests sent with node:http so the path is not normalised",
+      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v3 approach A); requests sent with node:http so the path is not normalised",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "protected prefixes (6 prefixes, the prefix itself and below) carry Cache-Control no-store, private, max-age=0, Pragma no-cache and Referrer-Policy \"strict-origin-when-cross-origin, no-referrer\"; public paths and prefix look-alikes carry neither",
-        "the CSP and the five other security headers appear exactly once on every response including 404; same-name headers of several matching rules are joined with \", \" in file order"
+        "(a) the former protected prefixes carry exactly one Cache-Control no-store, private, max-age=0, Pragma no-cache and exactly one Referrer-Policy no-referrer; (b) public paths and prefix look-alikes carry the same three values",
+        "(c) the CSP, the six security headers, Cache-Control and Pragma appear exactly once on every response including 404 (except the content-hashed asset, which has the long cache and no Pragma); an unhashed asset and a missing asset are no-store; (d) same-name headers of several matching rules are joined with \", \" in file order"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -15016,7 +15741,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v2); requests sent with node:http so the path is not normalised",
+      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v3 approach A); requests sent with node:http so the path is not normalised",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -15045,7 +15770,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v2); requests sent with node:http so the path is not normalised",
+      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v3 approach A); requests sent with node:http so the path is not normalised",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -15074,14 +15799,14 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v2); requests sent with node:http so the path is not normalised",
+      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v3 approach A); requests sent with node:http so the path is not normalised",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "a missing dist, index.html or _headers, an unsupported _headers syntax (!, :placeholder, absolute URL, middle wildcard) and a port in use each print the specified ERROR line and exit 1 without listening"
+        "a missing dist, index.html or _headers, an unsupported _headers syntax (a ! line before any path, a ! without a name, a name with a space, ! Content-Type, ! content-length, :placeholder, absolute URL, middle wildcard) and a port in use each print the specified ERROR line and exit 1 without listening"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -15103,7 +15828,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v2); requests sent with node:http so the path is not normalised",
+      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v3 approach A); requests sent with node:http so the path is not normalised",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -15111,6 +15836,68 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "invalid CLI input prints USAGE and exits 2; READY carries the actual port; no request URL, query or header value reaches stdout or stderr"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-108",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "DEV-WEB-001",
+        "SEC-WEB-009",
+        "SPEC-140-22",
+        "SPEC-180-13.1",
+        "TST-GEN-006"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v3 approach A); requests sent with node:http so the path is not normalised",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "! Name removes the named header accumulated so far, case-insensitively, before the same rule's own set whatever the line order; the removal does not affect later rules, and removing a header that was never set is not an error",
+        "on the hashed asset path Cache-Control is exactly public, max-age=31536000, immutable (one line), Pragma is absent and a header set by a later rule is still joined; other paths keep no-store and Pragma"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-109",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "DEV-WEB-001",
+        "SEC-WEB-009",
+        "SPEC-140-22",
+        "SPEC-180-13.1",
+        "TST-GEN-006",
+        "DEV-WEB-007",
+        "SEC-AUTH-013"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "scripts/serve-web-dist.mts started as a child process on port 0 against a synthetic dist in os.tmpdir() (index.html, assets, _headers v3 approach A); requests sent with node:http so the path is not normalised",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "alternative spellings (/%6Dypage, /MYPAGE, /mypage/, //mypage, /%61ccount/login, deeper and query forms, /x/%2e%2e/mypage, /%61ssets/<hashed file>, and trailing-slash and upper-case forms of the hashed asset path) carry Cache-Control exactly no-store, private, max-age=0 (one line), Pragma no-cache, Referrer-Policy exactly no-referrer (one line) and one CSP",
+        "only the canonical hashed asset path is public, max-age=31536000, immutable without Pragma, with the other security headers present"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -15146,7 +15933,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "with no inline script and no origin the generated dist/_headers equals the v2 content character for character (rule order, CSP, six security headers, 12 protected rules); stdout OK headers inline-scripts=0 img-origins=0"
+        "with no inline script, no origin and no asset the generated dist/_headers equals the v3 content character for character (a single /* rule with the CSP and eight headers including Referrer-Policy no-referrer, Cache-Control no-store, private, max-age=0 and Pragma no-cache; no protected-prefix rule, no ! line, no strict-origin-when-cross-origin); stdout OK headers inline-scripts=0 img-origins=0"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -15371,6 +16158,76 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-STACK-008-208",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["SEC-WEB-009", "SPEC-140-22", "SPEC-180-13.1"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "scripts/generate-web-headers.mts run as a child process with --dist on a synthetic dist in os.tmpdir() and a controlled SPONSOR_IMAGE_ALLOWED_ORIGINS",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "a synthetic dist with three content-hashed files under assets/ plus mock/x.svg and favicon.ico produces the /* rule followed by one exact-match rule per hashed asset in code unit order, each with ! Cache-Control, ! Pragma and Cache-Control: public, max-age=31536000, immutable; no rule for files outside assets/; --check then exits 0"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-209",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["SEC-WEB-009", "SPEC-180-13.1", "SEC-WEB-003"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "scripts/generate-web-headers.mts run as a child process with --dist on a synthetic dist in os.tmpdir() and a controlled SPONSOR_IMAGE_ALLOWED_ORIGINS",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "an unhashed file or a subdirectory in assets/ (ERROR asset-unhashed, all listed), a 404.html anywhere in dist in any letter case (ERROR html-404-present), more than 100 rules (ERROR headers-rule-limit rules=101) and a CSP line over 2,000 characters (ERROR headers-line-too-long line=3) each exit 1, also under --check, and write no _headers (an existing one is unchanged)",
+        "boundaries: 99 hashed assets (100 rules) and a CSP line of exactly 2,000 characters are accepted; the error output contains no origin value"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-STACK-008-210",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["SEC-WEB-009", "DEV-WEB-001", "SPEC-180-13.1"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "static read of the repository's apps/web/public directory and apps/web/vite.config.ts only; no script is executed and nothing is built",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "apps/web/public/assets does not exist and apps/web/vite.config.ts sets none of assetsDir, entryFileNames, chunkFileNames and assetFileNames, so dist/assets/ keeps Vite's default [name]-[hash] naming that the hash check relies on"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-STACK-008-301",
       "level": "E2E",
       "suite": "e2e-ui-mock",
@@ -15462,7 +16319,7 @@
       "expected_http": 200,
       "expected_domain_postconditions": [
         "page responses carry the CSP of dist/_headers (no unsafe-inline / unsafe-eval in script-src), nosniff, DENY, HSTS, COOP and a Permissions-Policy that does not allow the camera",
-        "public pages are neither private nor no-store and use the default Referrer-Policy; the six protected prefixes carry no-store, Pragma and an effective no-referrer"
+        "every page response, public or protected, carries Cache-Control no-store, private, max-age=0, Pragma no-cache and exactly Referrer-Policy no-referrer"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -15571,6 +16428,31 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-STACK-008-309",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": ["SEC-WEB-009", "SPEC-140-22", "SPEC-180-13.1", "TST-E2E-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "apps/web built with VITE_UI_MOCK=1 and served from apps/web/dist by scripts/serve-web-dist.mts on 127.0.0.1:3100 (dist/_headers applied); desktop-chromium and mobile-chromium; timezone UTC; synthetic data only; contract tests/contracts/s3-layout.md section 13",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "the real build's dist/assets/ holds only content-hashed files (at most 99), dist has no 404.html, and dist/_headers path lines are exactly /* and /assets/<each file> in code unit order",
+        "a real hashed JS and CSS asset answer 200 with Cache-Control exactly public, max-age=31536000, immutable, no Pragma, a CSP, nosniff and Referrer-Policy no-referrer",
+        "the same asset under /%61ssets/ and a missing /assets/missing-r39x.js are no-store (the missing asset is a non-HTML 404)"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-DEV-WEB-011-204",
       "level": "Unit",
       "suite": "unit",
@@ -15592,6 +16474,868 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": false
+    },
+    {
+      "test_case_id": "TC-DEV-WEB-011-003",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["DEV-WEB-011", "INF-ENV-001", "DEV-AUTH-009"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "env passed as a plain object, no process.env access; synthetic APP_ENV values only",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "isUiMockAppEnv is true only for the exact names development, staging and test (case-sensitive, not trimmed; unset, empty, aliases, different case, surrounding whitespace and production are false); with VITE_UI_MOCK=1 assertUiMockNotInProductionBuild passes for the three names, throws the 'APP_ENV is unset' message for unset, the production message for production and the 'APP_ENV is not one of them' message for every other value; a flag other than 1 never throws; the message never contains the offending value"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-DEV-WEB-011-205",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["DEV-WEB-011", "INF-ENV-001"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "apps/web/vite.config.ts loaded in a child process with controlled env (no empty-string APP_ENV: child-process handling of empty values differs between operating systems) and called with command build or serve",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "a build with VITE_UI_MOCK=1 loads only for APP_ENV exactly development, staging or test (the embedded name is that value) and fails for unset, production, surrounding whitespace, different case and aliases with the matching message and no CONFIG-OK; VERCEL_ENV cannot stand in for APP_ENV; the offending value is not printed; without the flag any APP_ENV loads; the dev server also fails for an explicit invalid APP_ENV"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-DEV-WEB-011-206",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["DEV-WEB-011", "INF-ENV-001"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "apps/web/vite.config.ts loaded in a child process with controlled env and called with command serve or build",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "the dev server alone defaults an unset APP_ENV to development (flag 1, embedded name development) and keeps an explicit staging or test; an explicit production still fails; a build never gets a default (flag unset loads with an empty embedded name, flag 1 fails); an explicit flag 0 loads with APP_ENV unset; the default is not written into process.env (serve with APP_ENV unset leaves process.env.APP_ENV unset while define embeds development, and a build config read later in the same process still fails with the unset message)"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-DEV-WEB-011-207",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["DEV-WEB-011", "INF-ENV-001"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "scripts/mock-web.mts --dry-run in a child process with controlled env (no empty-string APP_ENV); the repository choice that a build gives no default and start lets an unset APP_ENV through is recorded in tests/contracts/s9-finalize.md section 4",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "build --dry-run needs an explicit development, staging or test and prints that value on its ENV APP_ENV line; unset or any other value (other than production, which keeps ERROR mock-web-production) exits 1 with the ERROR mock-web-app-env-invalid line and no COMMAND line, for build and start alike; start --dry-run with APP_ENV unset passes and prints no ENV APP_ENV line; an explicit allowed value is kept; the offending value is never printed; argument errors (exit 2, USAGE) come before the APP_ENV check; the allow list in mock-web.mts (ALLOWED_APP_ENVS) is the same set that isUiMockAppEnv in ui-mock.ts accepts"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-DEV-WEB-011-208",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["DEV-WEB-011", "TST-E2E-004", "DEV-REP-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "tests/harness/browser/mock-web-env.mts called with plain objects as the parent environment; start-mock-web.mjs read as text",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "mockWebEnv returns a new object with VITE_UI_MOCK=1 and APP_ENV=test whatever the parent APP_ENV is, without NODE_ENV, SPONSOR_IMAGE_ALLOWED_ORIGINS, VERCEL_ENV and NEXT_PUBLIC_UI_MOCK, keeps the other variables and does not change the parent; start-mock-web.mjs imports mockWebEnv and passes that same env object to both the build and the static server spawn"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-PG-AUTH-003-102",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-AUTH-003", "SPEC-050-15.0", "SEC-API-027", "TST-UNT-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "fixture_ids": ["MOCK-AUTH-USERS"],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Mock auth with injected storage; scenario values auth.login / auth.verify reused (no new scenario value); UI mock test double (not API/DB/Provider coverage); contract tests/contracts/s2-mock-backend.md section 14",
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "expected_domain_postconditions": [
+        "requestEmailOtp answers { kind: sent } for a registered, an unverified and an unregistered email, and the answers are toEqual to each other",
+        "the DB, the stored session value, pendingVerificationEmail and every storage write stay as they were, no listener is called, and no user is created",
+        "auth.login unavailable and a corrupted scenario give unavailable; auth.login credential_failure and auth.verify invalid_or_expired do not affect the request",
+        "a malformed email rejects with a RangeError that does not echo the email (the UI validates first)"
+      ]
+    },
+    {
+      "test_case_id": "TC-PG-AUTH-003-103",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "PG-AUTH-003",
+        "AR-AUTH-008",
+        "FR-AUTH-001",
+        "FR-AUTH-005",
+        "TST-UNT-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "fixture_ids": ["MOCK-AUTH-USERS"],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Mock auth with injected storage; scenario values auth.login / auth.verify reused (plan Q2); UI mock test double (not API/DB/Provider coverage); contract tests/contracts/s2-mock-backend.md section 14",
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "expected_domain_postconditions": [
+        "a verified user signs in: signed_in with emailVerified true, an authenticated verified session, one listener call, the DB unchanged",
+        "an unverified user signs in verified (the code proves the mailbox, Q7): the stored user and the session are verified",
+        "an unknown email is the first registration: one new user { displayName: null, emailVerified: true } and a verified session; the display name is not inferred",
+        "auth.login credential_failure is code_invalid, auth.verify invalid_or_expired is code_expired, auth.login wins, auth.login unavailable is unavailable and is decided first, an empty code is code_invalid",
+        "every failure leaves the DB, the session value, every storage write and the listeners untouched; a corrupted scenario, DB or session is unavailable with no write"
+      ]
+    },
+    {
+      "test_case_id": "TC-PG-AUTH-003-202",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-AUTH-003", "SPEC-050-25", "SEC-AUTH-018", "TST-UNT-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "fixture_ids": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Pure validator and message mapper (tests/contracts/s6-auth.md section 4)",
+      "clock_instant": null,
+      "expected_domain_postconditions": [
+        "validateOtpCodeForm: a blank code (empty, spaces, tab, ideographic space, newline) is required on the code field only",
+        "any non-blank code is accepted with no length, digit or format rule; the validator never echoes the code and does not mutate input",
+        "fieldErrorMessage maps { code, required } to copy.auth.field.otpCode.required, rejects impossible combinations with a RangeError, and leaves existing mappings unchanged"
+      ]
+    },
+    {
+      "test_case_id": "TC-PG-AUTH-003-212",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["PG-AUTH-001", "PG-AUTH-003", "SPEC-050-15.0", "TST-UNT-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "fixture_ids": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Pure method list (tests/contracts/s6-auth.md section 5A); C2 added Google and C3 adds Magic Link: the list is exactly the specified four-method order",
+      "clock_instant": null,
+      "expected_domain_postconditions": [
+        "B5 C3: AUTH_METHODS is exactly password, google, email-otp, magic-link in that order with password as the default",
+        "authMethodLabel returns the method copy and the four labels are distinct (the Magic Link label is the contracted wording); no GitHub / Discord / LINE / Apple method exists"
+      ]
+    },
+    {
+      "test_case_id": "TC-PG-AUTH-003-403",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "SPEC-050-15.0",
+        "SEC-API-027",
+        "PG-AUTH-003",
+        "TST-UNT-004",
+        "SEC-AUTH-018",
+        "SPEC-050-25"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "fixture_ids": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "ja.ts copy pinned (tests/contracts/s6-auth.md section 1)",
+      "clock_instant": null,
+      "expected_domain_postconditions": [
+        "the method legends and labels, the code field label and required message, and the OTP action and result wording are the contracted strings",
+        "the sent wording never mentions registration or existence; no OTP wording contains an expiry time or an attempt count (those are provider values checked at the Production gate)",
+        "B5 C2: the Google method label, the start actions (Googleでログイン / Googleで登録), the failure, outage and signed-in wording and the stand-in screen wording are pinned: they name no account existence and no number, the signed-in hint names Logout, and the stand-in says it is a stand-in",
+        "a wrong code and an expired or exhausted code are separate messages (the second asks for a resend); the new button names are distinct from each other and from the existing submit names",
+        "B5 C3: the Magic Link method label, the send and re-send actions, the sent wording (it states the 5 minute validity of the link, which is the Provider value the specification gives for the link, and never mentions registration or existence), the failure, outage and signed-in wording and the stand-in screen wording are pinned; the failure wording does not say whether the link was expired or used; the stand-in says it is a stand-in and sends no mail",
+        "F-4: the reason wording for a disabled Google start and a disabled Magic Link send while the Session cannot be confirmed is pinned (cause and next step, no Logout hint, no number, no account existence, distinct from every other message of the two methods)"
+      ]
+    },
+    {
+      "test_case_id": "TC-FR-CRT-012-016",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["FR-CRT-012", "FR-CRT-006", "TST-UNT-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "fixture_ids": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Real CartStore and CartLifecycle on one storage; only the raw Auth port is a double; tests/contracts/s6-auth.md section 10",
+      "clock_instant": null,
+      "expected_domain_postconditions": [
+        "signInWithEmailOtp success keeps a Guest Cart and records the authenticated provenance, clears a Cart of authenticated or unknown provenance, and treats emailVerified false as success",
+        "code_invalid, code_expired and unavailable leave the Cart, the provenance and the transition state as they were; a rejected raw call aborts the transition",
+        "a busy transition (lifecycle, another tab's Web Lock, this port's own in-flight sign-in) gives cart_busy and a Cart key that cannot be read gives cart_blocked for both methods, with raw not called and storage untouched",
+        "requestEmailOtp on a ready Cart calls raw once, returns its result unchanged and performs no Cart or metadata write; the early raw session notification is published only after the Cart cleanup"
+      ]
+    },
+    {
+      "test_case_id": "TC-PG-AUTH-003-512",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "PG-AUTH-001",
+        "PG-AUTH-003",
+        "SPEC-050-15.0",
+        "SPEC-050-25",
+        "SEC-AUTH-018",
+        "DEV-WEB-012",
+        "SEC-WEB-013"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "fixture_ids": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Source tree read (tests/contracts/s6-auth.md sections 5A, 6.1A, 6.1B)",
+      "clock_instant": null,
+      "expected_domain_postconditions": [
+        "the method selector is a fieldset with a legend and labelled radio inputs, moves no focus and does not use the port",
+        "Login and Register show the selector with their own legend and start on the default method; the Email OTP steps call both port methods, validate first and use the contracted wording",
+        "B5 C2: the Google start is a client container that calls only startGoogleSignIn through useAuth(), builds both paths with auth-return, hands off with window.location.assign and shows the contracted wording; Login and Register read the return once and remove it with history.replaceState; only the auth screens receive the result through completeExternalAuthentication; the stand-in route and screen are dev-only and keep copy in ja.ts",
+        "the code field is autoComplete one-time-code, numeric and has no maxLength; the code never reaches a URL, a navigation target, a storage or the console; the steps follow the Cart stop rule",
+        "B5 C3: the Magic Link form is a client container that calls only requestMagicLink through useAuth(), builds both paths with auth-return, validates and normalises the address first, never navigates by itself and shows the contracted wording; the decorator writes the pending record before the raw call; Login and Register use the form; completeExternalAuthentication is called only from the auth screens; the stand-in route and screen are dev-only, thin, keep copy in ja.ts, hand off by window.location.assign after the safe-path check and are referenced by no feature",
+        "F-1: the Google start calls isSafeCheckoutUrl (imported from the purchase flow, not copied) on the URL the port returned before window.location.assign and hands off the very value that was checked",
+        "F-4: the Google start and the Magic Link form name their Session-unavailable reason copy and attach descriptions with aria-describedby"
+      ]
+    },
+    {
+      "test_case_id": "TC-PG-AUTH-003-305",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-AUTH-003",
+        "SPEC-050-15.0",
+        "AR-CONT-001",
+        "TST-E2E-003",
+        "TST-E2E-004",
+        "SEC-API-027"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "fixture_ids": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Mock mode; /account/login with and without continue=cart; tests/contracts/s6-auth.md section 6.1A; B5 C3 adds the fourth method",
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "expected_domain_postconditions": [
+        "a radio group named by the Login legend lists exactly Email+Password, Google, Email OTP, then Magic Link with Email+Password checked and the existing email / password form, submit and links unchanged; no GitHub or Discord text",
+        "choosing Email OTP swaps the password form for the code request without changing the URL (continue kept), the Session or the focus (the radio keeps it); choosing Email+Password again restores an empty password field and the password is never stored",
+        "the radio group is operable with the arrow keys alone: ArrowDown walks Email+Password, Google, Email OTP, Magic Link and ArrowUp walks back, each showing its own controls, with no navigation"
+      ]
+    },
+    {
+      "test_case_id": "TC-PG-AUTH-003-306",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-AUTH-003",
+        "SPEC-050-15.0",
+        "AR-AUTH-008",
+        "FR-CRT-012",
+        "SEC-API-027",
+        "TST-E2E-003",
+        "TST-E2E-004",
+        "SPEC-050-25"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "fixture_ids": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Mock mode; synthetic seed users; Guest or authenticated-provenance Cart seeded; tests/contracts/s6-auth.md section 6.1B",
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "expected_domain_postconditions": [
+        "send then verify: one sent status, the code field (one-time-code, numeric, no maxlength), submit, resend and change-email controls; the code signs in and goes to Mypage with a verified Session; no runtime error and no external request",
+        "change email returns to the first step; resend keeps the code step with a fresh sent status",
+        "continue=cart with a Guest Cart keeps the Cart byte-identical and records the authenticated provenance; a Cart of authenticated provenance is cleared like a password Login",
+        "an unverified user is verified by the code (stored user and Session verified)",
+        "the answer to the code request (text and buttons) is the same for a registered and an unregistered email, the DB is unchanged and the typed unknown email is stored nowhere",
+        "I-1: the focus follows the Email OTP step: the code field after the code is requested, the email field after changing the email, the code field again after requesting once more"
+      ]
+    },
+    {
+      "test_case_id": "TC-PG-AUTH-003-307",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-AUTH-003",
+        "SPEC-050-15.0",
+        "AR-AUTH-008",
+        "AR-FAIL-001",
+        "UF-AUTH-002",
+        "SPEC-050-25",
+        "TST-E2E-003",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "fixture_ids": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Mock mode; scenarios auth.login credential_failure / unavailable and auth.verify invalid_or_expired (existing values); tests/contracts/s6-auth.md section 6.1B",
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "expected_domain_postconditions": [
+        "a wrong code: one alert asks to enter it again, the emptied code field stays, the Session stays Guest, the URL and the mock DB are unchanged; a correct code afterwards signs in",
+        "an expired or exhausted code: one alert asks for a new code, resend brings a fresh sent status and clears the alert, a new code then signs in",
+        "an outage at the request or at the code step: one alert, the step stays, still a Guest, and the code is stored nowhere",
+        "an empty or malformed email and an empty code never reach the port: the error summary takes focus, names the field, and the code field is invalid and described"
+      ]
+    },
+    {
+      "test_case_id": "TC-PG-AUTH-001-305",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-AUTH-001",
+        "FR-AUTH-001",
+        "SPEC-050-15.0",
+        "SPEC-030-9.2",
+        "SEC-API-027",
+        "TST-E2E-003",
+        "TST-E2E-004",
+        "SPEC-050-25"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "fixture_ids": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Mock mode; /account/register; tests/contracts/s6-auth.md section 6.2A",
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "expected_domain_postconditions": [
+        "the registration legend names the same method radio group (exactly Email+Password, Google, Email OTP, Magic Link in the specified order) starting on Email+Password with the existing registration form; Email OTP swaps it without changing the URL",
+        "a new email registers by code: Mypage, a verified Session, exactly one new user with displayName null shown as 未設定; continue=cart reaches /cart",
+        "an already registered email signs in with no 'already registered' answer and no user is added",
+        "a wrong code and an outage on the registration code step leave a Guest and create no user",
+        "I-1: on Registration the focus follows the Email OTP step: the code field after the code is requested, the email field after changing the email"
+      ]
+    },
+    {
+      "test_case_id": "TC-SEC-AUTH-018-702",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "SEC-AUTH-018",
+        "SEC-AUTH-007",
+        "TST-E2E-003",
+        "TST-E2E-004",
+        "SEC-API-027"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "fixture_ids": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Mock mode; sentinel one-time code that is no seed value; B5 C3 adds the Magic Link address that is typed to send and to open a link",
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "expected_domain_postconditions": [
+        "across a wrong code, an expired code, an outage and a success there is no trace of the code in any URL, storage entry, DOM text or console message, and the code field is emptied after every attempt",
+        "B5 C3: across a send, a re-send, an outage, a failed return and a valid link the address that sent the link appears in no URL, storage entry, DOM text or console message, and the stand-in's address appears in no URL, request or text (the valid link writes that user's record on purpose and nothing else)"
+      ]
+    },
+    {
+      "test_case_id": "TC-PG-AUTH-003-104",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "PG-AUTH-003",
+        "PG-AUTH-001",
+        "SPEC-050-15.0",
+        "DEV-WEB-013",
+        "SEC-WEB-013",
+        "TST-UNT-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "fixture_ids": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Mock auth on an in-memory storage with a fixed clock and deterministic ids (tests/contracts/s2-mock-backend.md section 14.2); UI mock test double, not Provider coverage",
+      "clock_instant": null,
+      "expected_domain_postconditions": [
+        "startGoogleSignIn returns a redirect to /dev/mock-google carrying both paths as percent-encoded success and failure query values and never changes the DB, the session, pendingVerificationEmail or any storage write, and calls no listener (Guest and authenticated alike)",
+        "a success or failure path that is not a safe relative path or whose pathname is not /account/login or /account/register is rejected with a RangeError and changes nothing",
+        "auth.login unavailable and a corrupted scenario give unavailable; credential_failure and the verify scenario do not decide this method; no email, token or code ever appears in the URL",
+        "allowMockGoogleSignIn signs an existing user in with the DB unchanged, creates a new verified user with displayName null (never inferred from the email) exactly once, replaces another user's session, rejects a malformed email with a RangeError and refuses to run on a corrupted DB or session"
+      ]
+    },
+    {
+      "test_case_id": "TC-PG-AUTH-003-213",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "PG-AUTH-003",
+        "PG-AUTH-001",
+        "SPEC-050-15.0",
+        "AR-CONT-001",
+        "SEC-WEB-013",
+        "TST-UNT-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "fixture_ids": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Pure return-path builders and readers (tests/contracts/s6-auth.md section 5B)",
+      "clock_instant": null,
+      "expected_domain_postconditions": [
+        "the return and failure paths for Login and Registration are accountPath plus returned=google or notice=google-failed, pass isSafeRelativePath, keep the Continuation exactly and carry no email, token, code or identifier",
+        "parseReturned recognises only the exact values google and magic-link and parseFailureNotice only google-failed and link-failed; every other value (including near misses and the password-updated notice) is ignored (null)",
+        "B5 C3: the Magic Link return and failure paths are accountPath plus returned=magic-link or notice=link-failed, pass isSafeRelativePath, keep the Continuation exactly and carry no email, token or identifier; the Google paths are unchanged"
+      ]
+    },
+    {
+      "test_case_id": "TC-FR-CRT-012-017",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["FR-CRT-012", "SPEC-050-15.0", "TST-UNT-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "fixture_ids": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Real CartStore and CartLifecycle on one storage (a new lifecycle instance on the same storage stands for a new document); only the raw Auth port is a double; tests/contracts/s6-auth.md section 10A",
+      "clock_instant": null,
+      "expected_domain_postconditions": [
+        "beginExternalAuthentication keeps a Guest-provenance Cart, clears an unknown or authenticated one, writes a record that holds only the version, the provenance and external pending, leaves no transition record and a ready snapshot, and is blocked (Q-1) by an unreadable Cart or metadata key, a stopped lifecycle, an abandoned transition record or a failed write or clear, with nothing recorded",
+        "the decorator writes the pending record and clears the Cart before the raw startGoogleSignIn call; a raw unavailable or a throw keeps the record and does not bring the cleared Cart back; a start replaces a superseded record",
+        "finishLogin turns pending into superseded; completeExternalAuthentication keeps the Cart for pending and clears it for superseded, removes the record and records the authenticated provenance, judges a missing record by the provenance read when the document's lifecycle was created, receives once per return, and is never reached by another document's session observation",
+        "cancelled returns never resolve the record; finishLogout removes it; expireAuthenticatedCart and recover keep it; stored values without the external field still read unchanged",
+        "the decorator answers already_signed_in (the raw port is not called, nothing is written) for a verified and for an Email-unverified session, unavailable when the session cannot be read, cart_busy for a lifecycle transition, another tab's Web Lock and its own in-flight sign-in, and cart_blocked for an unreadable Cart key, a stopped lifecycle, an abandoned record and an unavailable coordinator",
+        "step 7: abortTransition(\"unknown\") of a memory-only transition keeps a record written meanwhile; the non-transition unknown form requires the record, is read like a missing key (empty Cart becomes Guest-provenance on a Guest observation, cleared on a Session observation) and keeps the record; { version: 1, provenance: \"unknown\" } without a record stays invalid"
+      ]
+    },
+    {
+      "test_case_id": "TC-FR-CRT-012-019",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["FR-CRT-012", "SPEC-050-15.0", "TST-UNT-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "fixture_ids": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Real CartStore and CartLifecycle on one storage; the document of the return is a new lifecycle instance; tests/contracts/s6-auth.md section 10A",
+      "clock_instant": null,
+      "expected_domain_postconditions": [
+        "a start (pending, Guest Cart kept) followed by a sign-in by another method (Email+Password, sign-up with a session, Email-unverified, Email OTP) makes the record superseded; confirmation_required and credential_failure leave it pending",
+        "the return after a supersede clears the Cart added meanwhile, removes the record and records the authenticated provenance; the return without another sign-in keeps the Guest Cart; a Logout removes the record and the Cart",
+        "a cancelled return does not resolve the record, a second start replaces it, and a raw unavailable keeps it",
+        "the step 10 limit (a session of another email observed before the return is shown) is pinned as the specified limit: the lifecycle clears nothing, with and without a record, until the return is received or a Logout happens; this fixes the limit and is no proof that another account's Cart is never shown",
+        "a second return after a receipt is judged by the provenance as a re-login (cleared); a document of another browser with no record keeps a Guest-provenance Cart",
+        "B5 C3: every step above is repeated with requestMagicLink as the starting method: the record is written before the raw call, a cleared or unreadable Cart is handled alike, a re-send replaces the record, and already_signed_in, cart_busy and cart_blocked are returned before anything is recorded; the address never enters the metadata",
+        "step 7: a recovery while the Session is not confirmed (recover(\"unknown\")) clears the Cart and keeps the record as { version: 1, provenance: \"unknown\", external }; a later Guest observation makes the empty Cart Guest-provenance with the record kept, and the later return is judged by the record (superseded clears); another document's Session observation clears an unknown-provenance Cart and keeps the record",
+        "F-2, step 5: when the success of another method must clear a Cart of authenticated provenance and the clear fails, the record still becomes superseded (the authentication stays, the Cart stops); a recovery keeps the record, and the return received after it clears the Cart added meanwhile (Google and Magic Link)",
+        "R-1, step 5, with Web Locks: when the clear fails at the success of another method, the superseded record is written keeping the transition marker (the stored value stays { version: 1, provenance, transitioning: true, external: \"superseded\" } for a Cart of authenticated and of unknown provenance; only external changes; a lifecycle that was already stopped writes the same shape); after the lock is released another instance (never subscribed, or subscribed and probing the lock) does not read a ready Cart (blocked via the orphaned transition record) and shows no Cart rows, while the Cart that could not be cleared stays in storage, hidden by the lifecycle gate; a recovery keeps the record and ends the marker, and the return received after it clears the Cart added meanwhile. Without Web Locks the memory-only coordinator writes no transition marker, so the stored value stays { provenance, external: \"superseded\" } (the F-2 case above)",
+        "I-b, step 6: completeExternalAuthentication called alone on a document whose metadata is { provenance: \"unknown\", external: \"pending\" } or { provenance: \"unknown\", external: \"superseded\" } (after recover(\"unknown\"), with a Cart made before any Session observation) clears the Cart whatever the record says, resolves the record to { provenance: \"authenticated\" } without external, leaves a ready lifecycle and does not touch the Cart again on a second call (Google and Magic Link)"
+      ]
+    },
+    {
+      "test_case_id": "TC-PG-AUTH-003-308",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-AUTH-001",
+        "PG-AUTH-003",
+        "SPEC-050-15.0",
+        "SPEC-050-15.1",
+        "FR-CRT-012",
+        "AR-CONT-001",
+        "DEV-WEB-012",
+        "SEC-WEB-013",
+        "TST-E2E-003",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "fixture_ids": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Mock mode; /account/login and /account/register with and without continue=cart and a Guest Cart; the dev stand-in /dev/mock-google; tests/contracts/s6-auth.md sections 6.1C and 6.2B and s2-mock-backend.md section 14.2",
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "expected_domain_postconditions": [
+        "Login allow demo@example.com: the stand-in, a document load of the returned=google URL, then Mypage with a verified Session, no user added, no runtime error and no request to another origin; the start changed no Session",
+        "allow the new account creates exactly one verified user with displayName null shown as 未設定; Registration behaves the same, and an existing account on Registration gets no 'already registered' answer and adds no user",
+        "cancel returns to the same screen with exactly one failure alert, a Guest Session, no user and the other methods selectable; a Guest Cart with continue=cart is kept byte-identical after allow (/cart shows the lines, authenticated provenance, no pending record) and after cancel (the pending record stays)",
+        "the karaoke-slot Continuation is carried through both paths; the start is a button (no link, no /dev, /admin or /staff href); the start fits 390px; an unavailable sign-in service shows one alert, stays and records the pending record",
+        "the stand-in disables all actions for a missing or untrustworthy success or failure path and follows nothing; it says it is a stand-in and changes nothing by being opened"
+      ]
+    },
+    {
+      "test_case_id": "TC-PG-AUTH-003-310",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-AUTH-001",
+        "PG-AUTH-003",
+        "SPEC-050-15.0",
+        "AR-AUTH-004",
+        "FR-CRT-012",
+        "SEC-WEB-013",
+        "TST-E2E-003",
+        "TST-E2E-004",
+        "SEC-API-027"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "fixture_ids": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Mock mode; the returned=google and notice=google-failed URLs opened as document loads with seeded Session, Cart and pending or superseded records; tests/contracts/s6-auth.md sections 6.1C, 6.2B, 10A; B5 C3 repeats it for returned=magic-link and notice=link-failed",
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "expected_domain_postconditions": [
+        "a verified Session on Login or Registration goes to the Continuation (Mypage without one) after the result is received: a pending record keeps the Cart, a superseded one clears it, and the record is gone",
+        "an Email-unverified Session goes to PG-AUTH-002 with the Continuation kept and the result received",
+        "a Guest that opens the returned URL (opened on another device) sees one failure alert, keeps the Cart and the pending record, and returned leaves the URL; notice=google-failed does the same; unknown values are ignored",
+        "a reload, back and forward never decide again; an ordinary visit of /cart, /account/login or /mypage with a signed-in Session never receives the result and keeps the pending record",
+        "B5 C3: the same decisions hold for returned=magic-link and notice=link-failed on Login and Registration: a verified Session goes on to the Continuation, an Email-unverified one to PG-AUTH-002, a Guest sees one link failure alert with the Cart and the pending record kept, and the Google and Magic Link wordings are not mixed up",
+        "B5 C3: a link opened in another Tab is received only by the document that navigation shows; the Tab that sent the link stays on its sent state, decides nothing, shows no failure and a reload decides nothing either"
+      ]
+    },
+    {
+      "test_case_id": "TC-PG-AUTH-003-313",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-AUTH-001",
+        "PG-AUTH-003",
+        "SPEC-050-15.0",
+        "FR-CRT-012",
+        "TST-E2E-003",
+        "TST-E2E-004",
+        "SPEC-050-25"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "fixture_ids": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Mock mode; a verified and an Email-unverified Session; Login and Registration; tests/contracts/s6-auth.md sections 6.1C and 6.2B",
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "expected_domain_postconditions": [
+        "with either Session the Google start is natively disabled and described by the Logout hint; pressing it goes nowhere, no /dev document is requested and no pending record is written; the Email+Password form stays available",
+        "a Guest sees the start enabled without the hint; a Session that becomes valid in another tab disables the start on the open page",
+        "B5 C3: with either Session the Magic Link send is natively disabled and described by the Logout hint, a forced press goes nowhere and writes no pending record, and the Email+Password form stays available; a Session that becomes valid in another Tab disables the send, in the sent state too",
+        "F-4: with a Session that cannot be confirmed (scenario auth.session unavailable) the Google start and the Magic Link send, on Login and Registration, are natively disabled; the reason is visible text in main attached with aria-describedby (not the signed-in hint, no alert, no status); a forced press goes nowhere, requests no /dev document, shows no status and writes no pending record; a Guest with a confirmed Session sees no reason"
+      ]
+    },
+    {
+      "test_case_id": "TC-FR-CRT-012-018",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "FR-CRT-012",
+        "SPEC-050-15.0",
+        "SPEC-050-15.3",
+        "TST-E2E-003",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "fixture_ids": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Mock mode; guest Cart lifecycle metadata with a Cart key that cannot be read, and a Browser storage that cannot be obtained at all; the faults are injected from the page; tests/contracts/s6-auth.md section 10A",
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "expected_domain_postconditions": [
+        "an unreadable Cart key stops the Google start on Login and Registration: the start is natively disabled, a forced press makes no navigation, no session write and no pending record, the Cart recovery is shown; after the recovery the start reaches the stand-in with a pending record",
+        "a Browser storage that cannot be obtained does not stop the start: the stand-in is reached and no Cart metadata is written; once the storage is available the allow reaches Mypage with no pending record (the Cart stays unavailable only while the storage is)",
+        "B5 C3: the same holds for the Magic Link send: an unreadable Cart key makes the send natively disabled, a forced press makes no session write and no pending record and shows the Cart recovery, after which the send shows the sent state with a pending record; a Browser storage that cannot be obtained at all does not stop the send, which shows the sent state and writes no Cart metadata"
+      ]
+    },
+    {
+      "test_case_id": "TC-FR-CRT-012-020",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": ["FR-CRT-012", "SPEC-050-15.0", "TST-E2E-003", "TST-E2E-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "fixture_ids": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Mock mode; two pages of one browser context share localStorage; Email+Password Login on page 2 between the start and the result of page 1; tests/contracts/s6-auth.md section 10A",
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "expected_domain_postconditions": [
+        "start with a Guest Cart, another page signs in as demo@example.com and adds an Entry, then Google succeeds for google.new@example.com: the Cart is empty, the header shows no count and the record is gone",
+        "a failed return of the same start keeps the signed-in Cart and the superseded record; a later success received through the stand-in clears the Cart",
+        "comparison: a start with no other login keeps the Guest Cart; a Logout between the start and the result removes the record and the Cart",
+        "B5 C3: send a link with a Guest Cart, another method signs in as demo@example.com and adds an Entry, then a valid link of other@example.com is opened: the Cart is empty, the header shows no count and the record is gone; an expired link first keeps the signed-in Cart and the superseded record",
+        "B5 C3: a link opened in another Tab keeps the Guest Cart when no other login happened and is received by that Tab only; a Logout between the send and the link removes the record and the Cart; a link opened with no record while another account is signed in clears the Cart of that account (step 9)"
+      ]
+    },
+    {
+      "test_case_id": "TC-PG-AUTH-003-105",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "PG-AUTH-003",
+        "PG-AUTH-001",
+        "SPEC-050-15.0",
+        "SEC-API-027",
+        "SEC-AUTH-018",
+        "DEV-WEB-013",
+        "SEC-WEB-013",
+        "TST-UNT-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "fixture_ids": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Mock auth on an in-memory storage with a fixed clock and deterministic ids (tests/contracts/s2-mock-backend.md section 14.2); UI mock test double, not Provider coverage",
+      "clock_instant": null,
+      "expected_domain_postconditions": [
+        "requestMagicLink answers sent alike for a registered, an Email-unverified and an unknown address, writes no storage entry, keeps no address, link or token anywhere and calls no listener",
+        "a success or failure path that is not a safe relative path or whose pathname is not /account/login or /account/register is rejected with a RangeError, and a malformed address is rejected with a RangeError; nothing changes",
+        "auth.login unavailable and a corrupted scenario give unavailable; credential_failure and the verify scenario do not decide this method",
+        "openMockMagicLink signs an existing user in with the DB unchanged, verifies an Email-unverified user (opening the link proves the mailbox, like Email OTP), creates a new verified user with displayName null exactly once, replaces another user's session, rejects a malformed address with a RangeError and writes only the DB and session keys",
+        "openMockMagicLink on a corrupted DB or session is unavailable with no write"
+      ]
+    },
+    {
+      "test_case_id": "TC-PG-AUTH-003-309",
+      "level": "E2E",
+      "suite": "e2e-ui-mock",
+      "upstream_rule_ids": [
+        "PG-AUTH-001",
+        "PG-AUTH-003",
+        "SPEC-050-15.0",
+        "SPEC-050-15.1",
+        "SPEC-050-15.3",
+        "FR-CRT-012",
+        "AR-CONT-001",
+        "DEV-WEB-012",
+        "SEC-WEB-013",
+        "SEC-API-027",
+        "SEC-AUTH-018",
+        "TST-E2E-003",
+        "TST-E2E-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "fixture_ids": [],
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "preconditions": "Mock mode; /account/login and /account/register with and without continue=cart and a Guest Cart; the dev stand-in /dev/mock-magic-link replaces the mailbox; tests/contracts/s6-auth.md sections 5B, 6.1D, 6.2C and s2-mock-backend.md section 14.3",
+      "clock_instant": "2027-03-01T03:00:00Z",
+      "expected_domain_postconditions": [
+        "sending from Login: one status that states the 5 minute validity, a re-send button instead of the send button, no navigation, no Session or user change and no Cart change, and the pending record written; a registered, an Email-unverified and an unknown address get the identical sent state that says nothing about existence",
+        "a valid link opened through the stand-in is a document load of the returned=magic-link URL, then Mypage as the link's owner: an existing account adds no user, an Email-unverified account becomes verified, a new account creates exactly one verified user with displayName null shown as 未設定; Registration behaves the same, with no 'already registered' answer",
+        "a Guest Cart with continue=cart is kept byte-identical after the valid link (/cart shows the lines, authenticated provenance, no pending record); an expired link returns to the same screen with exactly one failure alert, a Guest Session, no user, the Cart and the pending record kept, and the link can be sent again or another method chosen",
+        "an unavailable sign-in service shows one alert and no status, stays and keeps the pending record; an empty or malformed address is refused before the port with an error summary and no lifecycle change",
+        "the send is a button (no link, no /dev, /admin or /staff href, no stand-in request); the form is natively submitted with browser validation off",
+        "the stand-in disables both actions for a missing or untrustworthy success or failure path and follows nothing; an empty or malformed address opened as a valid link does nothing; an expired link needs no address and changes nothing; the typed address reaches no URL; it says it is a stand-in and changes nothing by being opened"
+      ]
     }
   ]
 }

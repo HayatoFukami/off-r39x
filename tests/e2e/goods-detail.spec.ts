@@ -2,19 +2,25 @@ import { expect, type Page, test } from "@playwright/test";
 import { copy } from "../../apps/web/src/presentation/copy/ja.ts";
 import { formatJstDateTime } from "../../apps/web/src/presentation/format/datetime.ts";
 import { formatMoney, multiplyMoney } from "../../apps/web/src/presentation/format/money.ts";
+import { authScenario } from "../harness/browser/auth.ts";
 import {
   addButton,
   describedText,
   expectedGoodsDetail,
+  FORBIDDEN_ELIGIBILITY_IN_STORAGE,
   FORBIDDEN_IN_CART_STORAGE,
   headerCartLink,
   liveRegion,
   mainOf,
+  openSecondTab,
   priceEdit,
   quantityInput,
   readCart,
   readCartRaw,
   readDbRaw,
+  recordedTexts,
+  recordTextsIn,
+  storedText,
   writeStorage,
 } from "../harness/browser/cart.ts";
 import { gotoHydrated, reloadHydrated } from "../harness/browser/hydration.ts";
@@ -24,8 +30,9 @@ import {
   KEYS,
   scenarioJson,
   seedLocalStorage,
+  sessionJson,
 } from "../harness/browser/shell.ts";
-import { GOODS, MARKER } from "../harness/mock-seed.ts";
+import { EMAIL, GOODS, MARKER, NOW_ISO } from "../harness/mock-seed.ts";
 
 // UI mock suite (TST-E2E-004: auxiliary, not G8). Contract: tests/contracts/s5-cart.md sections 5.2, 6.
 // PG-GDS-002 (SPEC-050 14.2), 9, 21, 25, 26.4, 31 items 6 / 24 (first half), FR-CRT-001 / 003, BR-ORD-020.
@@ -390,6 +397,257 @@ test.describe("TC-PG-GDS-002-505 a failed read is unknown, never purchasable; lo
     await expect(main(page)).not.toContainText(LOADING_FORBIDDEN);
     await expect(addButton(main(page))).toHaveCount(0);
     await expect(h1(page)).toHaveText(detail(GOODS.tshirt).name, { timeout: 20_000 });
+  });
+});
+
+// B4c: the owner-scoped eligibility (API-PUR-ELG-001) on the Goods detail. Goods has no Purchase Limit (SPEC-030 10.3), so a verified
+// owner's answer equals the public state in the seed; the tests below check the fail-closed and session rules (SPEC-050 12.1 / 14.2).
+const statusOf = (page: Page) =>
+  main(page)
+    .locator("div")
+    .filter({ has: page.getByText(copy.sales.statusLabel, { exact: true }) })
+    .last();
+const alertOf = (page: Page) => main(page).getByRole("alert");
+const retryOf = (page: Page) =>
+  alertOf(page).getByRole("button", { name: copy.pageState.retry, exact: true });
+const failScenario = () =>
+  scenarioJson({ cart: { state: "eligibility_fail", purchaseStart: "ok" } });
+
+test.describe("TC-PG-GDS-002-507 a verified owner whose eligibility cannot be read cannot add the Goods ('cannot confirm', alert and retry); a Guest and an unverified user are not affected; nothing is persisted (API-PUR-ELG-001, SEC-API-029, SPEC-050 12.1 / 14.2 / 21)", () => {
+  const label = () => copy.availability.label;
+  const description = () => copy.availability.description;
+
+  test("a verified user: 'cannot confirm', Add disabled with the reason attached, no maximum, one alert with retry; the facts stay; only reading happens", async ({
+    page,
+  }) => {
+    const goods = detail(GOODS.tshirt);
+    await openReady(page, GOODS.tshirt, {
+      [KEYS.session]: authenticatedSession(),
+      [KEYS.scenario]: failScenario(),
+    });
+    await expect(alertOf(page)).toHaveCount(1);
+    await expect(alertOf(page)).toContainText(
+      copy.pageState.unavailable(copy.entry.eligibilitySubject),
+    );
+    await expect(retryOf(page)).toBeVisible();
+    await expect(statusOf(page)).toContainText(label().UNAVAILABLE);
+    await expect(statusOf(page)).not.toContainText(label().ON_SALE);
+    await expect(main(page)).not.toContainText(label().ON_SALE);
+    await expect(addButton(main(page))).toBeDisabled();
+    expect(await describedText(addButton(main(page)))).toContain(description().UNAVAILABLE);
+    await expect(main(page)).not.toContainText(copy.quantity.guidance(20));
+    // The facts of the public read are still shown.
+    await expect(h1(page)).toHaveText(goods.name);
+    await expect(main(page)).toContainText(goods.description);
+    await expect(main(page)).toContainText(formatMoney(goods.unitPrice));
+    await expect(main(page)).toContainText(formatJstDateTime(goods.startsAt));
+    await expect(main(page)).toContainText(formatJstDateTime(goods.endsAt));
+
+    // Reading again only reads: the Cart and the mock database are untouched and the answer is not stored.
+    const dbBefore = await readDbRaw(page);
+    await retryOf(page).click();
+    await expect(alertOf(page)).toHaveCount(1);
+    await expect(addButton(main(page))).toBeDisabled();
+    expect(await readCartRaw(page)).toBeNull();
+    expect(await readDbRaw(page)).toBe(dbBefore);
+    expect(await storedText(page, [KEYS.scenario])).not.toMatch(FORBIDDEN_ELIGIBILITY_IN_STORAGE);
+  });
+
+  test("a session that cannot be determined (auth.session unavailable) fails closed (K-Q4): Add disabled with the reason attached, one alert with retry; a forced press writes nothing", async ({
+    page,
+  }) => {
+    const goods = detail(GOODS.tshirt);
+    await openReady(page, GOODS.tshirt, authScenario({ session: "unavailable" }));
+    await expect(alertOf(page)).toHaveCount(1);
+    await expect(alertOf(page)).toContainText(
+      copy.pageState.unavailable(copy.entry.eligibilitySubject),
+    );
+    await expect(retryOf(page)).toBeVisible();
+    await expect(statusOf(page)).toContainText(label().UNAVAILABLE);
+    await expect(statusOf(page)).not.toContainText(label().ON_SALE);
+    await expect(addButton(main(page))).toBeDisabled();
+    expect(await describedText(addButton(main(page)))).toContain(description().UNAVAILABLE);
+    await expect(main(page)).not.toContainText(copy.quantity.guidance(20));
+    // The facts of the public read are still shown.
+    await expect(h1(page)).toHaveText(goods.name);
+    await expect(main(page)).toContainText(formatMoney(goods.unitPrice));
+
+    // Even a forced press stores nothing: the Cart and the mock database are untouched.
+    const dbBefore = await readDbRaw(page);
+    await addButton(main(page)).click({ force: true });
+    await expect(alertOf(page)).toHaveCount(1);
+    expect(await readCartRaw(page)).toBeNull();
+    expect(await readDbRaw(page)).toBe(dbBefore);
+    expect(await storedText(page, [KEYS.scenario])).not.toMatch(FORBIDDEN_ELIGIBILITY_IN_STORAGE);
+  });
+
+  test("retry recovers without a reload once the eligibility works: on sale, Add enabled, the maximum announced again", async ({
+    page,
+  }) => {
+    await openReady(page, GOODS.tshirt, {
+      [KEYS.session]: authenticatedSession(),
+      [KEYS.scenario]: failScenario(),
+    });
+    await expect(alertOf(page)).toHaveCount(1);
+    await writeStorage(page, KEYS.scenario, scenarioJson());
+    await retryOf(page).click();
+    await expect(alertOf(page)).toHaveCount(0);
+    await expect(statusOf(page)).toContainText(label().ON_SALE);
+    await expect(statusOf(page)).not.toContainText(label().UNAVAILABLE);
+    await expect(addButton(main(page))).toBeEnabled();
+    await expect(main(page)).toContainText(copy.quantity.guidance(20));
+    expect(await readCartRaw(page)).toBeNull();
+    expect(await storedText(page, [KEYS.scenario])).not.toMatch(FORBIDDEN_ELIGIBILITY_IN_STORAGE);
+  });
+
+  test("a verified user with a working eligibility sees the same state as before: on sale, Add enabled, adding stores a reference and a quantity only", async ({
+    page,
+  }) => {
+    await openReady(page, GOODS.towel, { [KEYS.session]: authenticatedSession() });
+    await expect(alertOf(page)).toHaveCount(0);
+    await expect(statusOf(page)).toContainText(label().ON_SALE);
+    await expect(main(page)).toContainText(copy.quantity.guidance(3));
+    await addButton(main(page)).click();
+    await expect
+      .poll(() => readCart(page))
+      .toEqual(cartWith([{ goodsRef: GOODS.towel, quantity: 1 }]));
+    expect(await readCartRaw(page)).not.toMatch(FORBIDDEN_IN_CART_STORAGE);
+    expect(await storedText(page, [KEYS.scenario])).not.toMatch(FORBIDDEN_ELIGIBILITY_IN_STORAGE);
+  });
+
+  test("a Guest and an unverified user get the public state only: the eligibility is not read, so its failure is invisible", async ({
+    page,
+    context,
+  }) => {
+    await openReady(page, GOODS.tshirt, { [KEYS.scenario]: failScenario() });
+    await expect(alertOf(page)).toHaveCount(0);
+    await expect(statusOf(page)).toContainText(label().ON_SALE);
+    await expect(addButton(main(page))).toBeEnabled();
+    await expect(main(page)).toContainText(copy.quantity.guidance(20));
+
+    const other = await context.newPage();
+    await other.clock.setFixedTime(new Date(NOW_ISO));
+    await seedLocalStorage(other, {
+      [KEYS.scenario]: failScenario(),
+      [KEYS.session]: sessionJson({
+        kind: "authenticated",
+        email: EMAIL.unverified,
+        emailVerified: false,
+      }),
+    });
+    await gotoHydrated(other, `/goods/${GOODS.tshirt}`);
+    await expect(h1(other)).toHaveText(detail(GOODS.tshirt).name);
+    await expect(alertOf(other)).toHaveCount(0);
+    await expect(statusOf(other)).toContainText(label().ON_SALE);
+    await expect(addButton(main(other))).toBeEnabled();
+    await other.close();
+  });
+
+  test("a Goods that is not on sale publicly keeps its public state for a verified user too, with or without a failing eligibility (it cannot improve)", async ({
+    page,
+  }) => {
+    await openReady(page, GOODS.badge, {
+      [KEYS.session]: authenticatedSession(),
+      [KEYS.scenario]: failScenario(),
+    });
+    await expect(alertOf(page)).toHaveCount(0);
+    await expect(statusOf(page)).toContainText(label().SOLD_OUT);
+    await expect(statusOf(page)).not.toContainText(label().UNAVAILABLE);
+    await expect(addButton(main(page))).toBeDisabled();
+    expect(await describedText(addButton(main(page)))).toContain(description().SOLD_OUT);
+  });
+});
+
+test.describe("TC-PG-GDS-002-508 after a session change the public Goods stays and nothing of the previous viewer is shown: 'cannot confirm' until the new owner's answer arrives (B4b-F-1 rule E, SEC-API-029, DEV-WEB-007, SPEC-050 12.1 / 26.2)", () => {
+  // The in-between states are checked with a long latency switched on after the first display, and by a recorder that
+  // notices a state shown only for a moment (the final display alone cannot). Same method as TC-PG-TKT-001-511.
+  const label = () => copy.availability.label;
+  const description = () => copy.availability.description;
+  const NEEDLES = () => [label().ON_SALE, label().UNAVAILABLE];
+  const MID = { timeout: 2_000 };
+  const DONE = { timeout: 20_000 };
+  const slow = (page: Page) =>
+    writeStorage(page, KEYS.scenario, scenarioJson({ latency: "long", latencyLongMs: 5000 }));
+
+  test("after a Guest becomes a verified user: 'cannot confirm' with Add disabled until the owner's answer arrives; the name, price and typed quantity stay; no alert", async ({
+    page,
+    context,
+  }) => {
+    test.setTimeout(90_000);
+    const goods = detail(GOODS.tshirt);
+    await openReady(page, GOODS.tshirt);
+    await expect(statusOf(page)).toContainText(label().ON_SALE);
+    await expect(addButton(main(page))).toBeEnabled();
+    await quantityInput(main(page)).fill("2");
+    const dbBefore = await readDbRaw(page);
+    const other = await openSecondTab(context);
+    await other.goto("/");
+    await slow(page);
+    await recordTextsIn(statusOf(page), "status", NEEDLES());
+    await writeStorage(other, KEYS.session, authenticatedSession());
+
+    await expect(statusOf(page)).toContainText(label().UNAVAILABLE, MID);
+    await expect(statusOf(page)).not.toContainText(label().ON_SALE, MID);
+    await expect(addButton(main(page))).toBeDisabled(MID);
+    expect(await describedText(addButton(main(page)))).toContain(description().UNAVAILABLE);
+    await expect(main(page)).not.toContainText(copy.quantity.guidance(20), MID);
+    await expect(alertOf(page)).toHaveCount(0, MID);
+    await expect(h1(page)).toHaveText(goods.name, MID);
+    await expect(main(page)).toContainText(formatMoney(goods.unitPrice), MID);
+    await expect(main(page)).toContainText(formatJstDateTime(goods.startsAt), MID);
+    // The form is not unmounted: the typed quantity is kept.
+    await expect(quantityInput(main(page))).toHaveValue("2", MID);
+
+    await expect(statusOf(page)).toContainText(label().ON_SALE, DONE);
+    await expect(addButton(main(page))).toBeEnabled(DONE);
+    await expect(main(page)).toContainText(copy.quantity.guidance(20), DONE);
+    await expect(quantityInput(main(page))).toHaveValue("2");
+
+    const recorded = await recordedTexts(page, "status");
+    expect(recorded[0]).toBeDefined();
+    expect(recorded[0]).toContain(label().UNAVAILABLE);
+    expect(recorded[0]).not.toContain(label().ON_SALE);
+    expect(await readCartRaw(page)).toBeNull();
+    expect(await readDbRaw(page)).toBe(dbBefore);
+    await other.close();
+  });
+
+  test("after a verified user whose eligibility failed becomes a Guest: the alert disappears at once, never shown again, and the public state returns (Add enabled)", async ({
+    page,
+    context,
+  }) => {
+    test.setTimeout(90_000);
+    await openReady(page, GOODS.tshirt, {
+      [KEYS.session]: authenticatedSession(),
+      [KEYS.scenario]: failScenario(),
+    });
+    await expect(alertOf(page)).toHaveCount(1);
+    await expect(addButton(main(page))).toBeDisabled();
+    const dbBefore = await readDbRaw(page);
+    const other = await openSecondTab(context);
+    await other.goto("/");
+    await slow(page);
+    await recordTextsIn(main(page), "alert", [
+      copy.pageState.unavailable(copy.entry.eligibilitySubject),
+    ]);
+    await writeStorage(other, KEYS.session, sessionJson());
+
+    await expect(alertOf(page)).toHaveCount(0, MID);
+    await expect(statusOf(page)).toContainText(label().ON_SALE, MID);
+    await expect(statusOf(page)).not.toContainText(label().UNAVAILABLE, MID);
+    await expect(addButton(main(page))).toBeEnabled(MID);
+
+    // Nothing of the previous viewer's failure is shown again after the change (the recorder starts before it).
+    await expect(statusOf(page)).toContainText(label().ON_SALE, DONE);
+    const recorded = await recordedTexts(page, "alert");
+    expect(
+      recorded.filter((seen) =>
+        seen.includes(copy.pageState.unavailable(copy.entry.eligibilitySubject)),
+      ),
+    ).toEqual([]);
+    expect(await readCartRaw(page)).toBeNull();
+    expect(await readDbRaw(page)).toBe(dbBefore);
+    await other.close();
   });
 });
 

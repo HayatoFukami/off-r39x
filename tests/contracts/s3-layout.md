@@ -19,7 +19,7 @@
 |---|---|---|
 | `apps/web/src/config/site.ts` | 純粋 | `SITE_NAME`, `EVENT_NAME`, `HOME_HREF`, `CTA_HREF`, `CART_HREF`, `MYPAGE_HREF`, `PrimaryNavKey`, `PrimaryNavItem`, `PRIMARY_NAV`, `GuestAccountLink`, `GUEST_ACCOUNT_LINKS`, `AccountMenuItem`, `ACCOUNT_MENU_ITEMS` |
 | `apps/web/src/config/assets.ts` | 純粋 | `AssetSlot`, `assets` |
-| `apps/web/src/config/ui-mock.ts`（既存に追加） | 純粋 | 既存 + `isDevAreaEnabled` |
+| `apps/web/src/config/ui-mock.ts`（既存に追加） | 純粋 | 既存 + `isDevAreaEnabled`、`isUiMockAppEnv`（§2.3。fail closed の許可値の判定） |
 | `apps/web/src/config/browser-storage.ts` | 純粋 | `StorageLike`, `createInMemoryStorage`, `resolveBrowserStorage` |
 | `apps/web/src/features/cart/cart-count.ts` | 純粋 | `CART_STORAGE_KEY`, `readCartCount` |
 | `apps/web/src/features/cart/use-cart-count.ts` | client | `useCartCount` |
@@ -41,11 +41,11 @@
 | `apps/web/src/presentation/components/ui/dialog.tsx` | primitive | `@base-ui/react` の Dialog ベース。Drawer はこれから作る |
 | `apps/web/src/features/shell/site-header.tsx`, `site-footer.tsx` | container（推奨配置・テスト対象外） | `useCartCount` / `useSession` / `useApi` を使い presentation の `GlobalHeader` / `GlobalFooter` へ props を渡す。`src/routes/root-layout.tsx` から使う |
 | `apps/web/index.html` | 静的 shell | §4.1（`lang="ja"`、viewport、`<title>` なし、inline script なし） |
-| `apps/web/vite.config.ts` | build 設定 | §13（本番ガード、`VITE_UI_MOCK` の dev 既定、`sourcemap: false`） |
+| `apps/web/vite.config.ts` | build 設定 | §13（`APP_ENV` の fail closed の判定、`VITE_UI_MOCK` と dev server の `APP_ENV` の既定、`sourcemap: false`） |
 | `apps/web/src/main.tsx` | entry | §13（`createRoot` + `RouterProvider`。mock を import しない） |
 | `apps/web/src/config/build-env.ts` | config | §13（`import.meta.env` を読む唯一の場所） |
 | `apps/web/src/routing/{link.tsx,navigation.ts}` | adapter | §13（`Link`、`usePathname`、`useRouter`、`useSearchParams`） |
-| `apps/web/src/routes/route-table.tsx` | route 表 | §13（31 path + `*`） |
+| `apps/web/src/routes/route-table.tsx` | route 表 | §13（33 path + `*`。B5 C2 で `/dev/mock-google`、B5 C3 で `/dev/mock-magic-link` を足した） |
 | `apps/web/src/routes/document-title.ts` | title | §4.1（`formatDocumentTitle`） |
 | `apps/web/src/routes/root-layout.tsx` | route | §3 |
 | `apps/web/src/styles/globals.css` | token | §9 |
@@ -54,6 +54,8 @@
 | `apps/web/src/routes/dev/dev-layout.tsx` | route | §8 |
 | `apps/web/src/routes/dev/scenarios.tsx` | route | §8 |
 | `apps/web/src/routes/dev/error-probe.tsx` | route（dev 専用・テスト支援） | §6.3 |
+| `apps/web/src/routes/dev/mock-google.tsx` | route（dev 専用。B5 C2） | `s6-auth.md` §6.9（`/dev/mock-google`。Google の代わりの画面。`/dev/mock-checkout` と同じ位置づけ） |
+| `apps/web/src/routes/dev/mock-magic-link.tsx` | route（dev 専用。B5 C3） | `s6-auth.md` §6.10（`/dev/mock-magic-link`。Magic Link の受信箱の代わりの画面。`/dev/mock-google` と同じ位置づけ） |
 | `apps/web/src/mock/dev-ui/scenario-panel.tsx` | client | `ScenarioPanel` |
 | `apps/web/src/mock/dev-ui/mock-mode-badge.tsx` | server / client | `MockModeBadge` |
 | `apps/web/public/mock/sponsors/{alpha,bravo,charlie}.svg` | asset | §7.4 |
@@ -146,13 +148,16 @@ export const assets: { readonly logo: AssetSlot | null; readonly keyVisual: Asse
 
 既定は両方 `null`（外部素材を使わない。SPEC-050 §24.3）。`logo` が `null` のとき Header はサイト名テキストだけを表示する。
 
-### 2.3 `config/ui-mock.ts` — `isDevAreaEnabled`
+### 2.3 `config/ui-mock.ts` — `isUiMockAppEnv`、`isDevAreaEnabled`
 
 ```ts
+export function isUiMockAppEnv(value: string | undefined): boolean;
 export function isDevAreaEnabled(env: Env): boolean;   // Env は既存の Readonly<Record<string, string | undefined>>
 ```
 
-`isUiMockEnabled(env)` が true、かつ `env.APP_ENV !== "production"` のときだけ true。`VITE_UI_MOCK` が `"1"` 以外（`"0"`、`"true"`、`""`、undefined）なら false。旧変数 `NEXT_PUBLIC_UI_MOCK` は mock の有効化に使わず、`VERCEL_ENV` は production の判定に使わない（どちらを渡しても結果は変わらない）。`/dev/*` の guard（§8）はこの関数を使う。環境変数は `config/build-env.ts` の `readBuildEnv()` だけが読む（§13）。
+`isUiMockAppEnv(value)` は、`value` が `"development"`・`"staging"`・`"test"` のいずれかと**完全一致**するときだけ true（INF-ENV-001 の Environment 名のうち非 production の 3 つ。大文字小文字を区別し、前後の空白を取らず、別名を認めない）。undefined、空文字、`"Development"`・`"STAGING"`・`"Test"`、`" development"`・`"test\n"`、`"dev"`・`"stage"`・`"prod"`、`"production"`、`"local"`・`"preview"`・`"ci"` はすべて false（TC-DEV-WEB-011-003）。
+
+`isDevAreaEnabled(env)` は、`isUiMockEnabled(env)` が true、かつ `isUiMockAppEnv(env.APP_ENV)` が true のときだけ true（`APP_ENV` が未設定・不正値・`production` なら false。fail closed。TC-DEV-WEB-012-101）。`VITE_UI_MOCK` が `"1"` 以外（`"0"`、`"true"`、`""`、undefined）なら false。旧変数 `NEXT_PUBLIC_UI_MOCK` は mock の有効化に使わず、`VERCEL_ENV` は production の判定に使わない（どちらを渡しても結果は変わらない）。`/dev/*` の guard（§8）はこの関数を使う。環境変数は `config/build-env.ts` の `readBuildEnv()` だけが読む（§13）。
 
 ### 2.4 `config/browser-storage.ts`
 
@@ -406,7 +411,7 @@ seed の `imageUrl`（`/mock/sponsors/<key>.svg`）が指す文字だけの plac
 
 ### 8.1 `src/routes/dev/dev-layout.tsx`
 
-- `isDevAreaEnabled(readBuildEnv())` が false なら `NotFoundView` を返す（mock 無効時、または `APP_ENV=production` の `/dev/*` は Not Found 表示。HTTP status は 200 の静的 shell）。
+- `isDevAreaEnabled(readBuildEnv())` が false なら `NotFoundView` を返す（mock 無効時、または `APP_ENV` が `development` / `staging` / `test` 以外（未設定・不正値・`production`）の `/dev/*` は Not Found 表示。HTTP status は 200 の静的 shell）。
 - true のときは `<meta name="robots" content="noindex, nofollow" />`（React 19 が head へ出す）と `<Outlet />` を描画する。
 - `/dev/*` を Header / Footer / Drawer / Account menu / MockModeBadge から Link しない（SPEC-190 DEV-WEB-012）。
 
@@ -421,7 +426,7 @@ seed の `imageUrl`（`/mock/sponsors/<key>.svg`）が指す文字だけの plac
 | `latency` | `none` `long` |
 | `latencyLongMs` | 整数 1..60000（number input） |
 | `sponsorLogos` | `published` `none` `fail` `image_broken` `image_disallowed_origin` |
-| `cart.state` | `ok` `fail` `partial` |
+| `cart.state` | `ok` `fail` `partial` `eligibility_fail` |
 | `cart.purchaseStart` | `ok` `reject_one` `limit` `unavailable` |
 | `checkout` | `ok` `start_failed` `opportunity_expired` |
 | `karaokeHold` | `ok` `conflict` `limit` `expire_before_checkout` |
@@ -476,8 +481,8 @@ CSS・source のどこにも外部 origin（`http://`、`https://`、`//host`）
 - ページ読み込み中に `pageerror` が無く、`console.error`（`Failed to load resource` を除く）が無いこと。
 - ネットワーク要求の宛先は `127.0.0.1:3100`（と `data:` / `blob:`）だけ（外部 font・外部 CDN を使わない）。
 - Playwright の既定 workers は 2（`tests/playwright.config.ts`）。Windows host で 4 workers 並列時に loopback の停止（素の node http server でも再現、最大約 20 秒）が起き、アプリ起因でない timeout が散発したため。retry は 0 のまま（SPEC-170 §69）、各 test は新規 context（TST-FLK-001 / §65）。`--workers=N` で上書き可能。
-- 保護 6 prefix（`/account`・`/auth`・`/purchase`・`/mypage`・`/admin`・`/staff`）の `Cache-Control: no-store` と `Pragma: no-cache` は `dist/_headers`（§13）が付け、`tests/e2e/no-store.spec.ts`（TC-SEC-WEB-009-001）が 6 prefix すべてを検査する。
-- E2E の webServer は `tests/harness/browser/start-mock-web.mjs`: `VITE_UI_MOCK=1` で `pnpm --filter @off-r39x/web build`（`APP_ENV`・`NODE_ENV`・`SPONSOR_IMAGE_ALLOWED_ORIGINS`・旧 `VERCEL_ENV`・`NEXT_PUBLIC_UI_MOCK` は除く）を行い、`apps/web/dist` を `scripts/serve-web-dist.mts --port 3100 --host 127.0.0.1` で配信する（`dist/_headers` を適用）。
+- content-hash 付き asset の正規の path 以外の全応答の `Cache-Control: no-store, private, max-age=0`・`Pragma: no-cache`・`Referrer-Policy: no-referrer` は `dist/_headers`（§13）の `/*` 規則が付ける（保護 prefix ごとの規則は無い）。`tests/e2e/no-store.spec.ts`（TC-SEC-WEB-009-001 が保護 6 prefix と `/`、TC-SEC-WEB-009-002 が別表記の URL）が検査する。
+- E2E の webServer は `tests/harness/browser/start-mock-web.mjs`: 子プロセスの env を `tests/harness/browser/mock-web-env.mts` の `mockWebEnv(process.env)` で作る（`VITE_UI_MOCK=1`、**親の `APP_ENV` に関係なく `APP_ENV=test`**、`NODE_ENV`・`SPONSOR_IMAGE_ALLOWED_ORIGINS`・旧 `VERCEL_ENV`・`NEXT_PUBLIC_UI_MOCK` は除く。他の変数は保ち、親の object は変えない。TC-DEV-WEB-011-208）。この env で `pnpm --filter @off-r39x/web build` を行い、`apps/web/dist` を `scripts/serve-web-dist.mts --port 3100 --host 127.0.0.1` で配信する（`dist/_headers` を適用）。
 
 ## 11. テストファイルと契約の対応
 
@@ -509,7 +514,7 @@ CSS・source のどこにも外部 origin（`http://`、`https://`、`//host`）
 4. 最小の読み取り専用 Cart 数量 source は S3 で `features/cart/cart-count.ts` として定義し、保存形式は S5 が拡張のみする（§2.5）。
 5. error page の E2E は `/dev/error-probe`（dev 専用・テスト支援）を S3 で追加して検証する。SPEC-050 の Page ではなく、mock 無効時は Not Found 表示（DEV-WEB-012 の `src/routes/dev/**` に該当）。
 6. Scenario panel の control 名は日本語 copy ではなく key path とする（dev 専用で、`ja.ts` はプロダクト UI 用のため）。
-7. 本番相当 build（`VITE_UI_MOCK` 無効、または `APP_ENV=production`）で `/dev/*` が Not Found 表示になること、`MockModeBadge` が出ないことは、E2E の server が mock 固定のため Unit（`isDevAreaEnabled`、静的検査）でのみ確認する。`VITE_UI_MOCK=1` かつ `APP_ENV=production` の build が失敗することは `root-scripts.test.ts`（TC-DEV-WEB-011-201）で確認する。
+7. 本番相当 build（`VITE_UI_MOCK` 無効、または `APP_ENV` が `development` / `staging` / `test` 以外）で `/dev/*` が Not Found 表示になること、`MockModeBadge` が出ないことは、E2E の server が mock 固定（`APP_ENV=test`）のため Unit（`isDevAreaEnabled`、静的検査）でのみ確認する。`VITE_UI_MOCK=1` かつ `APP_ENV` が許可値以外（未設定・不正値・`production`）の build が失敗することは `root-scripts.test.ts`（TC-DEV-WEB-011-201 / 205 / 206）で確認する。
 
 ## 13. 静的 SPA の配信・header・route 表（フェーズM。SPEC-190 DEV-WEB-001〜013、SPEC-180 §13.1、SPEC-140 §21 / §22）
 
@@ -518,10 +523,10 @@ CSS・source のどこにも外部 origin（`http://`、`https://`、`//host`）
 ### 13.1 route 表（`src/routes/route-table.tsx`。TC-STACK-008-002）
 
 - React Router の data router（`createBrowserRouter` + `RouterProvider`、`src/main.tsx` が `createRoot` で描画）。`export const routes: RouteObject[]`。
-- 全 page の `path` は絶対 path の literal（31 個、動的 segment は `:announcementRef`・`:date`・`:slotRef`・`:goodsRef`・`:orderRef`・`:ticketRef`・`:reservationRef`・`:goodsItemRef`）+ `"*"`。layout は pathless route。
-- 構造: `RootLayout`（`errorElement: <RootError/>`）> pathless（`errorElement: <RouteError/>`）> { 公開 10 + account 5、`SelfLayout`（`AuthGate` + `Outlet`）> { `/purchase/orders/:orderRef`、`MypageLayout`（`MypageNav` + `Outlet`）> { Mypage 12 } }、`DevLayout` > { `/dev/scenarios`、`/dev/mock-checkout/:orderRef`、`/dev/error-probe` }、`*` → `NotFoundView` }。
+- 全 page の `path` は絶対 path の literal（33 個、動的 segment は `:announcementRef`・`:date`・`:slotRef`・`:goodsRef`・`:orderRef`・`:ticketRef`・`:reservationRef`・`:goodsItemRef`）+ `"*"`。layout は pathless route。
+- 構造: `RootLayout`（`errorElement: <RootError/>`）> pathless（`errorElement: <RouteError/>`）> { 公開 10 + account 5、`SelfLayout`（`AuthGate` + `Outlet`）> { `/purchase/orders/:orderRef`、`MypageLayout`（`MypageNav` + `Outlet`）> { Mypage 12 } }、`DevLayout` > { `/dev/scenarios`、`/dev/mock-checkout/:orderRef`、`/dev/error-probe`、`/dev/mock-google`、`/dev/mock-magic-link` }、`*` → `NotFoundView` }。
 - 動的 route は `useParams()` の値を現行と同じ parse 関数で検査する。不正な値: 公開系（announcement / karaoke day / slot / goods / dev mock-checkout）は `NotFoundView`、Mypage・purchase は `AccessDeniedView`（同じ props）。正常な値は feature container に `key={生の param}` を付けて描画する（param が変わったら再マウント。TC-STACK-008-307）。
-- 照合は大文字小文字を区別する。`"*"` 以外の path を持つ全 route（31 個）は `caseSensitive: true`（移行前の Next と同じ。`dist/_headers` の照合とも一致する）。pathless の layout と `"*"` には付けない。大文字小文字だけが異なる URL（`/MYPAGE`、`/GOODS` など）は `"*"` の Not Found（AuthGate の外。ゲストでも login へ redirect しない）になる。動的 param の値の大文字小文字は、従来どおり各 parse 関数が判定する（`/goods/<大文字の UUID>` は `/goods/:goodsRef` に一致し、`parseGoodsRef` が拒否して Not Found になる）。検査: TC-STACK-008-002（静的）、TC-STACK-008-302（E2E）。
+- 照合は大文字小文字を区別する。`"*"` 以外の path を持つ全 route（33 個）は `caseSensitive: true`（移行前の Next と同じ。`dist/_headers` の照合とも一致する）。pathless の layout と `"*"` には付けない。大文字小文字だけが異なる URL（`/MYPAGE`、`/GOODS` など）は `"*"` の Not Found（AuthGate の外。ゲストでも login へ redirect しない）になる。動的 param の値の大文字小文字は、従来どおり各 parse 関数が判定する（`/goods/<大文字の UUID>` は `/goods/:goodsRef` に一致し、`parseGoodsRef` が拒否して Not Found になる）。検査: TC-STACK-008-002（静的）、TC-STACK-008-302（E2E）。
 - `react-router` を import してよいのは `src/routing/**`・`src/routes/**`・`src/main.tsx` だけ。`next` の import・依存・`next.config.*`・`app/` は無い（TC-STACK-008-001）。`import.meta.env` を読むのは `src/config/build-env.ts` だけ（TC-STACK-008-003）。
 - CSP（SEC-WEB-003）に `unsafe-eval` が無いため、Zod は `src/config/zod-jitless.ts` の `z.config({ jitless: true })` で eval を試さない。`src/main.tsx` はこれを最初の JS import（`globals.css` を除く）にし、Zod の schema を定義するモジュール（`src/features/**`・`src/mock/**`）より前に評価させる（TC-STACK-008-005。実ブラウザでの違反なしは TC-STACK-008-306）。
 
@@ -530,18 +535,25 @@ CSS・source のどこにも外部 origin（`http://`、`https://`、`//host`）
 - `link.tsx`: `Link`（`<a>` の属性 + `href: string` + `prefetch?: false`）。`prefetch` は取り除いて DOM へ渡さず、`react-router` の `Link` に `to={href}` を渡す。
 - `navigation.ts`: `usePathname()`、`useRouter()`（`{ push(href), replace(href) }`。`useNavigate()` から作り、**`useMemo` で安定化**する。AuthGate の effect の依存配列に入るため）、`useSearchParams()`（`URLSearchParams` を返し、書き換え関数は返さない）。
 
-### 13.3 環境変数とガード（TC-DEV-WEB-011-201 / 204）
+### 13.3 環境変数とガード（TC-DEV-WEB-011-003 / 201 / 204 / 205 / 206 / 208）
 
-- mock のフラグは `VITE_UI_MOCK`（`"1"` のときだけ有効）。production の判定は `APP_ENV`（SPEC-180 §9 の環境名。仕様に Web build 用の変数名の明文規定はなく、DEV-WEB-011 を満たすための本リポジトリの選択）。
-- `apps/web/vite.config.ts` は `defineConfig(({ command, mode }) => …)`。serve と build のどちらでも `assertUiMockNotInProductionBuild({ VITE_UI_MOCK, APP_ENV })` を呼び、`VITE_UI_MOCK=1` かつ `APP_ENV=production` なら `UI mock mode must not be enabled in a production build` で失敗する。serve で `VITE_UI_MOCK` が未設定なら `process.env.VITE_UI_MOCK = "1"`（dev 既定）。build は明示指定のときだけ有効。`build.sourcemap` は false、`outDir` は `dist`（SEC-WEB-011）。
+- mock のフラグは `VITE_UI_MOCK`（`"1"` のときだけ有効）。mock を入れてよい環境の判定は `APP_ENV` で、値は SPEC-180 §8 / INF-ENV-001 の Environment 名のうち非 production の 3 つ（`development` / `staging` / `test`）だけ。`APP_ENV` が `development` / `staging` / `test` のいずれかと完全一致（大文字小文字を区別、前後の空白を取らない）のときだけ通し、**未設定・不正値（空文字、前後の空白、大文字小文字違い、別名）・`production` は失敗する（fail closed。PR #23 のレビュー指摘 [High] と Issue #29 の決定）**。
+- `apps/web/vite.config.ts` は `defineConfig(({ command, mode }) => …)`。serve と build のどちらでも `assertUiMockNotInProductionBuild({ VITE_UI_MOCK, APP_ENV })` を呼ぶ。`VITE_UI_MOCK` が `"1"` でなければ何もしない。`"1"` のとき、許可値は通し、それ以外は次の message の `Error` を throw する（値そのものは出さない）:
+  - `APP_ENV` が `production`: `UI mock mode must not be enabled in a production build (APP_ENV=production)`
+  - `APP_ENV` が未設定: `UI mock mode requires APP_ENV to be development, staging or test (APP_ENV is unset)`
+  - それ以外: `UI mock mode requires APP_ENV to be development, staging or test (APP_ENV is not one of them)`
+- 既定値: **build（`command === "build"`）は `APP_ENV` の既定を与えない**（mock を有効にした build では `APP_ENV` の明示が必須）。dev server（`command === "serve"`）だけ、`APP_ENV` が**未設定（undefined）のときに限り** `development` を使う（手元専用で deploy 成果物を作らない。INF-VCL-004）。明示された値（空文字・不正値・`production` を含む）は上書きせず、そのまま判定にかける。`define` の `import.meta.env.APP_ENV` には既定を適用した後の値を入れる（build で未設定なら空文字）。serve で `VITE_UI_MOCK` が未設定なら `process.env.VITE_UI_MOCK = "1"`（dev 既定）。build は明示指定のときだけ有効。`build.sourcemap` は false、`outDir` は `dist`（SEC-WEB-011）。
+- 実行時の `/dev/*` の guard（`isDevAreaEnabled`、§2.3）も同じ許可値で判定する。`isUiMockEnabled`（port の選択、MockModeBadge）の条件は変えない。
 - `NEXT_PUBLIC_UI_MOCK` と `VERCEL_ENV` は参照しない。
+- E2E の webServer は常に `APP_ENV=test` で build する（§10。親の値は持ち込まない）。`scripts/mock-web.mts` の扱いは `tests/contracts/s9-finalize.md` §4。
+- 決定の記録（DEV-AI-003。リポジトリ側の選択で、仕様本文は変えない）: DEV-WEB-011 は「本番 deploy 用の build」の判定方法を定めていない。SPEC-180 §9 は `APP_ENV` を server process の起動時照合の変数として挙げており、Web の静的 build への適用は書いていない。本リポジトリは `APP_ENV`（INF-ENV-001 の名前をそのまま使う）で判定し、上の許可値以外をすべて失敗にする。upload 時（どの Pages project へ上げるか）の検査と、仕様化（UCR）の要否は Issue #29 で検討を続ける。
 
-### 13.4 配信と `dist/_headers`（TC-STACK-008-101〜107、201〜207、301〜305）
+### 13.4 配信と `dist/_headers`（TC-STACK-008-101〜109、201〜210、301〜305、309）
 
 - `scripts/serve-web-dist.mts [--dir] [--port 0-65535] [--host]`（既定 `apps/web/dist`・3100・`127.0.0.1`）: 起動時に `ERROR dist-missing` / `index-missing` / `headers-missing` / `headers-invalid line=<n>` / `listen <code>`（終了コード 1）、不正な CLI は `USAGE`（2）。起動したら `READY http://<host>:<port>`。GET / HEAD のみ（他は 405 + `Allow: GET, HEAD`）。拡張子のない未知の path は `index.html` を 200、最後の segment に `.` がある不在 path は `text/plain` の 404（`Not Found`）。dist の外・NUL・バックスラッシュ・`.` 始まりの segment・`/_headers`・`/_redirects` は 404。request の URL・query・header を log に出さない。
-- `_headers` の対応構文は生成するものだけ（`#` 行、空行、`/` 始まりの path 行 = 完全一致または末尾 `/*` の前方一致、2 空白以上で字下げした `Name: value`）。`!` による除去・`:placeholder`・途中の `*`・絶対 URL は `headers-invalid`。複数の規則に一致した同名 header は記述順に `, ` で連結する（Pages と同じ）。`_headers` 以外の `Cache-Control` を付けない。
-- `scripts/generate-web-headers.mts [--dist] [--check]`（build の末尾で実行）: `dist/**/*.html` の src のない `<script>` 本文の SHA-256（base64）を `script-src` に重複なし・辞書順で入れ、`on*=` 属性・`javascript:` URL は `ERROR inline-handler <相対path>`、閉じていない `<script` は `ERROR html-unparsable`。`SPONSOR_IMAGE_ALLOWED_ORIGINS`（JSON の文字列配列。https・userinfo/port/path/query/fragment なし・IP literal / localhost / `*.local` / `*` なし）の origin だけを `img-src` に入れ、不正なら `ERROR sponsor-image-origin-invalid index=<n>`（値を出さず、`_headers` を書かない）。成功時 `OK headers inline-scripts=<n> img-origins=<n>`。`--check` は書き込まず、不一致なら `ERROR headers-stale`。
-- `dist/_headers` の内容（v2）は `tests/contracts/s9-finalize.md` §5。`tests/harness/web-dist.ts` の `expectedHeadersFile()` が期待値の正である。
+- `_headers` の対応構文は生成するものだけ（`#` 行、空行、`/` 始まりの path 行 = 完全一致または末尾 `/*` の前方一致、2 空白以上で字下げした `Name: value`）。`:placeholder`・途中の `*`・絶対 URL は `headers-invalid`。`! Name`（2 空白以上で字下げ）は OSS の Pages asset server（wrangler pages dev 相当）に合わせて解釈する（Pages 上での確認は Issue C）: 一致した規則を記述順に処理し、各規則で先に `! Name` の名前（大文字小文字を区別しない）をそれまでに積んだ header から取り除き、次にその規則の `Name: value` を積む（行の順序に関係なく除去が先。後続の規則には影響しない。存在しない header の除去は何もしない）。path 行より前の `!`、名前の無い `!`、名前に許されない文字がある `!`、`! Content-Type`・`! Content-Length`（このサーバーが規則の後に自分で設定するため再現できない）は `headers-invalid`。複数の規則に一致した同名 header は記述順に `, ` で連結する（Pages と同じ）。`_headers` 以外の `Cache-Control` を付けない。
+- `scripts/generate-web-headers.mts [--dist] [--check]`（build の末尾で実行）: `dist/**/*.html` の src のない `<script>` 本文の SHA-256（base64）を `script-src` に重複なし・辞書順で入れ、`on*=` 属性・`javascript:` URL は `ERROR inline-handler <相対path>`、閉じていない `<script` は `ERROR html-unparsable`。`SPONSOR_IMAGE_ALLOWED_ORIGINS`（JSON の文字列配列。https・userinfo/port/path/query/fragment なし・IP literal / localhost / `*.local` / `*` なし）の origin だけを `img-src` に入れ、不正なら `ERROR sponsor-image-origin-invalid index=<n>`（値を出さず、`_headers` を書かない）。成功時 `OK headers inline-scripts=<n> img-origins=<n>`。`--check` は書き込まず、不一致なら `ERROR headers-stale`。build の失敗条件（`html-404-present`・`asset-unhashed`・`headers-rule-limit`・`headers-line-too-long`。`_headers` を書かず、`--check` でも同じ検査）は `tests/contracts/s9-finalize.md` §8.1。
+- `dist/_headers` の内容（v3。方式 A: `/*` に CSP と §22 の header と no-store・Pragma、hash 付き asset の完全一致規則）は `tests/contracts/s9-finalize.md` §8.1。`tests/harness/web-dist.ts` の `expectedHeadersFile()` が期待値の正である。
 
 ### 13.5 静的 shell の不変条件（TC-STACK-008-305）
 
@@ -552,4 +564,4 @@ CSS・source のどこにも外部 origin（`http://`、`https://`、`//host`）
 1. 未知の URL・不正な ref の HTTP status は 200（静的 shell）。SPEC-050 §19.1 は status を規定しない。期待値の変更は本節と各 E2E の「Not Found」系に限る。
 2. JS 無効時の `SPEC-050 §25`: SPA は JS なしで内容を描画しない（SPEC-050 §5.4）。`TC-SPEC-050-25-003` は「演出が JS 無効時に見出しを隠さない」という CSS の契約だけを、静的 shell の `#root` に差し込んだ `data-reveal="static"` の見出しで検証する。
 3. 遷移後のフォーカス移動と route announcer は追加しない（現行の挙動も、先頭要素がフォーカス不能のため移動しない）。`TC-PG-MYP-001-722` は「何もフォーカスを強制しない」ことを要求している。
-4. `Referrer-Policy` は `/*`（`strict-origin-when-cross-origin`）と保護 prefix（`no-referrer`）の両方に一致して `, ` で連結され、実効値は最後の token の `no-referrer`。Pages 上で同じ連結になることの実地確認は deploy の作業に残る。
+4. `Referrer-Policy` は `/*` の `no-referrer` だけで、連結しない（SPEC-140 §22 改訂後。path ごとの値を設けない）。Pages 上で `/*` の header が別表記の URL にも付くこと、`!` が効くことの実地確認は deploy の作業に残る。

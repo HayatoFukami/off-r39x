@@ -5,16 +5,15 @@
 // is started with process.execPath and an argument array (no shell).
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { mockWebEnv } from "./mock-web-env.mts";
 
 const PORT = "3100";
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const serveScript = fileURLToPath(new URL("../../../scripts/serve-web-dist.mts", import.meta.url));
 
-// The mock flag is the only build input the suite sets. Every variable that could change the build (a production
-// environment name, the Sponsor image origins, the former Next.js / Vercel names) is removed from the child env.
-const env = { ...process.env, VITE_UI_MOCK: "1" };
-for (const name of ["APP_ENV", "NODE_ENV", "SPONSOR_IMAGE_ALLOWED_ORIGINS"]) delete env[name];
-for (const name of ["VERCEL_ENV", "NEXT_PUBLIC_UI_MOCK"]) delete env[name];
+// The suite fixes its own environment (mock-web-env.mts): VITE_UI_MOCK=1 and APP_ENV=test, and every variable that
+// could change the build is removed. The same env is used for the build and for serving.
+const env = mockWebEnv(process.env);
 
 const build = spawnSync("pnpm --filter @off-r39x/web build", {
   cwd: repoRoot,

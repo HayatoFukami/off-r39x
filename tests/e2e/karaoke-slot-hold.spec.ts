@@ -111,10 +111,15 @@ test.describe("TC-PG-KRK-003-662 a conflict shows the conflict message, creates 
 });
 
 test.describe("TC-PG-KRK-003-663 Purchase Limit and the sale status are separate failures (SPEC-050 13.3 table, 21)", () => {
-  test("limit: the limit message, button disabled with the message as its reason, nothing created", async ({
+  test("limit found at purchase start (after the pre-check passed): the limit message, button disabled with the message as its reason, nothing created", async ({
     page,
   }) => {
-    await openAs(page, slotRoute(SLOT.d1_1000), { scenario: { karaokeHold: "limit" } });
+    // B4c: a limit that is already set when the page opens is shown before the purchase start (TC-PG-KRK-003-646) and the
+    // button is disabled. Here the pre-check passes and the limit appears afterwards (the scenario is written after the
+    // page rendered; the page does not re-read it), so the purchase start itself finds it.
+    await openAs(page, slotRoute(SLOT.d1_1000));
+    await expect(purchaseButton(page)).toBeEnabled();
+    await setScenario(page, { karaokeHold: "limit" });
     const ordersBefore = (await storedOrders(page)).length;
     await purchaseButton(page).click();
     await expect(alertsOf(page)).toHaveText(new RegExp(f.limit), { timeout: 30_000 });

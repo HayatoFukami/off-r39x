@@ -1,5 +1,10 @@
-// DEV-WEB-011: cross-platform UI mock build / start. The mock flag is set only in the child environment,
-// and a production environment (APP_ENV=production) is refused (the flag must never reach a production build).
+// DEV-WEB-011: cross-platform UI mock build / start. The mock flag is set only in the child environment, and the
+// launcher fails closed on APP_ENV (INF-ENV-001; the variable is this repository's choice under DEV-AI-003):
+//   - production is refused (ERROR mock-web-production);
+//   - `build` needs APP_ENV to be exactly development, staging or test: unset or any other value is refused
+//     (ERROR mock-web-app-env-invalid). No default is given, so a build never gets an environment name by accident;
+//   - `start` builds nothing, so an unset APP_ENV passes (no default is passed on); a set value must be allowed.
+// The value is never printed. A valid APP_ENV is passed to the child unchanged.
 // `build` runs the web build (Vite, then dist/_headers); `start` serves apps/web/dist with scripts/serve-web-dist.mts.
 // Runs under plain `node` (type stripping): erasable TypeScript syntax only, node: built-ins only.
 // Usage: node scripts/mock-web.mts <build|start> [--port <1-65535>] [--dry-run]
@@ -13,6 +18,8 @@ const DEFAULT_PORT = 3100;
 const HOST = "127.0.0.1";
 const BUILD_COMMAND = "pnpm --filter @off-r39x/web build";
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+// Kept here on purpose (no import from apps/web); a unit test checks they match apps/web/src/config/ui-mock.ts.
+const ALLOWED_APP_ENVS: readonly string[] = ["development", "staging", "test"];
 
 interface Options {
   readonly mode: "build" | "start";
@@ -74,15 +81,27 @@ function commandFor(options: Options): string {
   return options.mode === "build" ? BUILD_COMMAND : `node ${serveArgs(options).join(" ")}`;
 }
 
-function main(): void {
-  const options = parseArgs(process.argv.slice(2));
-  if (process.env.APP_ENV === "production") {
+/** Returns the APP_ENV to pass to the child, or undefined to pass nothing (`start` with APP_ENV unset). */
+function resolveAppEnv(options: Options): string | undefined {
+  const appEnv = process.env.APP_ENV;
+  if (appEnv === "production") {
     fail("ERROR mock-web-production UI mock must not be enabled in a production environment", 1);
   }
+  if (appEnv === undefined && options.mode === "start") return undefined;
+  if (appEnv === undefined || !ALLOWED_APP_ENVS.includes(appEnv)) {
+    fail("ERROR mock-web-app-env-invalid APP_ENV must be development, staging or test", 1);
+  }
+  return appEnv;
+}
+
+function main(): void {
+  const options = parseArgs(process.argv.slice(2));
+  const appEnv = resolveAppEnv(options);
   const command = commandFor(options);
   if (options.dryRun) {
+    const appEnvLine = appEnv === undefined ? "" : `ENV APP_ENV=${appEnv}\n`;
     process.stdout.write(
-      `DRY-RUN mock-web ${options.mode}\nENV VITE_UI_MOCK=1\nCOMMAND ${command}\n`,
+      `DRY-RUN mock-web ${options.mode}\nENV VITE_UI_MOCK=1\n${appEnvLine}COMMAND ${command}\n`,
     );
     return;
   }

@@ -4,7 +4,7 @@ import { copy } from "../../presentation/copy/ja";
 // Client-side form checks run before the AuthPort is called. A password is never trimmed or
 // normalized (SEC-AUTH-016) and no composition rule is added (SEC-AUTH-017).
 
-export type FieldName = "email" | "password" | "passwordConfirm";
+export type FieldName = "email" | "password" | "passwordConfirm" | "code";
 export type FieldErrorCode = "required" | "invalid_format" | "too_short" | "too_long" | "mismatch";
 export type FieldError = { readonly field: FieldName; readonly code: FieldErrorCode };
 export type FormValidation = { ok: true } | { ok: false; errors: readonly FieldError[] };
@@ -61,6 +61,11 @@ export function validateResetRequestForm(i: { email: string }): FormValidation {
   return result([emailError(i.email)]);
 }
 
+/** A one-time code is checked for presence only: its length and format belong to the provider. */
+export function validateOtpCodeForm(i: { code: string }): FormValidation {
+  return result([i.code.trim() === "" ? { field: "code", code: "required" } : null]);
+}
+
 export function validateResetCompleteForm(i: {
   password: string;
   passwordConfirm: string;
@@ -78,5 +83,6 @@ export function fieldErrorMessage(error: FieldError): string {
   if (field === "passwordConfirm" && code === "mismatch") {
     return copy.auth.field.passwordConfirm.mismatch;
   }
+  if (field === "code" && code === "required") return copy.auth.field.otpCode.required;
   throw new RangeError(`Unsupported field error: ${field}/${code}`);
 }

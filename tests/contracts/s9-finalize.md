@@ -104,11 +104,17 @@ rule（rule-id: 検出）:
 
 `node scripts/mock-web.mts <build|start> [--port <1-65535>] [--dry-run]`。モック用のビルドと起動を、OS 非依存で行う。
 
-- 子プロセスの env に `VITE_UI_MOCK=1` を設定する。`build` は `pnpm --filter @off-r39x/web build`、`start` は `node scripts/serve-web-dist.mts --port <port> --host 127.0.0.1`（`--port` 既定 3100、`cwd` は repo root、`process.execPath` と引数配列で起動し shell を使わない）。子の終了コードを返す。`build` は pnpm.cmd を解決するため `shell: true` で起動してよい。
-- 親の環境の `APP_ENV` が `production` のときは拒否する: 終了コード 1、`ERROR mock-web-production ...` を stdout か stderr に出し、子を起動しない（DEV-WEB-011。本番 deploy 用 build でフラグを有効にしない）。`VERCEL_ENV` は見ない。`--dry-run` でも同じ検査を行う。
-- `--dry-run`: 子を起動せず、stdout へ**ちょうど** `DRY-RUN mock-web <mode>` / `ENV VITE_UI_MOCK=1` / `COMMAND <上記コマンド>` の 3 行だけを出し、終了コード 0。他の環境変数の値は出さない。
+- 子プロセスの env に `VITE_UI_MOCK=1` を設定する（`APP_ENV` は親の値をそのまま渡す。下の「`APP_ENV` の解決」）。`build` は `pnpm --filter @off-r39x/web build`、`start` は `node scripts/serve-web-dist.mts --port <port> --host 127.0.0.1`（`--port` 既定 3100、`cwd` は repo root、`process.execPath` と引数配列で起動し shell を使わない）。子の終了コードを返す。`build` は pnpm.cmd を解決するため `shell: true` で起動してよい。
+- 【`APP_ENV` の解決。fail closed。TC-DEV-WEB-011-203 / 207】親の環境の `APP_ENV` を、引数の検査（USAGE、終了コード 2）の**後**で次の順に判定する。値は `development` / `staging` / `test` と完全一致（大文字小文字を区別、trim しない）。子は起動しない。`--dry-run` でも同じ検査を行う。`VERCEL_ENV` は見ない（`APP_ENV` の代わりにもならない）。
+  - `production`（`build` と `start` の両方）: 終了コード 1、`ERROR mock-web-production UI mock must not be enabled in a production environment`（DEV-WEB-011。本番 deploy 用 build でフラグを有効にしない）。
+  - 許可値: そのまま子に渡す（上書きしない）。
+  - **`build` で未設定、または不正値（上記以外）**: 終了コード 1、`ERROR mock-web-app-env-invalid APP_ENV must be development, staging or test`。**build は既定値を与えない**（`APP_ENV` の明示が必須。launcher が `development` を補うと、本番の build で `APP_ENV` の設定を忘れても mock 入りの成果物が通ってしまう。PR #23 のレビュー指摘 [High]、Issue #29）。値は出力しない。
+  - **`start`**: build をしないので、設定されていて `production` または不正値のときだけ拒否し（上の 2 つの ERROR）、未設定は通す（既定値も与えない）。
+  - `dev` / `serve` のモードは無い（dev server の既定は `apps/web/vite.config.ts` の `serve` だけ。`tests/contracts/s3-layout.md` §13.3）。
+  - 未設定の扱いが `build` と `start` で違うこと、未設定の `build` にも `mock-web-app-env-invalid` の ERROR を使うことは、DEV-AI-003 によるリポジトリの選択（仕様本文は変えない）。
+- `--dry-run`: 子を起動せず、stdout へ `DRY-RUN mock-web <mode>` / `ENV VITE_UI_MOCK=1` / **`ENV APP_ENV=<渡す値>`（`APP_ENV` を子に渡すときだけ。`build` は常に、`start` は設定されているときだけ。`start` で未設定なら、この行は出さない）** / `COMMAND <上記コマンド>` の行だけを順に出し（build は 4 行、`start` で `APP_ENV` 未設定なら 3 行）、終了コード 0。他の環境変数の値は出さない。拒否するときは `ENV` 行も `COMMAND` 行も出さない。値（不正な `APP_ENV`）は stdout にも stderr にも出さない。
 - 引数誤り（mode 欠落・不明、未知のオプション、`--port` が整数でないか範囲外）は終了コード 2、`USAGE` を含む行を stderr か stdout に出す（`--dry-run` が付いていても同じ）。
-- 本番ガードは `apps/web/vite.config.ts` の `assertUiMockNotInProductionBuild`（`VITE_UI_MOCK=1` かつ `APP_ENV=production` で build と dev server の起動を失敗させる。serve と build の両方で呼ぶ）。`TC-DEV-WEB-011-201` が `vite.config.ts` を子プロセスで読み込み（default export を `{ command, mode }` で呼ぶ）、`TC-DEV-WEB-011-204` が dev 既定（serve で未設定なら `VITE_UI_MOCK=1`、build では未設定のまま）を固定する。
+- 本番ガードは `apps/web/vite.config.ts` の `assertUiMockNotInProductionBuild`（`VITE_UI_MOCK=1` のとき、`APP_ENV` が `development` / `staging` / `test` 以外（未設定・不正値・`production`）なら build と dev server の起動を失敗させる。serve と build の両方で呼ぶ。許可値・message・既定値は `tests/contracts/s3-layout.md` §13.3）。`TC-DEV-WEB-011-201` が `vite.config.ts` を子プロセスで読み込み（default export を `{ command, mode }` で呼ぶ。出力に `DEFINE_APP_ENV=<define の値>` の行を含む）、`TC-DEV-WEB-011-205` が許可値・拒否・値を出さないこと、`TC-DEV-WEB-011-206` と `TC-DEV-WEB-011-204` が既定（serve で `VITE_UI_MOCK` が未設定なら `1`、serve で `APP_ENV` が未設定なら `development`。build はどちらも未設定のまま）を固定する。空文字の `APP_ENV` は子プロセスの扱いが OS で異なるため、純粋関数の Unit（TC-DEV-WEB-011-003、TC-DEV-WEB-012-101）だけで確かめ、子プロセスを使う test には入れない。
 
 ## 5. E2E 21（`tests/e2e/journeys.spec.ts`）
 
@@ -133,10 +139,15 @@ rule（rule-id: 検出）:
 | `TC-DEV-SEC-004-001`〜`008` | `tests/unit/scripts/secret-scan.test.ts` | §3 |
 | `TC-DEV-SEC-004-009` | `tests/unit/scripts/root-scripts.test.ts` | `secret-scan` entry |
 | `TC-DEV-WEB-011-201`〜`204` | `tests/unit/scripts/root-scripts.test.ts` | 本番ガード（`vite.config.ts`）/ mock script entry / `mock-web.mts` / dev 既定 |
+| `TC-DEV-WEB-011-205` | `tests/unit/scripts/root-scripts.test.ts` | `vite.config.ts`: mock 有効の build は `APP_ENV` が許可値のときだけ通る（未設定・不正値・`production` は失敗、値を出さない） |
+| `TC-DEV-WEB-011-206` | `tests/unit/scripts/root-scripts.test.ts` | dev server だけ未設定の `APP_ENV` を `development` にする。build は既定を与えない |
+| `TC-DEV-WEB-011-207` | `tests/unit/scripts/root-scripts.test.ts` | `mock-web.mts` の `APP_ENV` の解決（`build` は明示が必須、`start` は未設定を通す、dry-run の行） |
+| `TC-DEV-WEB-011-208` | `tests/unit/harness/mock-web-env.test.ts` | E2E harness の env（`tests/harness/browser/mock-web-env.mts`。常に `APP_ENV=test`） |
 | `TC-STACK-008-001`〜`004` | `tests/unit/web/routes/route-table-static.test.ts` | s3-layout.md §13.1〜13.3 |
-| `TC-STACK-008-101`〜`107` | `tests/unit/scripts/serve-web-dist.test.ts` | §8 |
-| `TC-STACK-008-201`〜`207` | `tests/unit/scripts/generate-web-headers.test.ts` | §8 |
-| `TC-STACK-008-301`〜`308` | `tests/e2e/static-hosting.spec.ts` | s3-layout.md §13 |
+| `TC-STACK-008-101`〜`109` | `tests/unit/scripts/serve-web-dist.test.ts` | §8（108: `! Name` の意味、109: 別表記の URL） |
+| `TC-STACK-008-201`〜`210` | `tests/unit/scripts/generate-web-headers.test.ts` | §8（208: asset の完全一致規則、209: build の失敗条件、210: Vite の既定命名） |
+| `TC-STACK-008-301`〜`309` | `tests/e2e/static-hosting.spec.ts` | s3-layout.md §13（309: 実 build の asset 規則） |
+| `TC-SEC-WEB-009-001`、`002` | `tests/e2e/no-store.spec.ts` | SEC-WEB-009（002: 別表記の URL） |
 | `TC-E2E-003-001` | `tests/unit/traceability/page-acceptance-matrix.test.ts` | §6 |
 | `TC-SPEC-050-31-21-001`〜`003` | `tests/e2e/journeys.spec.ts` | §5 |
 
@@ -144,33 +155,36 @@ rule（rule-id: 検出）:
 
 ## 8. 静的 SPA の build と配信（フェーズM。TC-STACK-008-*）
 
-テスト: `tests/unit/scripts/serve-web-dist.test.ts`（101〜107）、`generate-web-headers.test.ts`（201〜207）、`tests/e2e/static-hosting.spec.ts`（301〜308）。期待値の正は `tests/harness/web-dist.ts`。route 表と adapter の契約は `tests/contracts/s3-layout.md` §13。
+テスト: `tests/unit/scripts/serve-web-dist.test.ts`（101〜109）、`generate-web-headers.test.ts`（201〜210）、`tests/e2e/static-hosting.spec.ts`（301〜309）、`tests/e2e/no-store.spec.ts`（TC-SEC-WEB-009-001、002）。期待値の正は `tests/harness/web-dist.ts`。route 表と adapter の契約は `tests/contracts/s3-layout.md` §13。
 
-### 8.1 `dist/_headers` の内容（v2）
+### 8.1 `dist/_headers` の内容（v3。方式 A）
 
 ```
 # Generated by scripts/generate-web-headers.mts. Do not edit.
 /*
   Content-Security-Policy: default-src 'self'; script-src 'self'{ 'sha256-…'}; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:{ <origin>}; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; frame-src 'none'; form-action 'self'; manifest-src 'self'; worker-src 'self' blob:; media-src 'self' blob:; upgrade-insecure-requests
   X-Content-Type-Options: nosniff
-  Referrer-Policy: strict-origin-when-cross-origin
+  Referrer-Policy: no-referrer
   X-Frame-Options: DENY
   Strict-Transport-Security: max-age=63072000; includeSubDomains
   Cross-Origin-Opener-Policy: same-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=()
-
-/account
   Cache-Control: no-store, private, max-age=0
   Pragma: no-cache
-  Referrer-Policy: no-referrer
 
-（同じ 3 行の規則が、/account/*、/auth、/auth/*、/purchase、/purchase/*、/mypage、/mypage/*、/admin、/admin/*、/staff、/staff/* の順に続く）
+/assets/<hash 付きファイル名 1>
+  ! Cache-Control
+  ! Pragma
+  Cache-Control: public, max-age=31536000, immutable
+
+（同じ 4 行の規則が、dist/assets/ 直下の hash 付きファイルごとに、ファイル名の code unit 順に続く）
 ```
 
-- コメント行の直下に `/*` を置く。規則は空行で区切る。LF、末尾の改行は 1 つ。`{ 'sha256-…'}` / `{ <origin>}` は 0 個以上の繰り返しで、無ければ placeholder を残さない。hash は src のない inline `<script>` 本文の SHA-256（base64）を重複なし・辞書順に並べる。origin は `SPONSOR_IMAGE_ALLOWED_ORIGINS` の正規化した origin（入力順）で、`img-src` だけに入る。
-- 根拠: CSP は SPEC-140 §21（SEC-WEB-003〜006、`connect-src` は API が未実装のため `'self'` だけ）、`X-Content-Type-Options`・`Referrer-Policy`・`X-Frame-Options`・`Strict-Transport-Security`・`Cross-Origin-Opener-Policy` は §22、`Permissions-Policy` は §22.1 の通常 page の値（camera を許可しない。staff scanner 用の `camera=(self)` は staff 画面の作業で足す）、no-store と Pragma は SEC-WEB-009 の 6 prefix。
-- 保護 path の `Referrer-Policy` は `/*` と連結され `strict-origin-when-cross-origin, no-referrer`（実効値は最後の token の `no-referrer`）。他の header は重ならない。
-
+- コメント行の直下に `/*` を置く。規則は空行で区切る。LF、末尾の改行は 1 つ。`{ 'sha256-…'}` / `{ <origin>}` は 0 個以上の繰り返しで、無ければ placeholder を残さない。hash は src のない inline `<script>` 本文の SHA-256（base64）を重複なし・辞書順に並べる。origin は `SPONSOR_IMAGE_ALLOWED_ORIGINS` の正規化した origin（入力順）で、`img-src` だけに入る。`dist/assets/` が無い、または空のとき、内容は `/*` 規則だけになる。
+- 根拠: CSP は SPEC-140 §21（SEC-WEB-003〜006、`connect-src` は API が未実装のため `'self'` だけ）、`X-Content-Type-Options`・`Referrer-Policy`（全 Production Web response で `no-referrer`、path ごとの値を設けない）・`X-Frame-Options`・`Strict-Transport-Security`・`Cross-Origin-Opener-Policy` は §22、`Permissions-Policy` は §22.1 の通常 page の値（camera を許可しない。staff scanner 用の `camera=(self)` は staff 画面の作業で足す）。no-store と Pragma は SEC-WEB-009（追加段落: content-hash 付きの静的 asset 以外の全応答に、request path の表記に依存せず適用する）なので、保護 prefix の規則は置かず `/*` に付ける。
+- asset の規則は **実在する hash 付きファイルごとの完全一致**（`/assets/*` の前方一致にしない。前方一致だと存在しない asset や SPA fallback の応答も長期 cache になり、SEC-WEB-009 の「content-hash 付きの静的 asset 以外の全応答」を満たさない）。対象は `dist/assets/` 直下で名前が `^[A-Za-z0-9_.-]+-[A-Za-z0-9_-]{8,}\.[A-Za-z0-9]+$`（Vite の既定 `[name]-[hash].<ext>`）に一致するファイルだけ。長期 cache の値 `public, max-age=31536000, immutable` と正規表現は仕様に規定がなく、本リポジトリの選択（DEV-AI-003）。`! Name` は同じ規則の set より先に、それまでに積んだ同名 header を外す（後続の規則には影響しない）。
+- build の失敗条件（いずれも終了コード 1、`_headers` を書かず既存の `_headers` を変えない。`--check` でも比較の前に同じ検査を行う）: `ERROR html-404-present <相対path>`（`dist` 以下のどこかに大文字小文字を問わず `404.html`。Pages の SPA fallback を止めるため）、`ERROR asset-unhashed <相対path>`（`dist/assets/` 直下に hash 形式でないファイル、またはサブディレクトリ。複数あれば全件を 1 行ずつ）、`ERROR headers-rule-limit rules=<n>`（規則が 100 を超える。asset は最大 99 ファイル）、`ERROR headers-line-too-long line=<n>`（いずれかの行が 2,000 文字を超える。最初の 1 件の 1 始まりの行番号）。検査の順序は index-missing → origin → inline script → `404.html` → asset → 規則数 → 行長 → `--check` の比較または書き込み。エラー行に origin の値を出さない。
+- 規則の順序: `/*` の後に asset の規則。Pages は規則の順序を公式に保証していない（OSS 実装は記述順）。実地確認は deploy の作業に残る。
 ### 8.2 secret-scan の build 出力
 
 既定は `apps/web/dist`。`dist/**` の全ファイルを走査し、`*.html` に `mock-seed-field` を適用する（§3）。`apps/web/.next` は source としても build 出力としても走査しない。
