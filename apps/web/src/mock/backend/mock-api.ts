@@ -1,11 +1,13 @@
 import { assertNever, type OrderState } from "@off-r39x/domain";
 import { cartLineKey } from "../../api-client/cart-line-key";
 import { normalizeDisplayName } from "../../api-client/display-name-policy";
+import { eligibilityTargetKey } from "../../api-client/eligibility-target-key";
 import type { ApiPort } from "../../api-client/port";
 import type {
   CartLine,
   CartLineResolution,
   CartPurchaseStart,
+  EligibilityTarget,
   EntryTicketDetail,
   EntryTicketSummary,
   EventInfo,
@@ -15,7 +17,8 @@ import type {
   OrderDetail,
   OrderItem,
   OrderSummary,
-  PurchaseReason,
+  PurchaseEligibility,
+  PurchaseEligibilityRead,
   QrPresentation,
   Read,
   ReservationDetail,
@@ -31,7 +34,11 @@ import { createMockDb, type DbState, type MockStorage } from "./db";
 import type { IdGenerator } from "./ids";
 import { buildKaraokeBuckets, filterSlotsByBusinessDate } from "./karaoke-buckets";
 import { applyLatency, type Sleep } from "./latency";
-import { evaluatePurchaseConditions } from "./purchase-conditions";
+import {
+  evaluateKaraokeConditions,
+  evaluatePurchaseConditions,
+  type PurchaseConditionResult,
+} from "./purchase-conditions";
 import { decidePurpose, type OrderLineKind } from "./purpose";
 import { loadScenario, type Scenario } from "./scenario";
 import { loadSessionState } from "./session-store";
@@ -363,6 +370,27 @@ function validateCartLines(lines: readonly CartLine[]): void {
   }
 }
 
+/**
+ * API-PUR-ELG-001 Body: 1..50 targets; a Cart line follows the Cart rules, a KARAOKE target must have
+ * quantity 1; no repeated target (by eligibilityTargetKey). Invalid input is a programmer error.
+ */
+function validateEligibilityTargets(targets: readonly EligibilityTarget[]): void {
+  if (targets.length === 0 || targets.length > MAX_CART_LINES) {
+    throw new RangeError("A purchase needs between 1 and 50 lines");
+  }
+  const seen = new Set<string>();
+  for (const target of targets) {
+    if (target.kind === "KARAOKE") {
+      if (target.quantity !== 1) throw new RangeError("A Karaoke target must have quantity 1");
+    } else if (!isValidQuantity(target.quantity) || target.quantity > MAX_LINE_QUANTITY) {
+      throw new RangeError("A line quantity must be an integer between 1 and 2147483647");
+    }
+    const key = eligibilityTargetKey(target);
+    if (seen.has(key)) throw new RangeError("A purchase must not repeat the same target");
+    seen.add(key);
+  }
+}
+
 /** True when the sent lines and the stored Order items hold the same quantity per target (order ignored). */
 function sameQuantities(lines: readonly CartLine[], items: readonly OrderItemRow[]): boolean {
   const sent = new Map<string, number>();
@@ -440,10 +468,6 @@ export function createMockApi(deps: MockApiDeps): ApiPort {
     const gate = access(viewerOf(ctx.state));
     if (!gate.ok) return { kind: gate.reason };
     return fn({ ...ctx, user: gate.user, save: () => db.save(ctx.state) });
-  }
-
-  function viewerEmail(viewer: Viewer): string | null {
-    return viewer.kind === "user" ? viewer.user.email : null;
   }
 
   function slotView(state: DbState, ref: string): SlotRow | undefined {
@@ -611,10 +635,8 @@ export function createMockApi(deps: MockApiDeps): ApiPort {
     listEntryOfferings: async () => {
       const ctx = await open();
       if (ctx === null || ctx.scenario.publicFetch === "fail") return UNAVAILABLE;
-      const viewer = viewerOf(ctx.state);
-      if (viewer.kind === "unavailable") return UNAVAILABLE;
       if (ctx.scenario.publicFetch === "empty") return { kind: "ok", data: [] };
-      const email = viewerEmail(viewer);
+      // Public read (API-PUB-005): independent of the viewer; owner conditions come from getPurchaseEligibility.
       return {
         kind: "ok",
         data: ctx.state.offerings
@@ -625,13 +647,7 @@ export function createMockApi(deps: MockApiDeps): ApiPort {
             description: o.description,
             unitPrice: o.unitPrice,
             salesPeriod: { startsAt: asUtc(o.startsAt), endsAt: asUtc(o.endsAt) },
-            availability: evaluate(
-              o,
-              o.perAccountLimit,
-              1,
-              usedQuantity(ctx.state, email, o.ref),
-              ctx.nowMs,
-            ),
+            availability: evaluate(o, o.perAccountLimit, 1, 0, ctx.nowMs),
             perAccountLimit: o.perAccountLimit,
           })),
       };
@@ -740,9 +756,7 @@ export function createMockApi(deps: MockApiDeps): ApiPort {
       const ctx = await open();
       if (ctx === null || ctx.scenario.publicFetch === "fail") return UNAVAILABLE;
       if (ctx.scenario.cart.state === "fail") return UNAVAILABLE;
-      const viewer = viewerOf(ctx.state);
-      if (viewer.kind === "unavailable") return UNAVAILABLE;
-      const email = viewerEmail(viewer);
+      // Public conditions only (viewer-independent, used = 0); owner conditions come from getPurchaseEligibility.
       const data: CartLineResolution[] = lines.map((line, index) => {
         const lineKey = cartLineKey(line);
         if (ctx.scenario.cart.state === "partial" && index === 0) {
@@ -763,7 +777,7 @@ export function createMockApi(deps: MockApiDeps): ApiPort {
                 offering,
                 offering.perAccountLimit,
                 line.quantity,
-                usedQuantity(ctx.state, email, offering.ref),
+                0,
                 ctx.nowMs,
               ),
             };
@@ -787,13 +801,12 @@ export function createMockApi(deps: MockApiDeps): ApiPort {
     },
   };
 
-  /** Every confirmed reason that stops one cart line (empty when the line can be purchased). */
-  function reasonsOf(ctx: Ctx, line: CartLine, email: string): PurchaseReason[] {
+  /** Every confirmed reason that stops one target (empty when it can be purchased) and the maximum quantity. */
+  function conditionsOf(ctx: Ctx, line: EligibilityTarget, email: string): PurchaseConditionResult {
     switch (line.kind) {
       case "ENTRY_TICKET": {
         const offering = ctx.state.offerings.find((o) => o.ref === line.offeringRef && o.published);
-        if (offering === undefined)
-          return evaluatePurchaseConditions({ kind: "missing" }, 0, 0).reasons;
+        if (offering === undefined) return evaluatePurchaseConditions({ kind: "missing" }, 0, 0);
         return evaluatePurchaseConditions(
           {
             kind: "sellable",
@@ -806,12 +819,11 @@ export function createMockApi(deps: MockApiDeps): ApiPort {
           },
           line.quantity,
           ctx.nowMs,
-        ).reasons;
+        );
       }
       case "GOODS": {
         const goods = ctx.state.goods.find((g) => g.ref === line.goodsRef && g.published);
-        if (goods === undefined)
-          return evaluatePurchaseConditions({ kind: "missing" }, 0, 0).reasons;
+        if (goods === undefined) return evaluatePurchaseConditions({ kind: "missing" }, 0, 0);
         return evaluatePurchaseConditions(
           {
             kind: "sellable",
@@ -824,7 +836,19 @@ export function createMockApi(deps: MockApiDeps): ApiPort {
           },
           line.quantity,
           ctx.nowMs,
-        ).reasons;
+        );
+      }
+      case "KARAOKE": {
+        const slot = slotView(ctx.state, line.slotRef);
+        if (slot === undefined) return evaluateKaraokeConditions({ kind: "missing" });
+        // The mock holds no Karaoke Purchase Limit figure: the scenario "limit" stands for a reached limit.
+        // "conflict" and "expire_before_checkout" are purchase-start outcomes and are not conditions.
+        return evaluateKaraokeConditions({
+          kind: "slot",
+          slotState: slot.state,
+          saleStatus: ctx.scenario.karaokeSales,
+          limitReached: ctx.scenario.karaokeHold === "limit",
+        });
       }
       default:
         return assertNever(line);
@@ -832,6 +856,27 @@ export function createMockApi(deps: MockApiDeps): ApiPort {
   }
 
   const purchaseApi: ApiPort["purchase"] = {
+    // API-PUR-ELG-001: read-only (no db.save, no id, no idempotency record, no Order progress; SEC-API-029).
+    getPurchaseEligibility: async (targets): Promise<PurchaseEligibilityRead> => {
+      const ctx = await open();
+      if (ctx === null) return UNAVAILABLE;
+      const gate = access(viewerOf(ctx.state));
+      if (!gate.ok) return { kind: gate.reason };
+      if (ctx.scenario.cart.state === "eligibility_fail") return UNAVAILABLE;
+      validateEligibilityTargets(targets);
+      const email = gate.user.email;
+      const data: PurchaseEligibility[] = targets.map((target) => {
+        const { reasons, maxPurchasableQuantity } = conditionsOf(ctx, target, email);
+        return {
+          lineKey: eligibilityTargetKey(target),
+          purchasable: reasons.length === 0,
+          reasons,
+          maxPurchasableQuantity,
+        };
+      });
+      return { kind: "ok", data };
+    },
+
     startCartPurchase: async (lines, o): Promise<CartPurchaseStart> => {
       const ctx = await open();
       if (ctx === null) return UNAVAILABLE;
@@ -855,7 +900,7 @@ export function createMockApi(deps: MockApiDeps): ApiPort {
       }
 
       // Each line is evaluated on its own (BR-ORD-017); the valid input has no duplicate lines.
-      const reasons = lines.map((line) => reasonsOf(ctx, line, email));
+      const reasons = lines.map((line) => conditionsOf(ctx, line, email).reasons);
       const forced = ctx.scenario.cart.purchaseStart;
       const first = reasons[0];
       if (

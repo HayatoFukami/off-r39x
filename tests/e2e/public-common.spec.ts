@@ -206,14 +206,12 @@ test.describe("TC-PG-PUB-001-695 no horizontal scroll at 390px and the primary a
   });
 });
 
-test.describe("TC-SEC-WEB-009-601 public pages are not served as private / no-store (SEC-WEB-009 applies to protected routes only)", () => {
+test.describe("TC-SEC-WEB-009-601 public pages are served no-store as well (SEC-WEB-009 revised; the cache permission of SEC-WEB-010 does not apply to Browser-facing Web static responses)", () => {
   for (const route of ["/", "/announcements", "/karaoke", "/goods"]) {
-    test(`${route} has no private / no-store Cache-Control`, async ({ page }) => {
+    test(`${route} has Cache-Control exactly no-store, private, max-age=0`, async ({ page }) => {
       const response = await gotoHydrated(page, route);
       expect(response?.status()).toBe(200);
-      const cacheControl = (response?.headers()["cache-control"] ?? "").toLowerCase();
-      expect(cacheControl).not.toContain("private");
-      expect(cacheControl).not.toContain("no-store");
+      expect(response?.headers()["cache-control"]).toBe("no-store, private, max-age=0");
     });
   }
 });

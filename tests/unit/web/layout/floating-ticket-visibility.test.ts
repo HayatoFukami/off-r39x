@@ -27,6 +27,8 @@ describe("TC-PG-PUB-001-241 Floating Ticket Button visibility by route (SPEC-050
       "/dev/scenarios",
       "/dev/error-probe",
       "/dev/mock-checkout/x",
+      "/dev/mock-google",
+      "/dev/mock-magic-link",
     ];
     for (const pathname of hidden) {
       expect(isFloatingTicketVisible(pathname), pathname).toBe(false);

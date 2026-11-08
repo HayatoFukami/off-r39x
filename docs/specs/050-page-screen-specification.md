@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-050
 title: Page and Screen Specification
-version: 2.1.0
+version: 2.2.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -758,7 +758,7 @@ Karaokeはカートに入れられず、Slotごとに別の購入・別の支払
 Cart購入開始は `API-PUR-CART-001` を使用する。既存の単品購入APIは互換Operationとして存続するが、Cart画面からItemごとに分割呼出しして複数Orderを作ってはならない。
 
 - 成功してOrder `PREPARED` が作成された場合、当該OrderのItemをCartから除去し、`PG-XFN-001` へ遷移するか、そのOrderに対応するCheckout開始へ進む。外部Checkoutへ移る直前は「支払い画面を準備中」であり、購入成功表示をしない。
-- 一部のItemが成立しない場合（販売終了、停止、売り切れ、数量不足、Purchase Limit超過、Allocation競合）: Orderは作成されていないこと、「購入は開始されていません」、成立しなかったItemと理由を示す。Cart内容を保持し、数量変更・削除を可能にする。
+- 一部のItemが成立しない場合（販売終了、停止、売り切れ、数量不足、Purchase Limit超過、Allocation競合）: Orderは作成されていないこと、「購入は開始されていません」、成立しなかったItemと理由を示す。購入開始時の確保競合は `SOLD_OUT` または `INSUFFICIENT_QUANTITY` として示す（`SPEC-110` `API-PUR-ELG-001` の理由集合）。Cart内容を保持し、数量変更・削除を可能にする。
 - Checkout開始前のOrder作成Failure: 外部Checkoutへ進めない。Cart内容を保持する。
 - Checkout開始失敗かつOrder `PREPARED` が存在: `PG-XFN-001` で同一Order retryを提供する。
 - Action実行中: Buttonを処理中状態にし、「購入条件を確認しています」「購入試行を作成しています」等、未確定表示を行う。reload / double clickで複数Orderが無条件に作られない前提でUIも重複送信を抑止する。
@@ -782,6 +782,8 @@ Cart購入開始は `API-PUR-CART-001` を使用する。既存の単品購入AP
 - Google: Google認証開始Button。取消・閉じるはGuestのまま同画面へ戻し、別方式を選べる。
 - Email OTP: Email入力、送信後のOTP入力、明示的再送を提供する。期限切れ・誤入力・attempt上限では未認証のまま説明し、Neonが許す場合だけ再送/再開始する。Neon適用期限とattempt上限はProduction gateで検証記録する。
 - Magic Link: Email入力と送信状態を示す。Linkは5分有効。期限切れ・無効・不達は未認証とし再送または別方式を選べる。別端末でLinkを開いても元画面は自動認証済みとせず、Neonが同一Browser Sessionを成立させた確認前はGuestのままとする。
+- GoogleとMagic Linkは `FR-CRT-012` の外部完了認証である。Guestでない利用者（Email未確認のSessionを持つ利用者を含む）にはGoogleとMagic Linkの開始を無効として示し、別のAccountで利用するにはLogoutが必要であることを示す。Guestでない利用者のSession中にEmail+PasswordまたはEmail OTPによるLoginが成立した場合、Cartの扱いは `FR-CRT-012` の有効Session中の再Loginに従う。
+- GoogleとMagic Linkの結果は、外部完了認証の戻りで表示された `PG-AUTH-001` または `PG-AUTH-003`（開始した画面と同じPage）で受ける。外部完了認証を開始した元の画面（Magic Linkの送信状態を表示している画面を含む）、外部完了認証の戻りの遷移が起きていない他のTab、および再読込またはBrowserの履歴の移動で再表示された画面は結果を受けず、Sessionを確認しても `FR-CRT-012` の外部完了認証の規則による判定を行わない。外部完了認証の戻りで表示された画面で外部完了認証によって成立したSessionを確認した後は、`SPEC-060` §13 の順序に従い、Email未確認なら `PG-AUTH-002` へ、確認済みならContinuation Intentの復帰先へ、Continuation Intentがなければ `PG-MYP-001` へ進む。§15.3 Success / Navigation Out は、この順序のうちEmail確認済みの場合に当たる。`PG-AUTH-001` で結果を受けた場合もこの順序で進み、§15.1 Success の遷移先（`PG-AUTH-002`、Continuation Intentの安全な復帰先）はこの順序の中で適用する。外部完了認証の戻りで表示された画面でSessionを確認できない場合は、認証の状態を変えずに（Guestの場合はGuestのまま）認証未成立として同画面に留まる。取消・失敗・期限切れは外部完了認証の戻りで表示された画面で認証未成立として示し、再試行と別方式の選択を可能にする。結果を受けた時点のCartの保持・clearと外部完了認証の結果待ち記録の扱いは `FR-CRT-012` の外部完了認証の規則に従う。新しいPage IDを追加しない。
 - 送信先の表示や送信済み表示を本人確認の証拠にしない。送信結果の文言からアカウントの存在を明かさない。
 
 方式間連携はNeonが本人性と確認済みEmailを保証する場合に限る。Email文字列一致だけで別Auth IDへ連携したり、既存Order等の履歴を移転・統合したりしない。採用する認証中継、Google方式連携、Cookie / Session連携を検証済みとはみなさず、Safariを含む全方式の実動作確認をProduction公開の必須条件とする。
@@ -1471,12 +1473,15 @@ Entry QRと同じPage title、同じ権利名称、同じ補助説明だけに�
 
 ### 20.5 Notification
 
-| Notification State | UI |
+本節の表示は `API-ORD-003.notification_summary` を入力とする。内部Notification State（`PENDING` / `SENT` / `FAILED_RETRYABLE` / `CANCELED`）を直接取得・表示しない（§16.2）。`notification_summary` はDomain Stateではない表示用DTOであり、内部Stateからの射影条件と優先順は `SPEC-120` §7.2（`EML-NTF-003`）がCanonical Ownerである。
+
+| `notification_summary` | UI |
 |---|---|
-| `PENDING` | 必要なら「確認Email送信処理中」。購入状態へ影響させない |
-| `SENT` | 通知送信済みを補助情報として表示してよい |
-| `FAILED_RETRYABLE` | 「Email未達の可能性があるが購入は確定済み」。Business successを維持 |
-| `CANCELED` | 通知不要化。購入権利には影響しない |
+| `status = ATTENTION_REQUIRED` | Order `CONFIRMED` では §16.7 の非阻害通知を表示する。Business successを維持し、購入・権利を取消表示しない |
+| `status = PENDING` | 必要なら「確認Email送信処理中」。購入状態へ影響させない |
+| `status = SENT` | 通知送信済みを補助情報として表示してよい。受信箱への配送成功と断言しない |
+| `status = NONE` | 有効な対象確認通知なし。送信成功と表示しない。購入権利には影響しない |
+| `null`（サマリー取得障害） | 通知状態不明。`NONE` / `SENT` と推測せず、Order／権利の取得成功を失敗に変えない |
 
 ## 21. Pending / Failure / Retry UX Matrix
 
@@ -1834,4 +1839,42 @@ SPEC-050では以下だけをCanonicalに定義する。
 
 ## 35. 上流仕様変更要求
 
-なし。
+他仕様書への新規Upstream Change Requestはない。上流の `FR-CRT-012` への要求は `UCR-020-001` として `SPEC-020` §22 に記録し、`SPEC-020 v2.1.0` で本文へ取り込んだ。
+
+本書内の記述の不整合と不足を解消する次の要求を本文へ取り込んだ（`UCR-050-001` / `UCR-050-002` は v2.1.1、`UCR-050-003` は v2.2.0）。現在の契約は本文を正とし、以下の記録を別の契約として実装しない。
+
+### UCR-050-001 — INCORPORATED
+
+- **Status:** `INCORPORATED`（`SPEC-050 v2.1.1`）
+- 対象: SPEC-050（§20.5）
+- 現在の仕様（改訂前）: §20.5 は内部Notification State（`PENDING` / `SENT` / `FAILED_RETRYABLE` / `CANCELED`）ごとのUIを定めていた。§16.2 は「内部Notification stateは直接取得しない」とし、§16.7 は `API-ORD-003.notification_summary`（`NONE` / `PENDING` / `SENT` / `ATTENTION_REQUIRED`、取得障害時null）で表示を定めていた。§20.5 には `NONE` とnullの行がなかった。
+- 要求する変更: §20.5 を `notification_summary.status`（`NONE` / `PENDING` / `SENT` / `ATTENTION_REQUIRED`）とnullの5行に書き換え、内部Stateとの対応は `SPEC-120` §7.2（`EML-NTF-003`）を参照する形にする。
+- 理由: 同一書内で、UIの入力を内部Stateとするか所有者向け射影とするかが二通りに読めるため。
+- 変更しない場合の影響: UI実装・Testが内部Stateを入力にした表示対応を残し、§16.2 に反する実装を誘発しうる。
+- 影響を受ける可能性がある仕様書: SPEC-120, SPEC-170
+- **本書側反映:** §20.5。§16.2 / §16.7 の意味は変更しない。
+- **残作業:** なし。`SPEC-120` §7.2、`SPEC-110` `API-ORD-003`、`SPEC-170` `TST-API-008` / `TC-API-008-001` は改訂前から同じ射影を定めており、変更を要しない。
+
+### UCR-050-002 — INCORPORATED
+
+- **Status:** `INCORPORATED`（`SPEC-050 v2.1.1`）
+- 対象: SPEC-050（§14A.1 Purchase start result）
+- 現在の仕様（改訂前）: §14A.1 Purchase start result は、一部Item不成立の例に「Allocation競合」を挙げていた。`SPEC-110` `API-PUR-CART-001` の `item_failures[].reasons` は `API-PUR-ELG-001` の9 codeの有限集合で、Allocation競合専用のcodeを持たない。
+- 要求する変更: §14A.1 の当該箇所に「購入開始時の確保競合は `SOLD_OUT` または `INSUFFICIENT_QUANTITY` として示す（`SPEC-110` `API-PUR-ELG-001` の理由集合）」と明記する。
+- 理由: UIが表示すべき理由の集合を、APIの有限集合と一対一に読めるようにするため。
+- 変更しない場合の影響: 実装者が、正本に無い競合専用の理由やcopyを作るおそれがある。
+- 影響を受ける可能性がある仕様書: SPEC-110, SPEC-170
+- **本書側反映:** §14A.1 Purchase start result。Cart Itemの購入不可理由の表、§21、§34 は変更しない。
+- **残作業:** なし。`SPEC-110` の理由集合と `SPEC-170` `TC-API-004-001` / `TC-API-005-001` は変更を要しない。`SPEC-040` §16.3 / §16A.3 のAllocation競合は事象の定義であり、理由codeを定めない。
+
+### UCR-050-003 — INCORPORATED
+
+- **Status:** `INCORPORATED`（`SPEC-050 v2.2.0`）
+- 対象: SPEC-050（§15.0）
+- 現在の仕様（改訂前）: §15.0 は `PG-AUTH-001` / `PG-AUTH-003` でEmail+Password、Google、Email OTP、Magic Linkの4方式を共通提供し、Googleの取消・閉じるはGuestのまま同画面へ戻す、Magic Linkは別端末で開いても元画面を自動認証済みとしない、と定めていた。Guestでない利用者がGoogle / Magic Linkを選んだ場合の表示と、本画面の外で成立した結果をどの画面で受けるかは定めていなかった。
+- 要求する変更: GoogleとMagic Linkを `FR-CRT-012` の外部完了認証と位置付け、Guestでない利用者（Email未確認のSessionを持つ利用者を含む）にはGoogleとMagic Linkの開始を無効として示しLogoutが必要であることを示すこと、Guestでない利用者のSession中にEmail+PasswordまたはEmail OTPによるLoginが成立した場合のCartは `FR-CRT-012` の有効Session中の再Loginに従うこと、結果は外部完了認証の戻りで表示された `PG-AUTH-001` / `PG-AUTH-003` で受け、元の画面・戻りの遷移が起きていない他のTab・再読込または履歴の移動で再表示された画面では受けないこと、結果を受けた画面では `SPEC-060` §13 の順序で進めること、Sessionを確認できない場合と取消・失敗・期限切れを同画面で認証未成立として示すことを明記する。新しいPage IDを追加しない。
+- 理由: `SPEC-060` §13 の順序をGoogle / Magic Linkにも適用し、`SPEC-110` §23.1 の「最終SPA復帰先は既存の安全なContinuation」を保ったまま、Email未確認のIdentityを直接Continuationへ戻さないため。Guestでない利用者の開始を無効にすることで、`FR-CRT-012` の再LoginのCart clearを本画面の外で完了する方式でも成り立たせるため。結果を受ける画面を一つに定め、同じBrowserに結果を確認しうる画面が複数ある場合の判定を一つにするため。
+- 変更しない場合の影響: 方式ごとに戻り先と未確認時の扱いが分かれ、有効Session中の再LoginでCartの分離（`FR-CRT-012`）が成り立たない実装や、後から結果を確認した画面で初回LoginのGuest Cartをclearする実装を誘発しうる。
+- 影響を受ける可能性がある仕様書: SPEC-020, SPEC-040, SPEC-060, SPEC-110, SPEC-170
+- **本書側反映:** §15.0（2項目の追加）。§15.1 / §15.3 の文、Page ID、Route は変更しない。
+- **残作業:** なし。`FR-CRT-012` の規則は `UCR-020-001`（`SPEC-020 v2.1.0`）で反映した。`SPEC-040` UF-AUTH-001 / UF-AUTH-003（Precondition: Guest）と UF-AUTH-002（同画面で方式選択・再試行）、`SPEC-060` §6.1 / §7.1（GuestとEmail未確認のSessionの区別）、§11.1.1（各方式は既存 `PG-AUTH-001/002/003` の中で提供）と §13、`SPEC-110` §23.1、`SPEC-170` `TC-STACK-001` / `TC-STACK-005` は確認の結果、変更を要しない。

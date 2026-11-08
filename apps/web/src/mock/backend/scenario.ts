@@ -13,7 +13,7 @@ export const scenarioSchema = z.strictObject({
   latencyLongMs: z.number().int().min(1).max(60000),
   sponsorLogos: z.enum(["published", "none", "fail", "image_broken", "image_disallowed_origin"]),
   cart: z.strictObject({
-    state: z.enum(["ok", "fail", "partial"]),
+    state: z.enum(["ok", "fail", "partial", "eligibility_fail"]),
     purchaseStart: z.enum(["ok", "reject_one", "limit", "unavailable"]),
   }),
   checkout: z.enum(["ok", "start_failed", "opportunity_expired"]),

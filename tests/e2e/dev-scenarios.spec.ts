@@ -123,6 +123,23 @@ test.describe("TC-DEV-WEB-013-201 every scenario switch is editable and persiste
     expect(Object.keys(stored).sort()).toEqual(Object.keys(JSON.parse(scenarioJson())).sort());
   });
 
+  test("offers cart.state eligibility_fail next to the existing values, saves it and reads it back after a reload", async ({
+    page,
+  }) => {
+    await page.goto("/dev/scenarios");
+    const values = await control(page, "cart.state")
+      .locator("option")
+      .evaluateAll((opts) => opts.map((o) => (o as HTMLOptionElement).value));
+    expect(values).toEqual(["ok", "fail", "partial", "eligibility_fail"]);
+    await control(page, "cart.state").selectOption("eligibility_fail");
+    await expect
+      .poll(async () => (await readScenario(page)).cart)
+      .toEqual({ state: "eligibility_fail", purchaseStart: "ok" });
+    await page.reload();
+    await expect(control(page, "cart.state")).toHaveValue("eligibility_fail");
+    await expect(control(page, "cart.purchaseStart")).toHaveValue("ok");
+  });
+
   test("keeps sibling values when one nested switch changes", async ({ page }) => {
     await page.goto("/dev/scenarios");
     await control(page, "cart.state").selectOption("partial");

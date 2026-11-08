@@ -157,6 +157,25 @@ export function okData<T>(read: Read<T>): T {
   return read.data;
 }
 
+/**
+ * The stored `remaining` of one Entry offering or Goods item, read from the persisted mock DB
+ * (never from a public read, which is viewer independent). Read only: nothing is saved.
+ * Throws when the DB is not ready or no row has the ref.
+ */
+export function storedRemaining(backend: Backend, ref: string): number {
+  const loaded = backend.db.load();
+  if (loaded.kind !== "ready") {
+    throw new Error("expected a ready DB");
+  }
+  const row =
+    loaded.state.offerings.find((o) => o.ref === ref) ??
+    loaded.state.goods.find((g) => g.ref === ref);
+  if (row === undefined) {
+    throw new Error(`no stored offering or goods row for ${ref}`);
+  }
+  return row.remaining;
+}
+
 /** A stable JSON of the whole mock DB, to prove that nothing changed. */
 export function dbFingerprint(backend: Backend): string {
   const loaded = backend.db.load();

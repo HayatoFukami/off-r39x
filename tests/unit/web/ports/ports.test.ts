@@ -15,6 +15,7 @@ import type {
   CartLineResolution,
   CartPurchaseStart,
   CheckoutStart,
+  EligibilityTarget,
   EntryOffering,
   EntryTicketDetail,
   EntryTicketSummary,
@@ -32,6 +33,8 @@ import type {
   OrderSummary,
   Profile,
   ProfileUpdate,
+  PurchaseEligibility,
+  PurchaseEligibilityRead,
   PurchaseReason,
   QrPresentation,
   Read,
@@ -43,6 +46,7 @@ import type {
 } from "../../../../apps/web/src/api-client/types.ts";
 import type { AuthPort, Session } from "../../../../apps/web/src/auth/port.ts";
 import { createBackend } from "../../../harness/mock-backend.ts";
+import { SLOT } from "../../../harness/mock-seed.ts";
 import { PURCHASE_REASONS } from "../../../harness/purchase-reasons.ts";
 
 const webDir = fileURLToPath(new URL("../../../../apps/web/", import.meta.url));
@@ -86,7 +90,12 @@ describe("TC-DEV-WEB-010-102 ApiPort and AuthPort have the documented shape (des
       ].sort(),
     );
     expect(Object.keys(api.purchase).sort()).toEqual(
-      ["startCartPurchase", "startCheckout", "startKaraokePurchase"].sort(),
+      [
+        "getPurchaseEligibility",
+        "startCartPurchase",
+        "startCheckout",
+        "startKaraokePurchase",
+      ].sort(),
     );
     expect(Object.keys(api.self).sort()).toEqual(
       [
@@ -109,10 +118,14 @@ describe("TC-DEV-WEB-010-102 ApiPort and AuthPort have the documented shape (des
         "completePasswordReset",
         "getSession",
         "onSessionChange",
+        "requestEmailOtp",
+        "requestMagicLink",
         "requestPasswordReset",
         "signIn",
+        "signInWithEmailOtp",
         "signOut",
         "signUp",
+        "startGoogleSignIn",
         "verifyEmail",
       ].sort(),
     );
@@ -123,6 +136,116 @@ describe("TC-DEV-WEB-010-102 ApiPort and AuthPort have the documented shape (des
     const result = api.public.getEvent();
     expect(result).toBeInstanceOf(Promise);
     await result;
+  });
+
+  it("returns promises from the Email OTP methods and answers with the documented kinds (B5 C1)", async () => {
+    const otp = createBackend().auth;
+    const requested = otp.requestEmailOtp({ email: "demo@example.com" });
+    expect(requested).toBeInstanceOf(Promise);
+    expect((await requested).kind).toBe("sent");
+    const signedIn = otp.signInWithEmailOtp({ email: "demo@example.com", code: "246810" });
+    expect(signedIn).toBeInstanceOf(Promise);
+    expect((await signedIn).kind).toBe("signed_in");
+  });
+
+  it("returns a promise from startGoogleSignIn and answers with the documented kinds (B5 C2)", async () => {
+    const google = createBackend().auth;
+    const started = google.startGoogleSignIn({
+      successPath: "/account/login?returned=google",
+      failurePath: "/account/login?notice=google-failed",
+    });
+    expect(started).toBeInstanceOf(Promise);
+    expect((await started).kind).toBe("redirect");
+  });
+
+  it("documents startGoogleSignIn in auth/port.ts: a Neon Auth transport without a business Operation ID, an outcome the Promise does not report, same-origin PG-AUTH paths (B5 C2, SPEC-110 23.1, AR-CONT-001, SEC-WEB-013)", () => {
+    const lines = read(join(webDir, "src/auth/port.ts")).split("\n");
+    const index = lines.findIndex((line) => /^\s*startGoogleSignIn\(/.test(line));
+    expect(index, "startGoogleSignIn must be declared in auth/port.ts").toBeGreaterThanOrEqual(0);
+    const block: string[] = [];
+    for (let i = index - 1; i >= 0; i -= 1) {
+      const text = (lines[i] ?? "").trim();
+      if (!/^(\/\*|\*|\/\/)/.test(text)) break;
+      block.unshift(text);
+    }
+    const annotation = block.join("\n");
+    expect(annotation).toMatch(/Neon Auth/);
+    expect(annotation).toContain("23.1");
+    expect(annotation).toMatch(/Operation ID/);
+    expect(annotation).not.toMatch(/API-[A-Z]+(?:-[A-Z]+)*-\d{3}/);
+    expect(annotation).not.toMatch(/UCR-/);
+    // The result of the sign-in is not known from this Promise; the paths are the same origin's PG-AUTH pages.
+    expect(annotation).toMatch(/outcome/i);
+    expect(annotation).toMatch(/same origin/i);
+    expect(annotation).toContain("AR-CONT-001");
+    expect(annotation).toContain("SEC-WEB-013");
+  });
+
+  it("returns a promise from requestMagicLink and answers with the documented kinds (B5 C3)", async () => {
+    const link = createBackend().auth;
+    const requested = link.requestMagicLink({
+      email: "demo@example.com",
+      successPath: "/account/login?returned=magic-link",
+      failurePath: "/account/login?notice=link-failed",
+    });
+    expect(requested).toBeInstanceOf(Promise);
+    expect((await requested).kind).toBe("sent");
+  });
+
+  it("documents requestMagicLink in auth/port.ts: a Neon Auth transport without a business Operation ID, an answer that never discloses the account, a link opened outside the page whose outcome the Promise does not report, same-origin PG-AUTH paths (B5 C3, SPEC-110 23.1, SEC-API-027, AR-CONT-001, SEC-WEB-013)", () => {
+    const lines = read(join(webDir, "src/auth/port.ts")).split("\n");
+    const index = lines.findIndex((line) => /^\s*requestMagicLink\(/.test(line));
+    expect(index, "requestMagicLink must be declared in auth/port.ts").toBeGreaterThanOrEqual(0);
+    const block: string[] = [];
+    for (let i = index - 1; i >= 0; i -= 1) {
+      const text = (lines[i] ?? "").trim();
+      if (!/^(\/\*|\*|\/\/)/.test(text)) break;
+      block.unshift(text);
+    }
+    const annotation = block.join("\n");
+    expect(annotation).toMatch(/Neon Auth/);
+    expect(annotation).toContain("23.1");
+    expect(annotation).toMatch(/Operation ID/);
+    expect(annotation).not.toMatch(/API-[A-Z]+(?:-[A-Z]+)*-\d{3}/);
+    expect(annotation).not.toMatch(/UCR-/);
+    // The answer never discloses the account, the link is opened elsewhere and its outcome is decided by the screen
+    // the user returns to; the paths are the same origin's PG-AUTH pages.
+    expect(annotation).toContain("SEC-API-027");
+    expect(annotation).toMatch(/outcome/i);
+    expect(annotation).toMatch(/same origin/i);
+    expect(annotation).toContain("AR-CONT-001");
+    expect(annotation).toContain("SEC-WEB-013");
+  });
+
+  it("documents the Email OTP methods in auth/port.ts: a Neon Auth transport without a business Operation ID, an answer that never discloses the account, a code that is never kept (B5 C1, SPEC-110 23.1, SEC-API-027, SEC-AUTH-018)", () => {
+    const lines = read(join(webDir, "src/auth/port.ts")).split("\n");
+    const annotationOf = (name: string): string => {
+      const index = lines.findIndex((line) => new RegExp(`^\\s*${name}\\(`).test(line));
+      expect(index, `${name} must be declared in auth/port.ts`).toBeGreaterThanOrEqual(0);
+      const block: string[] = [];
+      for (let i = index - 1; i >= 0; i -= 1) {
+        const text = (lines[i] ?? "").trim();
+        if (!/^(\/\*|\*|\/\/)/.test(text)) break;
+        block.unshift(text);
+      }
+      return block.join("\n");
+    };
+    const request = annotationOf("requestEmailOtp");
+    const verify = annotationOf("signInWithEmailOtp");
+    for (const annotation of [request, verify]) {
+      expect(annotation).toMatch(/Neon Auth/);
+      expect(annotation).toContain("23.1");
+      expect(annotation).toMatch(/Operation ID/);
+      // A business Operation ID would be a claim that the Hono API owns this call; it does not.
+      expect(annotation).not.toMatch(/API-[A-Z]+(?:-[A-Z]+)*-\d{3}/);
+      expect(annotation).not.toMatch(/UCR-/);
+    }
+    expect(request).toContain("SEC-API-027");
+    expect(request).toMatch(/registered/i);
+    expect(verify).toContain("SEC-AUTH-018");
+    expect(verify).toContain("code_expired");
+    expect(verify).toMatch(/attempt/i);
+    expect(verify).toMatch(/resend/i);
   });
 
   it("types the public port methods", () => {
@@ -159,6 +282,68 @@ describe("TC-DEV-WEB-010-102 ApiPort and AuthPort have the documented shape (des
     expectTypeOf<PublicApi["resolveCartLines"]>().returns.resolves.toEqualTypeOf<
       Read<readonly CartLineResolution[]>
     >();
+  });
+
+  it("types getPurchaseEligibility as the owner-scoped read of API-PUR-ELG-001 (input Cart lines or one KARAOKE slot, never a Read<T>)", () => {
+    type Method = PurchaseApi["getPurchaseEligibility"];
+    expectTypeOf<Method>().parameter(0).toEqualTypeOf<readonly EligibilityTarget[]>();
+    expectTypeOf<EligibilityTarget>().toEqualTypeOf<
+      CartLine | { kind: "KARAOKE"; slotRef: Ref<"slot">; quantity: 1 }
+    >();
+    // FR-CRT-002: Karaoke is checked through the target union and never becomes a Cart line.
+    expectTypeOf<Extract<CartLine, { kind: "KARAOKE" }>>().toBeNever();
+    expectTypeOf<Method>().returns.resolves.toEqualTypeOf<PurchaseEligibilityRead>();
+    expectTypeOf<PurchaseEligibilityRead["kind"]>().toEqualTypeOf<
+      "ok" | "auth_required" | "email_unverified" | "unavailable"
+    >();
+    expectTypeOf<Extract<PurchaseEligibilityRead, { kind: "ok" }>["data"]>().toEqualTypeOf<
+      readonly PurchaseEligibility[]
+    >();
+    expectTypeOf<PurchaseEligibility>().toEqualTypeOf<{
+      lineKey: string;
+      purchasable: boolean;
+      reasons: readonly PurchaseReason[];
+      maxPurchasableQuantity: number;
+    }>();
+  });
+
+  it("returns a promise from getPurchaseEligibility and never answers a Cart line without an owner gate", async () => {
+    const { api } = createBackend();
+    const result = api.purchase.getPurchaseEligibility([
+      {
+        kind: "ENTRY_TICKET",
+        offeringRef: "e0000000-0000-4000-8000-000000000001" as Ref<"offering">,
+        quantity: 1,
+      },
+    ]);
+    expect(result).toBeInstanceOf(Promise);
+    expect(await result).toEqual({ kind: "auth_required" });
+  });
+
+  it("accepts a KARAOKE target (quantity 1) on the same method and answers a guest with auth_required (no new method, API-PUR-ELG-001)", async () => {
+    const { api } = createBackend();
+    const result = api.purchase.getPurchaseEligibility([
+      { kind: "KARAOKE", slotRef: SLOT.d1_1000, quantity: 1 },
+    ]);
+    expect(result).toBeInstanceOf(Promise);
+    expect(await result).toEqual({ kind: "auth_required" });
+  });
+
+  it("declares the KARAOKE variant in the target union, keeps it out of CartLine and types the method input with it (source)", () => {
+    const types = read(join(webDir, "src/api-client/types.ts"));
+    const target = /export type EligibilityTarget =([\s\S]*?\});/.exec(types)?.[1] ?? "";
+    expect(target, "EligibilityTarget must be exported from api-client/types.ts").not.toBe("");
+    expect(target).toMatch(/\bCartLine\b/);
+    expect(target).toMatch(/kind:\s*"KARAOKE"/);
+    expect(target).toMatch(/slotRef:\s*Ref<"slot">/);
+    expect(target).toMatch(/quantity:\s*1\b/);
+    const cartLine = /export type CartLine =([\s\S]*?\});/.exec(types)?.[1] ?? "";
+    expect(cartLine).not.toBe("");
+    expect(cartLine).not.toMatch(/KARAOKE/);
+    const port = read(join(webDir, "src/api-client/port.ts"));
+    expect(port).toMatch(
+      /getPurchaseEligibility\(\s*targets:\s*readonly EligibilityTarget\[\]\s*\)/,
+    );
   });
 
   it("types the purchase and self port methods", () => {
@@ -253,6 +438,50 @@ describe("TC-DEV-WEB-010-102 ApiPort and AuthPort have the documented shape (des
     expectTypeOf<AuthPort["signOut"]>().returns.resolves.toEqualTypeOf<{ kind: "signed_out" }>();
   });
 
+  it("types the Email OTP methods (B5 C1): the request never reveals the account, the verification separates a wrong code from an expired one", () => {
+    expectTypeOf<AuthPort["requestEmailOtp"]>().parameters.toEqualTypeOf<[{ email: string }]>();
+    expectTypeOf<AuthPort["requestEmailOtp"]>().returns.resolves.toEqualTypeOf<
+      { kind: "sent" } | { kind: "unavailable" } | { kind: "cart_busy" } | { kind: "cart_blocked" }
+    >();
+    expectTypeOf<AuthPort["signInWithEmailOtp"]>().parameters.toEqualTypeOf<
+      [{ email: string; code: string }]
+    >();
+    expectTypeOf<AuthPort["signInWithEmailOtp"]>().returns.resolves.toEqualTypeOf<
+      | { kind: "signed_in"; emailVerified: boolean }
+      | { kind: "code_invalid" }
+      | { kind: "code_expired" }
+      | { kind: "unavailable" }
+      | { kind: "cart_busy" }
+      | { kind: "cart_blocked" }
+    >();
+  });
+
+  it("types startGoogleSignIn (B5 C2): the paths in, a redirect or one of the refusals out; the outcome of the sign-in is not part of the result", () => {
+    expectTypeOf<AuthPort["startGoogleSignIn"]>().parameters.toEqualTypeOf<
+      [{ successPath: string; failurePath: string }]
+    >();
+    expectTypeOf<AuthPort["startGoogleSignIn"]>().returns.resolves.toEqualTypeOf<
+      | { kind: "redirect"; url: string }
+      | { kind: "unavailable" }
+      | { kind: "already_signed_in" }
+      | { kind: "cart_busy" }
+      | { kind: "cart_blocked" }
+    >();
+  });
+
+  it("types requestMagicLink (B5 C3): the address and both paths in, sent or one of the refusals out; the address of an account and the outcome of the link are not part of the result", () => {
+    expectTypeOf<AuthPort["requestMagicLink"]>().parameters.toEqualTypeOf<
+      [{ email: string; successPath: string; failurePath: string }]
+    >();
+    expectTypeOf<AuthPort["requestMagicLink"]>().returns.resolves.toEqualTypeOf<
+      | { kind: "sent" }
+      | { kind: "unavailable" }
+      | { kind: "already_signed_in" }
+      | { kind: "cart_busy" }
+      | { kind: "cart_blocked" }
+    >();
+  });
+
   it("makes the Cart unable to represent Karaoke, prices or other fields (FR-CRT-002/003)", () => {
     expectTypeOf<CartLine["kind"]>().toEqualTypeOf<"ENTRY_TICKET" | "GOODS">();
     expectTypeOf<keyof Extract<CartLine, { kind: "GOODS" }>>().toEqualTypeOf<
@@ -301,6 +530,7 @@ describe("TC-DEV-WEB-010-103 port doc comments name the Operation ID or the UCR 
     "listGoods",
     "getGoods",
     "resolveCartLines",
+    "getPurchaseEligibility",
     "startCartPurchase",
     "startKaraokePurchase",
     "startCheckout",
@@ -324,21 +554,52 @@ describe("TC-DEV-WEB-010-103 port doc comments name the Operation ID or the UCR 
     return lines.slice(Math.max(0, index - 4), index + 1).join("\n");
   };
 
-  it("annotates every method with an API-* Operation ID or UCR-110-001", () => {
+  /** The comment block directly above a declaration (the doc comment of that method only). */
+  const annotationOf = (lines: string[], name: string): string => {
+    const index = lines.findIndex((line) => new RegExp(`^\\s*${name}\\(`).test(line));
+    expect(index, `${name} must be declared in port.ts`).toBeGreaterThanOrEqual(0);
+    const block: string[] = [];
+    for (let i = index - 1; i >= 0; i -= 1) {
+      const text = (lines[i] ?? "").trim();
+      if (!/^(\/\*|\*|\/\/)/.test(text)) break;
+      block.unshift(text);
+    }
+    return block.join("\n");
+  };
+
+  it("annotates every method with an API-* Operation ID (the UCR-110-001 stand-in is gone: it is INCORPORATED)", () => {
     const lines = portSource();
     for (const name of methods) {
-      expect(window(lines, name), name).toMatch(/API-[A-Z]+(-[A-Z]+)*-\d{3}|UCR-110-001/);
+      expect(annotationOf(lines, name), name).toMatch(/API-[A-Z]+(-[A-Z]+)*-\d{3}/);
     }
   });
 
-  it("marks only the ports whose viewer-specific part has no Operation ID yet as UCR-110-001 / Operation ID なし (until B4b)", () => {
+  it("leaves no UCR-110-001 and no Operation ID なし mark anywhere in port.ts (every method has a canonical Operation ID)", () => {
+    const source = portSource().join("\n");
+    expect(source).not.toContain("UCR-110-001");
+    expect(source).not.toMatch(/Operation ID\s*(なし|none|missing)/i);
+    expect(source).not.toMatch(/Methods without an Operation ID/);
+  });
+
+  it("cites the public Operation IDs for the two public reads and the owner Operation ID for the eligibility (SPEC-110 API-PUB-005 / 010 / 011, API-PUR-ELG-001; SPEC-050 12.1)", () => {
     const lines = portSource();
-    // listSponsorLogos has API-PUB-012 and startCartPurchase has API-PUR-CART-001; the viewer-specific
-    // Purchase Limit reads (listEntryOfferings, resolveCartLines) keep the mark until phase B4b.
-    for (const name of ["listEntryOfferings", "resolveCartLines"]) {
-      expect(window(lines, name), name).toContain("UCR-110-001");
-    }
-    expect(portSource().join("\n")).toMatch(/Operation ID\s*(なし|none|missing)/i);
+    const entryOfferings = annotationOf(lines, "listEntryOfferings");
+    expect(entryOfferings).toContain("API-PUB-005");
+    expect(entryOfferings).toMatch(/public/i);
+    expect(entryOfferings).toContain("getPurchaseEligibility");
+    const resolve = annotationOf(lines, "resolveCartLines");
+    for (const id of ["API-PUB-005", "API-PUB-010", "API-PUB-011"]) expect(resolve).toContain(id);
+    expect(resolve).toMatch(/public/i);
+    expect(resolve).toContain("getPurchaseEligibility");
+    const eligibility = annotationOf(lines, "getPurchaseEligibility");
+    expect(eligibility).toContain("API-PUR-ELG-001");
+    expect(eligibility).toMatch(/owner-scoped/);
+    expect(eligibility).toMatch(/read-only/);
+    expect(eligibility).toMatch(/no-store/);
+    expect(eligibility).toMatch(/not a reservation/);
+    // B4c: the same Operation ID also takes one KARAOKE Slot (quantity 1); no other Operation ID is cited.
+    expect(eligibility).toContain("KARAOKE");
+    expect(eligibility.match(/API-[A-Z]+(?:-[A-Z]+)*-\d{3}/g)).toEqual(["API-PUR-ELG-001"]);
   });
 
   it("cites API-PUR-CART-001 for startCartPurchase without the UCR or Operation ID なし wording (SPEC-110 API-PUR-CART-001, UCR-110-001 INCORPORATED)", () => {
