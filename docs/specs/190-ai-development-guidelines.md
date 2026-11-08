@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-190
 title: AI Development Guidelines
-version: 2.0.0
+version: 2.1.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -418,7 +418,7 @@ Authentication/validation orderingでSecurity上必要な先行処理がSPEC-110
 
 **DEV-DB-006:** `bigint` PK / amountはlossless mappingを使用する。
 
-**DEV-DB-007:** SQLSTATEはtyped classifierへ集約する。`40001` / `40P01` はSPEC-150のtransaction retry boundaryだけが再試行し、`23505` / `23P01`等のconstraint violationはblind retryしない。
+**DEV-DB-007:** SQLSTATEはtyped classifierへ集約する。`40001` / `40P01` / `55P03`（lock timeout）はSPEC-150のtransaction retry boundaryだけが再試行し、`23505` / `23P01`等のconstraint violationはblind retryしない。
 
 ## 19. Transaction / lock
 

@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-160
 title: Observability and Audit Log
-version: 2.0.0
+version: 2.1.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -651,6 +651,7 @@ Required semantics:
 - lock wait duration
 - SQLSTATE `40001`
 - SQLSTATE `40P01`
+- SQLSTATE `55P03` (lock timeout)
 - known constraint loser (`23505`, `23P01`, named constraint)
 - statement timeout / lock timeout / pool timeout
 - transaction retry attempt and exhaustion
@@ -677,7 +678,7 @@ consistency_reviews.find_unresolved
 
 **OBS-DB-002:** SQLSTATE MAY be logged because it is a bounded technical code, but raw database error detail/hint/context is not a normal log field.
 
-**OBS-DB-003:** `40001` / `40P01` MUST be separately countable from constraint losers and from DB unavailability.
+**OBS-DB-003:** `40001` / `40P01` / `55P03` (lock timeout) MUST be separately countable from constraint losers and from DB unavailability. A lock-timeout retry MUST be observable as a transaction retry (`r39x_db_transaction_retries_total`), and its exhaustion as retry exhaustion rather than as a statement timeout.
 
 **OBS-DB-004:** A commit acknowledgement loss classified by `SPEC-150` as result unknown MUST emit `reliability.unknown_result.opened`, not merely `db.transaction.failed`.
 

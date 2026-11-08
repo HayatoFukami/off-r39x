@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-140
 title: Security Specification
-version: 2.2.1
+version: 2.3.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -664,7 +664,7 @@ Public APIをBrowser direct readへ開放する必要がある場合も、Origin
 
 **SEC-API-021:** `GET` / `HEAD`でDomain mutationを実行しない。
 
-**SEC-API-022:** unsupported methodは`405`、unsupported content typeは`415`、invalid JSON / syntaxは`400`とし、これらをDomain state conflictへ誤分類しない。
+**SEC-API-022:** unsupported methodは`405 METHOD_NOT_ALLOWED`（`Allow` header付き）、unsupported content typeは`415 UNSUPPORTED_MEDIA_TYPE`、invalid JSON / syntaxは`400 MALFORMED_REQUEST`とし（`SPEC-110` §21）、これらをDomain state conflictへ誤分類しない。405 / 415 のHTTP statusだけを上書きして別の公開エラーコードを返さない。
 
 **SEC-API-023:** `request_id` はcorrelationだけに使用し、Secret、Authorization credential、Domain Business Cause、Provider idempotency keyの代替にしない。
 
@@ -1642,14 +1642,19 @@ Production startup / readinessで最低限次を検証する。
 - **本書側反映:** §22（表の `Referrer-Policy` と保護pathの文）、SEC-WEB-009。SEC-WEB-010 のcache許可をBrowser-facing Webの静的応答に適用しないことを本文に明記した。Hono API JSON responseのheaderは変更しない。
 - **残作業:** なし。`SPEC-180` §13.1（Pagesの静的headers設定で本書のheaderを適用する）、`SPEC-170` `TC-STACK-008`（静的CSP / cache / headers）、`SPEC-050` §5.4 / §19.1 は変更を要しない。
 
-### 101.3 UCR-140-002 — OPEN
+### 101.3 UCR-140-002 — INCORPORATED
 
+本改訂（v2.3.0）と `SPEC-110 v2.2.0` で次の要求を本文へ取り込んだ。現在の契約は本文を正とし、以下の記録を別の契約として実装しない。
+
+- **Status:** `INCORPORATED`（`SPEC-110 v2.2.0` §21、`SPEC-140 v2.3.0` `SEC-API-022`）
 - 対象: SPEC-110 §21
-- 現在の仕様: SEC-API-022はunsupported methodに405、unsupported content typeに415を要求するが、SPEC-110 §21には対応する公開エラーコードがない。現行実装は両方に `MALFORMED_REQUEST` を用いHTTP statusを上書きする。
-- 要求する変更: 405と415に対応する公開エラーコード、意味、retryabilityをSPEC-110のCanonical Ownerが決定し、error mappingに追加する。
+- 改訂前の仕様: SEC-API-022はunsupported methodに405、unsupported content typeに415を要求するが、SPEC-110 §21には対応する公開エラーコードがない。現行実装は両方に `MALFORMED_REQUEST` を用いHTTP statusを上書きする。
+- 要求した変更: 405と415に対応する公開エラーコード、意味、retryabilityをSPEC-110のCanonical Ownerが決定し、error mappingに追加する。
 - 理由: HTTP statusと公開エラーコードの対応を一意に検証可能にする。
-- 変更しない場合の影響: コードを新設できず、405・415の応答は暫定的なstatus上書きに依存する。
+- 決定: 405を `METHOD_NOT_ALLOWED`、415を `UNSUPPORTED_MEDIA_TYPE` とし、どちらも `Retryable=No`。405には `Allow` headerを付け、どのrouteにも一致しないpathは404 `RESOURCE_NOT_FOUND` とする。
 - 影響を受ける可能性がある仕様書: SPEC-110, SPEC-140, SPEC-170
+- **本書側反映:** `SEC-API-022`、§102 項目29。
+- **残作業:** なし。`SPEC-110` §21、`SPEC-170` §26 の共通API contract matrixへ反映済み。
 
 ---
 
@@ -1687,5 +1692,5 @@ Production startup / readinessで最低限次を検証する。
 26. rate limit failureでDomain stateを変更しない。
 27. Security controlを安全に評価できない場合はFail Closedとする。
 28. Security failureで確定済みBusiness Dataを削除しない。
-29. `UCR-130-001〜004/006`、`UCR-150-001〜002`（SPEC-130該当範囲）、および `UCR-170-001` はCanonical化済みとして扱う。`UCR-130-005` と `UCR-140-002` は未反映として扱う。
+29. `UCR-130-001〜004/006`、`UCR-150-001〜002`（SPEC-130該当範囲）、および `UCR-170-001` はCanonical化済みとして扱う。`UCR-140-002` もCanonical化済みである。`UCR-130-005` のみ未反映として扱う。
 30. `INV-010-01〜10` を維持する。

@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-150
 title: Reliability, Error and Recovery
-version: 2.0.0
+version: 2.1.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -86,7 +86,7 @@ related_specs:
 | `SPEC-070` | Checkout / Payment / Webhook / Refund / Provider Result Unknown / Business Cause |
 | `SPEC-080` | QR / Check-in / single-use / Token rotation / Consistency Failure |
 | `SPEC-090` | 45分Hold、30分Payment Deadline接続、5分Safety Buffer、no resale、Check-in window |
-| `SPEC-100` | Physical state、constraint、`READ COMMITTED`、lock、`40001` / `40P01`、Review table |
+| `SPEC-100` | Physical state、constraint、`READ COMMITTED`、lock、`40001` / `40P01` / `55P03`、Review table |
 | `SPEC-110` | API error contract、idempotency、Webhook / Admin operation boundary |
 | `SPEC-120` | Notification / Email Job / Attempt、Resend 10秒deadline、120秒claim、23時間safe cutoff |
 | `SPEC-130` | Recovery UI、Consistency Review UI、Admin/Staff Handoff semantics、recovery command wiring |
@@ -225,7 +225,7 @@ SECURITY_FAILURE
 | DB pool connection acquisition | 2秒 | `DATABASE_TEMPORARY_FAILURE` |
 | normal DB statement | 5秒 | transaction rollback、retryableか分類 |
 | Admin / reconciliation read statement | 10秒 | item failure。全batchを無制限blockしない |
-| DB lock wait (`lock_timeout`) | 1秒 | lock conflictとしてtransaction再試行候補 |
+| DB lock wait (`lock_timeout`) | 1秒 | SQLSTATE `55P03`。lock conflictとして§11の`55P03`行のpolicyでtransactionを再試行する |
 | normal Business DB transaction wall clock | 8秒 | rollback / unknown commit判定 |
 | Stripe API request | 10秒 | side-effect callは`UNKNOWN_RESULT`、read-only lookupはtemporary failure |
 | Resend Email API request | **10秒** (`SPEC-120`維持) | `UNKNOWN_RESULT` |
@@ -266,6 +266,7 @@ delay = random_uniform(0, cap_n)   # full jitter
 |---|---:|---:|---:|---|---:|---:|---|
 | DB `40001` | 50ms | 2 | 400ms | full | 4 transaction attempts total | 2s | 503 |
 | DB `40P01` | 100ms | 2 | 800ms | full | 4 total | 3s | 503 |
+| DB lock timeout `55P03` | 50ms | 2 | 400ms | full | 4 transaction attempts total | 5s | 503 |
 | temporary DB connection acquisition | 100ms | 2 | 500ms | full | 3 connection attempts | 3s | 503 |
 | Neon Auth temporary failure | 100ms | 2 | 500ms | full | 2 remote attempts | 7s | 503 / worker reschedule |
 | Stripe Checkout creation, explicit temporary / same-key recovery | 500ms | 2 | 5s | full | initial + 4 same-key attempts | 30s | `UNKNOWN` / Review path |
@@ -320,7 +321,7 @@ delay = random_uniform(0, cap_n)   # full jitter
 
 `SPEC-100` の標準Isolation `READ COMMITTED` とlock orderingを維持する。
 
-**REL-DB-001:** standard automatic transaction retry対象SQLSTATEは`40001`と`40P01`のみとする。
+**REL-DB-001:** standard automatic transaction retry対象SQLSTATEは`40001`、`40P01`、`55P03`（lock timeout）のみとする。
 
 **REL-DB-002:** `23505` / `23P01` / `23514` / `23503`をblind transaction retryしない。constraint名とcurrent stateを再読込し、known idempotent duplicate、known conflict loser、consistency failureのいずれかへ分類する。
 
@@ -342,9 +343,9 @@ delay = random_uniform(0, cap_n)   # full jitter
 
 **REL-DB-009:** pool acquisition 2秒超過はDB unavailable扱いとし、empty list、not found、sold outへ変換しない。
 
-**REL-DB-010:** statement timeoutはtransactionをrollbackし、同じstatementを無制限にretryしない。既知の`40001` / `40P01`以外はquery plan / overload / dependency failureとして上位へ返す。
+**REL-DB-010:** statement timeoutはtransactionをrollbackし、同じstatementを無制限にretryしない。REL-DB-001の対象SQLSTATE以外はquery plan / overload / dependency failureとして上位へ返す。
 
-**REL-DB-011:** lock timeoutは一時競合とみなし、Business Causeを維持してtransaction policy内でretryする。ただし4回で終了する。
+**REL-DB-011:** lock timeout（SQLSTATE `55P03`）は一時競合とみなし、Business Causeを維持して§11の`55P03`行のpolicy内でretryする。ただし4 transaction attempts totalで終了し、最大経過時間5秒には各attemptの最大1秒のlock待ちとbackoffを含む。budget枯渇時は`503 DATABASE_TEMPORARY_FAILURE`とし、lock timeoutを「not found」「sold out」「conflict loser」へ変換しない。
 
 **REL-DB-012:** runtime failureとmigration failureを分離する。required schema / constraint / extensionが欠ける場合はruntime fallbackせずserviceをReadyにしない。
 
@@ -441,7 +442,7 @@ Checkout Attemptが`UNKNOWN`なら、`provider_request_started_at`を起点に�
 
 **REL-PAY-009:** verified Webhookまたはserver-to-server Stripe authorityがpaidを示しても、Order Purpose必須Domain effectを一括commitできない場合、Ticket / Reservation / Goods effectを部分的に作らない。
 
-**REL-PAY-010:** `AWAITING_PAYMENT`でpaidが確認されBusiness Confirmation transactionが`40001` / `40P01`で失敗した場合、同じPayment Business CauseでDB retry policyを使用する。
+**REL-PAY-010:** `AWAITING_PAYMENT`でpaidが確認されBusiness Confirmation transactionが`40001` / `40P01` / `55P03`で失敗した場合、同じPayment Business CauseでDB retry policyを使用する。
 
 **REL-PAY-011:** DB retry exhaustion、constraint inconsistency、resource reuseで安全なConfirmationができない場合、Orderを`REVIEW_REQUIRED`へ進められるなら進め、terminal OrderならConsistency Review Caseだけを作成する。
 
@@ -1026,7 +1027,7 @@ SPEC-160は少なくとも次のReliability semanticを観測可能にする。
 
 - failure class (`TEMPORARY`, `UNKNOWN`, `CONSISTENCY`, `SECURITY`等)
 - retry scheduled / attempted / exhausted
-- DB `40001` / `40P01` retry exhaustion
+- DB `40001` / `40P01` / `55P03` retry exhaustion
 - pool acquire / statement / lock timeout
 - Provider call timeout / result unknown
 - Checkout Attempt unknown / recovered / reviewへ移行
@@ -1092,7 +1093,7 @@ SPEC-160は少なくとも次のReliability semanticを観測可能にする。
 
 1. Failure class 7種類をDomain Stateと混同しない。
 2. Auth remote call 3秒、DB acquire 2秒、normal statement 5秒、lock 1秒、Stripe 10秒等のsystem-side deadlineが実装される。
-3. `40001` / `40P01`を本書回数 / backoffで同Business Cause retryする。
+3. `40001` / `40P01` / `55P03`を本書回数 / backoffで同Business Cause retryする。
 4. constraint violationをblind retryしない。
 5. DB commit acknowledgement loss時にnew Business Causeを作らない。
 6. Stripe Checkout unknownでsame Attempt / same keyを維持する。
@@ -1161,6 +1162,17 @@ SPEC-160は少なくとも次のReliability semanticを観測可能にする。
 - 対象: `SPEC-130 Admin / Staff Specification`
 - **Canonical evidence:** `SPEC-110 v1.1.0 §48.5` の `API-ADM-REC-003〜007` を `PG-ADM-023` およびOrder / Notification / Consistency viewへ、visibility / required capability / current-state precondition / confirmation / submitting / success / conflict / unknown・temporary failure / reload contract付きで接続する。generic recovery buttonは追加しない。
 - **境界:** 本書はUI / route / schemaを定義せず、`SPEC-130` のwiring contractを参照するだけである。
+
+### UCR-150-003
+
+- **Status:** `INCORPORATED`（`SPEC-150 v2.1.0`）
+- 対象: `SPEC-150`（§14 `REL-DB-001`、§16 `REL-DB-011`、§11）
+- 改訂前の仕様: `REL-DB-001` はautomatic transaction retry対象SQLSTATEを`40001`と`40P01`のみとする一方、`REL-DB-011` と §9 はlock timeoutにも最大4回のretryを要求していた。lock timeoutのSQLSTATEは未記載で、§11にはbackoff・最大経過時間の定義がなかった。
+- 決定: lock timeoutのSQLSTATEを`55P03`とし、`REL-DB-001`の許可リストへ追加する。§11に`55P03`の行（初期50ms、倍率2、最大400ms、full jitter、4 transaction attempts total、最大経過5秒、枯渇時`503`）を追加する。`REL-DB-011`は同じ内容を参照する。
+- 理由: `REL-DB-011` と §9 は意図的な要求であり、SPEC-160のmetric `r39x_db_transaction_retries_total` もlock timeout起因のretryを前提とする。lock timeoutではtransaction全体がrollbackされるため、`40001` / `40P01` と同じくBusiness Cause、normalized input、authorization principalを維持して再実行できる（`REL-DB-003`）。
+- **本書側反映:** §3、§9、§11、`REL-DB-001`、`REL-DB-010`、`REL-DB-011`、`REL-PAY-010`、§63、Acceptance 3。
+- **他仕様書への反映:** `SPEC-100` §46、`SPEC-110` §50 / Acceptance 24、`SPEC-120` §42、`SPEC-160` §23 `OBS-DB-003`、`SPEC-170` §24 / §49 / §77、`SPEC-190` `DEV-DB-007`。
+- **残作業:** なし。`FOR UPDATE SKIP LOCKED`（Email claim）は`55P03`を返さないため対象外であり、`NOWAIT`は仕様上使用しない。
 
 ---
 
