@@ -12,7 +12,7 @@
 
 - 文言は `apps/web/src/presentation/copy/ja.ts` の `copy` に集める。E2E / Unit はこの export を import して期待値にする。S4 の `features/{public,karaoke,goods}/**` と新規 `presentation/components/**` に**日本語の直書き・`¥` の直書き・色の直書きを置かない**（SPEC-050 §24.3）。
 - 金額は必ず `formatMoney`、日時は `format/datetime.ts`（JST）で整形する。
-- page.tsx は Server Component の薄い殻（`metadata` と route param の検証だけ）。データ取得は `"use client"` の container が mount 後（`useEffect`）に `useApi()` 経由で行う（SSR 中は fetch せず、最初の描画は常に loading。hydration mismatch を起こさない）。container から `mock/**` を import しない。
+- route module（`src/routes/**`。React Router。旧 `app/**/page.tsx`）は薄い殻（`export const handle = { title }` と route param の検証だけ。`useParams()` で値を取り、feature container に `key={生の param 値}` を付けて描画して param の変化で再マウントする）。`<main>` を描画せず、mock・`fetch`・storage を参照しない。データ取得は `"use client"` の container が mount 後（`useEffect`）に `useApi()` 経由で行う（最初の描画は常に loading）。container から `mock/**` を import しない。
 - 公開 Content（Event 概要・会場案内・アクセス・注意事項・FAQ・Announcement の title / excerpt / body）は plain text として描画する。`dangerouslySetInnerHTML`、Markdown、自動 link 化、sanitizer を使わない（SEC-WEB-017〜020）。改行は CSS `white-space: pre-line`（または `pre-wrap`）で表す。
 - 取得 3 状態の区別: loading（業務結果を仮表示しない）、empty（正常取得で 0 件を確認できたときだけ）、unavailable（失敗。0 件へ変換しない）。`Read<T>` の `not_found` / `auth_required` / `email_unverified` は公開一覧では `unavailable` と同様に扱い、決して empty にしない。
 - loading 中、`main` 内に次を出さない: 売り切れ / 販売済み / 販売停止 / 販売終了 / `0件` / 金額（`¥` + 数字）/ empty 文言 / unavailable 文言。loading 表示は `role="status"` で `copy.pageState.loading` を含む。
@@ -47,14 +47,14 @@
 | `apps/web/src/presentation/components/money.tsx` | view | `Money`（`formatMoney`） |
 | `apps/web/src/presentation/components/date-time.tsx` | view | `DateTime`（`<time dateTime>` + JST 整形） |
 | `apps/web/src/presentation/components/section-heading.tsx` | view | `SectionHeading` |
-| `apps/web/app/page.tsx` | route | 既存を置き換え。`HomePage` を描画 |
-| `apps/web/app/announcements/page.tsx` | route | `/announcements`（PG-PUB-002） |
-| `apps/web/app/announcements/[announcementRef]/page.tsx` | route | PG-PUB-003。Next 16 の async `params` を `await` し、`parseAnnouncementRef` が null なら `notFound()` |
-| `apps/web/app/karaoke/page.tsx` | route | PG-KRK-001 |
-| `apps/web/app/karaoke/schedule/[date]/page.tsx` | route | PG-KRK-002。async `params`。`parseBusinessDateParam` が null なら `notFound()` |
-| `apps/web/app/goods/page.tsx` | route | PG-GDS-001 |
+| `apps/web/src/routes/public/home.tsx` | route | 既存を置き換え。`HomePage` を描画 |
+| `apps/web/src/routes/public/announcements.tsx` | route | `/announcements`（PG-PUB-002） |
+| `apps/web/src/routes/public/announcement-detail.tsx` | route | PG-PUB-003。`useParams()` の値を `parseAnnouncementRef` で検査し、null なら `NotFoundView`（HTTP 200）。container は `key` 付き |
+| `apps/web/src/routes/public/karaoke.tsx` | route | PG-KRK-001 |
+| `apps/web/src/routes/public/karaoke-day.tsx` | route | PG-KRK-002。`useParams()`。`parseBusinessDateParam` が null なら `NotFoundView`（HTTP 200）。container は `key` 付き |
+| `apps/web/src/routes/public/goods.tsx` | route | PG-GDS-001 |
 
-route 用ファイルは `app/<path>/page.tsx` でも `app/(public)/<path>/page.tsx` でもよい（URL は SPEC-050 で固定）。`app/layout.tsx` の `metadata` は `title: { default: SITE_NAME, template: \`%s | ${SITE_NAME}\` }` にする（Home の title は `SITE_NAME` のまま）。page ごとに `export const metadata = { title: copy.pageTitle.<key> }`。
+route module の位置は上の表のとおり（URL は SPEC-050 で固定）。title は `src/routes/root-layout.tsx` が最も深い `handle.title` から `formatDocumentTitle` で組み立てる（`%s | SITE_NAME`、Home は `SITE_NAME` のまま）。page ごとに `export const handle = { title: copy.pageTitle.<key> }`（`src/routes/document-title.ts`）。
 
 依存方向（DEV-DEP-006）は S3 と同じ: `presentation` → `features` / `mock` / `api-client` 実装を import しない。`features` → `mock` 禁止。純粋 model は `api-client/types` と `presentation/**` の純粋関数だけを import してよい。
 
@@ -292,9 +292,9 @@ export function buildGoodsListModel(input: Loadable<readonly GoodsSummary[]>): L
 
 - 一覧: `h1` = `copy.announcements.heading`。`<ul>` の `<li>` に Link（title、`href = /announcements/<ref>`）、`<time>`（`dateText`）、excerpt。新しい順。0 件 → `copy.pageState.empty`、失敗 → alert + `unavailable(copy.announcements.subject)` + retry。
 - 詳細（`ready`）: `h1` = title、`<time>`（`dateText`）、本文（`PlainText`）。Link `copy.announcements.backToList`（`/announcements`）と `copy.announcements.backHome`（`/`）。
-- 詳細（`not_found`）: **Not Found 表示**（`app/not-found.tsx` と同じ `copy.notFound`。`notFound()` でも同等の view でもよい）。DRAFT / ARCHIVED / 存在しない UUID でも**同一**の見た目で、公開本文・title・「非公開」等の存在を示す語を出さない。
+- 詳細（`not_found`）: **Not Found 表示**（`NotFoundView` = `copy.notFound`。`src/routes/route-table.tsx` の `*` と同じ view）。DRAFT / ARCHIVED / 存在しない UUID でも**同一**の見た目で、公開本文・title・「非公開」等の存在を示す語を出さない。
 - 詳細（`unavailable`）: Not Found と区別し、`h1` = `copy.announcements.heading`、alert + `unavailable(copy.announcements.subject)` + retry。
-- route param が canonical UUID でない → server 側の `notFound()`（**HTTP 404**、`copy.notFound` の表示）。
+- route param が canonical UUID でない → route module が `NotFoundView` を描画する（`copy.notFound` の表示。HTTP status は静的 shell の **200**。`SPEC-050 §19.1` は status を規定しない）。
 
 ### 3.3 `/karaoke`（PG-KRK-001）
 
@@ -307,7 +307,7 @@ export function buildGoodsListModel(input: Loadable<readonly GoodsSummary[]>): L
 - `h1` = `copy.karaoke.day.heading`。`ready`: `h2` = `dateText`、日付ナビ（`<nav aria-label>` は付けてよいが、名前付き nav 以外の無名 nav を作らない）: Link name に `copy.karaoke.day.previous` / `next` を含み、`href` は前後の販売対象日。無い側は Link を出さない。販売状態の label を text で表示。Link `copy.karaoke.day.backToGuide`（`/karaoke`）。
 - bucket: `<section aria-labelledby>`（region、name に `label` を含む）。見出しは `h3` = `label`。`countText` を text で表示。slot は bucket 内の `<ul>` / `<li>`。各 `<li>` に `timeText` と `stateLabel`（text）を**必ず**含む。選択可能な slot だけ `<a>`（name = `copy.karaoke.day.slotLink(timeText)`、`href = /karaoke/slots/<ref>`）。
 - 空（`buckets: []`）: `copy.karaoke.day.empty`（日付ナビは残す）。失敗: `role="alert"` に `copy.karaoke.day.unavailable`、`<button>` `copy.karaoke.day.reload`。成功時にも reload ボタン（`copy.karaoke.day.reload`）を出す。reload は `getKaraokeDay` を再取得するだけ（`r39x.mock.db.v1` を書き換えない）。
-- `not_found`（販売対象日でない日付）: Not Found 表示（§3.2 と同じ）。route param が不正な日付 → server 側の `notFound()`（HTTP 404）。
+- `not_found`（販売対象日でない日付）: Not Found 表示（§3.2 と同じ）。route param が不正な日付 → route module が `NotFoundView` を描画する（HTTP 200 の静的 shell）。
 - loading: `role="status"` `copy.pageState.loading`。空き 0 / empty 文言を出さない。
 - 本ページは **Cart 追加・購入操作を持たない**（`<button>` は reload だけ）。
 
@@ -321,7 +321,7 @@ export function buildGoodsListModel(input: Loadable<readonly GoodsSummary[]>): L
 - 状態の仕込みは S3 §10 の `seedLocalStorage`（scenario / session / db）。DB 仕込みは `buildSeed(NOW_ISO)` の状態を加工して `r39x.mock.db.v1` へ入れる（`dbStateSchema` の strict 検証を通る形のまま）。
 - browser の timezone は UTC（`playwright.config.ts`）。表示は JST。
 - 検査対象のページは、`pageerror` / `console.error`（resource load 失敗を除く）が無く、外部 origin へ要求せず、`/admin` / `/staff` / `/dev` への href を持たず、390px 幅で横 scroll が無い。
-- `/`、`/announcements`、`/karaoke`、`/goods`（静的 route）の `Cache-Control` は `private` / `no-store` を含まない（SEC-WEB-009 は protected route 用。公開 page を private にしない）。動的 route（`[ref]`, `[date]`）の `Cache-Control` は対象外（Next の既定が `private` になり得るため）。
+- `/`、`/announcements`、`/karaoke`、`/goods`（静的 route）の `Cache-Control` は `private` / `no-store` を含まない（SEC-WEB-009 は protected route 用。公開 page を private にしない）。`Cache-Control` は `dist/_headers` が決め、公開 route に `private` / `no-store` は付かない（動的 route も同じ）。
 
 ## 5. テストファイルと契約の対応
 
@@ -350,7 +350,7 @@ export function buildGoodsListModel(input: Loadable<readonly GoodsSummary[]>): L
 2. SPEC-050 §13.2 は HELD を「現在確保中」等と書く。→ 既存 S1 の `copy.karaoke.slot.label.HELD`（`他の方が確保中`）をそのまま使い、description が「現在確保中」を含む。E2E は label を `copy` から読む。
 3. SPEC-050 §13.2 は Slot 選択 → PG-KRK-003 を定めるが、非選択の枠のリンクは未規定。→ 選択可能な枠だけ Link にする（購入不可の枠にはリンクを出さない）。
 4. `AVAILABLE` の枠でも販売状態が `ON_SALE` でない場合の表示は未規定。→ 「選択可能」と表示せず、販売状態の label を出す（§2.9）。
-5. 公開ルートの UUID の大文字は未規定。→ canonical lowercase だけを有効とし、それ以外は 404（S2 / SPEC-110 の canonical 形に合わせる）。
+5. 公開ルートの UUID の大文字は未規定。→ canonical lowercase だけを有効とし、それ以外は Not Found 表示（S2 / SPEC-110 の canonical 形に合わせる。HTTP status は 200）。
 6. Karaoke の Purchase Limit の数値、整備時間の数値は port が返さない。→ 数値を創作せず、整備時間の 5 分と標準利用 15 分だけは SPEC-050 §13.1 が明記するため静的 copy に含める。
 7. Event 基本情報の section 単位の失敗（FAQ だけ失敗など）は、現行の scenario（`publicFetch` は全 read 共通）では E2E で再現できない。→ 分離は `buildHomeModel` の Unit で検証する。E2E で再現するには scenario へ section 別の fail switch が必要（S2 契約の変更になるため、本スライスでは行わない。オーケストレーターの判断事項）。
-8. 動的 route（`[ref]`, `[date]`）は Next 16 が `Cache-Control: private` を付け得るため、`Cache-Control` の検査は静的な 4 route に限る。
+8. `Cache-Control` の検査は静的な 4 route に限る（動的 route にも `private` は付かないが、検査の対象は従来どおり）。

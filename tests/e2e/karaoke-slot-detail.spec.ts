@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { copy } from "../../apps/web/src/presentation/copy/ja.ts";
 import { formatBusinessDate } from "../../apps/web/src/presentation/format/datetime.ts";
 import { describedText } from "../harness/browser/cart.ts";
+import { gotoHydrated } from "../harness/browser/hydration.ts";
 import {
   actionRegion,
   alertsOf,
@@ -96,10 +97,17 @@ test.describe("TC-PG-KRK-003-644 not found, malformed and failed reads are diffe
     await expect(mainOf(page).getByRole("button")).toHaveCount(0);
   });
 
-  test("a malformed slot ref is HTTP 404", async ({ request }) => {
+  test("a malformed slot ref shows the shared Not Found view with no purchase button (the static shell answers HTTP 200)", async ({
+    page,
+  }) => {
     for (const raw of ["not-a-uuid", "5A000000-0000-4000-8000-000000011000"]) {
-      const response = await request.get(slotRoute(raw), { maxRedirects: 0 });
-      expect(response.status(), raw).toBe(404);
+      const response = await gotoHydrated(page, slotRoute(raw));
+      expect(response?.status(), raw).toBe(200);
+      expect(response?.headers()["content-type"] ?? "", raw).toMatch(/^text\/html/);
+      await expect(heading1(page), raw).toHaveText(copy.notFound.title);
+      await expect(purchaseButton(page), raw).toHaveCount(0);
+      await expect(guestButton(page), raw).toHaveCount(0);
+      await expect(mainOf(page).getByRole("button"), raw).toHaveCount(0);
     }
   });
 

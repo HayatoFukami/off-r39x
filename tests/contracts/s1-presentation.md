@@ -22,8 +22,8 @@
 | `apps/web/src/presentation/state-mapping/entry-ticket.ts` | `EntryTicketPresentation`, `presentEntryTicket` |
 | `apps/web/src/presentation/state-mapping/karaoke.ts` | `SlotPresentation`, `HoldPresentation`, `ReservationTicketPresentation`, `presentSlot`, `presentHold`, `presentReservationTicket` |
 | `apps/web/src/presentation/state-mapping/goods.ts` | `GoodsItemPresentation`, `presentGoodsItem` |
-| `apps/web/src/presentation/state-mapping/notification.ts` | `NotificationPresentation`, `presentNotification` |
-| `apps/web/src/presentation/state-mapping/availability.ts` | `AvailabilityInput`, `AvailabilityPresentation`, `CartRejectionReason`, `RejectionPresentation`, `presentAvailability`, `presentRejectionReason` |
+| `apps/web/src/presentation/state-mapping/notification.ts` | `NotificationPresentation`, `presentNotificationSummary` |
+| `apps/web/src/presentation/state-mapping/availability.ts` | `AvailabilityInput`, `AvailabilityPresentation`, `RejectionPresentation`, `presentAvailability`, `presentRejectionReason` |
 
 relative import は拡張子なしでも `.ts` 付きでもよい（Vitest と `tests` の `tsc` の両方で解決できること）。`Tone` は `order.ts` で定義し、他の state-mapping は `import type { Tone } from "./order"` する。
 
@@ -382,10 +382,10 @@ export function presentGoodsItem(item: GoodsItemState, handoff: GoodsHandoffStat
 
 ## 10. Notification `apps/web/src/presentation/state-mapping/notification.ts`
 
-SPEC-050 §16.7, §20.5。
+SPEC-050 §16.2 / §16.7、`API-ORD-003.notification_summary`、SPEC-120 §7.2（`EML-NTF-003`）。UI は**内部 Notification State を直接受け取らない**（§16.2）。入力は所有者向けの射影である summary status だけ。
 
 ```ts
-import type { NotificationState } from "@off-r39x/domain";
+import type { NotificationSummaryStatus } from "../../api-client/types"; // "NONE" | "PENDING" | "SENT" | "ATTENTION_REQUIRED"
 import type { Tone } from "./order";
 
 export type NotificationPresentation = {
@@ -397,19 +397,23 @@ export type NotificationPresentation = {
   readonly actions: readonly []; // 常に空。Business Transaction の再実行 Button を出さない
 };
 
-/** `CANCELED`（通知不要化）は表示しないので null。 */
-export function presentNotification(state: NotificationState): NotificationPresentation | null;
+/** `ATTENTION_REQUIRED` だけを表示する。`PENDING` / `SENT` / `NONE` は何も表示しないので null。 */
+export function presentNotificationSummary(status: NotificationSummaryStatus): NotificationPresentation | null;
 ```
 
-| state | 戻り値 |
+| status | 戻り値 |
 |---|---|
-| `PENDING` | label は自由で `確認Email` を含む。message は自由で非空 |
-| `SENT` | label は自由で `Email` を含む。補助情報。message は自由で非空 |
-| `FAILED_RETRYABLE` | message は固定 `購入は確定済みです。確認Emailの送信に失敗または遅延しています。購入内容はこの画面とMypageで確認できます`（§16.7）。tone は `failure` 以外。message に `再試行` / `再送` / `もう一度購入` / `やり直` を含まない |
-| `CANCELED` | `null` |
+| `ATTENTION_REQUIRED` | message は固定 `購入は確定済みです。確認Emailの送信に失敗または遅延しています。購入内容はこの画面とMypageで確認できます`（§16.7）。label は `copy.notification.ATTENTION_REQUIRED.label`。tone は `failure` 以外。message に `再試行` / `再送` / `もう一度購入` / `やり直` を含まない |
+| `PENDING` | `null` |
+| `SENT` | `null` |
+| `NONE` | `null` |
 
-- `PENDING` / `SENT` / `FAILED_RETRYABLE` の 3 つの label は互いに異なる。
+- 戻り値の label / message は辞書（`copy.notification.ATTENTION_REQUIRED`）の文字列そのもの。tone は 5 種のいずれか。
+- `copy.notification` が持つ key は `ATTENTION_REQUIRED` だけ（表示しない status の文言を置かない）。
 - `actions` は常に空配列、`blocking` は常に `false`、`keepsPurchaseSuccess` は常に `true`。
+- 未知の値（`FAILED_RETRYABLE` のような内部 State を含む）は `assertNever` で `Unexpected value` を throw する（fail closed）。
+- `presentNotification(NotificationState)` は export しない。`@off-r39x/domain` の `NotificationState` を import しない（summary status は DTO であり Domain State ではない。`EML-NTF-003`）。
+- `null`（取得障害）は presenter の入力にしない。呼び出し側（`buildPurchaseStatusModel`）が「summary が null または `ATTENTION_REQUIRED` 以外」を「表示なし」として扱う。
 
 ## 11. 販売可否 `apps/web/src/presentation/state-mapping/availability.ts`
 
@@ -452,26 +456,39 @@ export function presentAvailability(input: AvailabilityInput): AvailabilityPrese
 - 未知の `kind` は `Unexpected value` で投げる。
 
 ```ts
-export type CartRejectionReason =
-  | "BEFORE_SALES"
-  | "SALES_ENDED"
-  | "SUSPENDED"
+// SPEC-110 API-PUR-ELG-001 の reasons（9 code。API-PUR-CART-001 の item_failures も同じ有限集合）。
+// 型は apps/web/src/api-client/types.ts の PurchaseReason（presentation は api-client/types だけを import できる）。
+export type PurchaseReason =
+  | "NOT_PUBLIC_OR_NOT_FOUND"
+  | "SALES_NOT_STARTED"
+  | "SALES_CLOSED"
+  | "SALES_STOPPED"
   | "SOLD_OUT"
   | "INSUFFICIENT_QUANTITY"
   | "PURCHASE_LIMIT_EXCEEDED"
-  | "ALLOCATION_CONFLICT"
-  | "NOT_PUBLIC";
+  | "SLOT_UNAVAILABLE"
+  | "PAYMENT_WINDOW_TOO_SHORT";
 
 export type RejectionPresentation = {
   readonly label: string;
   readonly description: string; // 自由。非空。辞書の文字列リーフと完全一致
 };
 
-export function presentRejectionReason(reason: CartRejectionReason): RejectionPresentation;
+export function presentRejectionReason(reason: PurchaseReason): RejectionPresentation;
 ```
 
-購入開始が `rejected` のとき Item ごとに示す理由（SPEC-050 §14 Purchase start result、設計 Design §3 の `CartPurchaseStart.rejections[].reason`）。
+購入開始が `rejected` のとき Item ごとに示す理由（SPEC-050 §14A.1 Purchase start result、SPEC-110 API-PUR-CART-001 の `item_failures[].reasons`、TC-PG-CRT-001-002）。
 
-- `BEFORE_SALES` / `SALES_ENDED` / `SUSPENDED` / `SOLD_OUT` / `INSUFFICIENT_QUANTITY` / `PURCHASE_LIMIT_EXCEEDED` の label は、`presentAvailability` の対応する kind の label と**同じ文字列**。`NOT_PUBLIC` の label は `presentAvailability({kind:"not_public"})` の label と同じ。
-- `ALLOCATION_CONFLICT` の label は自由（`確保` を含む。他の 7 つと異なる）。
-- 8 つの label はすべて互いに異なる。未知の値は `Unexpected value` で投げる。
+| reason | label | description |
+|---|---|---|
+| `NOT_PUBLIC_OR_NOT_FOUND` | `presentAvailability({kind:"not_public"})` と同じ | 同じ kind の description（辞書の `NOT_PUBLIC`） |
+| `SALES_NOT_STARTED` | `presentAvailability({kind:"BEFORE_SALES",…})` と同じ | 辞書の `BEFORE_SALES`（静的な文言。開始日時は含まない） |
+| `SALES_CLOSED` | `SALES_ENDED` の label と同じ | 辞書の `SALES_ENDED` |
+| `SALES_STOPPED` | `SUSPENDED` の label と同じ | 辞書の `SUSPENDED` |
+| `SOLD_OUT` / `INSUFFICIENT_QUANTITY` / `PURCHASE_LIMIT_EXCEEDED` | 同名の kind の label と同じ | 辞書の同名 |
+| `SLOT_UNAVAILABLE` | 自由（`確保` を含む。他の 8 つと異なる） | 自由。非空（辞書の文字列リーフ） |
+| `PAYMENT_WINDOW_TOO_SHORT` | 自由（`支払い` を含む。他の 8 つと異なる） | 自由。非空（辞書の文字列リーフ） |
+
+- `SLOT_UNAVAILABLE` / `PAYMENT_WINDOW_TOO_SHORT` は Karaoke 専用で Cart では生じないが、型と表示は 9 code すべてを持つ。
+- 9 つの label はすべて互いに異なる。未知の値（退役した `ALLOCATION_CONFLICT`、旧名の `NOT_PUBLIC` / `BEFORE_SALES` / `SALES_ENDED` / `SUSPENDED` を含む）は `Unexpected value` で投げる。
+- 辞書（`copy.availability.label` / `description`）は `ALLOCATION_CONFLICT` を持たない。

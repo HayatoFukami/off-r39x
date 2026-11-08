@@ -9,6 +9,7 @@ import {
   seedLocalStorage,
   watchRuntimeErrors,
 } from "../harness/browser/shell.ts";
+import { MARKER } from "../harness/mock-seed.ts";
 
 // UI mock suite (TST-E2E-004: auxiliary, not G8). Contract: tests/contracts/s3-layout.md sections 4.5, 7.
 // SPEC-050 8.5 Global Footer / Sponsor Logo area, BR-EVT-005, 31 item 29.
@@ -29,7 +30,7 @@ async function settle(page: Page): Promise<void> {
   );
 }
 
-const sponsorScenario = (value: "published" | "none" | "fail" | "image_broken") => ({
+const sponsorScenario = (value: string) => ({
   [KEYS.scenario]: scenarioJson({ sponsorLogos: value }),
 });
 
@@ -100,6 +101,15 @@ test.describe("TC-PG-PUB-001-402 sponsors: PUBLISHED only, in display order (SPE
           .evaluateAll((imgs) => imgs.every((i) => (i as HTMLImageElement).naturalWidth > 0)),
       )
       .toBe(true);
+
+    // SEC-WEB-026: every Sponsor image is requested without a Referer (referrerpolicy="no-referrer").
+    await expect
+      .poll(() =>
+        region(page)
+          .locator("img")
+          .evaluateAll((imgs) => imgs.map((i) => i.getAttribute("referrerpolicy"))),
+      )
+      .toEqual(["no-referrer", "no-referrer", "no-referrer"]);
 
     const alpha = region(page).getByRole("link", { name: /^Sponsor Alpha\s*（外部サイト）$/ });
     const charlie = region(page).getByRole("link", { name: /^Sponsor Charlie\s*（外部サイト）$/ });
@@ -193,5 +203,85 @@ test.describe("TC-PG-PUB-001-405 sponsors: a broken image falls back to the disp
     expect(texts.map((t) => t.replace(/\s+/g, " ").trim())[0]).toMatch(/^Sponsor Alpha/);
     expect(texts.map((t) => t.replace(/\s+/g, " ").trim())[1]).toMatch(/^Sponsor Bravo/);
     expect(texts.map((t) => t.replace(/\s+/g, " ").trim())[2]).toMatch(/^Sponsor Charlie/);
+  });
+});
+
+test.describe("TC-PG-PUB-001-406 sponsors: an image origin that the CSP does not allow is shown as its name, never as a loaded image (SPEC-050 8.5, SEC-WEB-026, BR-EVT-005)", () => {
+  test("replaces every blocked image by its name in order and keeps the links, while the browser reports the CSP violation", async ({
+    page,
+  }) => {
+    // The CSP violation console output is expected here, so only pageerror is asserted (not console.error).
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => {
+      pageErrors.push(error.message);
+    });
+    const sponsorResponses: string[] = [];
+    page.on("response", (response) => {
+      if (new URL(response.url()).host === new URL(MARKER.disallowedImageOrigin).host) {
+        sponsorResponses.push(response.url());
+      }
+    });
+    await page.addInitScript(() => {
+      const store: { directive: string; blocked: string }[] = [];
+      (window as unknown as { __cspViolations: typeof store }).__cspViolations = store;
+      document.addEventListener("securitypolicyviolation", (event) => {
+        store.push({ directive: event.violatedDirective, blocked: event.blockedURI });
+      });
+    });
+    await seedLocalStorage(page, sponsorScenario("image_disallowed_origin"));
+
+    const response = await gotoHydrated(page, "/");
+
+    // Precondition: the served CSP really excludes the origin (the E2E build sets no allowed origins).
+    const csp = response?.headers()["content-security-policy"] ?? "";
+    const imgSrc = csp
+      .split(";")
+      .map((directive) => directive.trim())
+      .find((directive) => directive.startsWith("img-src "));
+    expect(imgSrc, "the response carries an img-src directive").toBeDefined();
+    expect(imgSrc).not.toContain("sponsor-images.invalid");
+    expect(imgSrc?.split(/\s+/).slice(1)).toEqual(["'self'", "data:", "blob:"]);
+
+    await footer(page).scrollIntoViewIfNeeded();
+    await expect(region(page)).toBeVisible();
+    // No broken image is left behind: each logo falls back to its display name text.
+    await expect(region(page).locator("img")).toHaveCount(0);
+    await expect(region(page).getByRole("listitem")).toHaveCount(3);
+    const texts = (await region(page).getByRole("listitem").allInnerTexts()).map((t) =>
+      t.replace(/\s+/g, " ").trim(),
+    );
+    expect(texts[0]).toMatch(/^Sponsor Alpha/);
+    expect(texts[1]).toMatch(/^Sponsor Bravo/);
+    expect(texts[2]).toMatch(/^Sponsor Charlie/);
+    for (const name of ["Sponsor Alpha", "Sponsor Bravo", "Sponsor Charlie"]) {
+      await expect(region(page).getByText(name, { exact: false }).first()).toBeVisible();
+    }
+
+    // The external links keep their accessible name, href and rel.
+    const alpha = region(page).getByRole("link", { name: /^Sponsor Alpha\s*（外部サイト）$/ });
+    const charlie = region(page).getByRole("link", { name: /^Sponsor Charlie\s*（外部サイト）$/ });
+    await expect(alpha).toHaveAttribute("href", "https://sponsor-alpha.example.com/");
+    await expect(charlie).toHaveAttribute("href", "https://sponsor-charlie.example.com/");
+    for (const link of [alpha, charlie]) {
+      const rel = (await link.getAttribute("rel")) ?? "";
+      expect(rel).toContain("noopener");
+      expect(rel).toContain("noreferrer");
+    }
+    await expect(region(page).getByRole("link")).toHaveCount(2);
+
+    // The browser enforced the CSP: one img-src violation per blocked logo, none for any other directive.
+    const violations = await page.evaluate(
+      () =>
+        (window as unknown as { __cspViolations: { directive: string; blocked: string }[] })
+          .__cspViolations,
+    );
+    expect(violations).toHaveLength(3);
+    for (const violation of violations) {
+      expect(violation.directive.startsWith("img-src")).toBe(true);
+      expect(violation.blocked.startsWith(`${MARKER.disallowedImageOrigin}/`)).toBe(true);
+    }
+    // The disallowed origin never answered: the image was not loaded and nothing pretends it was.
+    expect(sponsorResponses).toEqual([]);
+    expect(pageErrors).toEqual([]);
   });
 });

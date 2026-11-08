@@ -1,6 +1,5 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
 import { type ReactNode, useEffect } from "react";
 import { getBrowserCartLifecycle } from "../features/cart/cart-lifecycle";
 import { CartRecovery } from "../features/cart/cart-recovery";
@@ -8,6 +7,7 @@ import { useCart } from "../features/cart/use-cart";
 import { PageState } from "../presentation/components/page-state";
 import { Button } from "../presentation/components/ui/button";
 import { copy } from "../presentation/copy/ja";
+import { usePathname, useRouter } from "../routing/navigation";
 import { decideGate } from "./gate-decision";
 import { isLogoutInProgress } from "./logout-signal";
 import { useSession } from "./use-session";

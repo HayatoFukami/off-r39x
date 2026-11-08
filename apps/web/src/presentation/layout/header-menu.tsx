@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 import { GUEST_ACCOUNT_LINKS, PRIMARY_NAV } from "../../config/site";
+import { Link } from "../../routing/link";
 import { Button } from "../components/ui/button";
 import { copy } from "../copy/ja";
 import { PrimaryNav } from "./primary-nav";

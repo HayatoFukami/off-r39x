@@ -1,16 +1,12 @@
-import { cartLineKey } from "../../api-client/cart-line-key";
-import type {
-  CartLine,
-  CartPurchaseStart,
-  CartRejectionReasonCode,
-  CheckoutStart,
-  Ref,
-} from "../../api-client/types";
+import type { CartPurchaseStart, CheckoutStart, Ref } from "../../api-client/types";
 import { accountPath, type ContinuationIntent, isSafeRelativePath } from "../../auth/continuation";
 import type { SessionState } from "../../auth/use-session";
 import { purchaseOrderHref } from "../../config/purchase-routes";
 import { copy } from "../../presentation/copy/ja";
-import { presentRejectionReason } from "../../presentation/state-mapping/availability";
+import {
+  presentRejectionReason,
+  type RejectionPresentation,
+} from "../../presentation/state-mapping/availability";
 
 // Pure decisions of the Cart purchase start (SPEC-050 14A.1, 16.6, SEC-WEB-005). No Order is created here:
 // the server (port) result decides every step and the UI never treats an unverified Identity as purchasable.
@@ -28,10 +24,10 @@ export function planProceed(session: SessionState): ProceedPlan {
 }
 
 export type CartStartStep =
-  | { kind: "checkout"; orderRef: Ref<"order">; includedLineKeys: readonly string[] }
+  | { kind: "checkout"; orderRef: Ref<"order"> }
   | {
       kind: "rejected";
-      rejections: readonly { lineKey: string; reason: CartRejectionReasonCode }[];
+      itemFailures: Extract<CartPurchaseStart, { kind: "rejected" }>["itemFailures"];
     }
   | { kind: "go_login"; to: string }
   | { kind: "go_verification"; to: string }
@@ -40,13 +36,9 @@ export type CartStartStep =
 export function interpretCartStart(result: CartPurchaseStart): CartStartStep {
   switch (result.kind) {
     case "created":
-      return {
-        kind: "checkout",
-        orderRef: result.orderRef,
-        includedLineKeys: result.includedLineKeys,
-      };
+      return { kind: "checkout", orderRef: result.orderRef };
     case "rejected":
-      return { kind: "rejected", rejections: result.rejections };
+      return { kind: "rejected", itemFailures: result.itemFailures };
     case "auth_required":
       return { kind: "go_login", to: accountPath("login", CART_INTENT) };
     case "email_unverified":
@@ -58,15 +50,6 @@ export function interpretCartStart(result: CartPurchaseStart): CartStartStep {
       return unreachable;
     }
   }
-}
-
-/** The lines the Order took, in the quantity that was sent. Only the sent snapshot is the source. */
-export function orderedLines(
-  sent: readonly CartLine[],
-  includedLineKeys: readonly string[],
-): CartLine[] {
-  const included = new Set(includedLineKeys);
-  return sent.filter((line) => included.has(cartLineKey(line)));
 }
 
 export type CheckoutStep = { kind: "assign"; url: string } | { kind: "go_status"; to: string };
@@ -102,19 +85,20 @@ export function interpretCheckoutStart(
   return { kind: "go_status", to: purchaseOrderHref(orderRef) };
 }
 
-export type RejectionLine = { lineKey: string; name: string; label: string; description: string };
+export type RejectionLine = {
+  lineKey: string;
+  name: string;
+  reasons: readonly RejectionPresentation[];
+};
 
+/** One entry per failing Item, in the received order; the reasons keep the order the API sent. */
 export function describeRejections(
-  rejections: readonly { lineKey: string; reason: CartRejectionReasonCode }[],
+  itemFailures: Extract<CartPurchaseStart, { kind: "rejected" }>["itemFailures"],
   names: ReadonlyMap<string, string | null>,
 ): RejectionLine[] {
-  return rejections.map((rejection) => {
-    const presented = presentRejectionReason(rejection.reason);
-    return {
-      lineKey: rejection.lineKey,
-      name: names.get(rejection.lineKey) ?? copy.cart.unknownItemName,
-      label: presented.label,
-      description: presented.description,
-    };
-  });
+  return itemFailures.map((failure) => ({
+    lineKey: failure.lineKey,
+    name: names.get(failure.lineKey) ?? copy.cart.unknownItemName,
+    reasons: failure.reasons.map(presentRejectionReason),
+  }));
 }

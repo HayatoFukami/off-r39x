@@ -2,7 +2,7 @@ import { Button as ButtonPrimitive } from "@base-ui/react/button";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "./cn";
 
-// Visual values come from the @theme tokens in app/globals.css (SPEC-050 24.3).
+// Visual values come from the @theme tokens in src/styles/globals.css (SPEC-050 24.3).
 export const buttonVariants = cva(
   "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-base border border-transparent text-sm font-medium whitespace-nowrap transition-colors select-none disabled:pointer-events-none disabled:opacity-50",
   {

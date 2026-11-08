@@ -32,6 +32,7 @@ import type {
   OrderSummary,
   Profile,
   ProfileUpdate,
+  PurchaseReason,
   QrPresentation,
   Read,
   Ref,
@@ -42,6 +43,7 @@ import type {
 } from "../../../../apps/web/src/api-client/types.ts";
 import type { AuthPort, Session } from "../../../../apps/web/src/auth/port.ts";
 import { createBackend } from "../../../harness/mock-backend.ts";
+import { PURCHASE_REASONS } from "../../../harness/purchase-reasons.ts";
 
 const webDir = fileURLToPath(new URL("../../../../apps/web/", import.meta.url));
 
@@ -201,6 +203,45 @@ describe("TC-DEV-WEB-010-102 ApiPort and AuthPort have the documented shape (des
     }>();
   });
 
+  it("shapes the Cart purchase start as API-PUR-CART-001: one Order for every line, or item failures with API-PUR-ELG-001 reasons", () => {
+    expectTypeOf<Extract<CartPurchaseStart, { kind: "created" }>>().toEqualTypeOf<{
+      kind: "created";
+      orderRef: Ref<"order">;
+    }>();
+    expectTypeOf<Extract<CartPurchaseStart, { kind: "rejected" }>>().toEqualTypeOf<{
+      kind: "rejected";
+      itemFailures: readonly { lineKey: string; reasons: readonly PurchaseReason[] }[];
+    }>();
+    expectTypeOf<PurchaseReason>().toEqualTypeOf<
+      | "NOT_PUBLIC_OR_NOT_FOUND"
+      | "SALES_NOT_STARTED"
+      | "SALES_CLOSED"
+      | "SALES_STOPPED"
+      | "SOLD_OUT"
+      | "INSUFFICIENT_QUANTITY"
+      | "PURCHASE_LIMIT_EXCEEDED"
+      | "SLOT_UNAVAILABLE"
+      | "PAYMENT_WINDOW_TOO_SHORT"
+    >();
+    expectTypeOf<CartPurchaseStart["kind"]>().toEqualTypeOf<
+      "created" | "rejected" | "auth_required" | "email_unverified" | "unavailable"
+    >();
+  });
+
+  it("declares that shape in types.ts: the 9 reasons in the canonical order, no partial inclusion, no retired reason", () => {
+    const types = read(join(webDir, "src/api-client/types.ts"));
+    const code = types.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    const block = /export type PurchaseReason\s*=([^;]*);/.exec(code);
+    expect(block, "types.ts must export PurchaseReason").not.toBeNull();
+    const declared = [...(block?.[1] ?? "").matchAll(/"([A-Z_]+)"/g)].map((m) => m[1]);
+    expect(declared).toEqual([...PURCHASE_REASONS]);
+    expect(code).toMatch(/itemFailures/);
+    expect(code).not.toMatch(/includedLineKeys/);
+    expect(code).not.toMatch(/ALLOCATION_CONFLICT/);
+    expect(code).not.toMatch(/CartRejectionReasonCode/);
+    expect(code).not.toMatch(/\brejections\b/);
+  });
+
   it("types the auth port", () => {
     expectTypeOf<Session>().toEqualTypeOf<
       { kind: "guest" } | { kind: "authenticated"; email: string; emailVerified: boolean }
@@ -244,7 +285,7 @@ describe("TC-DEV-WEB-010-102 ApiPort and AuthPort have the documented shape (des
   });
 });
 
-describe("TC-DEV-WEB-010-103 port doc comments name the Operation ID or the UCR (design section 3, DEV-GEN-003)", () => {
+describe("TC-DEV-WEB-010-103 port doc comments name the Operation ID or the UCR (design section 3, DEV-GEN-003, API-PUR-CART-001)", () => {
   const portSource = (): string[] => read(join(webDir, "src/api-client/port.ts")).split("\n");
 
   const methods = [
@@ -290,12 +331,51 @@ describe("TC-DEV-WEB-010-103 port doc comments name the Operation ID or the UCR 
     }
   });
 
-  it("marks the ports without an Operation ID as UCR-110-001 / Operation ID なし", () => {
+  it("marks only the ports whose viewer-specific part has no Operation ID yet as UCR-110-001 / Operation ID なし (until B4b)", () => {
     const lines = portSource();
-    for (const name of ["startCartPurchase", "listSponsorLogos"]) {
+    // listSponsorLogos has API-PUB-012 and startCartPurchase has API-PUR-CART-001; the viewer-specific
+    // Purchase Limit reads (listEntryOfferings, resolveCartLines) keep the mark until phase B4b.
+    for (const name of ["listEntryOfferings", "resolveCartLines"]) {
       expect(window(lines, name), name).toContain("UCR-110-001");
     }
     expect(portSource().join("\n")).toMatch(/Operation ID\s*(なし|none|missing)/i);
+  });
+
+  it("cites API-PUR-CART-001 for startCartPurchase without the UCR or Operation ID なし wording (SPEC-110 API-PUR-CART-001, UCR-110-001 INCORPORATED)", () => {
+    const annotation = window(portSource(), "startCartPurchase");
+    expect(annotation).toContain("API-PUR-CART-001");
+    expect(annotation).not.toContain("UCR-110-001");
+    expect(annotation).not.toMatch(/Operation ID\s*(なし|none|missing)/i);
+    // The all-or-nothing contract and the Checkout hand-off are part of the annotation.
+    expect(annotation).toMatch(/all-or-nothing/);
+    expect(annotation).toContain("API-CHK-001");
+  });
+
+  it("cites API-PUB-012 for listSponsorLogos without the UCR or Operation ID なし wording (SPEC-110 API-PUB-012, BR-EVT-005)", () => {
+    const annotation = window(portSource(), "listSponsorLogos");
+    expect(annotation).toContain("API-PUB-012");
+    expect(annotation).not.toContain("UCR-110-001");
+    expect(annotation).not.toMatch(/Operation ID\s*(なし|none|missing)/i);
+    // The ordering contract is part of the annotation: sort_order ASC, then public_ref ASC.
+    expect(annotation).toMatch(/PUBLISHED/);
+    expect(annotation).toMatch(/public_ref ASC/);
+  });
+
+  it("cites API-AUTH-002 / API-AUTH-004 for the Profile ports without the superseded UCR-100-001 (SPEC-030 9.2)", () => {
+    const lines = portSource();
+    expect(window(lines, "getProfile")).toContain("API-AUTH-002");
+    expect(window(lines, "updateProfile")).toContain("API-AUTH-004");
+    expect(window(lines, "updateProfile")).not.toContain("UCR-100-001");
+    expect(lines.join("\n")).not.toContain("UCR-100-001");
+  });
+
+  it("cites API-ORD-003 for getOrder as the owner projection of SPEC-120 7.2 without the UCR or Operation ID なし wording (SPEC-050 16.2)", () => {
+    const lines = portSource();
+    const annotation = window(lines, "getOrder");
+    expect(annotation).toContain("API-ORD-003");
+    expect(annotation).toContain("notification_summary");
+    expect(annotation).not.toContain("UCR-110-001");
+    expect(annotation).not.toMatch(/Operation ID\s*(なし|none|missing)/i);
   });
 
   it("does not invent new Operation IDs", () => {
@@ -314,8 +394,11 @@ describe("TC-DEV-WEB-010-103 port doc comments name the Operation ID or the UCR 
       "API-PUB-009",
       "API-PUB-010",
       "API-PUB-011",
+      "API-PUB-012",
       "API-AUTH-002",
       "API-AUTH-004",
+      "API-PUR-CART-001",
+      "API-PUR-ELG-001",
       "API-PUR-KRK-001",
       "API-CHK-001",
       "API-ORD-001",
@@ -403,13 +486,17 @@ describe("TC-DEV-REL-001-103 mock backend sources use only injected time, random
 });
 
 describe("TC-PG-KRK-003-106 no Hold TTL anywhere in mock or UI code (SPEC-050 13.3, design section 4)", () => {
-  const roots = ["src/mock", "src/features", "src/api-client", "src/auth", "app"].map((r) =>
+  const roots = ["src/mock", "src/features", "src/api-client", "src/auth", "src/routes"].map((r) =>
     join(webDir, r),
   );
   const files = roots.flatMap((root) => sourceFiles(root));
 
   it("scans the mock sources (not vacuous)", () => {
     expect(files.some((f) => rel(f).startsWith("src/mock/backend/"))).toBe(true);
+  });
+
+  it("scans the route modules too (src/routes replaced the Next.js app directory)", () => {
+    expect(files.some((f) => rel(f).startsWith("src/routes/"))).toBe(true);
   });
 
   it("has no TTL identifiers, hold expiry timestamps or hold-minute constants", () => {

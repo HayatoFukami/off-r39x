@@ -5,13 +5,13 @@ import { isDevAreaEnabled } from "../../../../apps/web/src/config/ui-mock.ts";
 
 describe("TC-DEV-WEB-012-101 isDevAreaEnabled guards /dev/* (DEV-WEB-012)", () => {
   it("is true only when UI mock mode is exactly '1'", () => {
-    expect(isDevAreaEnabled({ NEXT_PUBLIC_UI_MOCK: "1" })).toBe(true);
+    expect(isDevAreaEnabled({ VITE_UI_MOCK: "1" })).toBe(true);
   });
 
   it.each([["0"], ["true"], ["yes"], [" 1"], [""], [undefined]])(
-    "is false for NEXT_PUBLIC_UI_MOCK=%j (fail closed)",
+    "is false for VITE_UI_MOCK=%j (fail closed)",
     (value) => {
-      expect(isDevAreaEnabled({ NEXT_PUBLIC_UI_MOCK: value })).toBe(false);
+      expect(isDevAreaEnabled({ VITE_UI_MOCK: value })).toBe(false);
     },
   );
 
@@ -20,11 +20,18 @@ describe("TC-DEV-WEB-012-101 isDevAreaEnabled guards /dev/* (DEV-WEB-012)", () =
   });
 
   it("is false in a production deployment even if mock mode leaked in", () => {
-    expect(isDevAreaEnabled({ NEXT_PUBLIC_UI_MOCK: "1", VERCEL_ENV: "production" })).toBe(false);
+    expect(isDevAreaEnabled({ VITE_UI_MOCK: "1", APP_ENV: "production" })).toBe(false);
   });
 
-  it("stays enabled for preview / development deployments", () => {
-    expect(isDevAreaEnabled({ NEXT_PUBLIC_UI_MOCK: "1", VERCEL_ENV: "preview" })).toBe(true);
-    expect(isDevAreaEnabled({ NEXT_PUBLIC_UI_MOCK: "1", VERCEL_ENV: "development" })).toBe(true);
+  it("stays enabled for staging / development environments", () => {
+    expect(isDevAreaEnabled({ VITE_UI_MOCK: "1", APP_ENV: "staging" })).toBe(true);
+    expect(isDevAreaEnabled({ VITE_UI_MOCK: "1", APP_ENV: "development" })).toBe(true);
+  });
+
+  it("does not read the former Next.js variables (fail closed; the old names are not aliases)", () => {
+    expect(isDevAreaEnabled({ NEXT_PUBLIC_UI_MOCK: "1" })).toBe(false);
+    expect(isDevAreaEnabled({ NEXT_PUBLIC_UI_MOCK: "1", APP_ENV: "staging" })).toBe(false);
+    // VERCEL_ENV is no longer the production signal, so it neither disables nor enables the area.
+    expect(isDevAreaEnabled({ VITE_UI_MOCK: "1", VERCEL_ENV: "production" })).toBe(true);
   });
 });

@@ -26,14 +26,14 @@
 | 領域 | 技術 |
 |---|---|
 | 言語 / モノレポ | TypeScript / pnpm workspaces |
-| Web | 既存 UI mock は Next.js / React（正式 SPA への改訂は別作業） |
+| Web | Vite / React / React Router（静的 SPA）/ Tailwind CSS / shadcn/ui |
 | API | Hono / Zod / Hono RPC（基盤） |
 | DB・認証 | Neon PostgreSQL 17 / Drizzle / pg / Neon Auth JWT（基盤） |
 | 決済・メール | Stripe / Resend Adapter（個別業務は未実装） |
 | テスト | Vitest / Playwright |
 | Lint / Format | Biome |
 
-正式仕様の業務経路は `Browser → Railway Hono API → Neon PostgreSQL` です。既存 Next.js UI モックの改訂・実 API 接続は別作業です。ブラウザと Web は Business Database に直接アクセスせず、認証・所有者・価格・在庫・決済結果はサーバー側が権威です。
+正式仕様の業務経路は `Browser → React SPA（静的配信） → Railway Hono API → Neon PostgreSQL` です（`SPEC-010`）。ブラウザと React SPA は Business Database に直接アクセスせず、認証・所有者・価格・在庫・決済結果はサーバー側が権威です。実 API 接続は別作業です。
 
 ## リポジトリ構成
 
@@ -41,9 +41,12 @@
 
 ```text
 .
-├─ apps/web/             Next.js（画面モックを含む）
-│  ├─ app/               ルーティング（薄い Server Component の殻）
+├─ apps/web/             Vite + React Router の静的 SPA（画面モックを含む）
+│  ├─ index.html         静的 shell
+│  ├─ vite.config.ts     build 設定、mock の本番ガード
 │  └─ src/
+│     ├─ routes/         React Router の route 定義（薄い route module と root layout）
+│     ├─ routing/        React Router の adapter（Link、ナビゲーション hook）
 │     ├─ features/       画面ごとの container と純粋ロジック
 │     ├─ presentation/   見た目の部品、文言（copy/ja.ts）、表示形式
 │     ├─ api-client/     API の port（呼び出し口）
@@ -81,19 +84,14 @@ pnpm install --frozen-lockfile
 
 ## モックの起動
 
-モックは `NEXT_PUBLIC_UI_MOCK=1` のときだけ有効です。このフラグが無いと、実 API の生成が失敗して画面は動きません（fail closed。`SPEC-190` DEV-WEB-011）。次のスクリプトがフラグを設定します。Windows でも追加の設定は不要です。
+モックは `VITE_UI_MOCK=1` のときだけ有効です。このフラグが無いと、実 API の生成が失敗して画面は動きません（fail closed。`SPEC-190` DEV-WEB-011）。次のスクリプトがフラグを設定します。Windows でも追加の設定は不要です。
 
 ```powershell
-pnpm build:mock      # モック有効でビルド
-pnpm start:mock      # ビルド済みのモックを起動（既定: http://127.0.0.1:3100）
+pnpm build:mock      # モック有効でビルド（出力: apps/web/dist）
+pnpm start:mock      # ビルド済みのモックを配信（既定: http://127.0.0.1:3100）
 ```
 
-ポートを変えるには `pnpm start:mock --port 3200` とします（`--` は付けません）。開発サーバーで確認する場合は次のとおりです。
-
-```powershell
-$env:NEXT_PUBLIC_UI_MOCK = "1"
-pnpm dev
-```
+`start:mock` は `apps/web/dist` を `scripts/serve-web-dist.mts` で配信し、`dist/_headers`（security header と no-store を含む）を適用します。ポートを変えるには `pnpm start:mock --port 3200` とします（`--` は付けません）。開発サーバー（Vite。モックが既定で有効）で確認する場合は、`pnpm dev` を実行します（URL は Vite が表示します）。
 
 ### モックの使い方
 
@@ -103,7 +101,7 @@ pnpm dev
 - **状態のリセット:** データはブラウザの localStorage に保存されます（`r39x.mock.*` と Cart 用の `r39x.cart.v1`）。リセットするには、開発者ツールでこのサイトの localStorage を削除します。
 - **使ってはいけないもの:** モックに、パスワード、Secret、実際の QR Token、実際の個人情報を入れないでください。QR は合成のプレースホルダです。
 
-本番デプロイ用のビルドで `NEXT_PUBLIC_UI_MOCK=1` が有効な場合は、ビルドが失敗します。実 API・実認証を導入するときは、`apps/web/src/mock/` と `apps/web/app/dev/` を削除でき、画面側の変更が要らない形（port）を保ちます（`SPEC-190` DEV-WEB-012・013）。
+`VITE_UI_MOCK=1` と `APP_ENV=production` を同時に指定した場合は、ビルドが失敗します。実 API・実認証を導入するときは、`apps/web/src/mock/` と `apps/web/src/routes/dev/` を削除でき、画面側の変更が要らない形（port）を保ちます（`SPEC-190` DEV-WEB-012・013）。
 
 ## 品質確認のコマンド
 
@@ -122,8 +120,8 @@ pnpm secret-scan --build-dir dist --require-build
 ```
 
 - `pnpm secret-scan` は、ビルド出力も走査するなら `pnpm build:mock` の後に実行します。
-- `pnpm secret-scan` は、リポジトリ直下のファイル、`.github/**`、`apps/**`、`packages/**`、`scripts/**`、`tests/**`、`traceability/**` と、ビルド出力の `.next/static/**`・`.next/server/**` を走査します。ビルド出力では値を検出する rule を server 全体に適用し、`mock-seed-field` は `.next/server/app/**` に限定します。`OK` は、これらの走査範囲に問題がないことだけを示します。
-- `pnpm test:e2e` は、ビルドと起動を自動で行います（`127.0.0.1:3100`。`start:mock` の既定と同じポートなので、同時には使えません）。desktop と mobile の 2 project で動き、再試行はしません。
+- `pnpm secret-scan` は、リポジトリ直下のファイル、`.github/**`、`apps/**`、`packages/**`、`scripts/**`、`tests/**`、`traceability/**` と、ビルド出力の `apps/web/dist/**` を走査します。ビルド出力では値を検出する rule を全ファイルに適用し、`mock-seed-field` は dist の HTML に限定します。`OK` は、これらの走査範囲に問題がないことだけを示します。
+- `pnpm test:e2e` は、`apps/web/dist` のビルドと配信を自動で行います（`127.0.0.1:3100`。`start:mock` の既定と同じポートなので、同時には使えません）。desktop と mobile の 2 project で動き、再試行はしません。
 - この Windows 開発機では、並列度 2 の E2E が稀にホストの接続障害で失敗します。その場合は `cd tests; pnpm exec playwright test --workers=1` で実行してください。
 - E2E は UI mock の補助 suite です。実 DB・実 API・Provider を使う正規の E2E（`SPEC-170` の G8）の代わりにはなりません。
 

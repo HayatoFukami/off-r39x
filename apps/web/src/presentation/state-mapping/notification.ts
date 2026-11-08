@@ -1,4 +1,5 @@
-import { assertNever, type NotificationState } from "@off-r39x/domain";
+import { assertNever } from "@off-r39x/domain";
+import type { NotificationSummaryStatus } from "../../api-client/types";
 import { copy } from "../copy/ja";
 import type { Tone } from "./order";
 
@@ -11,38 +12,28 @@ export type NotificationPresentation = {
   readonly actions: readonly [];
 };
 
-export function presentNotification(state: NotificationState): NotificationPresentation | null {
-  switch (state) {
-    case "PENDING":
+/**
+ * Maps the API-ORD-003 notification_summary status to the non-blocking notice (SPEC-050 16.2 / 16.7).
+ * Only ATTENTION_REQUIRED is shown; PENDING, SENT and NONE show nothing.
+ */
+export function presentNotificationSummary(
+  status: NotificationSummaryStatus,
+): NotificationPresentation | null {
+  switch (status) {
+    case "ATTENTION_REQUIRED":
       return {
-        label: copy.notification.PENDING.label,
-        message: copy.notification.PENDING.message,
-        tone: "pending",
-        blocking: false,
-        keepsPurchaseSuccess: true,
-        actions: [],
-      };
-    case "SENT":
-      return {
-        label: copy.notification.SENT.label,
-        message: copy.notification.SENT.message,
-        tone: "neutral",
-        blocking: false,
-        keepsPurchaseSuccess: true,
-        actions: [],
-      };
-    case "FAILED_RETRYABLE":
-      return {
-        label: copy.notification.FAILED_RETRYABLE.label,
-        message: copy.notification.FAILED_RETRYABLE.message,
+        label: copy.notification.ATTENTION_REQUIRED.label,
+        message: copy.notification.ATTENTION_REQUIRED.message,
         tone: "review",
         blocking: false,
         keepsPurchaseSuccess: true,
         actions: [],
       };
-    case "CANCELED":
+    case "PENDING":
+    case "SENT":
+    case "NONE":
       return null;
     default:
-      return assertNever(state);
+      return assertNever(status);
   }
 }

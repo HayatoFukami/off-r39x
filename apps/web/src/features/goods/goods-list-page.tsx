@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useApi } from "../../api-client/provider";
 import { settleRead } from "../../api-client/settle-read";
@@ -9,6 +8,7 @@ import type { Loadable } from "../../presentation/components/list-state";
 import { PageState } from "../../presentation/components/page-state";
 import { StatusBadge } from "../../presentation/components/status-badge";
 import { copy } from "../../presentation/copy/ja";
+import { Link } from "../../routing/link";
 import { buildGoodsListModel } from "./goods-list-model";
 
 // PG-GDS-001 container: reads after mount through the port. The list has no purchase operation.

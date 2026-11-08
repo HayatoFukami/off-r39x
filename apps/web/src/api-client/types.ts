@@ -42,15 +42,21 @@ export type CartLine =
   | { kind: "ENTRY_TICKET"; offeringRef: Ref<"offering">; quantity: number }
   | { kind: "GOODS"; goodsRef: Ref<"goods">; quantity: number };
 
-export type CartRejectionReasonCode =
-  | "BEFORE_SALES"
-  | "SALES_ENDED"
-  | "SUSPENDED"
+/**
+ * SPEC-110 API-PUR-ELG-001 reasons, shared by API-PUR-CART-001 item failures. Canonical order:
+ * NOT_PUBLIC_OR_NOT_FOUND, SALES_NOT_STARTED, SALES_CLOSED, SALES_STOPPED, SOLD_OUT,
+ * INSUFFICIENT_QUANTITY, PURCHASE_LIMIT_EXCEEDED, SLOT_UNAVAILABLE, PAYMENT_WINDOW_TOO_SHORT.
+ */
+export type PurchaseReason =
+  | "NOT_PUBLIC_OR_NOT_FOUND"
+  | "SALES_NOT_STARTED"
+  | "SALES_CLOSED"
+  | "SALES_STOPPED"
   | "SOLD_OUT"
   | "INSUFFICIENT_QUANTITY"
   | "PURCHASE_LIMIT_EXCEEDED"
-  | "ALLOCATION_CONFLICT"
-  | "NOT_PUBLIC";
+  | "SLOT_UNAVAILABLE"
+  | "PAYMENT_WINDOW_TOO_SHORT";
 
 export type CartLineResolution = { lineKey: string } & (
   | { status: "resolved"; name: string; unitPrice: Money; availability: SaleAvailability }
@@ -59,10 +65,10 @@ export type CartLineResolution = { lineKey: string } & (
 );
 
 export type CartPurchaseStart =
-  | { kind: "created"; orderRef: Ref<"order">; includedLineKeys: readonly string[] }
+  | { kind: "created"; orderRef: Ref<"order"> } // every sent line is in the Order (all-or-nothing)
   | {
-      kind: "rejected";
-      rejections: readonly { lineKey: string; reason: CartRejectionReasonCode }[];
+      kind: "rejected"; // reasons are non-empty and in the canonical order
+      itemFailures: readonly { lineKey: string; reasons: readonly PurchaseReason[] }[];
     }
   | { kind: "auth_required" }
   | { kind: "email_unverified" }
@@ -115,7 +121,7 @@ export type Announcement = AnnouncementSummary & { body: string };
 export type SponsorLogo = {
   sponsorRef: Ref<"sponsor">;
   name: string;
-  imageUrl: string | null;
+  imageUrl: string;
   linkUrl: string | null;
 };
 export type EntryOffering = {
@@ -178,7 +184,7 @@ export type GoodsDetail = {
   availability: SaleAvailability;
   venuePickupOnly: true;
 };
-export type Profile = { email: string; displayName: string };
+export type Profile = { email: string; displayName: string | null };
 export type OrderItem =
   | {
       kind: "ENTRY_TICKET";
@@ -223,11 +229,17 @@ export type OrderEntitlements = {
     handoffState: GoodsHandoffState;
   }[];
 };
+/**
+ * API-ORD-003 notification_summary.status (SPEC-110, SPEC-120 7.2 EML-NTF-003). A display DTO owned by the
+ * API's projection, not a Domain State: the UI never receives the internal Notification State.
+ */
+export type NotificationSummaryStatus = "NONE" | "PENDING" | "SENT" | "ATTENTION_REQUIRED";
 export type OrderDetail = OrderSummary & {
   items: readonly OrderItem[]; // purchase-time Snapshot
   entitlements: OrderEntitlements; // always present; empty unless CONFIRMED
   receiptUrl: string | null;
-  notice: { kind: "email_delayed" } | null;
+  /** null = only the summary is unavailable; the Order itself is still returned (SPEC-110 API-ORD-003). */
+  notificationSummary: { status: NotificationSummaryStatus } | null;
 };
 export type EntryTicketSummary = {
   ticketRef: Ref<"ticket">;

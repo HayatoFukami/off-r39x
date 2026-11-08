@@ -325,8 +325,8 @@ test.describe("TC-PG-MYP-004-704 Email failure keeps the purchase confirmed and 
   }) => {
     await openAs(page, orderPath(COMPOSITE), { scenario: { notification: "failed_retryable" } });
     await expect(outcomeRegion(page)).toContainText(label.CONFIRMED);
-    await expect(outcomeRegion(page)).toContainText(copy.notification.FAILED_RETRYABLE.label);
-    await expect(outcomeRegion(page)).toContainText(copy.notification.FAILED_RETRYABLE.message);
+    await expect(outcomeRegion(page)).toContainText(copy.notification.ATTENTION_REQUIRED.label);
+    await expect(outcomeRegion(page)).toContainText(copy.notification.ATTENTION_REQUIRED.message);
     await expect(entitlementsRegion(page)).toBeVisible();
     expect((await rightsHrefs(page)).length).toBeGreaterThanOrEqual(2);
     await expect(alertsOf(page)).toHaveCount(0);
@@ -337,7 +337,7 @@ test.describe("TC-PG-MYP-004-704 Email failure keeps the purchase confirmed and 
   test("without a failure there is no notice", async ({ page }) => {
     await openAs(page, orderPath(COMPOSITE));
     await expect(outcomeRegion(page)).toContainText(label.CONFIRMED);
-    await expect(mainOf(page)).not.toContainText(copy.notification.FAILED_RETRYABLE.message);
+    await expect(mainOf(page)).not.toContainText(copy.notification.ATTENTION_REQUIRED.message);
   });
 });
 

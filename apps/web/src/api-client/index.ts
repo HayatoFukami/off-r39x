@@ -1,4 +1,5 @@
 import { resolveBrowserStorage, type StorageLike } from "../config/browser-storage";
+import { readBuildEnv } from "../config/build-env";
 import { isUiMockEnabled } from "../config/ui-mock";
 import { systemClock } from "../mock/backend/clock";
 import { uuidIdGenerator } from "../mock/backend/ids";
@@ -16,8 +17,7 @@ export type PortFactoryOptions = {
  * closed instead of silently falling back to the mock (DEV-WEB-011).
  */
 export function createApiPort(options: PortFactoryOptions = {}): ApiPort {
-  // A direct property access lets Next inline NEXT_PUBLIC_UI_MOCK into the client bundle.
-  const env = options.env ?? { NEXT_PUBLIC_UI_MOCK: process.env.NEXT_PUBLIC_UI_MOCK };
+  const env = options.env ?? readBuildEnv();
   if (!isUiMockEnabled(env)) {
     throw new Error("real api client not implemented");
   }

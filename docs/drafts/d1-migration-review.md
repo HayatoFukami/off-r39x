@@ -2,9 +2,22 @@
 
 > 状態: **検討資料（正式仕様ではない）**。`docs/specs/` は変更していない。
 > 作成日: 2026-10-23 / 改訂: 2026-10-24（一次情報による精査、認証・基盤・コストの比較を追加、章立てを再構成、コスト要因別の構成を追加して 13 構成で再採点）
-> 対象: SPEC-010・060・100・140・150・180 ほかの現行本文（`main`）、`payment/integration` の実装
+> 対象: SPEC-010・060・100・140・150・180 ほかの本文（**2026-10-24 時点の `main`**。2026-10-25 の構成改定（`c58d44b`、PR #20）より前）、`payment/integration` の実装
 > 目的: 業務 DB を Supabase PostgreSQL から Cloudflare D1 へ変更する場合の実現可能性・変更量・実装難易度・コストを整理し、Workers への移行、認証の代替、Railway の代替、有料プランの構成を含めて 13 の構成を比較する。
 > 注意: 本書は仕様変更の提案ではない。移行を決めた場合は `AGENTS.md §7` / `SPEC-000` の手続き（UCR）で仕様を先に改訂する。
+>
+> **【過去の比較資料】** 本書は、**旧仕様（Next.js on Vercel / Railway の Hono / Supabase PostgreSQL + Supabase Auth）を現行構成「A」として扱った、改定前の比較検討**である。現行の Canonical 仕様は別の構成を採用しており、本書の「現行」「A」「現行仕様」「現行からの変更」は**旧構成を指し、現在の仕様ではない**。現行仕様と食い違う場合は `docs/specs/` が優先する（`SPEC-000`）。
+>
+> | 項目 | 本書が「現行」として扱う旧構成 | 現行の Canonical 仕様（`SPEC-010` §8.1.1、`SPEC-180`）|
+> |---|---|---|
+> | Web | Next.js 16 on Vercel（SSR・Web 側のセッション管理）| **Cloudflare Pages** の Vite / React Router 静的 SPA（SSR・Server Action・Web 側 BFF なし）|
+> | API・Worker | Railway（Node）の Hono | **Railway** の Hono（変更なし）。認証中継・Email Worker・Reconciliation Worker も Railway |
+> | Business DB | Supabase PostgreSQL | **Neon PostgreSQL**（AWS シンガポール）。Workers + Hyperdrive は採用していない |
+> | 認証 | Supabase Auth（メール+パスワードのみ）| **Neon Auth**（Neon 管理の Better Auth）。メール+パスワード・Google・Email OTP・Magic Link の 4 方式。Better Auth の自前運用は採用していない |
+> | 認証情報の参照 | Supabase の管理 API / 直接参照の案を比較 | 限定ビュー **`auth_read.identity_directory`**（3 列）だけを API・Email Worker に公開（`SPEC-100` §5.1）。`neon_auth` を直接参照しない |
+> | UI mock の有効化 | `NEXT_PUBLIC_UI_MOCK=1` | `VITE_UI_MOCK=1`（`DEV-WEB-011`）。ただし既存 Next.js mock の移行実装は未実施 |
+>
+> したがって、本書の第 6 章（認証）、第 11 章（採点）、構成 F・G・L・M の評価は、**現行仕様の採用構成を評価したものではなく**、当時の仕様を基準にした比較である。コスト・技術的事実（第 4 章など）は 2026-10-23 時点の公式情報であり、参考として読むこと。
 
 ## 0. この資料の確認方法
 
@@ -245,7 +258,7 @@ Railway には API・Email Worker・Reconciliation Worker を独立サービス�
 | Cookie・保管 | セッション Cookie は Next.js サーバー側で扱い、トークンを localStorage に置かない（SEC-AUTH-007/008）|
 | パスワード | 12〜128 文字、構成規則なし。漏洩パスワード検知とボット対策は、提供元に機能があれば使う（SEC-AUTH-016/017/019）|
 | 資格情報の分離 | パスワードや資格情報を業務 DB に置かない（AR-SES-001、AR-AUTH-011、SEC-AUTH-006）。業務 Profile は認証の subject と 1:1（`auth_subject`）。ロールは業務 DB が持ち、認証側のメタデータに置かない |
-| メール | 認証メール（確認・再設定）は認証提供元の責務。Email Worker は、subject からメールと検証状態をサーバー側で引く（SPEC-120 §15、EML-RCP）|
+| メール | 認証メール（確認・再設定）は認証提供元の責務。Email Worker は、subject からメールと検証状態をサーバー側で引く（SPEC-120 §15、EML-RCP）。※現行仕様では、この引き当ては `auth_read.identity_directory`（`SPEC-100` §5.1）だけで行う |
 | 障害時 | 認証の障害時は fail closed |
 
 ### 6.2 認証サービスの確認結果（AWS 系を除く）
@@ -281,8 +294,8 @@ Railway には API・Email Worker・Reconciliation Worker を独立サービス�
 | ボット対策 | 未確認 ⚠️ | captcha プラグイン（Turnstile など）✅[S72] | プラグイン非対応 ✅[S60] | Turnstile（Free は検証無制限）✅[S25] |
 | レート制限 | 未確認 ⚠️ | 組み込み。サーバーレスでは永続ストレージが必要 ✅[S67] | プラグイン非対応（組み込みの有無は不明）✅[S60] ⚠️ | Rate Limiting binding または Durable Objects ✅[S24] |
 | 認証メールの文面 | 可 | 自前で送信（`sendVerificationEmail` など）✅[S65] | webhook で自前送信 ✅[S59] | 自前 |
-| subject からのメール引き当て | Admin API | admin プラグインは admin 権限のヘッダが必要。自分の DB を読み取り専用ロールで直接参照する案もある ✅[S70] ⚠️ | `neon_auth` スキーマを直接参照する案 ⚠️。管理 API に一覧・取得の記載なし | service binding |
-| 業務 DB からの資格情報の分離 | 提供元が管理 | `account` テーブルにパスワードが入る ✅[S64]。別 DB / スキーマに分ける | `neon_auth` スキーマが同じ DB に入る ✅[S55]。解釈または分離が必要 | 別の D1 を使う |
+| subject からのメール引き当て | Admin API | admin プラグインは admin 権限のヘッダが必要。自分の DB を読み取り専用ロールで直接参照する案もある ✅[S70] ⚠️ | 当時は `neon_auth` スキーマを直接参照する案を検討 ⚠️。管理 API に一覧・取得の記載なし。**現行仕様はこの案を採らず**、限定ビュー `auth_read.identity_directory`（3 列、`SPEC-100` §5.1）だけを読む | service binding |
+| 業務 DB からの資格情報の分離 | 提供元が管理 | `account` テーブルにパスワードが入る ✅[S64]。別 DB / スキーマに分ける | `neon_auth` スキーマが同じ DB に入る ✅[S55]。当時は解釈または分離が必要としたが、**現行仕様は整理済み**: `neon_auth` は Provider 所有で、`app` / `auth_read` に資格情報を置かず、runtime ロールに元テーブルの権限を与えない（`SPEC-060` `AR-SES-001`、`SPEC-100` `DB-ARC-004`・§5.1、`SPEC-140` `SEC-AUTH-006`）| 別の D1 を使う |
 | 運用責任 | 提供元 | **自前**（6.6）| 提供元（開発は活発）| **全面自前** |
 | 料金 | Supabase Pro に込み | 無料（Infrastructure Pro は $20）| 全プランに含まれる | 無料 |
 | Workers との相性 | JWKS 検証のみ | `nodejs_compat` または `nodejs_als` が必要 ✅[S84] | JWKS 検証 + webhook を受ける Worker | Web Crypto で実装 |
@@ -370,7 +383,7 @@ Browser
 | メール | 共有送信元は開発・テスト用でレート制限があり、確認リンクは使えない。確認リンクには独自 SMTP が必要で、その場合も文面は Neon の既定。文面を完全に変えるには webhook（`send.otp`・`send.magic_link`）を購読して自前の送信基盤（Resend など）から送る。ダッシュボードのテンプレート機能は未提供。メール確認は既定でオフ ✅[S56][S59] |
 | webhook | 3 回まで再試行（バックオフなし、全体 15 秒）、`user.before_create` は失敗時に登録を拒否（fail closed）、署名は EdDSA の detached JWS。テストイベントと再送は未対応 ✅[S62] |
 | 提供条件 | AWS リージョンのみ。**IP Allow・Private Networking を有効にしたプロジェクトでは使えない** ✅[S55]。MAU 上限は Free 6 万 / Launch・Scale 100 万。MAU 単価、超過時の課金は記載なし ✅[S55][S49] |
-| 管理 API | ユーザーの作成・削除・ロール変更はあるが、一覧・取得は記載なし ✅。`neon_auth` スキーマの直接参照は可能と見られるが、スキーマ安定性の記載は確認できなかった ⚠️ |
+| 管理 API | ユーザーの作成・削除・ロール変更はあるが、一覧・取得は記載なし ✅。当時は `neon_auth` スキーマの直接参照を検討したが、スキーマ安定性の記載は確認できなかった ⚠️。**現行仕様は直接参照を禁止**し、限定ビュー `auth_read.identity_directory` だけを使う。元スキーマの互換性が崩れたら fail closed とし、Provider 契約テストで確認する（`SPEC-100` §5.1）|
 
 ### 6.6 Better Auth を自前運用する場合の懸念点と注意点
 
@@ -604,7 +617,7 @@ Browser
 | C | SPEC-100・180 ほか約 9 本が MAJOR 改訂（9.1）| 約 3〜6 週間 |
 | D | C に加え、SPEC-060・010・120・140（認証の全面自作）| 約 6〜11 週間 |
 | E | C に加え、SPEC-060・010・120・140 | 約 4〜8 週間 |
-| F | B に加え、SPEC-060・010・120・140（認証）、SPEC-180（DB 提供元）。`neon_auth` スキーマの扱い（AR-AUTH-011・SEC-AUTH-006）の解釈 | 約 2〜4.5 週間 |
+| F | B に加え、SPEC-060・010・120・140（認証）、SPEC-180（DB 提供元）。`neon_auth` スキーマの扱い（AR-AUTH-011・SEC-AUTH-006）の解釈（※現行仕様は `auth_read.identity_directory` で整理済み）| 約 2〜4.5 週間 |
 | G | F と同範囲。認証を自前運用するため、SEC-AUTH の証跡を自前で示す | 約 2.5〜5 週間 |
 | H | SPEC-180 の環境定義（staging・dev の運用、dev のローカル化の可否）| 数日 |
 | I | H に加え、SPEC-180 の Railway 固有の規定（INF-RWY）、CI/CD、SIGTERM の設定（`kill_signal`）| 約 1〜2 週間 |
@@ -711,7 +724,7 @@ D〜G・K・M では、9.1 で除外した SPEC-060（292 行）が改訂対象�
 - **C**: D1 の弱点（第 5 章）がそのまま残る。DB のロール分離がなく、約 9 本の仕様の大規模改訂が必要。
 - **D**: 認証を自作するため、セキュリティ 1。SPEC-060 の規定を満たす実装・証跡を自前で用意する（6.4）。
 - **E**: Better Auth により JWT 15 分・JWKS・漏洩検知・captcha・パスワード長設定が標準で揃い、D より仕様に合う（6.5）。D1 の難しさは残る。
-- **F**: PostgreSQL に戻るため DB 仕様は維持できる。Neon Auth はプラグインの制約（漏洩検知・captcha・rate limit なし）、JWT 寿命の固定、認証情報が同じ DB の `neon_auth` スキーマに入る点（AR-AUTH-011・SEC-AUTH-006 の解釈が必要）が減点。
+- **F**: PostgreSQL に戻るため DB 仕様は維持できる。Neon Auth はプラグインの制約（漏洩検知・captcha・rate limit なし）、JWT 寿命の固定、認証情報が同じ DB の `neon_auth` スキーマに入る点（当時は AR-AUTH-011・SEC-AUTH-006 の解釈が必要としたが、現行仕様は `auth_read.identity_directory` と権限分離で整理済み）が減点。
 - **G**: DB は Neon、認証は Better Auth を自前で運用する。標準プラグインで SEC-AUTH-016・017・019 を満たしやすく、DB と認証を別スキーマ・別ロールにしやすい。一方、組み込み・運用・更新の責任（6.6）は自分に残る。
 - **L**: 認証は Supabase Auth のまま DB だけ Neon にする。Supabase Pro を認証のためだけに払うため割高で、DB と認証が別ベンダーになる。
 - **M**: Clerk の既定トークン寿命、パスワード規則、漏洩検知、メールのカスタム、`sub` からの引き当てが未確認 ⚠️。
@@ -774,7 +787,7 @@ D1 + workerd 上で次を試し、構成 C の可否を数日で判断する。
 | Supabase | captcha・レート制限の標準機能、現行の Supabase のリージョン | A・B・C |
 | RDS / AWS | RDS for PostgreSQL の単価（料金 API がプロキシで拒否された）、DSQL の `btree_gist`・advisory lock・トリガー | 付録 A |
 | Better Auth | D1 の設定手順（コミュニティ dialect の導入手順が公式にない）、パスワードハッシュのフォーマットと他サービスへの移行互換性、Workers での `advanced.backgroundTasks` の設定、未取得のアドバイザリ 1 ページ分、メンテナ体制と SLA | E・G |
-| Neon / Neon Auth | セッション寿命、パスワード最小長、組み込みの rate limit の有無、管理 API でのユーザー一覧・取得、`neon_auth` スキーマの安定性、MAU の超過単価、Launch のバックアップ保持期間と仕様（日次 35 日 + 月次 400 日）の関係 | F・G |
+| Neon / Neon Auth | セッション寿命、パスワード最小長、組み込みの rate limit の有無、管理 API でのユーザー一覧・取得、`neon_auth` スキーマの安定性（現行仕様では `auth_read.identity_directory` の Provider 契約テストで確認する）、MAU の超過単価、Launch のバックアップ保持期間と仕様（日次 35 日 + 月次 400 日）の関係 | F・G |
 | 他の認証サービス | Clerk の既定トークン寿命・パスワード規則・メールのカスタム、Firebase の ID トークン寿命（公式のセッション Cookie 管理ページに記載なし ✅[S97]）、GCP Identity Platform と WorkOS のトークン寿命、Auth0 / Clerk の管理 API による `sub` からのメール引き当て | 参考 |
 | Railway の代替 | Fly.io 東京の価格、Render の Background Worker が常時稼働できるか、Cloud Run worker pool の最小サイズ、VPS の価格 | A |
 | 前提・推定 | Railway・Fly.io・Neon の使用量（仮定）、作業量の週数（実績ベースの推定で保証値ではない）| 全て |
