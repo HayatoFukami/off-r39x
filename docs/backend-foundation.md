@@ -29,7 +29,7 @@ pnpm secret-scan --build-dir dist --require-build
 - `dist/workers/email-worker.js`
 - `dist/workers/reconciliation-worker.js`
 
-標準 `pnpm build` はバックエンドと既存 Web をビルドする。Web の旧モックは別契約のため、その成功はバックエンドの証拠にならない。バックエンドだけの確認には `build:backend` を使う。
+標準 `pnpm build` はバックエンドと既存 Web をビルドする。Web の UI mock（Vite SPA）は別契約のため、その成功はバックエンドの証拠にならない。バックエンドだけの確認には `build:backend` を使う。
 
 ## 配置
 
