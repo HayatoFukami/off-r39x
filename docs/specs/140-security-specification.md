@@ -1211,7 +1211,7 @@ token検証が成功して初めて得られるkey（Auth Subject）だけを持
 
 **SEC-ABU-024:** `auth_form_proxy` の「正規化済みlogin identifier」は、POST requestのJSON bodyの `email` fieldを正規化したものとする。bodyは先頭から最大64 KiB、読み取りは最大3秒までとし、上限超過、JSON不正、`email` の欠落、または読み取りのtimeoutによりidentifierを取り出せない場合は、**identifier ruleだけを省略**する。per-IPのburst / sustained ruleは、identifierの取り出しの成否にかかわらず常に評価する。この省略により、identifier単位のruleを巨大なbody等で回避できるが、IP単位のruleは回避できない。
 
-**SEC-ABU-025:** 段階1（`SEC-ABU-017`）の `429` / `503` はCORS処理より前に返りうる。この応答では、requestの `Origin` がexactなWeb originと完全一致する場合に限り、その値を `Access-Control-Allow-Origin` に返し、`Vary: Origin` と `Access-Control-Expose-Headers: X-Request-Id, Retry-After` を付ける。これによりBrowserが `Retry-After` を読める。一致しない場合、またはOriginがない場合はCORS headerを付けない。`*` は返さない（`SEC-API-006`）。`/api/v1/*` では `Access-Control-Allow-Credentials` を付けない（`SEC-API-007`）。
+**SEC-ABU-025:** 段階1（`SEC-ABU-017`）の `429` / `503` はCORS処理より前に返りうる。この応答では、requestの `Origin` がexactなWeb originと完全一致する場合に限り、その値を `Access-Control-Allow-Origin` に返し、`Vary: Origin` と `Access-Control-Expose-Headers: X-Request-Id, Retry-After` を付ける。これによりBrowserが `Retry-After` を読める。一致しない場合、またはOriginがない場合はCORS headerを付けない。`*` は返さない（`SEC-API-006`）。`/api/v1/*` では `Access-Control-Allow-Credentials` を付けない（`SEC-API-007`）。認証中継 `/auth/*` では、exactなWeb originに対してだけ `Access-Control-Allow-Credentials: true` を付ける（§30。`/auth/*` のcredentialed CORS）。
 
 ## 69. Auth provider abuse boundary
 
