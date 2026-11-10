@@ -323,6 +323,25 @@ describe("evaluation order and result mapping (TST-RLM-004)", () => {
   });
 });
 
+describe("browser visibility of rate limit responses (SEC-ABU-007, SPEC-110 §21)", () => {
+  it("TC-RLM-004-214 a Stage 1 429 or 503 is readable by the exact Web origin (Retry-After exposed) and by no other origin", async () => {
+    const h = harness({ overrides: selfRead(30, 120, 1) });
+    expect((await h.get({ headers: { Origin: WEB } })).status).toBe(200);
+    const rejected = await h.get({ headers: { Origin: WEB } });
+    expect(rejected.status).toBe(429);
+    expect(rejected.headers.get("Access-Control-Allow-Origin")).toBe(WEB);
+    expect(rejected.headers.get("Access-Control-Expose-Headers")).toContain("Retry-After");
+    expect(rejected.headers.get("Retry-After")).toMatch(/^[1-9]\d*$/);
+    const foreign = await h.get({ headers: { Origin: "https://evil.example.test" } });
+    expect(foreign.status).toBe(429);
+    expect(foreign.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    h.trs.faults.inject("FP.RATELIMIT.STORE_UNAVAILABLE");
+    const unavailable = await h.get({ ip: "203.0.113.50", headers: { Origin: WEB } });
+    expect(unavailable.status).toBe(503);
+    expect(unavailable.headers.get("Access-Control-Allow-Origin")).toBe(WEB);
+  });
+});
+
 /** A minimal app that mounts the production Stage 1 / Stage 2 middleware on synthetic routes. */
 function miniApp(
   trs: TestRateLimit,

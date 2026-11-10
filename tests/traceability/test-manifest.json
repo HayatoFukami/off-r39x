@@ -20092,6 +20092,29 @@
       "critical": true
     },
     {
+      "test_case_id": "TC-RLM-004-214",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["TST-RLM-004", "SEC-ABU-007", "SEC-ABU-009"],
+      "system_invariant_ids": [],
+      "api_operation_ids": ["API-AUTH-001"],
+      "db_constraint_names": [],
+      "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": ["FP.RATELIMIT.STORE_UNAVAILABLE"],
+      "expected_http": [200, 429, 503],
+      "expected_domain_postconditions": [
+        "a Stage 1 429 or 503 is readable by the exact Web origin (Retry-After exposed) and by no other origin"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
       "test_case_id": "TC-RLM-005-102",
       "level": "Unit",
       "suite": "unit",

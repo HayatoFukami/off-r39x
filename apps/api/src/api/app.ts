@@ -46,6 +46,7 @@ export interface AppDependencies {
   rateLimit?: AppRateLimit;
   authProxy?: AuthProxy;
 }
+const EXPOSED_HEADERS = "X-Request-Id, Retry-After";
 function failure(
   c: import("hono").Context<ApiEnvironment>,
   code: ErrorCode,
@@ -125,6 +126,16 @@ export function createApp(dependencies: AppDependencies) {
     await next();
     return;
   });
+  // A 429 / 503 produced by Stage 1 precedes the CORS middleware below, but the Web origin must
+  // still be able to read it (including Retry-After). Only the exact Web origin is ever echoed.
+  app.use("/api/v1/*", async (c, next) => {
+    if (c.req.header("Origin") === origin) {
+      c.header("Vary", "Origin");
+      c.header("Access-Control-Allow-Origin", origin);
+      c.header("Access-Control-Expose-Headers", EXPOSED_HEADERS);
+    }
+    await next();
+  });
   // Stage 1 (SEC-ABU-017): after the drain check, before any origin/CORS/body/auth/DB work.
   app.use("*", createRateLimitStageOne({ rateLimit: dependencies.rateLimit }));
   app.onError((error, c) => {
@@ -156,7 +167,7 @@ export function createApp(dependencies: AppDependencies) {
     if (requestOrigin && requestOrigin !== origin) throw new ApiFailure("AUTHORIZATION_DENIED");
     if (requestOrigin === origin) {
       c.header("Access-Control-Allow-Origin", origin);
-      c.header("Access-Control-Expose-Headers", "X-Request-Id");
+      c.header("Access-Control-Expose-Headers", EXPOSED_HEADERS);
     }
     if (c.req.method === "OPTIONS") {
       const method = c.req.header("Access-Control-Request-Method") ?? "";
