@@ -19553,6 +19553,35 @@
       "critical": true
     },
     {
+      "test_case_id": "TC-RLM-003-007",
+      "level": "Integration",
+      "suite": "integration",
+      "upstream_rule_ids": [
+        "TST-RLM-003",
+        "SEC-ABU-019",
+        "SEC-ABU-009",
+        "INF-HLT-004",
+        "DEV-RLM-006"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Disposable real Redis from TEST_REDIS_URL (never skipped); synthetic keys under a per-session HMAC key version",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": ["FP.RATELIMIT.STORE_UNAVAILABLE"],
+      "expected_http": [200, 503],
+      "expected_domain_postconditions": [
+        "an unreachable Redis fails every registered route closed with 503, never 429, and never reaches verification"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
       "test_case_id": "TC-RLM-003-102",
       "level": "Unit",
       "suite": "unit",
@@ -20032,6 +20061,29 @@
       "expected_http": [503],
       "expected_domain_postconditions": [
         "a resource rule rejection is a 429 / store failure a 503 before the handler runs"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-004-213",
+      "level": "Integration",
+      "suite": "integration",
+      "upstream_rule_ids": ["TST-RLM-004", "SEC-ABU-007", "SEC-ABU-011", "TST-RLM-001"],
+      "system_invariant_ids": [],
+      "api_operation_ids": ["API-AUTH-001"],
+      "db_constraint_names": [],
+      "preconditions": "Disposable real Redis from TEST_REDIS_URL (never skipped); synthetic keys under a per-session HMAC key version",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [200, 429],
+      "expected_domain_postconditions": [
+        "the API answers 200, then 429 with Retry-After from the real Redis counters, and readiness runs the script"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
