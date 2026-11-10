@@ -527,6 +527,10 @@ rate limit（`SPEC-140` Part XIII）は上記の番号付き手順に次の位�
 | 手順2の成功後、手順3の前（段階2） | per-auth-subject / per-staff-subject / per-admin-subjectを評価する |
 | 同じく手順5の最初のDB accessの前 | resource keyとQR digestを、そのkeyの導出に必要な入力の構文検証後に評価する |
 
+**段階2とDB accessの境界:** 段階2が使うAuth Subject識別子は、手順2で検証済みのtokenのclaimから得る値であり、DB accessを必要としない。手順4の「Auth Subject取得」は、この検証済みの識別子を確定する非DBの手順である。DBを参照する最初の手順は手順5（Business Profile resolution）である。実装は、token検証とAuth Subject取得（DBなし）を、Principal / Business Profileの解決（DBあり）から分離し、段階2を両者の間に置く。token検証と同じ処理の中でPrincipalをDBで解決する構成のままでは、DB accessの前にrate limitを評価できないため、実装は段階2を置ける形に分離しなければならない。
+
+**評価の独立性:** 段階1、段階2のsubject rule、resource / QR digest ruleはそれぞれ独立した評価である。各評価は、その評価の内部でatomicに判定する。後の評価で拒否されたrequestも、前の評価でadmitされたruleのcounterを消費する（`SPEC-140` `SEC-ABU-013`）。
+
 `429` を返した時点で、以降の手順（Email verified check、Business Profile resolution、Role / Capability評価、Domain precondition、mutation）へ進まない。`503 TEMPORARY_UNAVAILABLE`（rate limit store判定不能）も同様に以降へ進まない。health endpointとCORS preflightはrate limitの対象外である（`SEC-ABU-018`）。
 
 ## 25. Profile provisioning

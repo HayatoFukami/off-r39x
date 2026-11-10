@@ -1122,7 +1122,7 @@ Test:
 
 - sliding window log: 各classで、上限ちょうどのrequestは許可され、上限+1は拒否される。窓境界をまたぐ配置（固定窓なら上限の2倍通る配置）で、任意のwindow内のadmit数が上限を超えない
 - burstとsustainedの両方が評価される。片方だけの超過でも拒否される
-- 複数ruleのうち1つでも超過すれば**全counterが変化しない**（拒否requestがcounterを消費しない）
+- 1回の評価に含まれる複数ruleのうち1つでも超過すれば、**その評価の全counterが変化しない**（拒否された評価がcounterを消費しない）
 - 並行N requestで、上限Lに対しadmit数がL以下である（barrier付き並行harness）
 - 時刻はstore側の時計で判定され、複数API processでずれても結果が変わらない
 - `Retry-After` は超過した全ruleのうち最長を整数秒に切り上げた値（最小1）である
@@ -1141,12 +1141,14 @@ Test:
 **TST-RLM-004:** 次をAPI層のTest（fake storeを許可）で行う。
 
 - 評価順: 段階1（IP等）→ token検証 → 段階2（subject / resource）が `SPEC-110` §24.1 の位置にあり、いずれもDB accessの前である。`429` / `503` の時点でEmail verified check以降へ進まない
+- 段階2は、token検証とAuth Subject取得（DBなし）の後、Principal / Business Profile解決（DBあり）の前に評価される。段階2が `429` / `503` の場合、Principal解決のためのDB accessが1件も発生しない
+- 評価の独立性: 段階1でadmitされ段階2で拒否されたrequestは、段階1のruleのcounterを消費し、段階2のcounterは変化しない（`SEC-ABU-013`）
 - health endpointとCORS preflightは対象外で、storeへ問い合わせない
 - 未一致pathと未対応methodは `public_read` のper-IP ruleだけで評価され、global ruleを消費しない
 - `429` と `503` のresponseにcounter key、該当rule、Email、Auth Subject、IPが含まれない
 - resource keyの評価は、存在するresourceと存在しないresourceで同一結果になる
 - `auth_form_proxy` のlogin identifierはJSON bodyの `email` から取り出され、上限（64 KiB・3秒）超過、JSON不正、`email` 欠落のときはidentifier ruleだけが省略され、per-IP ruleは常に評価される（`SEC-ABU-024`）
-- 段階1の `429` / `503` は、exactなWeb originに対してだけ `Access-Control-Allow-Origin` と `Access-Control-Expose-Headers: X-Request-Id, Retry-After` を返し、他のOriginやOriginなしにはCORS headerを付けない（`SEC-ABU-025`）
+- 段階1の `429` / `503` は、exactなWeb originに対してだけ `Access-Control-Allow-Origin` と `Access-Control-Expose-Headers: X-Request-Id, Retry-After` を返し、他のOriginやOriginなしにはCORS headerを付けない。`/api/v1/*` では `Access-Control-Allow-Credentials` を付けず、`/auth/*` ではexactなWeb originに対してだけ `Access-Control-Allow-Credentials: true` を付ける（`SEC-ABU-025`）
 
 **TST-RLM-005:** Authentication-failure guardを次のとおりTestする。
 
@@ -1158,7 +1160,7 @@ Test:
 
 **TST-RLM-006:** 設定をtable-drivenでTestする。`RATE_LIMIT_CONFIG` が、欠落・0・負数・非整数・parse不能・canonical ceiling超過・Class ID欠落のいずれかなら、staging / productionでReady=falseになり、暗黙fallbackしない。`TRUSTED_PROXY_HOPS` が未設定・負数・非整数ならReady=falseで、`0` はdirect peerを意味する有効値である。`RATE_LIMIT_HMAC_KEY` / version欠落でReady=falseになる。development / testではceiling以下の小さい値を設定できる。
 
-**TST-RLM-007:** `SPEC-110` §56.1 の割当をTestする。全canonical Operation IDがexactly 1つのClass IDに属し、割当表にないOperation IDをrouteとして登録するとstartupおよびtestで検出される。割当表のClass IDが `SPEC-140` §68のClass ID集合と一致する。
+**TST-RLM-007:** `SPEC-110` §56.1 の割当をTestする。全canonical Operation IDがexactly 1つのClass IDに属し、割当表にないOperation IDをrouteとして登録するとstartupおよびtestで検出される。割当表のClass ID（Operation用の13個）が、`SPEC-140` §68のClass ID集合から `auth_failure_guard_attendee` / `auth_failure_guard_operator` を除いた集合と一致する。guard 2種は割当表のclassではなく、§68.1の対象class（`purchase_checkout`、`qr_display`、`profile_mutation`、`goods_handoff`、`admin_mutation`、`role_assignment`、`high_risk_recovery`）に付随するため、割当表との一致とは別に、§68にguard 2種のClass IDが存在することと、各guardの適用先が§68.1の表のとおりであることをTestする（`TST-RLM-005`）。
 
 **TST-RLM-008:** Client IP導出をTestする。`TRUSTED_PROXY_HOPS` が `N` のとき、信頼するproxyがN段付与した部分だけからClient IPを導出し、Clientが偽装しうるforwarded headerの部分を採用しない。`0` ではforwarded headerを一切採用せずdirect peerを使用する（`SEC-API-024〜025`、`SEC-API-030`）。参照するheaderは `X-Forwarded-For` だけで、右から `N` 番目を採用する。`N=0`、header欠落、要素数が `N` 未満、または解釈できない要素のときはdirect peerを使用し、direct peerも得られない場合は `503 TEMPORARY_UNAVAILABLE` になる（`SEC-API-031`）。具体的なheader名と段数はRailway ingressの外部事実であり（`SPEC-180` §17.2 #1）、Testはfixtureで定義した合成headerだけを使用する。
 

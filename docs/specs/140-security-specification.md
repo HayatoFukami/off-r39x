@@ -1137,7 +1137,9 @@ Productionでは下表の値を**上限**とする。より厳しくすること
 
 **SEC-ABU-012:** 各ruleは**sliding window log**として評価する。すなわち、任意の `window_seconds` 区間において、admitされたrequest数がlimitを超えてはならない。固定窓counter（窓境界で最大2倍のrequestを通す方式）および近似sliding windowは、§68の上限を満たさないため使用しない。
 
-**SEC-ABU-013:** 1 requestに適用される全ruleは、storeに対する**単一のatomic操作**で評価する。1つでも超過したruleがあれば、**いずれのcounterにも記録せず**拒否する。全ruleに余裕がある場合だけ、全ruleへ同時に記録してadmitする。拒否されたrequestはcounterを消費しない。ruleごとに別々にread / writeしてはならない。
+**SEC-ABU-013:** rate limitの**1回の評価**に含まれる全ruleは、storeに対する**単一のatomic操作**で評価する。その評価で1つでも超過したruleがあれば、**その評価のいずれのcounterにも記録せず**拒否する。全ruleに余裕がある場合だけ、その評価の全ruleへ同時に記録してadmitする。1回の評価の内部でruleごとに別々にread / writeしてはならない。
+
+評価は§67.3の位置ごとに独立して行う。1 requestでは、段階1（`SEC-ABU-017`）、段階2のsubject rule、resource / QR digest ruleの順に、それぞれ別の評価として最大3回行う。評価と評価の間にはtoken検証等のstore外の処理が入るため、複数の評価を1つのatomic操作にまとめることはできない。したがって、前の評価でadmitされて記録済みのcounterは、後の評価での拒否によって取り消さない。**後の評価で拒否されたrequestは、前の評価に含まれるruleのcounterを消費する**（そのrequestがそれらのruleの対象に到達した事実として残る）。一方、拒否された評価自身は、その評価のcounterを消費しない。§68.1のAuthentication-failure guardは、`SEC-ABU-021` のとおり確認と記録を別の操作とする。
 
 **SEC-ABU-014:** 時刻はstore側の単一の時計から取得する。API process-localの時計をwindow判定に使用しない。
 
@@ -1742,7 +1744,7 @@ Production startup / readinessで最低限次を検証する。
 - 改訂前の仕様: `SEC-ABU-001` はProductionで共有enforcement layerを要求するが、その契約（counting方式、key、評価順、失敗時の動作、設定、store）が存在しなかった。`429` に対応する公開エラーコードがなかった。SPEC-110の各API operationがどのclassに属するかの定義がなかった。
 - 決定:
   1. 共有storeは、各環境のRailway projectに置く単一ノードのRedis（`SPEC-180`）。
-  2. counting方式はsliding window log。複数ruleを単一のatomic操作で評価し、拒否時は何も記録しない（`SEC-ABU-012` / `SEC-ABU-013`）。
+  2. counting方式はsliding window log。1回の評価に含まれる複数ruleを単一のatomic操作で評価し、その評価で拒否された場合はその評価のcounterを記録しない。評価は段階ごとに独立し、後段で拒否されても前段の記録は取り消さない（`SEC-ABU-012` / `SEC-ABU-013`）。
   3. counter keyはenvironment専用keyによるHMAC-SHA256（`SEC-ABU-015` / `SEC-ABU-016`）。
   4. store障害は `503 TEMPORARY_UNAVAILABLE` でFail Closed。process-localの縮退運用は含めない（`SEC-ABU-019`）。
   5. 設定はcanonical ceilingと環境変数で持ち、staging / productionで欠落・ceiling超過をReady=falseとする（`SEC-ABU-010`）。
