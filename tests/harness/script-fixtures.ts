@@ -181,7 +181,32 @@ export function withoutFiles(files: FileMap, ...paths: string[]): Record<string,
 
 /** A docs/specs directory that defines the fixture rule IDs literally (for the upstream-ID checks). */
 export const specDocs = (extraText = ""): Record<string, string> => ({
-  "docs/specs/050-page.md": "# Page spec\n\nFOO-001 BAR-002 TST-E2E-004 SPEC-050 section 31\n",
+  "docs/specs/050-page.md": [
+    "# Page spec",
+    "",
+    "FOO-001 BAR-002 TST-E2E-004 SPEC-050 section 31",
+    "",
+    "## 8. Navigation",
+    "",
+    "### 8.5 Global Header",
+    "",
+    "## 14A. Extra",
+    "",
+    "```",
+    "## 99. heading inside a code fence",
+    "```",
+    "",
+    "## 31. Page Acceptance",
+    "",
+    "1. first",
+    "2. second",
+    "3. third",
+    "",
+    "## 32. Boundary",
+    "",
+    "4. belongs to section 32",
+    "",
+  ].join("\n"),
   "docs/specs/170-test.md": `# Test spec\n\nTST-E2E-004 ${extraText}\n`,
 });
 
