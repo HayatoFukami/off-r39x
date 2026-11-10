@@ -1123,6 +1123,7 @@ Test:
 - sliding window log: 各classで、上限ちょうどのrequestは許可され、上限+1は拒否される。窓境界をまたぐ配置（固定窓なら上限の2倍通る配置）で、任意のwindow内のadmit数が上限を超えない
 - burstとsustainedの両方が評価される。片方だけの超過でも拒否される
 - 1回の評価に含まれる複数ruleのうち1つでも超過すれば、**その評価の全counterが変化しない**（拒否された評価がcounterを消費しない）
+- `self_read` と `staff_checkin` のIP ruleは、追加ruleのIP上限（240/60秒、300/60秒）だけで評価され、IP keyにburst / sustainedは適用されない（`SEC-ABU-026`）
 - 並行N requestで、上限Lに対しadmit数がL以下である（barrier付き並行harness）
 - 時刻はstore側の時計で判定され、複数API processでずれても結果が変わらない
 - `Retry-After` は超過した全ruleのうち最長を整数秒に切り上げた値（最小1）である
@@ -1143,6 +1144,7 @@ Test:
 - 評価順: 段階1（IP等）→ token検証 → 段階2（subject / resource）が `SPEC-110` §24.1 の位置にあり、いずれもDB accessの前である。`429` / `503` の時点でEmail verified check以降へ進まない
 - 段階2は、token検証とAuth Subject取得（DBなし）の後、Principal / Business Profile解決（DBあり）の前に評価される。段階2が `429` / `503` の場合、Principal解決のためのDB accessが1件も発生しない
 - 評価の独立性: 段階1でadmitされ段階2で拒否されたrequestは、段階1のruleのcounterを消費し、段階2のcounterは変化しない（`SEC-ABU-013`）
+- `self_read` と `staff_checkin` で、段階1に評価されるのはIP ruleだけ、段階2に評価されるのはsubjectのburst / sustained（と `staff_checkin` のQR digest）だけであり、評価されるruleとその数が `SEC-ABU-026` の表どおりに固定される
 - health endpointとCORS preflightは対象外で、storeへ問い合わせない
 - 未一致pathと未対応methodは `public_read` のper-IP ruleだけで評価され、global ruleを消費しない
 - `429` と `503` のresponseにcounter key、該当rule、Email、Auth Subject、IPが含まれない
@@ -1158,7 +1160,7 @@ Test:
 - `auth_failure_guard_attendee` と `auth_failure_guard_operator` が独立して設定・評価される
 - 並行する失敗requestによるlimit超過（overrun）はguardに限って許容し、他のruleでは許容しない
 
-**TST-RLM-006:** 設定をtable-drivenでTestする。`RATE_LIMIT_CONFIG` が、欠落・0・負数・非整数・parse不能・canonical ceiling超過・Class ID欠落のいずれかなら、staging / productionでReady=falseになり、暗黙fallbackしない。`TRUSTED_PROXY_HOPS` が未設定・負数・非整数ならReady=falseで、`0` はdirect peerを意味する有効値である。`RATE_LIMIT_HMAC_KEY` / version欠落でReady=falseになる。development / testではceiling以下の小さい値を設定できる。
+**TST-RLM-006:** 設定をtable-drivenでTestする。`RATE_LIMIT_CONFIG` が、欠落・0・負数・非整数・parse不能・canonical ceiling超過・Class ID欠落のいずれかなら、staging / productionでReady=falseになり、暗黙fallbackしない。`TRUSTED_PROXY_HOPS` が未設定・負数・非整数ならReady=falseで、`0` はdirect peerを意味する有効値である。追加ruleの `window_seconds` がcanonical値と異なる場合（短縮も延長も）もReady=falseになる。例えば `auth_form_proxy.identifier`（5回/600秒）を `limit=5, window_seconds=1` にしても検証を通過しない。`limit` だけをceiling以下に下げる設定は通る。`RATE_LIMIT_HMAC_KEY` / version欠落でReady=falseになる。development / testではceiling以下の小さい値を設定できる。
 
 **TST-RLM-007:** `SPEC-110` §56.1 の割当をTestする。全canonical Operation IDがexactly 1つのClass IDに属し、割当表にないOperation IDをrouteとして登録するとstartupおよびtestで検出される。割当表のClass ID（Operation用の13個）が、`SPEC-140` §68のClass ID集合から `auth_failure_guard_attendee` / `auth_failure_guard_operator` を除いた集合と一致する。guard 2種は割当表のclassではなく、§68.1の対象class（`purchase_checkout`、`qr_display`、`profile_mutation`、`goods_handoff`、`admin_mutation`、`role_assignment`、`high_risk_recovery`）に付随するため、割当表との一致とは別に、§68にguard 2種のClass IDが存在することと、各guardの適用先が§68.1の表のとおりであることをTestする（`TST-RLM-005`）。
 

@@ -1129,7 +1129,7 @@ sustained_window_seconds = 60
 
 Productionでは下表の値を**上限**とする。より厳しくすることは可能だが、上限を増やす場合はSPEC-140変更を必要とする。
 
-**SEC-ABU-010:** §68の各Class ID（「Class ID」列）のburst / sustained上限と追加ruleの上限は、実装内のcanonical ceilingとして保持する。runtime configurationは各classの `burst_limit` / `sustained_limit` と追加rule値を与える。staging / productionでは全値が正の整数かつ対応するcanonical ceiling以下でなければならず、欠落・0・負数・非整数・parse不能・ceiling超過は `SEC-ABU-002` に従いserviceをReadyにしない。configuration欠落時にceiling値へ暗黙fallbackしない。development / testはceiling以下のより小さい値を設定してよい。変数名と形式は `SPEC-180` が定義する。
+**SEC-ABU-010:** §68の各Class ID（「Class ID」列）のburst / sustained上限と追加ruleの上限は、実装内のcanonical ceilingとして保持する。runtime configurationは各classの `burst_limit` / `sustained_limit` と追加rule値を与える。staging / productionでは全値が正の整数かつ対応するcanonical ceiling以下でなければならず、欠落・0・負数・非整数・parse不能・ceiling超過は `SEC-ABU-002` に従いserviceをReadyにしない。追加ruleの `window_seconds` は§68に記載されたwindowに**固定**され、runtime configurationで変更できない。変更できるのは `limit` だけで、canonical ceiling以下に限る。windowを短縮すると、同じ `limit` でもwindowあたりの許可数が増えてcanonical上限を実質的に緩和し、延長するとcanonicalの意図と異なる制限になるため、canonical値と一致しない `window_seconds` は欠落・ceiling超過と同じく `SEC-ABU-002` に従いReadyにしない。configuration欠落時にceiling値へ暗黙fallbackしない。development / testはceiling以下のより小さい値を設定してよい。変数名と形式は `SPEC-180` が定義する。
 
 ### 67.2 Shared enforcement semantics
 
@@ -1187,6 +1187,15 @@ Productionでは下表の値を**上限**とする。より厳しくすること
 Self readのclassは、本人のread operationに加え、Administrator / Staffが行うread operation（`SPEC-110` のAdministrator read catalog等）にも適用する。各operationが属するclassは `SPEC-110` の「Rate limit class assignment」が定義する。
 
 Class IDは `SPEC-110` のassignment、runtime configuration、metric label、testで同一の綴りを使う。
+
+**SEC-ABU-026:** §68の各classで、burst / sustainedは「Keys」列の**先頭のkey**にだけ適用する。「Keys」列に `+ per-IP` を持つclass（`self_read`、`staff_checkin`）では、2つ目のIP keyにburst / sustainedを適用せず、「Additional」列の `IP N/min` だけを適用する。評価されるruleは次のとおりである。
+
+| class | 段階1（token検証前） | 段階2（token検証後） |
+|---|---|---|
+| `self_read` | IP 240/60秒 | auth subjectのburst 30/10秒、sustained 120/60秒 |
+| `staff_checkin` | IP 300/60秒 | staff subjectのburst 40/10秒、sustained 180/60秒。resource / QR digest 30/60秒 |
+
+共有IPの来場者・Staffは、IP単位のburstではなく、IP単位の上限（`self_read` は240/分、`staff_checkin` は300/分）で制限される。Additional列のwindowは、`/min` が60秒、`/10min` が600秒、`/hour` が3600秒であり、いずれも固定である（`SEC-ABU-010`）。Keysがper-IPだけのclassでは、IP keyにburst / sustainedを適用する。
 
 **SEC-ABU-003:** Staff Check-inは当日burstを許容するためPublic mutationより高いlimitを持つが、Staff Role / Capability検証をskipしない。
 

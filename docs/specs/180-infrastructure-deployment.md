@@ -752,7 +752,7 @@ Startup validation:
 | `RATE_LIMIT_CONFIG` | non-secret JSON | `SPEC-140` §68のClass IDをkeyとするobject。各classは `burst_limit`、`sustained_limit` と、追加ruleの `additional` を持つ |
 | `TRUSTED_PROXY_HOPS` | non-secret integer（0以上） | Client IP導出で信頼するproxy段数（`SEC-API-030`）。`0` はdirect peerを使用する明示値 |
 
-**INF-RLS-009:** `RATE_LIMIT_CONFIG` はZodで検証し、`SEC-ABU-010` に従ってstaging / productionで全Class IDの全値が正の整数かつcanonical ceiling以下であることを確認する。追加ruleは、§68の「Additional resource/global rule」列の各ruleへ実装が一意のrule IDを与え、`additional` に `limit` と `window_seconds` を持たせる。rule ID一覧とschemaが `SPEC-140` §68の値と一致することはtestで検証する（`SPEC-170`）。
+**INF-RLS-009:** `RATE_LIMIT_CONFIG` はZodで検証し、`SEC-ABU-010` に従ってstaging / productionで全Class IDの全値が正の整数かつcanonical ceiling以下であることを確認する。追加ruleは、§68の「Additional resource/global rule」列の各ruleへ実装が一意のrule IDを与え、`additional` に `limit` と `window_seconds` を持たせる。`window_seconds` は§68のcanonical windowと**厳密に一致**しなければならず、短縮・延長を問わず不一致はReady=falseとする。変更できるのは `limit` だけで、ceiling以下に限る（`SEC-ABU-010`）。rule ID一覧とschemaが `SPEC-140` §68の値と一致することはtestで検証する（`SPEC-170`）。
 
 ## 29. Provider webhook Secret rotation
 
