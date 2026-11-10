@@ -466,7 +466,7 @@ Railwayから`SIGTERM`を受けたprocessは次を実行する。
 
 | # | 確認する外部事実 | 確認の場所 | Production promotionをblockするか |
 |---|---|---|---|
-| 1 | Railway ingressが付与するforwarded headerと、信頼すべきproxy段数（`TRUSTED_PROXY_HOPS` の値） | staging | Yes。staging確認前はProduction promotionしない |
+| 1 | Railway ingressが付与するforwarded headerと、信頼すべきproxy段数（`TRUSTED_PROXY_HOPS` の値）。本書とSPEC-140 `SEC-API-031` は暫定で `X-Forwarded-For` の右から `N` 番目を採用する | staging | Yes。staging確認前はProduction promotionしない |
 | 2 | Railway Redisのprivate network内TLS提供の有無 | staging | No |
 | 3 | Railway Redisの実バージョン | staging | No（確認後にCI versionを同一majorへ合わせる） |
 | 4 | `maxmemory-policy noeviction` と `maxmemory` をRailway Redisで設定できること | staging | Yes |

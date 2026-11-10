@@ -741,7 +741,8 @@ ratelimit.decision.completed
 | Field | 内容 |
 |---|---|
 | `class_id` | `SPEC-140` §68のClass ID（有限集合） |
-| `result` | `allowed` / `rejected` / `store_unavailable` |
+| `result` | 共通の `result` enum（§15。`SUCCESS\|REJECTED\|FAILED\|PENDING\|NOOP`）。`rejected` → `REJECTED`、`store_unavailable` → `FAILED`。`allowed` は本eventを出力しない |
+| `error_code` | `rejected` → `RATE_LIMIT_EXCEEDED`、`store_unavailable` → `TEMPORARY_UNAVAILABLE` |
 | `rule_category` | `burst` / `sustained` / `resource` / `global` / `guard`（`rejected`時の該当categoryのうち最初のもの） |
 | `operation_id` | `SPEC-110` のOperation ID（Operation IDを持たないrouteは省略） |
 | `retry_after_seconds` | `rejected`時のみ |
@@ -749,7 +750,7 @@ ratelimit.decision.completed
 `ratelimit.decision.completed` は `rejected` と `store_unavailable` のときに出力する。`allowed` はmetricだけで観測し、request単位のlogを出さない。`store_unavailable` の場合は `security.fail_closed.triggered`（control category `rate_limit`）も出力する。
 
 **OBS-SEC-007:** counter key、IP、Auth Subject、Email、QR digest、resource referenceをlog field、metric label、trace attributeに出さない。
-**OBS-SEC-008:** `store_unavailable` は `rejected` と別の結果として観測し、sampling dropしない。
+**OBS-SEC-008:** `store_unavailable`（`FAILED` / `TEMPORARY_UNAVAILABLE`）は `rejected`（`REJECTED` / `RATE_LIMIT_EXCEEDED`）と別の結果として観測し、sampling dropしない。metric `r39x_rate_limit_decisions_total` の `result` label（`allowed` / `rejected` / `store_unavailable`）は本eventの共通 `result` とは別の有限集合である。
 **OBS-SEC-009:** 判定は `r39x_rate_limit_decisions_total` で全件数える。log出力を省略した `allowed` もmetricには含める。
 
 ## 25. Stripe / Payment / Refund observability
@@ -1380,6 +1381,9 @@ Provider call seconds:
 
 Webhook handler seconds:
 0.05, 0.1, 0.25, 0.5, 1, 2, 4, 6, 8
+
+Rate limit store operation seconds:
+0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25
 ```
 
 ## 42. Canonical metric catalog
@@ -2025,6 +2029,11 @@ Implementation MUST satisfy all of the following.
 Canonical化済みのRecovery command（`API-ADM-REC-003〜007`）は、本書の `OBS-AUD-011`、`OBS-AUD-012`、`OBS-REC-*`、Correlation、Metric、Alert contractをそのexact Operation IDへ適用する。SPEC-160側でgeneric Recovery APIを追加しない。
 
 `UCR-140-003`（共有rate limit）に伴い、本改訂（v2.2.0）で §24.1（event `ratelimit.decision.completed`）、§40（allowed label `class_id`）、§42（`r39x_rate_limit_decisions_total` / `r39x_rate_limit_store_duration_seconds`）、§47（`OBS-ALT-041`）を追加した。`SPEC-140` Part XIII と `SPEC-150` §58.1 の意味を観測する追加であり、rate limitのstate / API / Capabilityを追加・変更しない。
+
+`UCR-140-003` の実装で見つかった次の2点を、同じ改訂（v2.2.0）で反映した。
+
+- **UCR-RLM-IMPL-001:** `r39x_rate_limit_store_duration_seconds` のbucket境界が §41 に未定義だった。store deadline（250 ms、`SPEC-150` §9）以内に収まる境界として、§41 に `0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25` 秒を追加した。
+- **UCR-RLM-IMPL-002:** §24.1 の `result` が共通 `result` enum と対応していなかった。`rejected` を `REJECTED`、`store_unavailable` を `FAILED` に対応させ、区別を `error_code` で行うと定めた。
 
 ---
 

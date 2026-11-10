@@ -1145,10 +1145,13 @@ Test:
 - 未一致pathと未対応methodは `public_read` のper-IP ruleだけで評価され、global ruleを消費しない
 - `429` と `503` のresponseにcounter key、該当rule、Email、Auth Subject、IPが含まれない
 - resource keyの評価は、存在するresourceと存在しないresourceで同一結果になる
+- `auth_form_proxy` のlogin identifierはJSON bodyの `email` から取り出され、上限（64 KiB・3秒）超過、JSON不正、`email` 欠落のときはidentifier ruleだけが省略され、per-IP ruleは常に評価される（`SEC-ABU-024`）
+- 段階1の `429` / `503` は、exactなWeb originに対してだけ `Access-Control-Allow-Origin` と `Access-Control-Expose-Headers: X-Request-Id, Retry-After` を返し、他のOriginやOriginなしにはCORS headerを付けない（`SEC-ABU-025`）
 
 **TST-RLM-005:** Authentication-failure guardを次のとおりTestする。
 
 - token検証に失敗したrequestだけを数え、有効tokenのrequest、Email未検証、Authorization denial、Business Rule失敗は数えない
+- `Authorization` headerの欠落・形式不正、署名・期限・issuer等が無効なtokenは数え、認証基盤に到達できずtokenの有効性を判定できなかった場合は数えない（`SEC-ABU-020`）
 - 段階1で上限以上なら `429` を返し、token検証へ進まない
 - `auth_failure_guard_attendee` と `auth_failure_guard_operator` が独立して設定・評価される
 - 並行する失敗requestによるlimit超過（overrun）はguardに限って許容し、他のruleでは許容しない
@@ -1157,9 +1160,9 @@ Test:
 
 **TST-RLM-007:** `SPEC-110` §56.1 の割当をTestする。全canonical Operation IDがexactly 1つのClass IDに属し、割当表にないOperation IDをrouteとして登録するとstartupおよびtestで検出される。割当表のClass IDが `SPEC-140` §68のClass ID集合と一致する。
 
-**TST-RLM-008:** Client IP導出をTestする。`TRUSTED_PROXY_HOPS` が `N` のとき、信頼するproxyがN段付与した部分だけからClient IPを導出し、Clientが偽装しうるforwarded headerの部分を採用しない。`0` ではforwarded headerを一切採用せずdirect peerを使用する（`SEC-API-024〜025`、`SEC-API-030`）。具体的なheader名と段数はRailway ingressの外部事実であり（`SPEC-180` §17.2 #1）、Testはfixtureで定義した合成headerだけを使用する。
+**TST-RLM-008:** Client IP導出をTestする。`TRUSTED_PROXY_HOPS` が `N` のとき、信頼するproxyがN段付与した部分だけからClient IPを導出し、Clientが偽装しうるforwarded headerの部分を採用しない。`0` ではforwarded headerを一切採用せずdirect peerを使用する（`SEC-API-024〜025`、`SEC-API-030`）。参照するheaderは `X-Forwarded-For` だけで、右から `N` 番目を採用する。`N=0`、header欠落、要素数が `N` 未満、または解釈できない要素のときはdirect peerを使用し、direct peerも得られない場合は `503 TEMPORARY_UNAVAILABLE` になる（`SEC-API-031`）。具体的なheader名と段数はRailway ingressの外部事実であり（`SPEC-180` §17.2 #1）、Testはfixtureで定義した合成headerだけを使用する。
 
-**TST-RLM-009:** rate limitのeventとmetricをTestする。`ratelimit.decision.completed` は `rejected` / `store_unavailable` のときに出力され、`allowed` はmetricのみである。`r39x_rate_limit_decisions_total` はlabelが `SPEC-160` §40 の許可集合に収まり、counter key・IP・subjectを含まない。`store_unavailable` はsampling dropされない。
+**TST-RLM-009:** rate limitのeventとmetricをTestする。`ratelimit.decision.completed` は `rejected` / `store_unavailable` のときに出力され、共通 `result` は `REJECTED` / `FAILED`、`error_code` は `RATE_LIMIT_EXCEEDED` / `TEMPORARY_UNAVAILABLE` になる。`allowed` はmetricのみである。`r39x_rate_limit_decisions_total` はlabelが `SPEC-160` §40 の許可集合に収まり、counter key・IP・subjectを含まない。`store_unavailable` はsampling dropされない。
 
 ---
 

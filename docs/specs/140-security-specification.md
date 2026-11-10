@@ -678,6 +678,8 @@ Public APIをBrowser direct readへ開放する必要がある場合も、Origin
 
 **SEC-API-030:** staging / productionでは、rate limitが使用するClient IPの導出方法を明示的なruntime configuration（信頼するproxy段数を表す0以上の整数。名称は `SPEC-180` が定義する）で与える。未設定、負数、非整数、parse不能はstartup security configuration failureとしてserviceをReadyにしない。`0` は「trusted proxyなし。direct peerを使用する」を明示する値であり、未設定とは区別する。Railway ingressが実際に付与するheaderと段数は外部事実であり、本書は捏造しない。`SPEC-180` が定める検証gateを通過するまで、段数を確定値として扱わない。
 
+**SEC-API-031:** rate limitのClient IPは次の手順で導出する。参照するforwarded headerは `X-Forwarded-For` だけとし、`Forwarded`、`X-Real-IP` 等の他のheaderはClient IPの導出に使用しない。信頼するproxy段数が `N`（1以上）のとき、`X-Forwarded-For` をカンマで分割した要素の右から `N` 番目をClient IPとする。`N` が `0` の場合、headerが欠落している場合、要素数が `N` 未満の場合、または該当要素をIPアドレスとして解釈できない場合は、direct peerのアドレスを使用する（`SEC-API-025`）。direct peerのアドレスも得られずClient IPを導出できない場合は、IP単位のruleを評価できないため、`503 TEMPORARY_UNAVAILABLE` でFail Closedとする（`SEC-ABU-019`）。参照するheader名と段数はRailway ingressの外部事実であり、`SPEC-180` §17.2 #1 の確認結果によって変更しうる。
+
 ## 37. Enumeration resistance
 
 **SEC-API-027:** Login、Password reset、Email verification開始等、Account存在を不要に開示するoperationは、成功 / 不存在でUser-visible文言とresponse timing差を過度に変えない。Providerがgeneric responseを返せる場合はそれを維持する。
@@ -1199,11 +1201,17 @@ token検証が成功して初めて得られるkey（Auth Subject）だけを持
 
 **SEC-ABU-020:** guardは**token検証に失敗したrequestだけ**をIPごとに数える。token検証に成功したrequestはguardのcounterに影響しない。Email未検証（`EMAIL_VERIFICATION_REQUIRED`）、Authorization denial、Business Rule失敗はguardに記録しない。会場の共有Wi-Fi・キャリアNAT等で多数の正規利用者が同一IPを共有しても、正規利用者の通常requestがguardを消費しないためである。
 
+数える「token検証の失敗」は、`Authorization` headerの欠落または形式不正、およびtokenの署名・期限・issuer等の検証で無効と判定された場合である。認証基盤に到達できないなど、tokenの有効性を判定できなかった場合は、利用者の落ち度ではないため数えない（`503` 相当として扱い、guardに記録しない）。
+
 **SEC-ABU-021:** guardは次の順で動作する。(1) 段階1（`SEC-ABU-017`）で、そのIPの現在の失敗数がburst / sustainedのどちらかのlimit以上かを**確認だけ**する（記録しない）。limit以上なら `429 RATE_LIMIT_EXCEEDED` で拒否し、token検証へ進まない。(2) 上限未満ならtokenを検証する。(3) 検証に失敗した場合だけ、そのIPのguard counterへ1件記録して `401` を返す。(1)の確認と(3)の記録は別のstore操作であり、並行する失敗requestの数だけ一時的にlimitを超える記録が生じうる。このoverrunは、guardに限り許容する（§68の他ruleには許容しない）。
 
 **SEC-ABU-022:** guardの2つのClass IDは、会場運用に合わせて別々の値を設定できる。各値は§68の上限を超えない。guardのlimitは「token検証失敗の回数」であり、通常requestの上限ではない。
 
 **SEC-ABU-023:** `SEC-ABU-020` は、Auth Subjectを持たないclass（`public_read`、`auth_form_proxy`、webhook）、およびIPのkeyを既に持つclass（`self_read`、`staff_checkin`）には適用しない。これらは§68の既存IP ruleで評価される。
+
+**SEC-ABU-024:** `auth_form_proxy` の「正規化済みlogin identifier」は、POST requestのJSON bodyの `email` fieldを正規化したものとする。bodyは先頭から最大64 KiB、読み取りは最大3秒までとし、上限超過、JSON不正、`email` の欠落、または読み取りのtimeoutによりidentifierを取り出せない場合は、**identifier ruleだけを省略**する。per-IPのburst / sustained ruleは、identifierの取り出しの成否にかかわらず常に評価する。この省略により、identifier単位のruleを巨大なbody等で回避できるが、IP単位のruleは回避できない。
+
+**SEC-ABU-025:** 段階1（`SEC-ABU-017`）の `429` / `503` はCORS処理より前に返りうる。この応答では、requestの `Origin` がexactなWeb originと完全一致する場合に限り、その値を `Access-Control-Allow-Origin` に返し、`Vary: Origin` と `Access-Control-Expose-Headers: X-Request-Id, Retry-After` を付ける。これによりBrowserが `Retry-After` を読める。一致しない場合、またはOriginがない場合はCORS headerを付けない。`*` は返さない（`SEC-API-006`）。`/api/v1/*` では `Access-Control-Allow-Credentials` を付けない（`SEC-API-007`）。
 
 ## 69. Auth provider abuse boundary
 
@@ -1747,6 +1755,16 @@ Production startup / readinessで最低限次を検証する。
 - **残作業（未確認事項。仕様は外部事実を捏造しない）:** (1) Railway ingressが付与するforwarded headerと信頼段数、(2) Railway RedisのTLS提供の有無、(3) Railway Redisの実バージョン。これらは `SPEC-180` の検証gateとして管理する。
 - **別途検討（本UCRの契約に含めない）:** store障害時のprocess-localの縮退運用、store側の高可用化。採用する場合は新たなUCRを発行する。
 - **参考（SPEC-140 §68 の追加）:** `profile_mutation` class と2つの `auth_failure_guard_*` class は本UCRで追加した。値は上流仕様に根拠がなく本UCRでの運用判断であり、運用では天井以下（より厳しい方向）にのみ設定を変更できる（`SEC-ABU-010`）。
+
+### 101.5 UCR-RLM-IMPL-003 / 004 / 005 / 006 — INCORPORATED
+
+`UCR-140-003` の実装（`packages/security`、`apps/api`）で、仕様が定めていない判断が必要になった。実装が採用した振る舞いを、本改訂（v2.4.0。`UCR-140-003` と同じ未リリース改訂）で本文へ取り込んだ。
+
+- **UCR-RLM-IMPL-003:** 対象 `SEC-ABU-020` / `SEC-ABU-021`。現在の仕様は「token検証に失敗したrequestだけ」を数えるとするだけで、`Authorization` header欠落・形式不正と、認証基盤への到達不能を含むかが未定義だった。決定: 欠落・形式不正・署名／期限／issuer等の無効判定を数え、tokenの有効性を判定できなかった場合は数えない。理由: 認証基盤の障害で正規利用者がguardに入る事態を避けるため。**本書側反映:** `SEC-ABU-020`。
+- **UCR-RLM-IMPL-004:** 対象 `SEC-API-024` / `SEC-API-025` / `SEC-API-030`、`SPEC-180` §17.2 #1。参照するforwarded header名と、Client IPを得られない場合の扱いが未定義だった。決定: `X-Forwarded-For` の右から `N` 番目を使い、`N=0`・header欠落・段数不足・解釈不能ならdirect peer、direct peerも無ければ `503`。header名と段数は外部事実であり、`SPEC-180` のgateで確認する。**本書側反映:** `SEC-API-031`。
+- **UCR-RLM-IMPL-005:** 対象 §68 の `auth_form_proxy`、`SEC-ABU-015`。login identifierの抽出元と、取り出せない場合の扱いが未定義だった。決定: POST JSON bodyの `email`（最大64 KiB・3秒）、取り出せなければidentifier ruleだけ省略しper-IP ruleは常に評価する。残るリスク: bodyを巨大にしてidentifier ruleを回避できる。IP ruleは回避できない。**本書側反映:** `SEC-ABU-024`。
+- **UCR-RLM-IMPL-006:** 対象 `SPEC-110` §21 の `429` / `503` とCORS。段階1の応答はCORS処理より前に返るため、Browserが `Retry-After` を読めるかが未定義だった。決定: exactなWeb originだけを返し、`Retry-After` をexposeする。CORSの最終値の所有者は本書であるため本書に規則を置く。**本書側反映:** `SEC-ABU-025`。`SPEC-110` §21 から参照する。
+- 影響を受ける可能性がある仕様書: SPEC-110, SPEC-170, SPEC-180
 
 ---
 

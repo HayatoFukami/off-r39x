@@ -466,7 +466,7 @@ listも同じ`data`内に`items/page`を持つ。
 
 `405 METHOD_NOT_ALLOWED` には、そのpathで対応するHTTP methodを列挙した `Allow` headerを付ける。どのrouteにも一致しないpathは、methodによらず `404 RESOURCE_NOT_FOUND` とする。405 / 415 は `SEC-API-022` の分類であり、Domain state conflictやAuthentication / Authorizationの結果へ変換しない。
 
-`429 RATE_LIMIT_EXCEEDED` には整数秒の `Retry-After` headerを必ず付ける（`SEC-ABU-007`）。`details` は `null` とし、counter key、該当したrule、Email、Auth Subject、IPを含めない。rate limit storeが利用できず上限を判定できない場合は `429` ではなく `503 TEMPORARY_UNAVAILABLE` を返し、上限超過と判定不能を同一視しない（`SEC-ABU-009` / `SEC-ABU-019`）。`429` / `503` を返したrequestはDomain stateを変更しない。
+`429 RATE_LIMIT_EXCEEDED` には整数秒の `Retry-After` headerを必ず付ける（`SEC-ABU-007`）。`details` は `null` とし、counter key、該当したrule、Email、Auth Subject、IPを含めない。rate limit storeが利用できず上限を判定できない場合は `429` ではなく `503 TEMPORARY_UNAVAILABLE` を返し、上限超過と判定不能を同一視しない（`SEC-ABU-009` / `SEC-ABU-019`）。`429` / `503` を返したrequestはDomain stateを変更しない。段階1の `429` / `503` はCORS処理より前に返りうるため、exactなWeb originに対してだけ `Access-Control-Allow-Origin` と `Access-Control-Expose-Headers: X-Request-Id, Retry-After` を付ける（`SPEC-140` `SEC-ABU-025`）。
 
 Known DB constraint loserは一律500にしない。`23505` / `23P01`等はconstraint名とcurrent stateを再読込し、既知の競合 / idempotent duplicateへ分類する。未知constraint violationは`INTERNAL_ERROR`か`CONSISTENCY_REVIEW_REQUIRED`として内部監視対象にする。
 
@@ -2347,3 +2347,7 @@ retry count / backoff / queue / operator RunbookはSPEC-150。本書§48.5はSPE
 - §21: `429 RATE_LIMIT_EXCEEDED`（`Retry-After`必須、`Retryable=Yes`）を追加し、rate limit storeが利用できない場合を `503 TEMPORARY_UNAVAILABLE` に含めた。
 - §24.1: rate limitの評価位置（段階1・Authentication-failure guardの記録・段階2・resource key）を、§24の手順1〜9の順序を変えずに定義した。
 - §56.1: 全canonical Operation IDのrate limit class割当を追加した（`API-RLC-001`〜`003`）。classを持たないOperationをReadyにしない。
+
+### UCR-RLM-IMPL-006 — INCORPORATED
+
+`UCR-140-003` の実装で、段階1の `429` / `503` がCORS処理より前に返るため、Browserが `Retry-After` を読めない問題が見つかった。`SPEC-140` が `SEC-ABU-025`（v2.4.0）で規則を定め、本書は §21 からそれを参照する。API Operation、Capability、状態は追加・変更しない。
