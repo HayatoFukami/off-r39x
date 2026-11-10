@@ -19957,7 +19957,7 @@
       "test_case_id": "TC-RLM-004-208",
       "level": "API",
       "suite": "api",
-      "upstream_rule_ids": ["TST-RLM-004", "SEC-ABU-019", "SEC-API-025"],
+      "upstream_rule_ids": ["TST-RLM-004", "SEC-ABU-019", "SEC-API-025", "SEC-API-031"],
       "system_invariant_ids": [],
       "api_operation_ids": ["API-AUTH-001"],
       "db_constraint_names": [],
@@ -20095,7 +20095,7 @@
       "test_case_id": "TC-RLM-004-214",
       "level": "API",
       "suite": "api",
-      "upstream_rule_ids": ["TST-RLM-004", "SEC-ABU-007", "SEC-ABU-009"],
+      "upstream_rule_ids": ["TST-RLM-004", "SEC-ABU-007", "SEC-ABU-009", "SEC-ABU-025"],
       "system_invariant_ids": [],
       "api_operation_ids": ["API-AUTH-001"],
       "db_constraint_names": [],
@@ -20107,6 +20107,75 @@
       "expected_http": [200, 429, 503],
       "expected_domain_postconditions": [
         "a Stage 1 429 or 503 is readable by the exact Web origin (Retry-After exposed) and by no other origin"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-004-215",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["TST-RLM-004", "SEC-ABU-025", "SEC-ABU-017"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [200, 429],
+      "expected_domain_postconditions": [
+        "a Stage 1 429 on /auth/* is readable by the exact Web origin only"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-004-216",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["TST-RLM-004", "SEC-ABU-024", "SEC-ABU-015", "SEC-ABU-017"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [200, 400, 413, 429],
+      "expected_domain_postconditions": [
+        "an unreadable identifier (over 64 KiB, invalid JSON, no email) skips only the identifier rule; the per-IP rule still applies"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-004-217",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["TST-RLM-004", "SEC-ABU-024", "SEC-ABU-015"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "a body that stalls past 3 seconds leaves only the identifier rule out"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -20590,7 +20659,13 @@
       "test_case_id": "TC-RLM-008-001",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["TST-RLM-008", "SEC-API-024", "SEC-API-025", "SEC-API-030"],
+      "upstream_rule_ids": [
+        "TST-RLM-008",
+        "SEC-API-024",
+        "SEC-API-025",
+        "SEC-API-030",
+        "SEC-API-031"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -20602,6 +20677,29 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "only the trusted proxy part of the forwarded header is used"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-RLM-008-002",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["TST-RLM-008", "SEC-API-031", "SEC-API-024", "SEC-API-025"],
+      "system_invariant_ids": [],
+      "api_operation_ids": ["API-AUTH-001"],
+      "db_constraint_names": [],
+      "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [200, 429],
+      "expected_domain_postconditions": [
+        "only X-Forwarded-For is read; other forwarded headers and missing, short or unreadable chains use the direct peer"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],

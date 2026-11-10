@@ -49,6 +49,10 @@ describe("rate limit metrics (OBS-SEC-007..009, SPEC-160 §40/§42)", () => {
   });
 
   it("TC-RLM-009-110 r39x_rate_limit_store_duration_seconds is a histogram bounded by the 250 ms store deadline", () => {
+    // SPEC-160 §41 fixes the eight boundaries (seconds).
+    expect([...RATE_LIMIT_STORE_BUCKETS]).toEqual([
+      0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25,
+    ]);
     expect(Math.max(...RATE_LIMIT_STORE_BUCKETS)).toBeLessThanOrEqual(0.25);
     expect([...RATE_LIMIT_STORE_BUCKETS]).toEqual(
       [...RATE_LIMIT_STORE_BUCKETS].sort((a, b) => a - b),

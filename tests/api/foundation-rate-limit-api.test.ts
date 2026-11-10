@@ -330,15 +330,156 @@ describe("browser visibility of rate limit responses (SEC-ABU-007, SPEC-110 §21
     const rejected = await h.get({ headers: { Origin: WEB } });
     expect(rejected.status).toBe(429);
     expect(rejected.headers.get("Access-Control-Allow-Origin")).toBe(WEB);
-    expect(rejected.headers.get("Access-Control-Expose-Headers")).toContain("Retry-After");
+    expect(rejected.headers.get("Access-Control-Expose-Headers")).toBe("X-Request-Id, Retry-After");
+    expect(rejected.headers.get("Vary")).toContain("Origin");
+    // SEC-ABU-025 / SEC-API-007: no credentialed CORS on /api/v1/*, and never a wildcard.
+    expect(rejected.headers.get("Access-Control-Allow-Credentials")).toBeNull();
     expect(rejected.headers.get("Retry-After")).toMatch(/^[1-9]\d*$/);
+    const none = await h.get();
+    expect(none.status).toBe(429);
+    expect(none.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    expect(none.headers.get("Access-Control-Expose-Headers")).toBeNull();
     const foreign = await h.get({ headers: { Origin: "https://evil.example.test" } });
     expect(foreign.status).toBe(429);
     expect(foreign.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    expect(foreign.headers.get("Access-Control-Expose-Headers")).toBeNull();
     h.trs.faults.inject("FP.RATELIMIT.STORE_UNAVAILABLE");
     const unavailable = await h.get({ ip: "203.0.113.50", headers: { Origin: WEB } });
     expect(unavailable.status).toBe(503);
     expect(unavailable.headers.get("Access-Control-Allow-Origin")).toBe(WEB);
+    expect(unavailable.headers.get("Access-Control-Allow-Credentials")).toBeNull();
+  });
+
+  it("TC-RLM-004-215 a Stage 1 429 on /auth/* is readable by the exact Web origin only", async () => {
+    const { app, trs } = authApp({ burst: 1 });
+    const post = (headers: Record<string, string>) =>
+      app.request(
+        new Request("https://api.example.test/auth/sign-in/email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...headers },
+          body: JSON.stringify({ email: "cors@example.test", password: "synthetic" }),
+        }),
+        undefined,
+        peer("203.0.113.60"),
+      );
+    expect((await post({ Origin: WEB })).status).toBe(200);
+    const rejected = await post({ Origin: WEB });
+    expect(rejected.status).toBe(429);
+    expect(rejected.headers.get("Access-Control-Allow-Origin")).toBe(WEB);
+    expect(rejected.headers.get("Access-Control-Expose-Headers")).toBe("X-Request-Id, Retry-After");
+    expect(rejected.headers.get("Retry-After")).toMatch(/^[1-9]\d*$/);
+    const foreign = await post({ Origin: "https://evil.example.test" });
+    expect(foreign.status).toBe(429);
+    expect(foreign.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    expect(trs.store.calls.length).toBeGreaterThan(0);
+  });
+});
+
+/** The production app with the real auth proxy; the identifier rule allows 1 and the IP burst is configurable. */
+function authApp(options: { burst: number }) {
+  let transportCalls = 0;
+  const proxy = createAuthProxy(
+    {
+      baseUrl: "https://neon.example.test/auth",
+      publicAuthOrigin: "https://api.example.test",
+      webOrigin: WEB,
+    },
+    async () => {
+      transportCalls += 1;
+      return Response.json({ ok: true });
+    },
+  );
+  const trs = createTestRateLimit({
+    overrides: {
+      auth_form_proxy: {
+        burst_limit: options.burst,
+        sustained_limit: 20,
+        additional: { "auth_form_proxy.identifier": { limit: 1, window_seconds: 600 } },
+      },
+    },
+  });
+  const app = createApp({
+    webOrigin: WEB,
+    ready: async () => true,
+    authProxy: proxy,
+    rateLimit: trs.rateLimit,
+  });
+  return { app, trs, transportCalls: () => transportCalls };
+}
+const IDENTIFIER_WINDOW_MS = 600_000;
+const hasIdentifierRule = (call: { rules: readonly { windowMs: number }[] }) =>
+  call.rules.some((rule) => rule.windowMs === IDENTIFIER_WINDOW_MS);
+
+describe("login identifier extraction (SEC-ABU-024, TST-RLM-004)", () => {
+  const login = (body: BodyInit | ReadableStream) =>
+    new Request("https://api.example.test/auth/sign-in/email", {
+      method: "POST",
+      headers: { Origin: WEB, "Content-Type": "application/json" },
+      body,
+      ...(body instanceof ReadableStream ? { duplex: "half" } : {}),
+    } as RequestInit);
+
+  it("TC-RLM-004-216 an unreadable identifier (over 64 KiB, invalid JSON, no email) skips only the identifier rule; the per-IP rule still applies", async () => {
+    const { app, trs, transportCalls } = authApp({ burst: 4 });
+    const ip = peer("203.0.113.70");
+    const oversized = JSON.stringify({ email: "same@example.test", pad: "x".repeat(70_000) });
+    const bodies = [oversized, oversized, "{ not json", JSON.stringify({ password: "synthetic" })];
+    // The proxy may refuse such a body itself (413 / 400); what matters is that Stage 1 never
+    // answers 429 for it: with an identifier limit of 1 a counted identifier would have.
+    for (const body of bodies)
+      expect((await app.request(login(body), undefined, ip)).status).not.toBe(429);
+    expect(trs.store.calls).toHaveLength(4);
+    for (const call of trs.store.calls) expect(hasIdentifierRule(call)).toBe(false);
+    const rejected = await app.request(login(oversized), undefined, ip);
+    expect(rejected.status).toBe(429);
+    expect(transportCalls()).toBeLessThanOrEqual(1);
+    // A readable identifier is still counted: the rule is on and its limit of 1 is spent.
+    const other = peer("203.0.113.71");
+    const readable = (email: string) => login(JSON.stringify({ email }));
+    expect((await app.request(readable("ok@example.test"), undefined, other)).status).toBe(200);
+    expect((await app.request(readable("OK@example.test"), undefined, other)).status).toBe(429);
+    expect(JSON.stringify(trs.store.keys())).not.toContain("example.test");
+  });
+
+  it("TC-RLM-004-217 a body that stalls past 3 seconds leaves only the identifier rule out", async () => {
+    const { app, trs } = authApp({ burst: 4 });
+    let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
+    const stream = new ReadableStream<Uint8Array>({
+      start(c) {
+        controller = c;
+        c.enqueue(new TextEncoder().encode('{"email":"slow@example.test",'));
+      },
+    });
+    const pending = app.request(login(stream), undefined, peer("203.0.113.72"));
+    await new Promise((resolve) => setTimeout(resolve, 3_400));
+    expect(trs.store.calls).toHaveLength(1);
+    expect(hasIdentifierRule(trs.store.calls[0] ?? { rules: [] })).toBe(false);
+    controller?.close();
+    await Promise.resolve(pending).catch(() => undefined);
+  }, 15_000);
+});
+
+describe("Client IP derivation through the API (SEC-API-031, TST-RLM-008)", () => {
+  it("TC-RLM-008-002 only X-Forwarded-For is read; other forwarded headers and missing, short or unreadable chains use the direct peer", async () => {
+    const proxied = harness({ overrides: selfRead(30, 120, 1), trustedProxyHops: 1 });
+    const spoof = (value: string) => ({ Forwarded: `for=${value}`, "X-Real-IP": value });
+    // Same peer, different spoofed alternatives: all collapse onto the peer, so the 2nd is limited.
+    expect((await proxied.get({ headers: spoof("198.51.100.1") })).status).toBe(200);
+    expect((await proxied.get({ headers: spoof("198.51.100.2") })).status).toBe(429);
+    for (const forwarded of ["not-an-ip", "198.51.100.5, not-an-ip"]) {
+      const h = harness({ overrides: selfRead(30, 120, 1), trustedProxyHops: 1 });
+      expect((await h.get({ headers: { "X-Forwarded-For": forwarded } })).status).toBe(200);
+      expect((await h.get({ headers: { "X-Forwarded-For": forwarded } })).status).toBe(429);
+    }
+    const short = harness({ overrides: selfRead(30, 120, 1), trustedProxyHops: 2 });
+    expect((await short.get({ headers: { "X-Forwarded-For": "198.51.100.7" } })).status).toBe(200);
+    expect((await short.get({ headers: { "X-Forwarded-For": "198.51.100.8" } })).status).toBe(429);
+    // With a long enough chain the Nth entry from the right identifies the client.
+    const full = harness({ overrides: selfRead(30, 120, 1), trustedProxyHops: 2 });
+    const chain = (client: string) => ({ "X-Forwarded-For": `192.0.2.1, ${client}, 10.0.0.1` });
+    expect((await full.get({ headers: chain("198.51.100.7") })).status).toBe(200);
+    expect((await full.get({ headers: chain("198.51.100.8") })).status).toBe(200);
+    expect((await full.get({ headers: chain("198.51.100.8") })).status).toBe(429);
   });
 });
 
@@ -617,12 +758,17 @@ describe("rate limit events and metrics at the API layer (TST-RLM-009)", () => {
     expect(decisions).toHaveLength(2);
     expect(decisions[0]).toMatchObject({
       result: "REJECTED",
+      error_code: "RATE_LIMIT_EXCEEDED",
       class_id: "self_read",
       rule_category: "sustained",
       retry_after_seconds: expect.any(Number),
       operation_id: "API-AUTH-001",
     });
-    expect(decisions[1]).toMatchObject({ result: "FAILED", class_id: "self_read" });
+    expect(decisions[1]).toMatchObject({
+      result: "FAILED",
+      error_code: "TEMPORARY_UNAVAILABLE",
+      class_id: "self_read",
+    });
     expect(decisions[1]).not.toHaveProperty("retry_after_seconds");
     const failClosed = collect(h.lines).filter(
       (e) => e.event_name === "security.fail_closed.triggered",

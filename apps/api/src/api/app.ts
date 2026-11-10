@@ -128,10 +128,21 @@ export function createApp(dependencies: AppDependencies) {
   });
   // A 429 / 503 produced by Stage 1 precedes the CORS middleware below, but the Web origin must
   // still be able to read it (including Retry-After). Only the exact Web origin is ever echoed.
+  // SEC-ABU-025. `/api/v1/*` never gets Access-Control-Allow-Credentials (SEC-API-007); the auth
+  // proxy already answers its own credentialed CORS on `/auth/*`, so a Stage 1 answer there matches it.
   app.use("/api/v1/*", async (c, next) => {
     if (c.req.header("Origin") === origin) {
       c.header("Vary", "Origin");
       c.header("Access-Control-Allow-Origin", origin);
+      c.header("Access-Control-Expose-Headers", EXPOSED_HEADERS);
+    }
+    await next();
+  });
+  app.use("/auth/*", async (c, next) => {
+    if (c.req.header("Origin") === origin) {
+      c.header("Vary", "Origin");
+      c.header("Access-Control-Allow-Origin", origin);
+      c.header("Access-Control-Allow-Credentials", "true");
       c.header("Access-Control-Expose-Headers", EXPOSED_HEADERS);
     }
     await next();
