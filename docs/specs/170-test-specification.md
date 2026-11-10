@@ -648,6 +648,9 @@ Migration Testは空DBから全migrationを順番に適用し、次をassertす�
 - `40001` retry path
 - `40P01` deadlock retry path
 - 1秒`lock_timeout`（SQLSTATE `55P03`）のretry pathと、4 attempts / 最大経過5秒での枯渇時`503 DATABASE_TEMPORARY_FAILURE`
+- `55P03`後は失敗したtransactionを明示的に`ROLLBACK`してから新しいtransactionで再実行し、失敗状態のtransactionを再利用しない
+- `lock_timeout`が各ロック取得に適用されること（1 attempt内で複数のロックを順に待つと待機の合計が1秒を超えうる）と、最大経過時間5秒が最初のattempt開始からの累積で適用されること
+- `FOR UPDATE SKIP LOCKED` claimが行ロック競合はskipし、テーブルロック待機で`lock_timeout`を超えた場合は`55P03`としてtransaction retry対象になること
 - 5秒normal `statement_timeout` contractに対するapplication mapping
 - 2秒pool acquisition timeout mapping
 - COMMIT acknowledgement loss

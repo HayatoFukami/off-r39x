@@ -225,7 +225,7 @@ SECURITY_FAILURE
 | DB pool connection acquisition | 2秒 | `DATABASE_TEMPORARY_FAILURE` |
 | normal DB statement | 5秒 | transaction rollback、retryableか分類 |
 | Admin / reconciliation read statement | 10秒 | item failure。全batchを無制限blockしない |
-| DB lock wait (`lock_timeout`) | 1秒 | SQLSTATE `55P03`。lock conflictとして§11の`55P03`行のpolicyでtransactionを再試行する |
+| DB lock wait (`lock_timeout`、各ロック取得ごと) | 1秒 / ロック取得 | SQLSTATE `55P03`。1 transaction attempt内で複数のロックを順に取得する場合、待機の合計は1秒を超えうる。lock conflictとして§11の`55P03`行のpolicyでtransactionを再試行する |
 | normal Business DB transaction wall clock | 8秒 | rollback / unknown commit判定 |
 | Stripe API request | 10秒 | side-effect callは`UNKNOWN_RESULT`、read-only lookupはtemporary failure |
 | Resend Email API request | **10秒** (`SPEC-120`維持) | `UNKNOWN_RESULT` |
@@ -343,9 +343,13 @@ delay = random_uniform(0, cap_n)   # full jitter
 
 **REL-DB-009:** pool acquisition 2秒超過はDB unavailable扱いとし、empty list、not found、sold outへ変換しない。
 
-**REL-DB-010:** statement timeoutはtransactionをrollbackし、同じstatementを無制限にretryしない。REL-DB-001の対象SQLSTATE以外はquery plan / overload / dependency failureとして上位へ返す。
+**REL-DB-010:** statement timeoutは失敗したtransactionを明示的に`ROLLBACK`し、同じstatementを無制限にretryしない。REL-DB-001の対象SQLSTATE以外はquery plan / overload / dependency failureとして上位へ返す。
 
-**REL-DB-011:** lock timeout（SQLSTATE `55P03`）は一時競合とみなし、Business Causeを維持して§11の`55P03`行のpolicy内でretryする。ただし4 transaction attempts totalで終了し、最大経過時間5秒には各attemptの最大1秒のlock待ちとbackoffを含む。budget枯渇時は`503 DATABASE_TEMPORARY_FAILURE`とし、lock timeoutを「not found」「sold out」「conflict loser」へ変換しない。
+**REL-DB-011:** lock timeout（SQLSTATE `55P03`）は一時競合とみなし、Business Causeを維持して§11の`55P03`行のpolicy内でretryする。`lock_timeout`の1秒は**各ロック取得の待機上限**であり、1 transaction attempt内のロック待ちの合計を1秒以下に制限するものではない（複数のロックを取得して待機した後にtimeoutすることがある）。retry budgetは、4 transaction attempts totalと、最初のattempt開始からのattemptおよびbackoffの累積に対する最大経過時間5秒で別に制限する。retryすると最大経過時間を超える見込みの場合はretryせず、budget枯渇として扱う。budget枯渇時は`503 DATABASE_TEMPORARY_FAILURE`とし、lock timeoutを「not found」「sold out」「conflict loser」へ変換しない。
+
+`55P03`は待機中のSQL文をエラーで中断するが、明示的なtransactionを自動的にrollback完了させない。失敗したtransactionは失敗状態のまま残るため、retryの前に明示的に`ROLLBACK`し、同じBusiness Causeを用いて新しいtransactionで再実行する。
+
+`FOR UPDATE SKIP LOCKED`（Email claim等）がskipするのは行ロックの競合だけである。`ROW SHARE`等のテーブルロックの待機は通常どおり`lock_timeout`の対象であり、DDLとの競合などで`55P03`が返る場合は、本policyのtransaction retry対象とする。
 
 **REL-DB-012:** runtime failureとmigration failureを分離する。required schema / constraint / extensionが欠ける場合はruntime fallbackせずserviceをReadyにしない。
 
@@ -1169,10 +1173,10 @@ SPEC-160は少なくとも次のReliability semanticを観測可能にする。
 - 対象: `SPEC-150`（§14 `REL-DB-001`、§16 `REL-DB-011`、§11）
 - 改訂前の仕様: `REL-DB-001` はautomatic transaction retry対象SQLSTATEを`40001`と`40P01`のみとする一方、`REL-DB-011` と §9 はlock timeoutにも最大4回のretryを要求していた。lock timeoutのSQLSTATEは未記載で、§11にはbackoff・最大経過時間の定義がなかった。
 - 決定: lock timeoutのSQLSTATEを`55P03`とし、`REL-DB-001`の許可リストへ追加する。§11に`55P03`の行（初期50ms、倍率2、最大400ms、full jitter、4 transaction attempts total、最大経過5秒、枯渇時`503`）を追加する。`REL-DB-011`は同じ内容を参照する。
-- 理由: `REL-DB-011` と §9 は意図的な要求であり、SPEC-160のmetric `r39x_db_transaction_retries_total` もlock timeout起因のretryを前提とする。lock timeoutではtransaction全体がrollbackされるため、`40001` / `40P01` と同じくBusiness Cause、normalized input、authorization principalを維持して再実行できる（`REL-DB-003`）。
+- 理由: `REL-DB-011` と §9 は意図的な要求であり、SPEC-160のmetric `r39x_db_transaction_retries_total` もlock timeout起因のretryを前提とする。`55P03`は待機中のSQL文を中断するが、明示的なtransactionはロールバック完了せず失敗状態のまま残る。失敗したtransactionを明示的に`ROLLBACK`したうえで、同じBusiness Causeを用いて新しいtransactionで再実行するため、`40001` / `40P01` と同じくBusiness Cause、normalized input、authorization principalを維持して再実行できる（`REL-DB-003`）。`lock_timeout`は各ロック取得に適用される。
 - **本書側反映:** §3、§9、§11、`REL-DB-001`、`REL-DB-010`、`REL-DB-011`、`REL-PAY-010`、§63、Acceptance 3。
 - **他仕様書への反映:** `SPEC-100` §46、`SPEC-110` §50 / Acceptance 24、`SPEC-120` §42、`SPEC-160` §23 `OBS-DB-003`、`SPEC-170` §24 / §49 / §77、`SPEC-190` `DEV-DB-007`。
-- **残作業:** なし。`FOR UPDATE SKIP LOCKED`（Email claim）は`55P03`を返さないため対象外であり、`NOWAIT`は仕様上使用しない。
+- **残作業:** なし。`FOR UPDATE SKIP LOCKED`（Email claim）は行ロックの競合をskipするが、`ROW SHARE`等のテーブルロックの待機は`lock_timeout`の対象であり、DDLとの競合などで`55P03`が返りうる。その場合は`REL-DB-011`のtransaction retry対象とする。`NOWAIT`は仕様上使用しない。
 
 ---
 
