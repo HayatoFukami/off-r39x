@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-170
 title: Test Specification
-version: 2.1.0
+version: 2.2.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -647,12 +647,15 @@ Migration Testは空DBから全migrationを順番に適用し、次をassertす�
 - transaction rollbackでcounter / Order / Ticket / Audit rowが残らない
 - `40001` retry path
 - `40P01` deadlock retry path
-- 1秒`lock_timeout`
+- 1秒`lock_timeout`（SQLSTATE `55P03`）のretry pathと、4 attempts / 最大経過5秒での枯渇時`503 DATABASE_TEMPORARY_FAILURE`
+- `55P03`後は失敗したtransactionを明示的に`ROLLBACK`してから新しいtransactionで再実行し、失敗状態のtransactionを再利用しない
+- `lock_timeout`が各ロック取得に適用されること（1 attempt内で複数のロックを順に待つと待機の合計が1秒を超えうる）と、最大経過時間5秒が最初のattempt開始からの累積で適用されること
+- `FOR UPDATE SKIP LOCKED` claimが行ロック競合はskipし、テーブルロック待機で`lock_timeout`を超えた場合は`55P03`としてtransaction retry対象になること
 - 5秒normal `statement_timeout` contractに対するapplication mapping
 - 2秒pool acquisition timeout mapping
 - COMMIT acknowledgement loss
 
-`40001` / `40P01`を自然発生に任せず、transaction ordering / test hookで再現する。
+`40001` / `40P01` / `55P03`を自然発生に任せず、transaction ordering / test hook（別connectionが保持するrow lockに対する1秒`lock_timeout`を含む）で再現する。
 
 **TST-DB-005:** `23505`, `23P01`, `23514`, `23503`をblind retryするTest expectationを作らない。current stateとconstraint名で分類する。
 
@@ -680,6 +683,7 @@ Migration Testは空DBから全migrationを順番に適用し、次をassertす�
 - success envelope / common error envelope
 - HTTP status
 - safe error code
+- unsupported methodの`405 METHOD_NOT_ALLOWED`（`Allow` header付き）、unsupported content typeの`415 UNSUPPORTED_MEDIA_TYPE`、未知pathの`404 RESOURCE_NOT_FOUND`（`SEC-API-022`、`SPEC-110` §21）
 - `request_id` response header / error body一致
 - Internal bigint ID非露出
 - Public Reference wire format
@@ -1147,6 +1151,7 @@ Retry matrixも `REL-RTY-*` のinitial / multiplier / max / jitter / attempts / 
 |---|---:|---:|---:|---|---:|---:|---|
 | DB `40001` | 50ms | 2 | 400ms | full | 4 transaction attempts total | 2s | 503 |
 | DB `40P01` | 100ms | 2 | 800ms | full | 4 total | 3s | 503 |
+| DB lock timeout `55P03` | 50ms | 2 | 400ms | full | 4 transaction attempts total | 5s | 503 |
 | DB connection acquisition | 100ms | 2 | 500ms | full | 3 connection attempts | 3s | 503 |
 | Neon Auth temporary | 100ms | 2 | 500ms | full | 2 remote attempts | 7s | 503 / worker reschedule |
 | Stripe Checkout create/recovery | 500ms | 2 | 5s | full | initial + 4 same-key | 30s | Unknown / Review path |
@@ -1878,7 +1883,7 @@ SPEC-170に準拠したTest implementationは、少なくとも次をすべて�
 4. Current API Operation IDを持つ全operationにcontract Testがある。
 5. SPEC-100 critical constraintを実PostgreSQLでTestする。
 6. `READ COMMITTED`, `FOR UPDATE`, advisory lock, `SKIP LOCKED`, rollbackを実DBでTestする。
-7. `40001`, `40P01`, lock timeout, statement timeout, pool acquisition timeoutを再現できる。
+7. `40001`, `40P01`, lock timeout（`55P03`）, statement timeout, pool acquisition timeoutを再現できる。
 8. concurrency-sensitive operationをbarrier付きparallel harnessでTestする。
 9. normal `CONFLICT_LOSER`をinternal errorとして扱わない。
 10. Transport / Domain / Provider / Webhook / consume-once idempotencyを区別してTestする。
@@ -1937,6 +1942,8 @@ SPEC-170に準拠したTest implementationは、少なくとも次をすべて�
 - `UCR-130-005`: `DEFERRED_NONBLOCKING`（`SPEC-100`、speculative indexなし）
 - `UCR-150-001`: `INCORPORATED`（`SPEC-110 §48.5` `API-ADM-REC-003〜007`）
 - `UCR-150-002`: `INCORPORATED`（`SPEC-130 §41.5` 等のwiring、`SPEC-110 §48.5` command）
+- `UCR-150-003`: `INCORPORATED`（`SPEC-150` `REL-DB-001` / `REL-DB-011` / §11の`55P03`行、§24 / §49 / §77のTest）
+- `UCR-140-002`: `INCORPORATED`（`SPEC-110` §21の405 / 415、`SPEC-140` `SEC-API-022`、§26のTest）
 - `UCR-170-001`: `INCORPORATED`（`SPEC-110 §41 / §46〜§48` のOperation ID completeness gap解消）
 
 Canonical化済みoperationは §27.1／§27.2 のoperation-family Test対象とし、上記既知UCRのうち `UCR-130-005` のみ未反映として期待値を先取りしない。反映済みoperationへTest Caseを追加し、存在しないoperationを発明しない。新たなUCRはOwner本文への反映状況を個別確認し、自動的にINCORPORATEDと推定しない。

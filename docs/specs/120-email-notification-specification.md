@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-120
 title: Email Notification Specification
-version: 2.1.0
+version: 2.2.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -1620,7 +1620,7 @@ SPEC-120 support table migrationは`SPEC-100`のarchitectureに従う。
 - normal hard delete禁止
 - isolation=`READ COMMITTED`
 - explicit row lock
-- `40001`, `40P01` だけをstandard transaction retryable SQLSTATEとして扱う
+- `40001`, `40P01`, `55P03`（lock timeout）だけをstandard transaction retryable SQLSTATEとして扱う
 - known unique/constraint loserだけを既存結果へ収束
 - Resend / Neon Auth network call中にDB transactionをopenしない
 

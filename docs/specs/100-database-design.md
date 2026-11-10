@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-100
 title: Database Design
-version: 2.1.0
+version: 2.2.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -1751,6 +1751,7 @@ Retryable PostgreSQL error:
 
 - `40001` serialization failure
 - `40P01` deadlock detected
+- `55P03` lock timeout（`lock_timeout`超過。回数・backoffは `SPEC-150` §11）
 
 Constraint result:
 

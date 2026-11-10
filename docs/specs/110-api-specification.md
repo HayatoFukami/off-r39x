@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-110
 title: API Specification
-version: 2.1.1
+version: 2.2.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -437,12 +437,13 @@ listも同じ`data`内に`items/page`を持つ。
 
 | HTTP | Code | 意味 | Retryable |
 |---:|---|---|---|
-| 400 | `MALFORMED_REQUEST` | JSON / syntax / unsupported format | No |
+| 400 | `MALFORMED_REQUEST` | JSON / syntax（未対応content typeは415 `UNSUPPORTED_MEDIA_TYPE`） | No |
 | 400 | `VALIDATION_FAILED` | Zod / field validation | No |
 | 401 | `AUTHENTICATION_REQUIRED` | credentialなし / invalid session | 条件付き |
 | 403 | `EMAIL_VERIFICATION_REQUIRED` | verified email必須 | No |
 | 403 | `AUTHORIZATION_DENIED` | Role / Capability不足 | No |
 | 404 | `RESOURCE_NOT_FOUND` | not foundまたはowner mismatchを秘匿 | No |
+| 405 | `METHOD_NOT_ALLOWED` | 既知pathに対する未対応HTTP method | No |
 | 409 | `STATE_CONFLICT` | current stateがoperation precondition不一致 | No |
 | 409 | `SOLD_OUT` | Entry capacity不足 | No |
 | 409 | `SLOT_UNAVAILABLE` | Karaoke hold / sold / stop / overlap競合 | No |
@@ -452,6 +453,7 @@ listも同じ`data`内に`items/page`を持つ。
 | 409 | `IDEMPOTENCY_KEY_REUSED` | transport key payload mismatch | No |
 | 410 | `BUSINESS_OPPORTUNITY_EXPIRED` | sales / hold / payment opportunity expiry | No |
 | 413 | `PAYLOAD_TOO_LARGE` | §13のrequest size上限超過 | No |
+| 415 | `UNSUPPORTED_MEDIA_TYPE` | 未対応content type | No |
 | 422 | `DOMAIN_RULE_VIOLATION` | syntactically validだがBusiness Rule不成立 | No |
 | 422 | `OUTSIDE_CHECKIN_WINDOW` | Karaoke通常受付時間外 | No |
 | 424 | `STRIPE_TEMPORARY_FAILURE` | Stripe依存の一時失敗 | Yes |
@@ -460,6 +462,8 @@ listも同じ`data`内に`items/page`を持つ。
 | 503 | `TEMPORARY_UNAVAILABLE` | その他安全に判定不能 | Yes |
 | 409 | `CONSISTENCY_REVIEW_REQUIRED` | 通常競合でなくreview必要 | No |
 | 500 | `INTERNAL_ERROR` | 予期しない内部失敗 | 条件付き |
+
+`405 METHOD_NOT_ALLOWED` には、そのpathで対応するHTTP methodを列挙した `Allow` headerを付ける。どのrouteにも一致しないpathは、methodによらず `404 RESOURCE_NOT_FOUND` とする。405 / 415 は `SEC-API-022` の分類であり、Domain state conflictやAuthentication / Authorizationの結果へ変換しない。
 
 Known DB constraint loserは一律500にしない。`23505` / `23P01`等はconstraint名とcurrent stateを再読込し、既知の競合 / idempotent duplicateへ分類する。未知constraint violationは`INTERNAL_ERROR`か`CONSISTENCY_REVIEW_REQUIRED`として内部監視対象にする。
 
@@ -1979,7 +1983,7 @@ Consistency Review readは §48.3 `consistencyReviewListQuery` を使用し、de
 
 ## 50. SQLSTATE mapping
 
-- `40001`, `40P01`: transaction-level retryable。SPEC-150の回数 / backoff内で同Business Causeをretry。exhausted -> `503 DATABASE_TEMPORARY_FAILURE`。
+- `40001`, `40P01`, `55P03`（lock timeout）: transaction-level retryable。SPEC-150の回数 / backoff内で同Business Causeをretry。exhausted -> `503 DATABASE_TEMPORARY_FAILURE`。
 - `23505`: constraint名を分類。Known idempotent duplicateはexisting resultへ収束、known capacity/active unique loserは409、unknownは500/review。
 - `23514`:通常はimplementation/domain invariant mismatch。Client validation errorへ安易に変換しない。
 - `23503`: stale reference / implementation raceを安全に分類できる場合のみ404/409。それ以外500。
@@ -2201,7 +2205,7 @@ resolveConsistencyReviewCase()
 21. Check-inはTicket row lock + conditional transition + unique Check-inでsingle-useを守る。
 22. Check-inをpreview/approveの二段階Client authorityに分けない。
 23. Check-in outcome名をSPEC-080からrenameしない。
-24. `40001/40P01`だけを標準retryable DB transaction errorとし、constraint violationをblind retryしない。
+24. `40001/40P01/55P03`だけを標準retryable DB transaction errorとし、constraint violationをblind retryしない。
 25. `REVIEW_REQUIRED` / Consistency Reviewを通常成功に見せない。
 26. Polling / reloadで新Order / Ticket / Reservation / Handoffを作らない。
 27. Transport Idempotency KeyとDomain Business Causeを分離する。
@@ -2283,3 +2287,9 @@ retry count / backoff / queue / operator RunbookはSPEC-150。本書§48.5はSPE
 | Notification表示 | `API-ORD-003.notification_summary`、SPEC-120 §7.2 |
 
 関連 `UCR-100-001〜003` もSPEC-100本文へ反映済み。Display nameは `API-AUTH-002/004` に具体化する。`UCR-130-005` は従来どおり `DEFERRED_NONBLOCKING` であり、未採用Indexを実装契約にしない。
+
+### UCR-140-002 — INCORPORATED
+
+`SPEC-140` が記録した「405・415に対応する公開エラーコードの不在」を、本改訂（v2.2.0）で §21 に反映した。405 は `METHOD_NOT_ALLOWED`、415 は `UNSUPPORTED_MEDIA_TYPE` とし、どちらも `Retryable=No` である。405 には `Allow` headerを付ける。`MALFORMED_REQUEST` のHTTP statusを上書きして代用しない。
+
+同時に、lock timeout（`55P03`）を標準retryable DB transaction errorとする `SPEC-150` の `UCR-150-003` を §50 とAcceptance 24へ反映した。
