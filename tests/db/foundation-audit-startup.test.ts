@@ -3,6 +3,9 @@ import { expect, it, vi } from "vitest";
 import { bootstrap } from "../../apps/api/src/bootstrap/index.ts";
 import { computeMigrationSetHash } from "../../packages/db/src/migrations.ts";
 import { installSyntheticDirectory, prepareFoundationDatabase } from "../harness/db/foundation.ts";
+import { rateLimitEnv } from "../harness/rate-limit/api.ts";
+import { withFault } from "../harness/rate-limit/faults.ts";
+import { createMemoryStore } from "../harness/rate-limit/memory-store.ts";
 
 const release = vi.hoisted(() => ({ hash: "" }));
 // Harness-only release identity and test CA. Production never reads either from
@@ -93,19 +96,13 @@ it("TC-STARTUP-AUDIT-001 actual API bootstrap moves Ready->notReady->Ready on DB
     PUBLIC_AUTH_ORIGIN: "https://api.example.test",
     ALLOWED_HOSTS: "api.example.test",
     ALLOWED_ORIGINS: "https://web.example.test",
+    ...rateLimitEnv(),
   };
-  let unavailable = false;
+  const store = withFault(createMemoryStore());
   let runtime: ReturnType<typeof bootstrap> | undefined;
   let dropped = false;
   try {
-    runtime = bootstrap(env, {
-      assertAvailable: async () => {
-        if (unavailable) throw new Error("synthetic-limiter-private");
-      },
-      middleware: async (_c, next) => {
-        await next();
-      },
-    });
+    runtime = bootstrap(env, { rateLimitStore: store });
     await new Promise<void>((resolve, reject) => {
       runtime?.server.once("listening", resolve);
       runtime?.server.once("error", reject);
@@ -113,10 +110,10 @@ it("TC-STARTUP-AUDIT-001 actual API bootstrap moves Ready->notReady->Ready on DB
     const get = (path = "ready") => fetch(`http://127.0.0.1:18931/internal/health/${path}`);
     expect((await get("live")).status).toBe(200);
     expect((await get()).status).toBe(200);
-    unavailable = true;
+    store.inject("FP.RATELIMIT.STORE_UNAVAILABLE");
     expect((await get()).status).toBe(503);
     expect((await get("live")).status).toBe(200);
-    unavailable = false;
+    store.inject(undefined);
     expect((await get()).status).toBe(200);
     await setup.query(
       "ALTER TABLE app.business_profiles DROP CONSTRAINT uq_business_profiles_auth_subject",

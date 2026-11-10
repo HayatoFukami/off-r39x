@@ -298,29 +298,18 @@ describe("Operation -> class assignment", () => {
     expect(() => assertRouteRegistry([good])).not.toThrow();
     const declare = (route: RouteRegistration): RouteRegistration => route;
     const registrations: RouteRegistration[] = [
+      // biome-ignore format: the directive must share a line with the offending literal
       // @ts-expect-error DEV-RLM-005: an Operation outside the class table is a type error
-      declare({
-        method: "GET",
-        path: "/x",
-        operationId: "API-UNKNOWN-001",
-        rateLimitClass: "public_read",
-      }),
+      declare({ method: "GET", path: "/x", operationId: "API-UNKNOWN-001", rateLimitClass: "public_read" }),
+      // biome-ignore format: the directive must share a line with the offending literal
       // @ts-expect-error DEV-RLM-005: the rate limit class is mandatory
       declare({ method: "GET", path: "/y", operationId: "API-AUTH-001" }),
+      // biome-ignore format: the directive must share a line with the offending literal
       // @ts-expect-error DEV-RLM-005: the class must be the Operation's §56.1 class
-      declare({
-        method: "GET",
-        path: "/z",
-        operationId: "API-AUTH-001",
-        rateLimitClass: "public_read",
-      }),
+      declare({ method: "GET", path: "/z", operationId: "API-AUTH-001", rateLimitClass: "public_read" }),
+      // biome-ignore format: the directive must share a line with the offending literal
       // @ts-expect-error a guard is not an Operation class
-      declare({
-        method: "GET",
-        path: "/g",
-        operationId: "API-AUTH-001",
-        rateLimitClass: "auth_failure_guard_attendee",
-      }),
+      declare({ method: "GET", path: "/g", operationId: "API-AUTH-001", rateLimitClass: "auth_failure_guard_attendee" }),
     ];
     for (const bad of registrations) expect(() => assertRouteRegistry([bad])).toThrow();
     expect(() => assertRouteRegistry([good, { ...good, path: "/other" }])).toThrow();

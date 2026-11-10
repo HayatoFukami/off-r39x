@@ -2,7 +2,6 @@ import { createRemoteJWKSet, customFetch, generateKeyPair, SignJWT } from "jose"
 import { expect, it } from "vitest";
 import {
   createApp,
-  protectedMountGuard,
   requireCapability,
   requirePrincipal,
   requireVerifiedEmail,
@@ -189,5 +188,7 @@ it("TC-SEC-ABU-001-050 draining rejects new requests and shared protected guard 
   draining = true;
   expect((await app.request("/internal/health/ready")).status).toBe(503);
   expect((await app.request("/internal/health/live")).status).toBe(503);
-  await expect(protectedMountGuard(undefined)).rejects.toThrow();
+  // Without a configured shared rate limit every registered route fails closed (INF-HLT-004).
+  draining = false;
+  expect((await app.request("/api/v1/self/principal")).status).toBe(503);
 });

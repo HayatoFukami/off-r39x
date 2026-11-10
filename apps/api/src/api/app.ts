@@ -5,7 +5,6 @@ import {
   type Capability,
   capabilities,
   hasCapability,
-  type Principal,
   type PrincipalStore,
   resolvePrincipal,
   type TokenVerifier,
@@ -16,25 +15,18 @@ import { bodyLimit } from "hono/body-limit";
 import { TrieRouter } from "hono/router/trie-router";
 import { secureHeaders } from "hono/secure-headers";
 import { AUTH_ROUTES, type AuthProxy } from "./auth-proxy.ts";
+import { type ApiEnvironment, ApiFailure } from "./failure.ts";
+import {
+  type AppRateLimit,
+  createPrincipalRateLimitHooks,
+  createRateLimitStageOne,
+  type PrincipalRateLimitHooks,
+} from "./rate-limit.ts";
 import { type ErrorCode, errorSchema, errorStatuses } from "./schemas/common.ts";
 
-export type ApiEnvironment = {
-  Variables: {
-    requestId: string;
-    principal: Principal;
-    validatedJson: unknown;
-    logger: ReturnType<typeof createLogger> | undefined;
-    operationExecutionId: string | undefined;
-  };
-};
-export class ApiFailure extends Error {
-  constructor(
-    readonly code: ErrorCode,
-    readonly statusOverride?: 400 | 405 | 413 | 415,
-  ) {
-    super(code);
-  }
-}
+export { type ApiEnvironment, ApiFailure } from "./failure.ts";
+export type { AppRateLimit } from "./rate-limit.ts";
+
 const authErrorCodes = {
   unauthenticated: "AUTHENTICATION_REQUIRED",
   unavailable: "AUTH_SERVICE_TEMPORARY_FAILURE",
@@ -50,16 +42,21 @@ export interface AppDependencies {
   logger?: ReturnType<typeof createLogger>;
   draining?: () => boolean;
   auth?: { verifier: TokenVerifier; store: PrincipalStore };
-  enforcement?: SharedRateLimitGuard;
+  /** Shared rate limit (UCR-140-003). Absent => every registered route fails closed (503). */
+  rateLimit?: AppRateLimit;
   authProxy?: AuthProxy;
 }
 function failure(
   c: import("hono").Context<ApiEnvironment>,
   code: ErrorCode,
   statusOverride?: 400 | 405 | 413 | 415,
+  retryAfterSeconds?: number,
 ) {
   c.header("Cache-Control", "no-store");
   const status = statusOverride ?? errorStatuses[code];
+  // SEC-ABU-007: a 429 always carries an integer-second Retry-After (min 1).
+  if (code === "RATE_LIMIT_EXCEEDED")
+    c.header("Retry-After", String(Math.max(1, retryAfterSeconds ?? 1)));
   return c.json(
     errorSchema.parse({
       error: {
@@ -69,7 +66,7 @@ function failure(
             ? "Requested resource was not found."
             : "Request could not be completed.",
         request_id: c.get("requestId"),
-        retryable: status === 503 || status === 424,
+        retryable: status === 503 || status === 424 || status === 429,
         details: null,
       },
     }),
@@ -85,6 +82,9 @@ export function createApp(dependencies: AppDependencies) {
     c.set("requestId", randomUUID());
     c.set("logger", dependencies.logger);
     c.set("operationExecutionId", undefined);
+    c.set("operationId", undefined);
+    c.set("rateLimitClass", undefined);
+    c.set("clientIp", undefined);
     c.header("X-Request-Id", c.get("requestId"));
     c.header("Cache-Control", "no-store");
     await next();
@@ -125,6 +125,8 @@ export function createApp(dependencies: AppDependencies) {
     await next();
     return;
   });
+  // Stage 1 (SEC-ABU-017): after the drain check, before any origin/CORS/body/auth/DB work.
+  app.use("*", createRateLimitStageOne({ rateLimit: dependencies.rateLimit }));
   app.onError((error, c) => {
     if (error instanceof AuthFailure)
       dependencies.logger?.log({
@@ -143,7 +145,8 @@ export function createApp(dependencies: AppDependencies) {
               ? "CONSISTENCY_FAILURE"
               : "SECURITY_FAILURE",
       });
-    if (error instanceof ApiFailure) return failure(c, error.code, error.statusOverride);
+    if (error instanceof ApiFailure)
+      return failure(c, error.code, error.statusOverride, error.retryAfterSeconds);
     if (error instanceof AuthFailure) return failure(c, authErrorCodes[error.kind]);
     return failure(c, "INTERNAL_ERROR");
   });
@@ -192,22 +195,20 @@ export function createApp(dependencies: AppDependencies) {
     "/api/v1/*",
     bodyLimit({ maxSize: 65536, onError: (c) => failure(c, "PAYLOAD_TOO_LARGE") }),
   );
+  const principalHooks = dependencies.rateLimit
+    ? createPrincipalRateLimitHooks(dependencies.rateLimit.limiter)
+    : undefined;
   app.route(
     "/",
     createPublicRpc<ApiEnvironment>({
       guard: async (c, next) => {
-        c.set("operationExecutionId", randomUUID());
-        if (!dependencies.auth || !dependencies.enforcement)
-          throw new ApiFailure("TEMPORARY_UNAVAILABLE");
-        try {
-          await dependencies.enforcement.assertAvailable();
-        } catch {
-          throw new ApiFailure("TEMPORARY_UNAVAILABLE");
-        }
-        await requirePrincipal(dependencies.auth.verifier, dependencies.auth.store)(c, async () => {
-          await requireVerifiedEmail()(c, async () => {
-            await dependencies.enforcement?.middleware(c, next);
-          });
+        if (!dependencies.auth || !principalHooks) throw new ApiFailure("TEMPORARY_UNAVAILABLE");
+        await requirePrincipal(
+          dependencies.auth.verifier,
+          dependencies.auth.store,
+          principalHooks,
+        )(c, async () => {
+          await requireVerifiedEmail()(c, next);
         });
       },
       principal: (c) => {
@@ -232,17 +233,8 @@ export function createApp(dependencies: AppDependencies) {
           return failure(c, "MALFORMED_REQUEST");
         const proxy = dependencies.authProxy;
         if (!proxy) throw new ApiFailure("TEMPORARY_UNAVAILABLE");
-        if (c.req.method === "OPTIONS") return proxy.handle(c.req.raw);
-        if (!dependencies.enforcement) throw new ApiFailure("TEMPORARY_UNAVAILABLE");
-        try {
-          await dependencies.enforcement.assertAvailable();
-        } catch {
-          throw new ApiFailure("TEMPORARY_UNAVAILABLE");
-        }
-        await dependencies.enforcement.middleware(c, async () => {
-          c.res = await proxy.handle(c.req.raw);
-        });
-        return c.res;
+        // Stage 1 already ran (and failed closed without a limiter) before this handler.
+        return proxy.handle(c.req.raw);
       });
     }
   }
@@ -274,6 +266,7 @@ export function createApp(dependencies: AppDependencies) {
 export function requirePrincipal(
   verifier: TokenVerifier,
   store: PrincipalStore,
+  hooks?: PrincipalRateLimitHooks,
 ): MiddlewareHandler<ApiEnvironment> {
   return async (c, next) => {
     let identity: Awaited<ReturnType<TokenVerifier["verify"]>>;
@@ -292,8 +285,12 @@ export function requirePrincipal(
           ? "AUTH_SERVICE_UNAVAILABLE"
           : "AUTHENTICATION_REQUIRED",
       );
+      // SEC-ABU-021 (3): record the failed verification for the Authentication-failure guard.
+      await hooks?.verificationFailed(c, error);
       throw error;
     }
+    // Stage 2 (SEC-ABU-017): per-subject rules, before the DB-backed Principal resolution.
+    await hooks?.verified(c, identity);
     try {
       c.set("principal", await resolvePrincipal(identity, store));
       securityEvent(c, "auth.business_profile_resolution.completed");
@@ -324,10 +321,6 @@ export function requireCapability(capability: Capability): MiddlewareHandler<Api
     await next();
   };
 }
-export interface SharedRateLimitGuard {
-  assertAvailable(): Promise<void>;
-  middleware: MiddlewareHandler<ApiEnvironment>;
-}
 export function requireVerifiedEmail(): MiddlewareHandler<ApiEnvironment> {
   return async (c, next) => {
     if (!c.get("principal")) throw new AuthFailure("unauthenticated");
@@ -338,13 +331,6 @@ export function requireVerifiedEmail(): MiddlewareHandler<ApiEnvironment> {
     securityEvent(c, "auth.email_verified_resolution.completed");
     await next();
   };
-}
-export async function protectedMountGuard(
-  guard: SharedRateLimitGuard | undefined,
-): Promise<MiddlewareHandler<ApiEnvironment>> {
-  if (!guard) throw new Error("Shared multi-instance rate limiter contract is required");
-  await guard.assertAvailable();
-  return guard.middleware;
 }
 
 function securityEvent(
@@ -373,7 +359,10 @@ function securityEvent(
 
 function operationContext(c: import("hono").Context<ApiEnvironment>) {
   const execution = c.get("operationExecutionId");
-  return execution ? { operation_id: "API-AUTH-001", operation_execution_id: execution } : {};
+  const operation = c.get("operationId");
+  return execution && operation
+    ? { operation_id: operation, operation_execution_id: execution }
+    : {};
 }
 
 function actorContext(c: import("hono").Context<ApiEnvironment>): {

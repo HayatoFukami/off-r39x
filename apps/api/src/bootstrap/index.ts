@@ -2,13 +2,21 @@ import { serve } from "@hono/node-server";
 import { createTokenVerifier } from "@off-r39x/auth";
 import { getBuildMigrationSetHash, parseServerConfig } from "@off-r39x/config";
 import { checkReadiness, createDatabase, createPrincipalRepository } from "@off-r39x/db";
-import { createLogger } from "@off-r39x/observability";
-import { createApp, type SharedRateLimitGuard } from "../api/app.ts";
+import { createLogger, createRateLimitMetrics } from "@off-r39x/observability";
+import { createRedisRateLimitStore } from "@off-r39x/rate-limit-redis";
+import { createRateLimiter, RATE_LIMIT_CLASS_IDS, type RateLimitStore } from "@off-r39x/security";
+import { createApp } from "../api/app.ts";
 import { createAuthProxy } from "../api/auth-proxy.ts";
+import { createRateLimitMetricsObserver } from "../api/rate-limit.ts";
+
+export interface BootstrapOverrides {
+  /** Test seam (DI only): replaces the Redis store adapter. Never reads configuration. */
+  readonly rateLimitStore?: RateLimitStore;
+}
 
 export function bootstrap(
   env: Readonly<Record<string, string | undefined>>,
-  enforcement?: SharedRateLimitGuard,
+  overrides: BootstrapOverrides = {},
 ) {
   const config = parseServerConfig("api", env);
   if (config.service !== "api") throw new Error("Invalid API service configuration");
@@ -43,7 +51,21 @@ export function bootstrap(
         webOrigin,
       })
     : undefined;
-  // Protected routes fail closed until shared enforcement is configured.
+  // UCR-140-003: the shared rate limit is mandatory. Invalid configuration already failed in
+  // parseServerConfig; a store outage is reported by readiness (INF-HLT-004) and fails requests closed.
+  const rateLimitMetrics = createRateLimitMetrics({
+    environment: config.environment,
+    classIds: RATE_LIMIT_CLASS_IDS,
+  });
+  const rateLimitStore =
+    overrides.rateLimitStore ?? createRedisRateLimitStore({ url: config.rateLimit.storeUrl });
+  const limiter = createRateLimiter({
+    store: rateLimitStore,
+    config: config.rateLimit.config,
+    hmacKey: config.rateLimit.hmacKey(),
+    hmacKeyVersion: config.rateLimit.hmacKeyVersion,
+    observer: createRateLimitMetricsObserver(rateLimitMetrics),
+  });
 
   let draining = false;
   const app = createApp({
@@ -52,7 +74,7 @@ export function bootstrap(
     logger,
     auth: { verifier, store: principals },
     ...(authProxy ? { authProxy } : {}),
-    ...(enforcement ? { enforcement } : {}),
+    rateLimit: { limiter, trustedProxyHops: config.rateLimit.trustedProxyHops },
     draining: () => draining,
     ready: async () => {
       const observed = await checkReadiness(database.pool, {
@@ -65,8 +87,8 @@ export function bootstrap(
           ? { directoryMapping: config.database.directoryMapping }
           : {}),
       });
-      if (!observed.ready || !enforcement || !authProxy || draining) return false;
-      await enforcement.assertAvailable();
+      if (!observed.ready || !authProxy || draining) return false;
+      await limiter.assertReady();
       return !draining;
     },
   });
@@ -75,10 +97,11 @@ export function bootstrap(
     await new Promise<void>((resolve, reject) =>
       server.close((error) => (error ? reject(error) : resolve())),
     );
+    await limiter.close();
     await database.close();
   };
   const beginDrain = () => {
     draining = true;
   };
-  return { app, server, close, beginDrain, verifier, principals };
+  return { app, server, close, beginDrain, verifier, principals, rateLimitMetrics };
 }

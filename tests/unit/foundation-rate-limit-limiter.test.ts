@@ -2,48 +2,19 @@ import { describe, expect, it } from "vitest";
 import {
   createRateLimiter,
   parseRateLimitConfig,
-  RATE_LIMIT_CLASS_IDS,
   RATE_LIMIT_REGISTRY,
   type RateLimitDecision,
   type RateLimiterOptions,
   type RateLimitObserver,
   type RouteClassId,
 } from "../../packages/security/src/index.ts";
+import { ceilingConfigText } from "../harness/rate-limit/api.ts";
 import { withFault } from "../harness/rate-limit/faults.ts";
 import { createMemoryStore } from "../harness/rate-limit/memory-store.ts";
 
 const hmacKey = new Uint8Array(32).fill(5);
 const IP = "203.0.113.5";
 const SUBJECT = "aef69f82-c9b7-4fd1-9a6f-126f5748e9ae";
-
-function ceilingConfigText(overrides: Record<string, unknown> = {}): string {
-  const config: Record<string, unknown> = Object.fromEntries(
-    RATE_LIMIT_CLASS_IDS.map((id) => {
-      const definition = RATE_LIMIT_REGISTRY[id];
-      const extra = Object.entries(
-        definition.additional as Record<string, { ceiling: number; windowSeconds: number }>,
-      );
-      return [
-        id,
-        {
-          burst_limit: definition.burst,
-          sustained_limit: definition.sustained,
-          ...(extra.length
-            ? {
-                additional: Object.fromEntries(
-                  extra.map(([ruleId, rule]) => [
-                    ruleId,
-                    { limit: rule.ceiling, window_seconds: rule.windowSeconds },
-                  ]),
-                ),
-              }
-            : {}),
-        },
-      ];
-    }),
-  );
-  return JSON.stringify({ ...config, ...overrides });
-}
 
 function build(extra: Partial<RateLimiterOptions> = {}, overrides: Record<string, unknown> = {}) {
   const store = createMemoryStore();

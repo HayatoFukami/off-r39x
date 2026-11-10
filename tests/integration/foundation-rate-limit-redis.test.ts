@@ -209,8 +209,8 @@ describe("sliding window log on Redis (TST-RLM-002)", () => {
     } finally {
       Date.now = realNow;
     }
-    const [seconds, micros] = (await session.redis.time()) as [string, string];
-    const storeNow = Number(seconds) * 1000 + Math.floor(Number(micros) / 1000);
+    const [seconds = 0, micros = 0] = (await session.redis.time()).map(Number);
+    const storeNow = seconds * 1000 + Math.floor(micros / 1000);
     const scores = (
       await session.redis.zrange(window[0]?.key as string, 0, -1, "WITHSCORES")
     ).filter((_, i) => i % 2 === 1);

@@ -6,6 +6,7 @@ import { createApp } from "../../apps/api/src/api/app.ts";
 import { createTokenVerifier } from "../../packages/auth/src/index.ts";
 import { createPrincipalRepository } from "../../packages/db/src/index.ts";
 import { installSyntheticDirectory, prepareFoundationDatabase } from "../harness/db/foundation.ts";
+import { createTestRateLimit, peer } from "../harness/rate-limit/api.ts";
 
 it("TC-AUTH-AUDIT-004 canonical principal route resolves signed JWT against current real PG directory and roles", async () => {
   if (!process.env.TEST_DATABASE_URL) throw new Error("Real PG17 required");
@@ -43,15 +44,14 @@ it("TC-AUTH-AUDIT-004 canonical principal route resolves signed JWT against curr
     webOrigin: "https://web.example.test",
     ready: async () => true,
     auth: { verifier, store: createPrincipalRepository(pool) },
-    enforcement: {
-      assertAvailable: async () => {},
-      middleware: async (_c, next) => {
-        await next();
-      },
-    },
+    rateLimit: createTestRateLimit().rateLimit,
   });
   const get = () =>
-    app.request("/api/v1/self/principal", { headers: { Authorization: `Bearer ${token}` } });
+    app.request(
+      "/api/v1/self/principal",
+      { headers: { Authorization: `Bearer ${token}` } },
+      peer(),
+    );
   try {
     await pool.query("BEGIN");
     await pool.query(
