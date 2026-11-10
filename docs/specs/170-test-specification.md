@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-170
 title: Test Specification
-version: 2.2.0
+version: 2.3.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -146,6 +146,7 @@ Business DatabaseはOrder / Ticket / Reservation / Goods / Check-in / Notificati
 | `TST-GDS-*` | Goods |
 | `TST-EML-*` | Notification / Resend |
 | `TST-SEC-*` | Security |
+| `TST-RLM-*` | Rate limit |
 | `TST-REL-*` | Reliability / retry / unknown result |
 | `TST-REC-*` | Reconciliation / recovery |
 | `TST-OBS-*` | Log / Metric / Alert / Audit Event |
@@ -248,6 +249,7 @@ tests/
     random/
     fault/
     postgres/
+    redis/
     auth/
     stripe/
     resend/
@@ -549,6 +551,9 @@ FP.RECONCILIATION.BEFORE_ITEM
 FP.RECONCILIATION.AFTER_AUTHORITY_READ
 FP.RECOVERY.BEFORE_MUTATION
 FP.RECOVERY.AFTER_PROVIDER_CALL
+FP.RATELIMIT.STORE_UNAVAILABLE
+FP.RATELIMIT.STORE_TIMEOUT
+FP.RATELIMIT.STORE_MEMORY_FULL
 ```
 
 **TST-FLT-001:** Fault Pointは1回発火 / N回発火 / always failをTestから選択でき、発火回数をassert可能にする。
@@ -698,6 +703,7 @@ Migration Testは空DBから全migrationを順番に適用し、次をassertす�
 - error redaction
 - response size / body limit where relevant
 - Webhook raw-body boundary
+- rate limit class（`SPEC-110` §56.1）と `429 RATE_LIMIT_EXCEEDED`（`Retry-After`付き）、store判定不能の `503 TEMPORARY_UNAVAILABLE`（`TST-RLM-*`）
 
 **TST-API-001:** API TestはHono route tableをenumerateし、documented current routeとの差分を検出するcontract testを持つ。UCR-only routeはexpected catalogへ入れない。
 
@@ -1106,6 +1112,55 @@ Test:
 
 **TST-SEC-002:** `SECURITY_FAILURE`はProduct retry対象のtemporary failureと同一視せず、Security Controlが安全に回復するまでmutationを行わない。
 
+## 47.1 Rate limit
+
+`SPEC-140` Part XIII、`SPEC-110` §24.1 / §56.1、`SPEC-150` §58.1、`SPEC-160` §24.1、`SPEC-180` §17.1 / §28.2 / §74.1 のTestを定義する。Test Case IDは `TC-RLM-<3-digit>-<3-digit>` とする。
+
+**TST-RLM-001:** counting方式、atomic評価、store時刻、TTL、memory満杯、keyの内容は**実Redis**でTestする。in-memory fake、mock、別のstore engineでは証明しない。実Redisへの接続設定（`TEST_REDIS_URL`）が未設定または到達不能の場合、Testはskipせずfailする（`SPEC-180` §74.1）。Redis major versionは `INF-RLS-006` に従う。
+
+**TST-RLM-002:** 実Redisで必ず次をTestする。
+
+- sliding window log: 各classで、上限ちょうどのrequestは許可され、上限+1は拒否される。窓境界をまたぐ配置（固定窓なら上限の2倍通る配置）で、任意のwindow内のadmit数が上限を超えない
+- burstとsustainedの両方が評価される。片方だけの超過でも拒否される
+- 複数ruleのうち1つでも超過すれば**全counterが変化しない**（拒否requestがcounterを消費しない）
+- 並行N requestで、上限Lに対しadmit数がL以下である（barrier付き並行harness）
+- 時刻はstore側の時計で判定され、複数API processでずれても結果が変わらない
+- `Retry-After` は超過した全ruleのうち最長を整数秒に切り上げた値（最小1）である
+- 全counter keyにTTLがあり、TTLなしkeyが存在しない
+- counter keyにraw IP、Email、Auth Subject、QR、tokenが含まれない。HMAC key versionを変えるとkeyが変わり、無keyのhashではない
+- 同一identifierは同一key、異なるidentifierは異なるkeyになる（HMAC-SHA256）
+
+**TST-RLM-003:** 次の障害を `FP.RATELIMIT.*` で再現し、いずれも `503 TEMPORARY_UNAVAILABLE` でFail Closedになること、Domain state / DB rowが変化しないこと、unlimited・process-local counterへ切り替わらないことをassertする。
+
+- store接続不能（`FP.RATELIMIT.STORE_UNAVAILABLE`）
+- 250ms超過のtimeout（`FP.RATELIMIT.STORE_TIMEOUT`）。評価を再実行しない
+- `noeviction` でmemory満杯（`FP.RATELIMIT.STORE_MEMORY_FULL`）
+- script実行エラー
+- 短絡（circuit open）中も同じ `503` を返す。`429` と `503` が混ざらない
+
+**TST-RLM-004:** 次をAPI層のTest（fake storeを許可）で行う。
+
+- 評価順: 段階1（IP等）→ token検証 → 段階2（subject / resource）が `SPEC-110` §24.1 の位置にあり、いずれもDB accessの前である。`429` / `503` の時点でEmail verified check以降へ進まない
+- health endpointとCORS preflightは対象外で、storeへ問い合わせない
+- 未一致pathと未対応methodは `public_read` のper-IP ruleだけで評価され、global ruleを消費しない
+- `429` と `503` のresponseにcounter key、該当rule、Email、Auth Subject、IPが含まれない
+- resource keyの評価は、存在するresourceと存在しないresourceで同一結果になる
+
+**TST-RLM-005:** Authentication-failure guardを次のとおりTestする。
+
+- token検証に失敗したrequestだけを数え、有効tokenのrequest、Email未検証、Authorization denial、Business Rule失敗は数えない
+- 段階1で上限以上なら `429` を返し、token検証へ進まない
+- `auth_failure_guard_attendee` と `auth_failure_guard_operator` が独立して設定・評価される
+- 並行する失敗requestによるlimit超過（overrun）はguardに限って許容し、他のruleでは許容しない
+
+**TST-RLM-006:** 設定をtable-drivenでTestする。`RATE_LIMIT_CONFIG` が、欠落・0・負数・非整数・parse不能・canonical ceiling超過・Class ID欠落のいずれかなら、staging / productionでReady=falseになり、暗黙fallbackしない。`TRUSTED_PROXY_HOPS` が未設定・負数・非整数ならReady=falseで、`0` はdirect peerを意味する有効値である。`RATE_LIMIT_HMAC_KEY` / version欠落でReady=falseになる。development / testではceiling以下の小さい値を設定できる。
+
+**TST-RLM-007:** `SPEC-110` §56.1 の割当をTestする。全canonical Operation IDがexactly 1つのClass IDに属し、割当表にないOperation IDをrouteとして登録するとstartupおよびtestで検出される。割当表のClass IDが `SPEC-140` §68のClass ID集合と一致する。
+
+**TST-RLM-008:** Client IP導出をTestする。`TRUSTED_PROXY_HOPS` が `N` のとき、信頼するproxyがN段付与した部分だけからClient IPを導出し、Clientが偽装しうるforwarded headerの部分を採用しない。`0` ではforwarded headerを一切採用せずdirect peerを使用する（`SEC-API-024〜025`、`SEC-API-030`）。具体的なheader名と段数はRailway ingressの外部事実であり（`SPEC-180` §17.2 #1）、Testはfixtureで定義した合成headerだけを使用する。
+
+**TST-RLM-009:** rate limitのeventとmetricをTestする。`ratelimit.decision.completed` は `rejected` / `store_unavailable` のときに出力され、`allowed` はmetricのみである。`r39x_rate_limit_decisions_total` はlabelが `SPEC-160` §40 の許可集合に収まり、counter key・IP・subjectを含まない。`store_unavailable` はsampling dropされない。
+
 ---
 
 # Part XIV — Reliability / Unknown Result / Recovery Test
@@ -1389,7 +1444,7 @@ recovery_execution_id
 
 ## 59. Alert evaluation
 
-`OBS-ALT-001〜037` の全ruleをsynthetic time series / event sequenceでtable-driven Testする。次の表はTest oracleとして `SPEC-160` のCanonical条件をmirrorするものであり、値のCanonical Ownerは `SPEC-160` のままである。
+`OBS-ALT-001〜037` および `OBS-ALT-041` の全ruleをsynthetic time series / event sequenceでtable-driven Testする。次の表はTest oracleとして `SPEC-160` のCanonical条件をmirrorするものであり、値のCanonical Ownerは `SPEC-160` のままである。
 
 | Alert | Synthetic oracle | Window / minimum | Severity |
 |---|---|---|---|
@@ -1430,6 +1485,7 @@ recovery_execution_id
 | `OBS-ALT-035` | required Audit insert failure | 1 event | CRITICAL |
 | `OBS-ALT-036` | log/metric export failures >=10 | 10m | MEDIUM |
 | `OBS-ALT-037` | alert delivery failure >=1 | 1 event | HIGH |
+| `OBS-ALT-041` | rate limit store unavailable decisions >=5 | 1m | HIGH Security |
 
 各Alert Testは次を含む。
 
@@ -1823,7 +1879,7 @@ Generated type declarations、migration SQL、pure config manifestはline covera
 - `SEC-*`: executable/configurable controlを100% Test manifestへmap。
 - `REL-*`: executable retry/timeout/recovery ruleを100% Test manifestへmap。
 - `OBS-*`: required event/schema/metric/alert/audit/sampling ruleを100% manifestへmap。
-- `OBS-ALT-001〜037`: 100% synthetic evaluator Test。
+- `OBS-ALT-001〜037`, `OBS-ALT-041`: 100% synthetic evaluator Test。
 
 **TST-COV-002:** Upstream ruleが「documentation-only / external fact」等で直接executeできない場合もmanifestから除外せず、`verification_method=document_review|config_validation|provider_contract`を明示する。
 
@@ -1908,7 +1964,7 @@ SPEC-170に準拠したTest implementationは、少なくとも次をすべて�
 29. raw QR / token / Secret / full Email / SQL bindをTest artifactへ不要に残さない。
 30. metric cardinality allowlist / forbidden labelsをTestする。
 31. Gauge query failureをzeroへ偽装しない。
-32. `OBS-ALT-001〜037`のthreshold / window / minimum / dedupe / cooldownをsynthetic inputでTestする。
+32. `OBS-ALT-001〜037` および `OBS-ALT-041` のthreshold / window / minimum / dedupe / cooldownをsynthetic inputでTestする。
 33. critical observability classがsampling dropされない。
 34. normal read INFOのdeterministic 5% samplingをTestする。
 35. Production DEBUG default off / emergency 60分・10%をconfig Testできる。
@@ -1929,6 +1985,9 @@ SPEC-170に準拠したTest implementationは、少なくとも次をすべて�
 50. 全canonical Operation IDにAPI contract Testがあり、UCR-only IDをactive featureとして登録しない。
 51. `SPEC-050` が定める表示規則の純粋関数（`TST-UNT-004`）と、`SPEC-050 §31` のPage Acceptance（`TST-E2E-003`）がTest Caseへ追跡できる。
 52. UI mock suiteが補助suiteとして扱われ、G8、API / DB / Providerのcoverageとして報告されていない（`TST-E2E-004`）。
+53. rate limitのcounting（sliding window log）、atomic評価、TTL、keyの内容、memory満杯を実RedisでTestし、fake storeで代替していない（`TST-RLM-001〜002`）。
+54. rate limit storeの障害（接続不能、timeout、memory満杯、script実行エラー、短絡）で `503 TEMPORARY_UNAVAILABLE` のFail Closedになり、unlimitedやprocess-local counterへ切り替わらない（`TST-RLM-003`）。
+55. rate limitの評価順、対象外route、Authentication-failure guard、設定検証、Operation→class割当、Client IP導出をTestする（`TST-RLM-004〜008`）。
 
 ---
 
@@ -1944,6 +2003,7 @@ SPEC-170に準拠したTest implementationは、少なくとも次をすべて�
 - `UCR-150-002`: `INCORPORATED`（`SPEC-130 §41.5` 等のwiring、`SPEC-110 §48.5` command）
 - `UCR-150-003`: `INCORPORATED`（`SPEC-150` `REL-DB-001` / `REL-DB-011` / §11の`55P03`行、§24 / §49 / §77のTest）
 - `UCR-140-002`: `INCORPORATED`（`SPEC-110` §21の405 / 415、`SPEC-140` `SEC-API-022`、§26のTest）
+- `UCR-140-003`: `INCORPORATED`（`SPEC-140` Part XIII / `SEC-API-030`、`SPEC-110` §21 / §24.1 / §56.1、`SPEC-150` §58.1、`SPEC-160` §24.1 / §42 / `OBS-ALT-041`、`SPEC-180` §17.1〜§17.2 / §28.1〜§28.2、§47.1のTest）
 - `UCR-170-001`: `INCORPORATED`（`SPEC-110 §41 / §46〜§48` のOperation ID completeness gap解消）
 
 Canonical化済みoperationは §27.1／§27.2 のoperation-family Test対象とし、上記既知UCRのうち `UCR-130-005` のみ未反映として期待値を先取りしない。反映済みoperationへTest Caseを追加し、存在しないoperationを発明しない。新たなUCRはOwner本文への反映状況を個別確認し、自動的にINCORPORATEDと推定しない。

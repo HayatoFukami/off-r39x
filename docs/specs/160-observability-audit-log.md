@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-160
 title: Observability and Audit Log
-version: 2.1.0
+version: 2.2.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -728,6 +728,30 @@ Rules:
 
 **OBS-AUTH-005:** Emergency Administrator recovery MUST use `INFRASTRUCTURE_OPERATOR`, `RECOVERY.ADMIN_BOOTSTRAP`, a Recovery Execution ID, and a required Audit Event; it MUST NOT masquerade as a normal Administrator UI request.
 
+### 24.1 Rate limit observability
+
+rate limitのcontrol semanticsは `SPEC-140` Part XIII、store障害時のReliability behaviorは `SPEC-150` §58.1 が定義する。本節は観測だけを定義する。
+
+Canonical event:
+
+```text
+ratelimit.decision.completed
+```
+
+| Field | 内容 |
+|---|---|
+| `class_id` | `SPEC-140` §68のClass ID（有限集合） |
+| `result` | `allowed` / `rejected` / `store_unavailable` |
+| `rule_category` | `burst` / `sustained` / `resource` / `global` / `guard`（`rejected`時の該当categoryのうち最初のもの） |
+| `operation_id` | `SPEC-110` のOperation ID（Operation IDを持たないrouteは省略） |
+| `retry_after_seconds` | `rejected`時のみ |
+
+`ratelimit.decision.completed` は `rejected` と `store_unavailable` のときに出力する。`allowed` はmetricだけで観測し、request単位のlogを出さない。`store_unavailable` の場合は `security.fail_closed.triggered`（control category `rate_limit`）も出力する。
+
+**OBS-SEC-007:** counter key、IP、Auth Subject、Email、QR digest、resource referenceをlog field、metric label、trace attributeに出さない。
+**OBS-SEC-008:** `store_unavailable` は `rejected` と別の結果として観測し、sampling dropしない。
+**OBS-SEC-009:** 判定は `r39x_rate_limit_decisions_total` で全件数える。log出力を省略した `allowed` もmetricには含める。
+
 ## 25. Stripe / Payment / Refund observability
 
 Canonical events:
@@ -1308,6 +1332,7 @@ query_name
 status_class
 control
 recovery_kind
+class_id       # SPEC-140 §68 Class ID registry
 ```
 
 Forbidden metric labels:
@@ -1368,6 +1393,8 @@ For **every** metric below, forbidden labels are exactly the high-cardinality/se
 | `r39x_api_failures_total` | Counter | failures | API operation ends non-success excluding normal 4xx validation unless security/domain tracked elsewhere | `environment,operation,domain,failure_class` | bounded operation registry |
 | `r39x_authentication_failures_total` | Counter | failures | auth required/invalid/expired/unavailable | `environment,result,reason_category` | <= 16 reason categories |
 | `r39x_authorization_denials_total` | Counter | denials | capability/ownership/last-admin denial | `environment,operation,reason_category` | bounded |
+| `r39x_rate_limit_decisions_total` | Counter | decisions | every rate limit evaluation outcome | `environment,class_id,result` where `result=allowed|rejected|store_unavailable` | <= 15 classes x 3 results |
+| `r39x_rate_limit_store_duration_seconds` | Histogram | seconds | each rate limit store operation | `environment,result` where `result=ok|timeout|error` | exactly 3 results |
 | `r39x_db_pool_acquire_duration_seconds` | Histogram | seconds | every pool checkout | `environment,service,result` | low |
 | `r39x_db_pool_acquire_failures_total` | Counter | failures | acquire timeout/error | `environment,service,reason_category` | low |
 | `r39x_db_pool_connections` | Gauge | connections | current pool aggregate | `environment,service,state` where `state=active|idle|waiting` | exactly 3 states/service |
@@ -1534,6 +1561,7 @@ For rate-based alerts, a window MUST meet both rate/threshold and minimum-event-
 | `OBS-ALT-035` Audit persistence failure | any required Audit Event insert failure for high-risk operation | 1 event | CRITICAL |
 | `OBS-ALT-036` Observability export degraded | log/metric export failures >=10 | 10m | MEDIUM |
 | `OBS-ALT-037` Alert delivery failure | configured alert delivery failure >=1 | 1 event | HIGH; delivery via independent infrastructure signal per SPEC-180 |
+| `OBS-ALT-041` Rate-limit store unavailable | `store_unavailable` decisions >=5 | 1m | HIGH Security |
 
 ### 47.1 Alert payload
 
@@ -1995,6 +2023,8 @@ Implementation MUST satisfy all of the following.
 - `UCR-130-001〜004/006`、`UCR-150-001〜002` はCanonical化済みであり、`UCR-130-005` のみ未反映として存在しないoperationを発明していない。
 
 Canonical化済みのRecovery command（`API-ADM-REC-003〜007`）は、本書の `OBS-AUD-011`、`OBS-AUD-012`、`OBS-REC-*`、Correlation、Metric、Alert contractをそのexact Operation IDへ適用する。SPEC-160側でgeneric Recovery APIを追加しない。
+
+`UCR-140-003`（共有rate limit）に伴い、本改訂（v2.2.0）で §24.1（event `ratelimit.decision.completed`）、§40（allowed label `class_id`）、§42（`r39x_rate_limit_decisions_total` / `r39x_rate_limit_store_duration_seconds`）、§47（`OBS-ALT-041`）を追加した。`SPEC-140` Part XIII と `SPEC-150` §58.1 の意味を観測する追加であり、rate limitのstate / API / Capabilityを追加・変更しない。
 
 ---
 

@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-190
 title: AI Development Guidelines
-version: 2.1.0
+version: 2.2.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -110,6 +110,7 @@ related_specs:
 | `DEV-DB-*` | Drizzle / pg / transaction / migration |
 | `DEV-AUTH-*` | Authentication / Authorization |
 | `DEV-SEC-*` | Secret / security implementation |
+| `DEV-RLM-*` | Rate limit implementation |
 | `DEV-PAY-*` | Stripe / payment |
 | `DEV-TQR-*` | Ticket / QR / Check-in |
 | `DEV-EML-*` | Email / React Email / Resend |
@@ -220,7 +221,7 @@ Rule IDはrepository内で一意とし、別意味へ再利用しない。
 - `db`: physical schema、repository adapter、transaction / lock helper。HTTP / Reactへ依存しない。
 - `auth`: verified principal構築。UI stateへ依存しない。
 - `providers`: Stripe / Resend / Neon AuthのSDK adapter。Domain Stateを独自に定義しない。
-- `security`: keyring / encryption / HMAC / redaction。raw secretを返す汎用dump APIを持たない。
+- `security`: keyring / encryption / HMAC / redaction、およびrate limitの判定ロジックとstore port。raw secretを返す汎用dump APIを持たない。
 - `reliability`: timeout / retry / Clock / classification。Canonical値はSPEC-150 registryからcode constantへ写像する。
 - `observability`: schema-validated log / metric / audit helper。Business authorityを持たない。
 
@@ -386,6 +387,26 @@ Authentication/validation orderingでSecurity上必要な先行処理がSPEC-110
 
 **DEV-API-005:** owner resourceはPublic Referenceだけでqueryせず、verified Business Profile relationをsame queryまたはsame transactionで評価する。
 
+## 15.1 Rate limit implementation boundary
+
+rate limitのControlは `SPEC-140` Part XIII、評価位置と割当は `SPEC-110` §24.1 / §56.1、store障害は `SPEC-150` §58.1、store配置は `SPEC-180` §17.1 を正とする。
+
+**DEV-RLM-001:** rate limitの判定ロジック（key導出、HMAC、窓判定のinput組立、結果型）とstore portは `packages/security` に置く。route handler、application service、domainへ判定ロジックを埋め込まない。
+
+**DEV-RLM-002:** Redis clientはrate limit store adapterだけがimportする。他のpackageやapplication / domain / route handlerからRedis clientを直接importしない。この境界は `scripts/check-import-boundaries.mts` で検査する。
+
+**DEV-RLM-003:** 複数ruleのatomic評価に使うscriptはsource controlされたfileとして保持し、script hashで呼び出す。Redisのkeyは `KEYS`、値は `ARGV` で渡し、リクエスト由来の文字列からscript本体を組み立てない。
+
+**DEV-RLM-004:** Class IDは単一のregistry（コード内のconst）を正とし、canonical ceiling、`RATE_LIMIT_CONFIG` のZod schema、Operation→class割当、metric label値が同じregistryから導出される。registryの内容が `SPEC-140` §68・`SPEC-110` §56.1と一致することはtestで検証する（`TST-RLM-006〜007`）。
+
+**DEV-RLM-005:** route / Operationの登録型はrate limit classを必須とし、classのないOperationを型レベルで登録できないようにする（`API-RLC-001`）。
+
+**DEV-RLM-006:** rate limit portが例外を投げた場合、またはstoreが応答しない場合は、catchして処理を続行せず、`SPEC-110` §21の `503 TEMPORARY_UNAVAILABLE` へmapする。rate limitを無効化するenvironment flag、bypass header、debug用skipを追加しない。fault injectionはTestのDI経由だけで行い、Productionのenvironmentやrouteから設定できない（`TST-FLT-002`）。
+
+**DEV-RLM-007:** counter key、IP、Auth Subject、Email、QR digest、resource referenceをlog、metric label、trace attribute、error responseへ出さない（`OBS-SEC-007`）。
+
+**DEV-RLM-008:** 実Redisを使うTestは `TEST_REDIS_URL` を必須とし、未設定ならskipではなくfailする（`TST-RLM-001`）。
+
 ## 16. Correlation / idempotency / webhook
 
 **DEV-API-006:** `request_id`, Operation ID, `operation_execution_id`, Business Cause, Transport Idempotency Keyを別概念として保持する。相互代替しない。
@@ -498,6 +519,7 @@ Resend API secret
 Resend webhook secret
 QR HMAC / AEAD keyring
 OBS_CORRELATION_HMAC_KEY
+Rate limit store connection credential / RATE_LIMIT_HMAC_KEY
 Environment identity markers / provider expected identity
 ```
 
@@ -642,6 +664,7 @@ unnecessary PII
 - Node.js major / PostgreSQL major
 - Database role separation
 - Secret store / reader matrix
+- rate limit store（`rate-limit-redis`）の配置・接続範囲・eviction policy・永続化
 - Worker scheduler mechanism / cadence wiring
 - migration execution order
 - readiness / liveness contract
@@ -688,6 +711,7 @@ unnecessary PII
 | Domain / business logic | `SPEC-030` + domain-specific owner | Unit + Integration + affected API/E2E | new State / exception発明 |
 | Database schema / migration | `SPEC-100`, `SPEC-170`, `SPEC-180` | DB migration + Integration + affected API | startup migration / unnamed constraint |
 | Security-sensitive | `SPEC-060`, `SPEC-140`, `SPEC-160` | Security + API + affected Integration | fail-open / secret exposure |
+| Rate limit / abuse protection | `SPEC-140`, `110`, `150`, `160`, `180`, `170` | Security + API + 実Redis（`TST-RLM-*`） | fail-open / process-local-onlyのcounter / class割当漏れ |
 | Payment | `SPEC-070`, `100`, `110`, `140`, `150` | Payment Integration/API + Reliability + DB + Security | blind provider retry |
 | QR / Check-in | `SPEC-080`, `100`, `140`, `150` | QR/API + DB + Security + hot concurrency | raw QR artifacts / double-use |
 | Email | `SPEC-120`, `140`, `150` | Email Integration + Reliability + Provider double | business transaction rerun |

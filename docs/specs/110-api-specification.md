@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-110
 title: API Specification
-version: 2.2.0
+version: 2.3.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -456,14 +456,17 @@ listも同じ`data`内に`items/page`を持つ。
 | 415 | `UNSUPPORTED_MEDIA_TYPE` | 未対応content type | No |
 | 422 | `DOMAIN_RULE_VIOLATION` | syntactically validだがBusiness Rule不成立 | No |
 | 422 | `OUTSIDE_CHECKIN_WINDOW` | Karaoke通常受付時間外 | No |
+| 429 | `RATE_LIMIT_EXCEEDED` | rate limit超過（`SPEC-140` Part XIII） | Yes（`Retry-After`秒後） |
 | 424 | `STRIPE_TEMPORARY_FAILURE` | Stripe依存の一時失敗 | Yes |
 | 503 | `DATABASE_TEMPORARY_FAILURE` | DB unavailable / retryable tx failure exhausted | Yes |
 | 503 | `AUTH_SERVICE_TEMPORARY_FAILURE` | identityを安全に検証不能 | Yes |
-| 503 | `TEMPORARY_UNAVAILABLE` | その他安全に判定不能 | Yes |
+| 503 | `TEMPORARY_UNAVAILABLE` | その他安全に判定不能（rate limit storeが利用できず上限を判定できない場合を含む） | Yes |
 | 409 | `CONSISTENCY_REVIEW_REQUIRED` | 通常競合でなくreview必要 | No |
 | 500 | `INTERNAL_ERROR` | 予期しない内部失敗 | 条件付き |
 
 `405 METHOD_NOT_ALLOWED` には、そのpathで対応するHTTP methodを列挙した `Allow` headerを付ける。どのrouteにも一致しないpathは、methodによらず `404 RESOURCE_NOT_FOUND` とする。405 / 415 は `SEC-API-022` の分類であり、Domain state conflictやAuthentication / Authorizationの結果へ変換しない。
+
+`429 RATE_LIMIT_EXCEEDED` には整数秒の `Retry-After` headerを必ず付ける（`SEC-ABU-007`）。`details` は `null` とし、counter key、該当したrule、Email、Auth Subject、IPを含めない。rate limit storeが利用できず上限を判定できない場合は `429` ではなく `503 TEMPORARY_UNAVAILABLE` を返し、上限超過と判定不能を同一視しない（`SEC-ABU-009` / `SEC-ABU-019`）。`429` / `503` を返したrequestはDomain stateを変更しない。
 
 Known DB constraint loserは一律500にしない。`23505` / `23P01`等はconstraint名とcurrent stateを再読込し、既知の競合 / idempotent duplicateへ分類する。未知constraint violationは`INTERNAL_ERROR`か`CONSISTENCY_REVIEW_REQUIRED`として内部監視対象にする。
 
@@ -512,6 +515,19 @@ Protected operationは `AR-AZ-*` を次の順で実装する。
 9. mutation
 
 Fail Closedとする。
+
+### 24.1 Rate limit evaluation points
+
+rate limit（`SPEC-140` Part XIII）は上記の番号付き手順に次の位置で挿入する。上記1〜9の順序と意味は変更しない。いずれもDB accessの前に行う。
+
+| 挿入位置 | 内容 |
+|---|---|
+| 手順1の直後、手順2の前（段階1） | route / methodからclassを確定し、per-IP、webhook source IP、global、正規化済みlogin identifier hash、Authentication-failure guardの確認を評価する（`SEC-ABU-017`） |
+| 手順2でtoken検証に失敗した直後 | `401` を返す前に、該当するAuthentication-failure guardへ1件記録する（`SEC-ABU-020` / `SEC-ABU-021`） |
+| 手順2の成功後、手順3の前（段階2） | per-auth-subject / per-staff-subject / per-admin-subjectを評価する |
+| 同じく手順5の最初のDB accessの前 | resource keyとQR digestを、そのkeyの導出に必要な入力の構文検証後に評価する |
+
+`429` を返した時点で、以降の手順（Email verified check、Business Profile resolution、Role / Capability評価、Domain precondition、mutation）へ進まない。`503 TEMPORARY_UNAVAILABLE`（rate limit store判定不能）も同様に以降へ進まない。health endpointとCORS preflightはrate limitの対象外である（`SEC-ABU-018`）。
 
 ## 25. Profile provisioning
 
@@ -2079,6 +2095,35 @@ Public ReferenceはAuthorizationではない。
 
 Request ID、Operation ID、Public Reference、safe provider object IDの限定使用はSPEC-160へ委譲する。
 
+## 56.1 Rate limit class assignment
+
+各canonical `API-*` Operation IDは、`SPEC-140` §68のClass IDのうちexactly 1つに属する。上限値、key、追加ruleは `SPEC-140` §68が定義し、本節はどのOperationがどのclassかだけを定義する。
+
+| Class ID | Operation ID / route |
+|---|---|
+| `public_read` | `API-PUB-001`〜`API-PUB-012` |
+| `stripe_webhook` | `API-WHK-001` |
+| `resend_webhook` | `API-WHK-EML-001` |
+| `auth_form_proxy` | `/auth/*` proxy（Operation IDを持たないroute） |
+| `self_read` | `API-AUTH-001`, `API-AUTH-002`, `API-PUR-ELG-001`, `API-ORD-001`, `API-ORD-003`, `API-TKT-001`, `API-TKT-002`, `API-KRK-SELF-001`, `API-KRK-SELF-002`, `API-GDS-SELF-001`, `API-GDS-SELF-002` |
+| `self_read`（Administrator read） | §41のAdministrator read catalogの全Operation、および `API-ADM-EML-001`, `API-ADM-EML-002`, `API-ADM-EML-003`（`SPEC-120`） |
+| `purchase_checkout` | `API-PUR-CART-001`, `API-PUR-ENTRY-001`, `API-PUR-KRK-001`, `API-PUR-GDS-001`, `API-CHK-001`, `API-ORD-002` |
+| `qr_display` | `API-TKT-003`, `API-KRK-SELF-003` |
+| `profile_mutation` | `API-AUTH-003`, `API-AUTH-004` |
+| `staff_checkin` | `API-STF-CHK-001`, `API-STF-CHK-002` |
+| `goods_handoff` | `API-STF-GDS-001`, `API-STF-GDS-002` |
+| `admin_mutation` | `API-ADM-CNT-002`, `API-ADM-CNT-005`〜`API-ADM-CNT-008`, `API-ADM-CNT-011`〜`API-ADM-CNT-016`, `API-ADM-CNT-019`〜`API-ADM-CNT-021`, `API-ADM-KRK-003`〜`API-ADM-KRK-007`, `API-ADM-ENT-SALES-003`, `API-ADM-KRK-SALES-003`, `API-ADM-GDS-004`, `API-ADM-GDS-005`, `API-ADM-HOF-003` |
+| `role_assignment` | `API-ADM-ROL-002`, `API-ADM-ROL-003` |
+| `high_risk_recovery` | `API-ADM-PAY-001`, `API-ADM-TQR-001`, `API-ADM-EML-004`, `API-ADM-EML-005`, `API-ADM-REC-003`〜`API-ADM-REC-007` |
+
+`auth_failure_guard_attendee` と `auth_failure_guard_operator` はOperationのclassではなく、上記classに付随するguardである（`SPEC-140` §68.1）。
+
+**API-RLC-001:** 本節に載っていないcanonical Operation IDをrouteとして登録しない。classを持たないOperationは、route registryの検証（startupおよびtest）で検出し、serviceをReadyにしない。「classがないので無制限」としない。
+
+**API-RLC-002:** `API-ADM-READ-001` の「1 route = 1 Operation ID」に合わせ、1つのOperation IDが複数classに属さない。新しいOperation IDを追加する変更は、本節へのclass割当を同一変更に含める。
+
+**API-RLC-003:** `SPEC-140` §68のClass IDまたはguardの追加・削除は `SPEC-140` の変更であり、本節のclass割当の変更はその整合を保つ。Operation IDを持たない `/auth/*` proxy、未一致path、health endpoint、CORS preflightの扱いは `SPEC-140` `SEC-ABU-018` / §68に従う。
+
 ---
 
 # Part XVII — Endpoint Traceability Matrix
@@ -2226,6 +2271,7 @@ resolveConsistencyReviewCase()
 42. Notification unknown result reconcileはsame Attempt / provider keyだけを反映し、new provider key / recipient変更 / blind resendを行わない。
 43. Consistency Review resolutionはpost-verificationなしのmark-fixedを提供せず、source historyを削除しない。
 44. `API-ADM-GDS-005` Inventory adjustmentはClientからreason code / free textを受け取らず、serverがfixed `ADMINISTRATIVE_CAPACITY_ADJUSTMENT`を導出し、same-transaction Audit Eventへsigned adjustment quantity / safe before/after counters / resultと共に永続化する（`SPEC-160 §28.1`, `OBS-GDS-002,004,005`）。
+45. 全canonical Operation IDは§56.1でexactly 1つのrate limit classを持つ。`429` は `Retry-After`付きで `RATE_LIMIT_EXCEEDED`、rate limit store判定不能は `503 TEMPORARY_UNAVAILABLE` を返し、どちらもDomain stateを変更しない。
 
 ---
 
@@ -2293,3 +2339,11 @@ retry count / backoff / queue / operator RunbookはSPEC-150。本書§48.5はSPE
 `SPEC-140` が記録した「405・415に対応する公開エラーコードの不在」を、本改訂（v2.2.0）で §21 に反映した。405 は `METHOD_NOT_ALLOWED`、415 は `UNSUPPORTED_MEDIA_TYPE` とし、どちらも `Retryable=No` である。405 には `Allow` headerを付ける。`MALFORMED_REQUEST` のHTTP statusを上書きして代用しない。
 
 同時に、lock timeout（`55P03`）を標準retryable DB transaction errorとする `SPEC-150` の `UCR-150-003` を §50 とAcceptance 24へ反映した。
+
+### UCR-140-003 — INCORPORATED
+
+`SPEC-140` が記録した共有rate limitの契約（`UCR-140-003`）のうち、本書が所有する部分を本改訂（v2.3.0）で反映した。
+
+- §21: `429 RATE_LIMIT_EXCEEDED`（`Retry-After`必須、`Retryable=Yes`）を追加し、rate limit storeが利用できない場合を `503 TEMPORARY_UNAVAILABLE` に含めた。
+- §24.1: rate limitの評価位置（段階1・Authentication-failure guardの記録・段階2・resource key）を、§24の手順1〜9の順序を変えずに定義した。
+- §56.1: 全canonical Operation IDのrate limit class割当を追加した（`API-RLC-001`〜`003`）。classを持たないOperationをReadyにしない。

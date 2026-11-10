@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-180
 title: Infrastructure and Deployment Specification
-version: 2.1.0
+version: 2.2.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -142,6 +142,7 @@ related_specs:
 | `INF-ENV-*` | Environment |
 | `INF-VCL-*` | Cloudflare Pages |
 | `INF-RWY-*` | Railway |
+| `INF-RLS-*` | Rate limit store |
 | `INF-DB-*` | Neon PostgreSQL / migration |
 | `INF-AUTH-*` | Neon Auth infrastructure |
 | `INF-SEC-*` | Secret / key / infrastructure access |
@@ -190,6 +191,7 @@ flowchart LR
   EW[Railway Email Worker]
   RW[Railway Reconciliation Worker]
   DB[(Neon PostgreSQL)]
+  RL[(Railway Redis rate limit)]
   AU[Neon Auth]
   ST[Stripe]
   RS[Resend]
@@ -200,6 +202,7 @@ flowchart LR
   B -->|HTTPS| V
   B -->|業務 HTTPS + Bearer JWT / 認証 Cookie| A
   A --> DB
+  A --> RL
   EW --> DB
   RW --> DB
   A <-->|認証中継| AU
@@ -217,7 +220,7 @@ flowchart LR
   DB -. logical backup .-> R2
 ```
 
-Better Stack、Healthchecks.io、Cloudflare R2はsupporting infrastructureであり、`SPEC-010` のBusiness System Boundary / System of Recordを変更しない。
+Better Stack、Healthchecks.io、Cloudflare R2、およびrate limit用Railway Redisはsupporting infrastructureであり、`SPEC-010` のBusiness System Boundary / System of Recordを変更しない。
 
 ---
 
@@ -372,6 +375,7 @@ Canonical Environmentごとに別Railway projectを使用する。
 api
 email-worker
 reconciliation-worker
+rate-limit-redis
 ```
 
 Productionだけ次のmaintenance service / scheduled jobも持つ。
@@ -384,7 +388,7 @@ alert-canary
 
 stagingには `alert-canary` とrestore / backup testを必要時に安全なnonproduction dataで実行可能にする。
 
-**INF-RWY-002:** `email-worker`, `reconciliation-worker`, maintenance jobにはpublic domainを付与しない。
+**INF-RWY-002:** `email-worker`, `reconciliation-worker`, `rate-limit-redis`, maintenance jobにはpublic domainを付与しない。
 
 ## 15. Common Railway runtime
 
@@ -417,6 +421,7 @@ alert-canary            -> node dist/jobs/alert-canary.js
 | API | 2 | 1 | 1 | 1 |
 | Email Worker | 2 | 1 | 1 | 1 |
 | Reconciliation Worker | 2 | 1 | 1 | 1 |
+| Rate limit Redis（`rate-limit-redis`） | 1 | 1 | 1 | 1 |
 
 Replica追加はDB pool budget checkを通過した場合だけ許可する。
 
@@ -436,6 +441,37 @@ Railwayから`SIGTERM`を受けたprocessは次を実行する。
 8. DB poolをcloseしprocess exitする。
 
 **INF-RWY-005:** graceful shutdown中に新Provider side effectを開始しない。
+
+## 17.1 Rate limit store
+
+`SPEC-140` Part XIII の共有storeを次のとおり配置する。control semanticsは `SPEC-140`、store障害時のReliability behaviorは `SPEC-150` §58.1 を正とする。
+
+**INF-RLS-001:** 各Canonical EnvironmentのRailway projectに `rate-limit-redis` serviceを1つ置く。単一ノードのRedisとし、Sentinel / HA構成は採用しない。Environment間で共有しない（`INF-ENV-002`）。
+
+**INF-RLS-002:** public domain、TCP proxy、Public Accessを付与せず、Railway private networkだけで到達可能にする。接続元はAPI serviceだけとし、Email Worker / Reconciliation Worker / maintenance jobから接続しない。
+
+**INF-RLS-003:** 永続化（Volume / AOF / RDB）を使用しない。再起動でcounterが失われることを許容し、失われたcounterの再構築は行わない。
+
+**INF-RLS-004:** `maxmemory-policy` は `noeviction` とし、`maxmemory` を固定値で設定する。値は§68の最大admit rate（global 10,000/min等）から求めるcounter量に十分な余裕を持たせて、実装時に実測して決める。memoryが満杯のときは書き込み失敗となり、`SEC-ABU-019` に従ってFail Closedとする。`allkeys-*` のeviction policyでcounterを黙って削除しない。
+
+**INF-RLS-005:** `rate-limit-redis` のRailway replicasは1とする。Railway replicasは水平スケールの設定でありRedis replicationではない。
+
+**INF-RLS-006:** Redisのmajor versionは、Railwayで実際に稼働するversionとCI（`SPEC-170`）のtest用Redisで同一にする。実versionは外部事実であり、本書は捏造しない（§17.2）。
+
+**INF-RLS-007:** Railway private network内のRedis通信のTLS提供の有無は未確認である（§17.2）。確認されるまで、private network内の平文接続を許容する。Redisに保存する値は `SEC-ABU-015` のHMAC-SHA256 hash済みkeyと時刻だけで、raw IP / Email / Auth Subject / QR / tokenを含まない。TLSが利用できると確認できた場合は、TLS必須とするか判断する。
+
+### 17.2 Rate limit external fact verification gates
+
+次は外部事実であり、本書は値を確定しない。各項目をIssueとして管理し、確認結果を本書または運用記録へ反映する。
+
+| # | 確認する外部事実 | 確認の場所 | Production promotionをblockするか |
+|---|---|---|---|
+| 1 | Railway ingressが付与するforwarded headerと、信頼すべきproxy段数（`TRUSTED_PROXY_HOPS` の値） | staging | Yes。staging確認前はProduction promotionしない |
+| 2 | Railway Redisのprivate network内TLS提供の有無 | staging | No |
+| 3 | Railway Redisの実バージョン | staging | No（確認後にCI versionを同一majorへ合わせる） |
+| 4 | `maxmemory-policy noeviction` と `maxmemory` をRailway Redisで設定できること | staging | Yes |
+
+**INF-RLS-008:** #1と#4が未確認のままProduction promotionしない。`TRUSTED_PROXY_HOPS` の誤設定は、全利用者のClient IPを1つに集約し、IP単位のruleで全員が拒否される（`SEC-API-030`）。
 
 ---
 
@@ -647,6 +683,8 @@ Canonical placement:
 | QR HMAC keyring | No | Yes | No | Yes | No | No | No | emergency inspect prohibited |
 | QR AEAD keyring | No | Yes | No | Yes | No | No | No | emergency inspect prohibited |
 | `OBS_CORRELATION_HMAC_KEY` | No | Yes | Yes | Yes | No | No | No | No |
+| Rate limit store connection credential（`RATE_LIMIT_REDIS_URL`） | No | Yes | No | No | No | No | No | No |
+| `RATE_LIMIT_HMAC_KEY` | No | Yes | No | No | No | No | No | No |
 | Better Stack ingest token | No | Yes | Yes | Yes | No | Yes | Yes | No |
 | Healthchecks ping URL | No | No | No | No | No | No | alert-canary only | No |
 | R2 write credential | No | No | No | No | No | No | Yes | No |
@@ -694,6 +732,27 @@ Startup validation:
 - `OBS_CORRELATION_HMAC_KEY_VERSION` をnon-secret integerとして併設
 - rotate後にold raw idempotency keyを保存してfingerprint再計算しない
 - missing時はraw keyをlogするfallback禁止
+
+## 28.1 `RATE_LIMIT_HMAC_KEY`
+
+- Environment別（`INF-ENV-002` / `INF-SEC-002`）
+- API serviceだけが読む（`INF-SEC-003`）
+- routine rotation 180日以内（`SEC-KEY-006` / `SEC-ABU-016`）
+- `RATE_LIMIT_HMAC_KEY_VERSION` をnon-secret integerとして併設し、counter keyに含める
+- rotation直後にcounterが実質resetされることを許容する。Event当日等のpeak運用を避けて実施する
+- missing時にrate limitを無効化・簡略化するfallbackを禁止する（`INF-HLT-004`）
+
+## 28.2 Rate limit / Client IP configuration
+
+| 変数 | 種別 | 内容 |
+|---|---|---|
+| `RATE_LIMIT_REDIS_URL` | Secret（Railway Sealed Variable） | private network上の `rate-limit-redis` への接続情報 |
+| `RATE_LIMIT_HMAC_KEY` | Secret（Railway Sealed Variable） | `SEC-ABU-015` のHMAC key |
+| `RATE_LIMIT_HMAC_KEY_VERSION` | non-secret integer | HMAC keyのversion |
+| `RATE_LIMIT_CONFIG` | non-secret JSON | `SPEC-140` §68のClass IDをkeyとするobject。各classは `burst_limit`、`sustained_limit` と、追加ruleの `additional` を持つ |
+| `TRUSTED_PROXY_HOPS` | non-secret integer（0以上） | Client IP導出で信頼するproxy段数（`SEC-API-030`）。`0` はdirect peerを使用する明示値 |
+
+**INF-RLS-009:** `RATE_LIMIT_CONFIG` はZodで検証し、`SEC-ABU-010` に従ってstaging / productionで全Class IDの全値が正の整数かつcanonical ceiling以下であることを確認する。追加ruleは、§68の「Additional resource/global rule」列の各ruleへ実装が一意のrule IDを与え、`additional` に `limit` と `window_seconds` を持たせる。rule ID一覧とschemaが `SPEC-140` §68の値と一致することはtestで検証する（`SPEC-170`）。
 
 ## 29. Provider webhook Secret rotation
 
@@ -911,6 +970,9 @@ API additionally:
 - allowed previous key set valid
 - Neon Auth issuer / audience / JWKS origin config valid syntactically
 - Stripe / Resend webhook verification config present
+- rate limit configuration valid（`RATE_LIMIT_CONFIG` が `SEC-ABU-010` を満たす）
+- `RATE_LIMIT_HMAC_KEY` とversionが存在し、`TRUSTED_PROXY_HOPS` が明示されている
+- rate limit storeへ接続でき、必要なscriptを実行できる
 
 Email Worker additionally:
 
@@ -926,6 +988,8 @@ Reconciliation Worker additionally:
 **INF-HLT-002:** Security Configuration invalid / current key missing / unknown key version / duplicate current keyはwarning-onlyにせずReady=falseとする。
 
 **INF-HLT-003:** readinessはStripe / Resendへlive network requestを必須にしない。Provider outageはdependency degradationとして扱いprocessをReadyのまま維持し、mutation自体は上流Reliability / Security ruleで失敗またはreconcileする。
+
+**INF-HLT-004:** rate limit storeはProviderではなくSecurity Controlの一部である。readinessはrate limit storeへの接続とscript実行を確認し、storeに到達できない、またはconfigurationが不正な場合はReady=falseとする（`INF-HLT-002`）。新しいdeploymentはstore接続を確認できるまでactiveにならない。実行中のstore障害時は `SPEC-150` §58.1 に従い `503` でFail Closedとし、liveness（`INF-HLT-001`）はstoreを判定に含めない。
 
 ## 41. Railway deploy healthcheck
 
@@ -1589,6 +1653,10 @@ G2は少なくとも次をProduction deploy前に成功させる。
 - runtime / migrator / audit / purge role grants
 - schema readiness check
 
+## 74.1 Rate limit store gate
+
+rate limit storeのTestは実Redisで実行する。CIはRedisをservice containerとして起動し、`TEST_REDIS_URL` を渡す。`TEST_REDIS_URL` が未設定または到達不能の場合、Testはskipではなくfailする。ローカルでは開発者が接続先を用意する。Redis major versionは `INF-RLS-006` に従う。fake storeは `SPEC-170` が許す範囲でAPI層のTestにだけ使い、Lua等のatomic操作・TTL・memory満杯・時刻の証明には使わない。
+
 ## 75. Production Provider Contract Smoke
 
 G9はstaging / test Provider accountで実行する。
@@ -1641,6 +1709,7 @@ approval actor ref
 | alert delivery failure | independent Healthchecks path | same broken pathだけへ通知 |
 | backup job failure | alert / next safe retry | backup success偽装 |
 | secret invalid | Ready=false | default secret / plaintext fallback |
+| rate limit store unavailable | API `503 TEMPORARY_UNAVAILABLE` でFail Closed、新deploymentはReady=false、storeを復旧する | limiter off / unlimited / process-local counterだけでの継続 |
 
 ---
 
@@ -1651,6 +1720,7 @@ approval actor ref
 | Infrastructure rules | Primary upstream trace |
 |---|---|
 | `INF-ARC-*`, `INF-ENV-*` | `INV-010-01〜10`, `SEC-KEY-*`, `OBS-SEC-*`, `TST-DAT-*` |
+| `INF-RLS-*` | `SEC-ABU-*`, `SEC-API-024〜025`, `SEC-API-030`, `REL-SEC-003〜007`, `OBS-SEC-007〜009`, `TST-RLM-*` |
 | `INF-VCL-*`, `INF-RWY-*` | `SEC-WEB-*`, `SEC-AUTH-*`, `REL-GEN-*`, `REL-TMO-*`, `OBS-LOG-*` |
 | `INF-DB-*` | `DB-ARC-*`, `DB-MIG-*`, `DB-TXN-*`, `SEC-DB-*`, `REL-DB-*`, `TST-DB-*` |
 | `INF-AUTH-*` | `SEC-AUTH-*`, `REL-AUTH-*`, relevant `API-AUTH-*` |
@@ -1735,6 +1805,11 @@ SPEC-180は次をすべて満たしたとき受入可能とする。
 46. Canonical Admin API operationはHono API route以外の経路・別service・別workerで露出しない。
 47. deployment registry / log / metric / Auditは `SPEC-110` Operation ID manifestをsourceとし、`SPEC-160` の `operation_id` / `operation_execution_id` correlationへwiringする。
 48. privileged Admin API operation smokeはProduction business mutation / Provider write / real PII / raw QR / raw provider bodyを発生させない。
+49. 各Environmentに `rate-limit-redis` が1つ置かれ、public domain / TCP proxyを持たず、API serviceだけが接続し、Environment間で共有されない。
+50. `rate-limit-redis` は永続化なし、`noeviction`、固定 `maxmemory` で、Railway replicasが1である。
+51. `RATE_LIMIT_REDIS_URL` と `RATE_LIMIT_HMAC_KEY` がAPI serviceだけに配置され、他serviceやClientへ出ない。
+52. rate limit configuration不正、store接続不能、`TRUSTED_PROXY_HOPS` 未設定でAPI readinessがfalseになる。
+53. Production promotion前に `INF-RLS-008`（`TRUSTED_PROXY_HOPS` 検証とRedis設定の確認）が完了している。
 
 ---
 
@@ -1742,7 +1817,7 @@ SPEC-180は次をすべて満たしたとき受入可能とする。
 
 ## 81. 上流仕様変更要求
 
-**なし。**
+**なし。**（`UCR-140-003` により本書が受けた変更は §14、§16、§17.1〜§17.2、§26、§28.1〜§28.2、§40、§74.1、§77 に反映済みである。）
 
 本仕様は、Infrastructure Ownerとして明示的に委譲されたEnvironment、DB principal、Secret placement、scheduler、health、deployment、Audit access/purge、observability backend、backup / restore、Test gateの具体化だけを行っている。
 
@@ -1767,6 +1842,7 @@ SPEC-180は次をすべて満たしたとき受入可能とする。
 - Cloudflare Pages Direct Upload / preview / rollback: https://developers.cloudflare.com/pages/get-started/direct-upload/ / https://developers.cloudflare.com/pages/configuration/preview-deployments/ / https://developers.cloudflare.com/pages/configuration/rollbacks/
 - Cloudflare Pages headers / SPA routing: https://developers.cloudflare.com/pages/configuration/headers/ / https://developers.cloudflare.com/pages/configuration/serving-pages/
 - Railway regions: https://docs.railway.com/deployments/regions
+- Railway Redis / cache-vs-store: https://docs.railway.com/databases/redis / https://docs.railway.com/guides/redis-cache-vs-store（2026-11参照。TLS・実version・料金は未確認であり、§17.2の検証対象）
 - Better Stack OpenTelemetry / retention API / source maps: https://betterstack.com/docs/logs/open-telemetry/ / https://betterstack.com/docs/logs/api/create-a-source/ / https://betterstack.com/docs/errors/collecting-errors/upload-source-maps/
 - Healthchecks.io: https://healthchecks.io/docs/
 - Cloudflare R2 S3 / lifecycle: https://developers.cloudflare.com/r2/get-started/s3/ / https://developers.cloudflare.com/r2/buckets/object-lifecycles/
