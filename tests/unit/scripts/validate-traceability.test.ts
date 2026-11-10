@@ -435,6 +435,90 @@ describe("TC-DEV-TRC-001-005 upstream IDs are known and none is a deferred UCR (
     }
   });
 
+  it("a non-section anchor is looked up only in the spec file of its own number (PR #39 review)", () => {
+    const anchor = "SPEC-050-NONEXISTENT-RULE";
+    const withSpecs = (specs: Record<string, string>): RunResult =>
+      check({
+        ...cleanTraceFiles(),
+        ...specs,
+        [MANIFEST]: manifestJson([
+          manifestCase(ID_UNIT, { upstream_rule_ids: ["FOO-001", anchor] }),
+          manifestCase(ID_E2E, e2ePatch()),
+        ]),
+      });
+    // Another spec (170) quotes the ID as a bad example; spec 050 does not contain it.
+    const elsewhere = withSpecs(specDocs(`bad example: ${anchor}`));
+    expect(
+      violationsOf(elsewhere).some(
+        (l) => l.startsWith("VIOLATION unknown-upstream-id") && l.includes(anchor),
+      ),
+    ).toBe(true);
+    // The same text inside spec 050 is a literal match.
+    expectClean(
+      withSpecs({
+        ...specDocs(),
+        "docs/specs/050-page.md": `# Page spec\n\nFOO-001 BAR-002 TST-E2E-004 ${anchor}\n`,
+      }),
+    );
+  });
+
+  it("code fences are matched by their opening marker and length; nothing inside one is a heading or an item (PR #39 review)", () => {
+    const spec = [
+      "# Page spec",
+      "",
+      "FOO-001 BAR-002 TST-E2E-004",
+      "",
+      "## 31. Page Acceptance",
+      "",
+      "1. first",
+      "",
+      "````md",
+      "```",
+      "## 99. heading after a shorter fence inside a four-backtick fence",
+      "```",
+      "99. item inside the fence",
+      "````",
+      "",
+      "~~~",
+      "```",
+      "## 98. heading after a backtick fence inside a tilde fence",
+      "~~~",
+      "",
+      "```js",
+      "100. closing marker needs no info string, so this fence stays open",
+      "```js",
+      "```",
+      "",
+      "## 32. After the fences",
+      "",
+    ].join("\n");
+    const withAnchor = (anchor: string): RunResult =>
+      check({
+        ...cleanTraceFiles(),
+        ...specDocs(),
+        "docs/specs/050-page.md": spec,
+        [MANIFEST]: manifestJson([
+          manifestCase(ID_UNIT, { upstream_rule_ids: ["FOO-001", anchor] }),
+          manifestCase(ID_E2E, e2ePatch()),
+        ]),
+      });
+    const flagged = (anchor: string): boolean =>
+      violationsOf(withAnchor(anchor)).some(
+        (l) => l.startsWith("VIOLATION unknown-upstream-id") && l.includes(anchor),
+      );
+    for (const anchor of ["SPEC-050-31", "SPEC-050-31-1", "SPEC-050-32"]) {
+      expectClean(withAnchor(anchor));
+    }
+    for (const anchor of [
+      "SPEC-050-99", // heading inside a four-backtick fence
+      "SPEC-050-98", // heading inside a tilde fence
+      "SPEC-050-31-99", // numbered item inside a fence
+      "SPEC-050-31-100", // item inside a fence that an info-string line does not close
+    ]) {
+      expect(flagged(anchor), anchor).toBe(true);
+    }
+  });
+
   it("deferred-ucr: UCR-130-005 is never an upstream ID (even when the specification text mentions it)", () => {
     const result = check({
       ...cleanTraceFiles(),

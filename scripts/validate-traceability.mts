@@ -280,17 +280,35 @@ interface SpecHeading {
   readonly body: readonly string[];
 }
 
-/** Markdown headings of one specification. Lines inside a code fence are not headings. */
-function parseHeadings(source: string): SpecHeading[] {
-  const lines = source.split(/\r?\n/);
-  const found: { level: number; title: string; start: number }[] = [];
-  let fenced = false;
-  lines.forEach((line, index) => {
-    if (/^\s*(```|~~~)/.test(line)) {
-      fenced = !fenced;
-      return;
+/**
+ * Lines of a specification with the code fences blanked out. A fence opens with three or more backticks or tildes and
+ * closes only with the same character, at least as many of them, and nothing else on the line (CommonMark), so a
+ * shorter or different fence inside it does not end it. Blank lines keep the line numbers.
+ */
+function outsideFences(source: string): string[] {
+  let open: { readonly char: string; readonly length: number } | undefined;
+  return source.split(/\r?\n/).map((line) => {
+    if (open === undefined) {
+      const start = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+      if (start !== null) {
+        const marker = start[1] ?? "";
+        open = { char: marker.charAt(0), length: marker.length };
+        return "";
+      }
+      return line;
     }
-    if (fenced) return;
+    const closing = /^ {0,3}(`{3,}|~{3,})[ \t]*$/.exec(line);
+    const marker = closing?.[1] ?? "";
+    if (marker.charAt(0) === open.char && marker.length >= open.length) open = undefined;
+    return "";
+  });
+}
+
+/** Markdown headings of one specification. Neither a heading nor a numbered item inside a code fence counts. */
+function parseHeadings(source: string): SpecHeading[] {
+  const lines = outsideFences(source);
+  const found: { level: number; title: string; start: number }[] = [];
+  lines.forEach((line, index) => {
     const heading = /^(#{1,6})\s+(.*)$/.exec(line);
     if (heading !== null) {
       found.push({ level: (heading[1] ?? "").length, title: heading[2] ?? "", start: index });
@@ -330,16 +348,18 @@ function checkUpstreamIds(root: string, cases: readonly ManifestCase[]): void {
   if (!existsSync(specsDir)) return;
   const specFiles = walk(specsDir, (name) => name.endsWith(".md"), new Set());
   const specHeadings = new Map<string, SpecHeading[]>();
-  for (const file of specFiles) {
-    const number = /^(\d{3})-/.exec(file.split(/[\\/]/).pop() ?? "")?.[1];
+  const specTexts = new Map<string, string>();
+  const sources = specFiles.map((file) => ({
+    number: /^(\d{3})-/.exec(file.split(/[\\/]/).pop() ?? "")?.[1],
+    source: readFileSync(file, "utf8"),
+  }));
+  for (const { number, source } of sources) {
     if (number === undefined) continue;
-    specHeadings.set(number, [
-      ...(specHeadings.get(number) ?? []),
-      ...parseHeadings(readFileSync(file, "utf8")),
-    ]);
+    specHeadings.set(number, [...(specHeadings.get(number) ?? []), ...parseHeadings(source)]);
+    specTexts.set(number, `${specTexts.get(number) ?? ""}\n${source}`);
   }
-  const text = specFiles.map((file) => readFileSync(file, "utf8")).join("\n");
-  const literal = (id: string): boolean =>
+  const allText = sources.map(({ source }) => source).join("\n");
+  const literalIn = (text: string, id: string): boolean =>
     new RegExp(`(?<![A-Za-z0-9-])${escapeRegExp(id)}(?![A-Za-z0-9])`).test(text);
   const known = new Map<string, boolean>();
   const isKnown = (id: string): boolean => {
@@ -348,12 +368,12 @@ function checkUpstreamIds(root: string, cases: readonly ManifestCase[]): void {
     const anchor = /^SPEC-(\d{3})-(.*)$/.exec(id);
     let found: boolean;
     if (anchor === null) {
-      found = literal(id);
+      found = literalIn(allText, id);
     } else {
       const headings = specHeadings.get(anchor[1] ?? "");
       const parts = SPEC_ANCHOR.exec(anchor[2] ?? "");
       if (headings === undefined) found = false;
-      else if (parts === null) found = literal(id);
+      else if (parts === null) found = literalIn(specTexts.get(anchor[1] ?? "") ?? "", id);
       else found = specAnchorExists(headings, parts[1] ?? "", parts[2]);
     }
     known.set(id, found);

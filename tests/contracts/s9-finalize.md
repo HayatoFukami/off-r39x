@@ -65,8 +65,9 @@ check 一覧（`<subject>` / 条件）:
 - `SPEC-NNN-<anchor>` の判定（Issue #15）: `docs/specs/NNN-*.md` が無ければ違反。ある場合、`<anchor>` を次の書式で解釈する。
   - 節の書式: `\d+[A-Z]?(?:\.\d+)*`（例: `8.5`、`14A.1`、`15.0`、`31`）。**節参照** `SPEC-NNN-<節>`: その仕様書に、見出し（行頭 `#`〜`######`、任意で `§`、続けて `<節>`、その直後が空白・`:`・`：`・`、`・行末、または数字が続かない `.` のいずれか。`8` は `8. 題` に一致し、`8.5 題` や `80 題` には一致しない）が存在する。
   - **項目参照** `SPEC-NNN-<節>-<n>`（`<n>` は `\d+`。例: `SPEC-050-31-21` は §31 の項目 21）: 上の節見出しが存在し、その節の本文（その見出しから、同じか浅いレベルの次の見出しの直前まで）に、番号付き項目 `^\s*<n>\.\s` の行が存在する。
-  - 上のどちらの書式にも合わない `<anchor>`（例: `SPEC-050-NONEXISTENT-RULE`）は、他の ID と同じく、ID 文字列が仕様書本文に literal で現れるときだけ有効とする。
-  - コードフェンス（```）の内側の行は、見出しとして扱わない。節番号の大文字小文字は区別する。
+  - 上のどちらの書式にも合わない `<anchor>`（例: `SPEC-050-NONEXISTENT-RULE`）は、ID 文字列が**その番号の仕様書（`NNN-*.md`）の本文**に literal で現れるときだけ有効とする。別の番号の仕様書にだけ現れる場合（例: 170 が不正 ID の例として挙げている）は無効。
+  - コードフェンスの内側の行は、見出しとしても、番号付き項目としても扱わない。フェンスは、3 個以上の連続した `` ` `` または `~` で開き、**同じ文字で、開始以上の個数**だけの行（info string なし、行頭の空白は 3 つまで）でのみ閉じる。開始より短いフェンスや、別の文字のフェンスは、閉じない。
+  - 節番号の大文字小文字は区別する。
 - `source-unmapped` の対象: `apps/*/app/**`、`apps/*/src/**`、`packages/*/src/**`、`scripts/**` の `.ts` / `.tsx` / `.mts`（`*.d.ts`、`node_modules`、`.next`、`dist` は除く）。`tests/**` は対象外。`scripts/validate-traceability.mts` は走査対象に `app/` が無くても動き、フェーズMで変更しない。被覆は完全一致または**ディレクトリ境界の**前方一致（`apps/web/src` は `apps/web/src/x.ts` を覆うが `apps/web/src-extra` や `apps/web/src/su` 前方一致の `sub/` は覆わない。末尾の `/` は許容）。
 - `rule-code-map.json` の完成: 現在の実リポジトリで未被覆なのは `apps/web/src/presentation/components/hydration-marker.tsx`（S3）と、本 slice で新設する `scripts/validate-traceability.mts` / `scripts/secret-scan.mts` / `scripts/mock-web.mts`。コーディング担当は、これらを適切な Rule ID（例: DEV-TRC-001 / DEV-TRC-003、DEV-SEC-004、DEV-WEB-011、hydration-marker は SPEC-050 §25 / TST-FLK-001 系のうち既存 case の upstream に含まれる ID）の entry へ追加し、`test_case_ids` は §6 の ID を使う。`map-rule-untested` を満たすため、entry の `rule_id` は紐づく case の upstream に含まれている必要がある（例: `DEV-TRC-001` → `TC-DEV-TRC-001-001`、`DEV-SEC-004` → `TC-DEV-SEC-004-001`、`DEV-WEB-011` → `TC-DEV-WEB-011-201`）。
 - 実リポジトリは現時点で、manifest の upstream ID がすべて仕様書本文に literal で存在するか、`SPEC-NNN-<anchor>` の判定を満たし、map の全 path が存在し、全 `rule_id` に一致する case がある（検証済み）。違反が出る場合は、`source-unmapped` の上記 1 件だけが想定される。
