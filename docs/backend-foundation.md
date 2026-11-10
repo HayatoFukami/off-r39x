@@ -17,8 +17,11 @@ pnpm validate:migrations
 pnpm test:unit
 # 合成データ専用の実 PostgreSQL 17 とsetup identityを指定する（CREATE/DROP DATABASE・test role作成権限が必要）。
 # DB test fileごとに独立した一時databaseを作成・削除する。設定なしでは失敗する。
+# 共有Rate Limitの実Redisテスト（TST-RLM-001）には使い捨てのRedisを `TEST_REDIS_URL` で指定する。
+# 未設定・到達不能ならskipせず失敗する。Redis major 7はCIの暫定値で、Railwayの実versionは未確認（SPEC-180 §17.2 #3）。
 TEST_DATABASE_URL=postgresql://postgres@localhost:5432/r39x_test \
-TEST_DATABASE_CA=/path/to/test-ca.crt pnpm test:backend
+TEST_DATABASE_CA=/path/to/test-ca.crt \
+TEST_REDIS_URL=redis://127.0.0.1:6379 pnpm test:backend
 pnpm build:backend
 pnpm secret-scan --build-dir dist --require-build
 ```
@@ -52,6 +55,15 @@ pnpm secret-scan --build-dir dist --require-build
 
 Worker の停止は、新規処理を止めて協調終了を待ち、15秒を超えれば接続破棄・最大2秒の後処理を経て process を非0終了する。未完了の外部結果を成功や確定失敗へ書き換えない。
 
+## 共有 Rate Limit（UCR-140-003）
+
+- 判定ロジック・key導出・Class ID registry・store portは `packages/security/src/rate-limit/`、Redis adapterは `packages/rate-limit-redis/`（Redis clientをimportできる唯一の場所、`pnpm check:boundaries` で検査）。原子的評価のLuaは `packages/rate-limit-redis/src/evaluate.lua` をsource管理し、script hash（EVALSHA）で呼ぶ。`pnpm build:backend` がLuaをbundleへ埋め込む。
+- API: Stage 1（IP等、guardの確認）を draining の後・CORS/origin/body/認証/DBより前、Stage 2（subject）をtoken検証の後・Principal解決（DB）の前、resource/QR digestを入力検証の後に評価する（`apps/api/src/api/rate-limit.ts`）。routeは `apps/api/src/api/routes.ts` のregistryでOperation IDとclassを必須にし、SPEC-110 §56.1と不一致なら型エラーまたは起動失敗。store障害・timeout・判定不能は `503 TEMPORARY_UNAVAILABLE`（Fail Closed、process-local fallbackなし）、超過は `429 RATE_LIMIT_EXCEEDED` と整数秒 `Retry-After`。
+- 環境変数（API serviceのみ。workerに `RATE_LIMIT_REDIS_URL` / `RATE_LIMIT_HMAC_KEY` を置くと起動拒否）: `RATE_LIMIT_REDIS_URL`（Secret、`redis://` / `rediss://`）、`RATE_LIMIT_HMAC_KEY`（Secret、base64 32 byte）、`RATE_LIMIT_HMAC_KEY_VERSION`、`RATE_LIMIT_CONFIG`（JSON、全Class IDがcanonical ceiling以下の正整数）、`TRUSTED_PROXY_HOPS`（0以上の整数、`0` は直接peer）。いずれかの欠落・不正は起動失敗、store到達不能はreadiness=false。
+- Client IPは `TRUSTED_PROXY_HOPS` 段分の `X-Forwarded-For` からだけ導出する。socket peerが得られない場合は評価不能として503（`TRUSTED_PROXY_HOPS` の値と実ingressの整合は未検証）。
+- 観測: eventは `ratelimit.decision.completed`（rejected／store_unavailableのみ）と `security.fail_closed.triggered`（`control_category: rate_limit`）、metricは `r39x_rate_limit_decisions_total` / `r39x_rate_limit_store_duration_seconds`（`bootstrap()` が返す `rateLimitMetrics` に蓄積。exporter／Better Stackへの配線は未実装）、alertは `OBS-ALT-041` のrule定義と純関数評価器（`packages/observability`）。
+- テスト: 実Redis（`TEST_REDIS_URL` 必須）は `tests/integration/foundation-rate-limit-redis.test.ts`、障害注入は `tests/harness/rate-limit/faults.ts` のDIのみ、API層は `tests/api/foundation-rate-limit-api.test.ts`（memory storeはAPI層に限る）。ローカルでは `docker run --rm -d -p 127.0.0.1:6379:6379 redis:7` 等で使い捨てRedisを用意する。
+
 ## 検証記録
 
 初回実装の記録は [backend-foundation-evidence.md](backend-foundation-evidence.md)、監査後修正と現在の制限は [backend-foundation-audit-evidence.md](backend-foundation-audit-evidence.md) を参照。
@@ -61,7 +73,7 @@ Worker の停止は、新規処理を止めて協調終了を待ち、15秒を�
 - Neon Auth の実際の管理 schema / version を確認した限定 Directory の配置・権限検証。合成 Provider table を使う PG17 テストは Neon 互換性の証明ではない。
 - Neon JWT の実 issuer / audience / JWKS / Ed25519 / 最大900秒の互換性。
 - `/auth/*` は限定transport候補を実装済み。`NEON_AUTH_BASE_URL` を環境固定HTTPS URL（末尾slashなし、Providerの `/auth` を含む）として設定する。公開method/pathはソースの限定表のみ。実NeonでのCookie・Origin・CSRF・redirect、全4認証方式、同一Subject連携、Safari互換性は未検証であり、Production公開gateは未達。管理API・汎用転送・独自Session cacheは追加しない。
-- 共有 multi-instance Rate Limit の実バックエンド。中継と `API-AUTH-001` は必須guardへ接続したが、標準server入口へ渡す共有実装は未選定・未実装。SPEC-140 §67はSPEC-180へ選定を委譲する一方、SPEC-180に契約がない。独自の Redis / DB テーブル / 業務 API を追加して補完しない。新UCRは監査修正記録を参照。
+- 共有 Rate Limit（UCR-140-003）は実装済みで、実Redisに対する合成テストを持つ。次の外部事実は未確認で、本リポジトリは値を確定しない（SPEC-180 §17.2）: ① Railway ingressが付与するforwarded headerと `TRUSTED_PROXY_HOPS`（現実装は `X-Forwarded-For` の右からN番目を使うため、実ingressの形と一致するかをstagingで確認する。**Production promotionをblock**）、② private network内のRedis TLS、③ Railway Redisの実version、④ `maxmemory-policy noeviction` と `maxmemory` の設定可否（**Production promotionをblock**）。`rate-limit-redis` serviceの配備、メモリ量の実測、OBS-ALT-041の通知配線（Better Stack）は運用側の作業であり未実施。
 - 非本番の Stripe / Resend credentials、承認済み送信先、Provider Contract Smoke。Resend の same-key replay は同じ payload/key の `POST /emails` であり、未確認の検索 API を作らない。
 - 個別 Worker handler、claim/lease/通知永続化、業務照合・復旧の実装。空の起動基盤を配送・reconciliation の完了と扱わない。
 - 本番の監視配線、監査の運用、バックアップ、restore rehearsal、staging・全システム G1〜G10 の公開 gate。この基盤 suite だけで公開を許可しない。

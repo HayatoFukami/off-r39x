@@ -2,7 +2,7 @@
 
 ## 1. Current repository, not the planned system
 
-- The UI mock is a Vite + React Router static SPA (output `apps/web/dist`) on the old frontend contract. Backend foundation now includes Hono, PG17/Drizzle/pg, verified JWT Principal/Capability, provider adapters, and worker startup/shutdown. The API-AUTH-001 route and a limited Neon Auth transport candidate are now wired, but shared rate-limit infrastructure, live provider compatibility, remaining business operations, and production readiness are not implemented/proven; mock tests do not prove those contracts. See `docs/backend-foundation.md`.
+- The UI mock is a Vite + React Router static SPA (output `apps/web/dist`) on the old frontend contract. Backend foundation now includes Hono, PG17/Drizzle/pg, verified JWT Principal/Capability, provider adapters, and worker startup/shutdown. The API-AUTH-001 route and a limited Neon Auth transport candidate are now wired, and the shared Redis rate limit (UCR-140-003) is implemented and tested against a real Redis, but its Railway external facts (SPEC-180 §17.2), live provider compatibility, remaining business operations, and production readiness are not implemented/proven; mock tests do not prove those contracts. See `docs/backend-foundation.md`.
 - `README.md` is the setup overview; executable configuration wins for commands and current behavior. Business requirements remain owned by `docs/specs/` (`SPEC-000`–`SPEC-200`), not existing code or `docs/drafts/`.
 - `.claude/agents/*.md` still contain obsolete claims that source/test directories do not exist. They are not canonical specifications or a required OpenCode orchestration scheme. `CLAUDE.md` only points here.
 
@@ -49,7 +49,7 @@ pnpm check:boundaries            # separate gate, not included in lint
 pnpm validate:traceability       # separate gate, not included in typecheck
 pnpm validate:migrations         # static review aid, not a real PG17 migration test
 pnpm test:unit                   # Vitest unit AND security projects, Node environment
-pnpm test:backend                # foundation tests, real PG17 and TEST_DATABASE_URL/TEST_DATABASE_CA required
+pnpm test:backend                # foundation tests, real PG17 and TEST_DATABASE_URL/TEST_DATABASE_CA required; real Redis via TEST_REDIS_URL (fails, never skips, when unset)
 pnpm build:backend               # bundles all three server processes without runtime Secrets
 pnpm test:e2e                    # Playwright UI-mock suite; builds apps/web/dist and serves it itself
 APP_ENV=development pnpm build:mock   # UI-mock build (APP_ENV is required); standard non-mock command is pnpm build
