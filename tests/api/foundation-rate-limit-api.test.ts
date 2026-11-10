@@ -182,6 +182,46 @@ describe("evaluation order and result mapping (TST-RLM-004)", () => {
     expect(app2.order).not.toContain("db");
   });
 
+  it("TC-RLM-004-218 each evaluation is independent: a request admitted by Stage 1 and rejected by Stage 2 consumes the Stage 1 counter, never the Stage 2 one (SEC-ABU-013)", async () => {
+    // Stage 1 rule: IP 3/min. Stage 2 rule: subject burst 1 per 10 s.
+    const h = harness({ overrides: selfRead(1, 120, 3) });
+    expect((await h.get()).status).toBe(200); // IP 1, subject burst 1
+    h.trs.store.advance(5_000);
+    h.order.length = 0;
+    const rejected = await h.get(); // Stage 1 admits (IP 2); Stage 2 rejects
+    expect(rejected.status).toBe(429);
+    expect(h.order).toEqual(["store:admit", "verify", "store:admit"]);
+    // The first record has left the 10 s burst window. Had the rejected evaluation recorded
+    // itself, the burst counter would still be full and this request would be rejected.
+    h.trs.store.advance(5_500);
+    expect((await h.get()).status).toBe(200); // IP 3
+    // The rejected request did count against Stage 1: the IP rule (3/min) is now exhausted.
+    h.order.length = 0;
+    const exhausted = await h.get();
+    expect(exhausted.status).toBe(429);
+    expect(h.order).toEqual(["store:admit"]);
+  });
+
+  it("TC-RLM-004-219 a Stage 2 rejection (429) or failure (503) performs no Principal DB lookup (SPEC-110 §24.1)", async () => {
+    const rejected = harness({ overrides: selfRead(1, 120) });
+    expect((await rejected.get()).status).toBe(200);
+    expect(rejected.order.filter((entry) => entry === "db")).toHaveLength(1);
+    rejected.order.length = 0;
+    expect((await rejected.get()).status).toBe(429);
+    expect(rejected.order).toEqual(["store:admit", "verify", "store:admit"]);
+
+    const failed = harness();
+    const original = failed.trs.faults.evaluate;
+    let evaluations = 0;
+    failed.trs.faults.evaluate = (mode, rules, id) => {
+      evaluations += 1;
+      if (evaluations === 2) failed.trs.faults.inject("FP.RATELIMIT.STORE_UNAVAILABLE");
+      return original(mode, rules, id);
+    };
+    expect((await failed.get()).status).toBe(503);
+    expect(failed.order).toEqual(["store:admit", "verify"]);
+  });
+
   it("TC-RLM-004-205 health endpoints and CORS preflight never query the store, even when it is down", async () => {
     const h = harness();
     h.trs.faults.inject("FP.RATELIMIT.STORE_UNAVAILABLE");
@@ -368,9 +408,17 @@ describe("browser visibility of rate limit responses (SEC-ABU-007, SPEC-110 §21
     expect(rejected.headers.get("Access-Control-Allow-Origin")).toBe(WEB);
     expect(rejected.headers.get("Access-Control-Expose-Headers")).toBe("X-Request-Id, Retry-After");
     expect(rejected.headers.get("Retry-After")).toMatch(/^[1-9]\d*$/);
+    // SEC-ABU-025: /auth/* is credentialed for the exact Web origin (unlike /api/v1/*).
+    expect(rejected.headers.get("Access-Control-Allow-Credentials")).toBe("true");
+    expect(rejected.headers.get("Vary")).toContain("Origin");
     const foreign = await post({ Origin: "https://evil.example.test" });
     expect(foreign.status).toBe(429);
     expect(foreign.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    expect(foreign.headers.get("Access-Control-Allow-Credentials")).toBeNull();
+    const none = await post({});
+    expect(none.status).toBe(429);
+    expect(none.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    expect(none.headers.get("Access-Control-Allow-Credentials")).toBeNull();
     expect(trs.store.calls.length).toBeGreaterThan(0);
   });
 });

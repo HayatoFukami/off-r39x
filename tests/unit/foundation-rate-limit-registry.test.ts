@@ -286,6 +286,13 @@ describe("Operation -> class assignment", () => {
     // The class set of §56.1 plus the two guards is exactly the §68 Class ID set.
     const classSet = new Set(table.map((row) => (row[0] ?? "").replace(/`|（.*）/g, "")));
     expect([...classSet, ...GUARD_CLASS_IDS].sort()).toEqual([...RATE_LIMIT_CLASS_IDS].sort());
+    // TST-RLM-007: the 13 Operation classes are the §68 set without the two guards, which are
+    // never an Operation class (their targets are checked in TC-RLM-006-001 / TST-RLM-005).
+    expect(classSet.size).toBe(13);
+    for (const guard of GUARD_CLASS_IDS) expect(classSet.has(guard)).toBe(false);
+    expect([...RATE_LIMIT_CLASS_IDS].filter((id) => !classSet.has(id)).sort()).toEqual(
+      [...GUARD_CLASS_IDS].sort(),
+    );
   });
 
   it("TC-RLM-007-002 an Operation outside the table, a wrong class or a duplicate is rejected by startup validation and by the type system", () => {

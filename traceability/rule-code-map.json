@@ -3670,7 +3670,12 @@
         "tests/harness/db/isolated-database.ts",
         "packages/security/src/rate-limit/config.ts"
       ],
-      "test_case_ids": ["TC-STARTUP-AUDIT-001", "TC-RLM-006-003", "TC-RLM-006-102"],
+      "test_case_ids": [
+        "TC-STARTUP-AUDIT-001",
+        "TC-RLM-006-003",
+        "TC-RLM-006-102",
+        "TC-RLM-006-107"
+      ],
       "notes": "Foundation audit repair; local synthetic evidence does not assert live-provider or release readiness"
     },
     {
@@ -3922,7 +3927,8 @@
         "TC-RLM-006-002",
         "TC-RLM-006-003",
         "TC-RLM-006-101",
-        "TC-RLM-006-102"
+        "TC-RLM-006-102",
+        "TC-RLM-006-107"
       ],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
@@ -3938,7 +3944,14 @@
         "packages/rate-limit-redis/src/evaluate.lua",
         "packages/rate-limit-redis/src/store.ts"
       ],
-      "test_case_ids": ["TC-RLM-002-001", "TC-RLM-002-002", "TC-RLM-002-003", "TC-RLM-002-102"],
+      "test_case_ids": [
+        "TC-RLM-002-001",
+        "TC-RLM-002-002",
+        "TC-RLM-002-003",
+        "TC-RLM-002-102",
+        "TC-RLM-002-301",
+        "TC-RLM-002-302"
+      ],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
     {
@@ -3947,7 +3960,16 @@
         "packages/rate-limit-redis/src/evaluate.lua",
         "packages/security/src/rate-limit/limiter.ts"
       ],
-      "test_case_ids": ["TC-RLM-002-003", "TC-RLM-002-004", "TC-RLM-002-005", "TC-RLM-005-205"],
+      "test_case_ids": [
+        "TC-RLM-002-003",
+        "TC-RLM-002-004",
+        "TC-RLM-002-005",
+        "TC-RLM-005-205",
+        "TC-RLM-004-218",
+        "TC-RLM-004-220",
+        "TC-RLM-004-221",
+        "TC-RLM-004-222"
+      ],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
     {
@@ -3997,7 +4019,11 @@
         "TC-RLM-004-211",
         "TC-RLM-004-212",
         "TC-RLM-004-215",
-        "TC-RLM-004-216"
+        "TC-RLM-004-216",
+        "TC-RLM-004-218",
+        "TC-RLM-004-219",
+        "TC-RLM-004-220",
+        "TC-RLM-004-221"
       ],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
@@ -4026,7 +4052,8 @@
         "TC-RLM-004-212",
         "TC-RLM-005-103",
         "TC-RLM-005-204",
-        "TC-RLM-003-007"
+        "TC-RLM-003-007",
+        "TC-RLM-004-219"
       ],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
@@ -4212,7 +4239,8 @@
         "TC-RLM-006-002",
         "TC-RLM-006-003",
         "TC-RLM-006-101",
-        "TC-RLM-006-102"
+        "TC-RLM-006-102",
+        "TC-RLM-006-107"
       ],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
@@ -4322,6 +4350,15 @@
       "rule_id": "SEC-ABU-025",
       "code_paths": ["apps/api/src/api/app.ts"],
       "test_case_ids": ["TC-RLM-004-214", "TC-RLM-004-215"],
+      "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
+    },
+    {
+      "rule_id": "SEC-ABU-026",
+      "code_paths": [
+        "packages/security/src/rate-limit/registry.ts",
+        "packages/security/src/rate-limit/limiter.ts"
+      ],
+      "test_case_ids": ["TC-RLM-002-301", "TC-RLM-002-302", "TC-RLM-004-221", "TC-RLM-004-222"],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     }
   ]

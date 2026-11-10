@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseServerConfig } from "../../packages/config/src/index.ts";
+import { RATE_LIMIT_CLASS_IDS, RATE_LIMIT_REGISTRY } from "../../packages/security/src/index.ts";
 import { ceilingConfigText, rateLimitEnv } from "../harness/rate-limit/api.ts";
 
 function url(role: string): string {
@@ -57,6 +58,12 @@ function apiEnv(
 const parse = (overrides: Record<string, string | undefined>) =>
   parseServerConfig("api", apiEnv(overrides));
 const config = (value: unknown) => JSON.stringify(value);
+/** The environment-dependent expectations that must agree with APP_ENV. */
+const environmentOf = (environment: string) => ({
+  APP_ENV: environment,
+  EXPECTED_OBSERVABILITY_ENV: environment,
+  EXPECTED_DATABASE_ENV_MARKER: environment,
+});
 const base = JSON.parse(ceilingConfigText());
 
 describe("API startup validation of the rate limit configuration (TST-RLM-006, INF-RLS-009, INF-HLT-004)", () => {
@@ -96,6 +103,61 @@ describe("API startup validation of the rate limit configuration (TST-RLM-006, I
     it(`TC-RLM-006-102 RATE_LIMIT_CONFIG ${name} makes the API configuration invalid (no implicit fallback)`, () => {
       expect(() => parse({ RATE_LIMIT_CONFIG: value })).toThrow("Invalid server configuration");
     });
+
+  // SEC-ABU-010 / INF-RLS-009: the window of every additional rule is fixed to the §68 value.
+  const additionalRules = RATE_LIMIT_CLASS_IDS.flatMap((classId) =>
+    Object.entries(
+      RATE_LIMIT_REGISTRY[classId].additional as Record<
+        string,
+        { ceiling: number; windowSeconds: number }
+      >,
+    ).map(([ruleId, rule]) => ({ classId, ruleId, ...rule })),
+  );
+  it("TC-RLM-006-107 every additional rule has a fixed window: a shorter or longer window is invalid, a lower limit alone is valid", () => {
+    // The rule set itself is pinned to SPEC-140 §68 by TC-RLM-006-001.
+    expect(additionalRules.length).toBeGreaterThan(10);
+    const withRule = (rule: (typeof additionalRules)[number], override: object) => {
+      const text = JSON.parse(ceilingConfigText());
+      text[rule.classId].additional[rule.ruleId] = { limit: rule.ceiling, ...override };
+      return config(text);
+    };
+    for (const environment of ["test", "staging"]) {
+      for (const rule of additionalRules) {
+        const name = `${environment} ${rule.ruleId}`;
+        for (const window_seconds of [1, rule.windowSeconds - 1, rule.windowSeconds + 1]) {
+          expect(
+            () =>
+              parse({
+                ...environmentOf(environment),
+                RATE_LIMIT_CONFIG: withRule(rule, { window_seconds }),
+              }),
+            `${name} window ${window_seconds}`,
+          ).toThrow("Invalid server configuration");
+        }
+        expect(
+          () =>
+            parse({
+              ...environmentOf(environment),
+              RATE_LIMIT_CONFIG: withRule(rule, { limit: 1, window_seconds: rule.windowSeconds }),
+            }),
+          name,
+        ).not.toThrow();
+        // The window may not be left out either.
+        const noWindow = JSON.parse(ceilingConfigText());
+        noWindow[rule.classId].additional[rule.ruleId] = { limit: rule.ceiling };
+        expect(
+          () => parse({ ...environmentOf(environment), RATE_LIMIT_CONFIG: config(noWindow) }),
+          name,
+        ).toThrow("Invalid server configuration");
+      }
+    }
+    // The documented example: identifier 5 per 10 minutes cannot be turned into 5 per second.
+    const identifier = additionalRules.find((rule) => rule.ruleId === "auth_form_proxy.identifier");
+    if (!identifier) throw new Error("auth_form_proxy.identifier is missing from the registry");
+    expect(() =>
+      parse({ RATE_LIMIT_CONFIG: withRule(identifier, { limit: 5, window_seconds: 1 }) }),
+    ).toThrow("Invalid server configuration");
+  });
 
   for (const [name, value, valid] of [
     ["missing", undefined, false],

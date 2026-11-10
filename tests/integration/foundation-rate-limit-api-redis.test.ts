@@ -17,14 +17,14 @@ afterAll(async () => {
   await session.close();
 });
 
-function buildApp(url: string, ipLimit: number) {
+function buildApp(url: string, ipLimit: number, burst = 30, subject = SUBJECT) {
   const store = createRedisRateLimitStore({ url });
   const limiter = createRateLimiter({
     store,
     config: parseRateLimitConfig(
       ceilingConfigText({
         self_read: {
-          burst_limit: 30,
+          burst_limit: burst,
           sustained_limit: 120,
           additional: { "self_read.ip": { limit: ipLimit, window_seconds: 60 } },
         },
@@ -41,13 +41,13 @@ function buildApp(url: string, ipLimit: number) {
       verifier: {
         verify: async () => {
           verified += 1;
-          return { subject: SUBJECT };
+          return { subject };
         },
       },
       store: {
         findByAuthSubject: async () => ({
-          directory: { authSubject: SUBJECT, emailVerified: true },
-          profile: { id: "1", publicRef: SUBJECT, authSubject: SUBJECT },
+          directory: { authSubject: subject, emailVerified: true },
+          profile: { id: "1", publicRef: subject, authSubject: subject },
           roles: [],
         }),
       },
@@ -79,6 +79,32 @@ describe("API with the real Redis store (TST-RLM-001..004)", () => {
       const keys = await session.keys();
       expect(keys.length).toBeGreaterThan(0);
       expect(keys.join(" ")).not.toContain("203.0.113");
+    } finally {
+      await limiter.close();
+    }
+  });
+
+  it("TC-RLM-004-220 against the real Redis a request admitted by Stage 1 and rejected by Stage 2 consumes only the Stage 1 counter (SEC-ABU-013)", async () => {
+    // Stage 1: IP 2/min. Stage 2: subject burst 1 per 10 s.
+    const { app, limiter } = buildApp(session.url, 2, 1, "0b1c2d3e-4f50-4a61-8b72-93a4b5c6d7e8");
+    try {
+      const ip = "203.0.113.41";
+      const before = new Set(await session.keys());
+      // Counter sizes of the keys this test created, in ascending order.
+      const cards = async () => {
+        const created = (await session.keys()).filter((key) => !before.has(key));
+        return (await Promise.all(created.map((key) => session.redis.zcard(key)))).sort(
+          (a, b) => a - b,
+        );
+      };
+      expect((await get(app, ip)).status).toBe(200);
+      const rejected = await get(app, ip); // Stage 1 admits, Stage 2 rejects
+      expect(rejected.status).toBe(429);
+      // IP counter: both requests; subject burst and sustained counters: only the admitted one.
+      expect(await cards()).toEqual([1, 1, 2]);
+      // The IP rule is now exhausted by the rejected request as well, and nothing else changes.
+      expect((await get(app, ip)).status).toBe(429);
+      expect(await cards()).toEqual([1, 1, 2]);
     } finally {
       await limiter.close();
     }

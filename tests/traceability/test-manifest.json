@@ -19409,6 +19409,52 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-RLM-002-301",
+      "level": "Integration",
+      "suite": "integration",
+      "upstream_rule_ids": ["TST-RLM-002", "SEC-ABU-026", "SEC-ABU-012"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Disposable real Redis from TEST_REDIS_URL (never skipped); synthetic keys under a per-session HMAC key version",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "self_read: Stage 1 evaluates only the IP rule 240/60 s, Stage 2 only the subject burst 30/10 s and sustained 120/60 s"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-RLM-002-302",
+      "level": "Integration",
+      "suite": "integration",
+      "upstream_rule_ids": ["TST-RLM-002", "SEC-ABU-026", "SEC-ABU-012"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Disposable real Redis from TEST_REDIS_URL (never skipped); synthetic keys under a per-session HMAC key version",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "staff_checkin: Stage 1 IP 300/60 s, Stage 2 subject 40/10 s and 180/60 s, resource QR digest 30/60 s"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-RLM-003-001",
       "level": "Integration",
       "suite": "integration",
@@ -20184,6 +20230,121 @@
       "critical": true
     },
     {
+      "test_case_id": "TC-RLM-004-218",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["TST-RLM-004", "SEC-ABU-013", "SEC-ABU-017"],
+      "system_invariant_ids": [],
+      "api_operation_ids": ["API-AUTH-001"],
+      "db_constraint_names": [],
+      "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [200, 429],
+      "expected_domain_postconditions": [
+        "each evaluation is independent: a request admitted by Stage 1 and rejected by Stage 2 consumes the Stage 1 counter, never the Stage 2 one (SEC-ABU-013)"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-004-219",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["TST-RLM-004", "SEC-ABU-017", "SEC-ABU-019"],
+      "system_invariant_ids": [],
+      "api_operation_ids": ["API-AUTH-001"],
+      "db_constraint_names": [],
+      "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [200, 429, 503],
+      "expected_domain_postconditions": [
+        "a Stage 2 rejection (429) or failure (503) performs no Principal DB lookup (SPEC-110 §24.1)"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-004-220",
+      "level": "Integration",
+      "suite": "integration",
+      "upstream_rule_ids": ["TST-RLM-004", "SEC-ABU-013", "SEC-ABU-017"],
+      "system_invariant_ids": [],
+      "api_operation_ids": ["API-AUTH-001"],
+      "db_constraint_names": [],
+      "preconditions": "Disposable real Redis from TEST_REDIS_URL (never skipped); synthetic keys under a per-session HMAC key version",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [200, 429],
+      "expected_domain_postconditions": [
+        "against the real Redis a request admitted by Stage 1 and rejected by Stage 2 consumes only the Stage 1 counter (SEC-ABU-013)"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-004-221",
+      "level": "Integration",
+      "suite": "integration",
+      "upstream_rule_ids": ["TST-RLM-004", "SEC-ABU-026", "SEC-ABU-017", "SEC-ABU-013"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Disposable real Redis from TEST_REDIS_URL (never skipped); synthetic keys under a per-session HMAC key version",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "one IP shared by many subjects is limited only by the IP rule: 240 pass, the 241st is a 429 at Stage 1 (no IP burst)"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-004-222",
+      "level": "Integration",
+      "suite": "integration",
+      "upstream_rule_ids": ["TST-RLM-004", "SEC-ABU-026", "SEC-ABU-013"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Disposable real Redis from TEST_REDIS_URL (never skipped); synthetic keys under a per-session HMAC key version",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "one subject is stopped by its own sustained limit long before the IP rule is reached"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
       "test_case_id": "TC-RLM-005-102",
       "level": "Unit",
       "suite": "unit",
@@ -20602,6 +20763,29 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "the rate limit Secrets are readable only by the API service (INF-SEC-003)"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-RLM-006-107",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["TST-RLM-006", "SEC-ABU-010", "INF-RLS-009", "SEC-ABU-002"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Synthetic in-process fixtures only (memory store double / pure functions); no network",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "every additional rule has a fixed window: a shorter or longer window is invalid, a lower limit alone is valid"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
