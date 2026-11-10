@@ -389,3 +389,77 @@ describe("TC-DEV-DEP-005-002 workspace enumeration from pnpm-workspace.yaml incl
     expect(result.stdout).not.toMatch(/^(OK|VIOLATION|WARNING)/m);
   });
 });
+
+// DEV-RLM-002: only the rate limit store adapter imports a Redis client.
+describe("TC-RLM-002-201 redis-client-only-in-store-adapter", () => {
+  it.each([
+    ["packages/security/src/bad.ts", "ioredis"],
+    ["packages/auth/src/bad.ts", "ioredis/built/Redis"],
+    ["packages/db/src/bad.ts", "redis"],
+    ["packages/application/src/bad.ts", "@redis/client"],
+    ["apps/api/src/api/bad.ts", "ioredis"],
+    ["apps/api/src/bootstrap/bad.ts", "iovalkey"],
+    ["apps/email-worker/src/bad.ts", "ioredis"],
+  ])("rejects %s importing %s", (file, specifier) => {
+    const result = check(withFiles({ [file]: imp(specifier) }));
+    expectViolation(result, "redis-client-only-in-store-adapter", file, LINE, specifier);
+  });
+
+  it("rejects dynamic import and require of a Redis client outside the adapter", () => {
+    const result = check(
+      withFiles({
+        "apps/api/src/api/dyn.ts": importAtLine(LINE, 'const mod = await import("ioredis");'),
+        "packages/security/src/req.ts": importAtLine(LINE, 'const mod = require("redis");'),
+      }),
+    );
+    expectViolation(
+      result,
+      "redis-client-only-in-store-adapter",
+      "apps/api/src/api/dyn.ts",
+      LINE,
+      "ioredis",
+    );
+    expectViolation(
+      result,
+      "redis-client-only-in-store-adapter",
+      "packages/security/src/req.ts",
+      LINE,
+      "redis",
+    );
+  });
+
+  it("allows the store adapter to import the client, and unrelated packages named like it", () => {
+    const result = check(
+      withFiles({
+        "packages/rate-limit-redis/src/store.ts": imp("ioredis"),
+        "packages/security/src/ok.ts": imp("redistribute"),
+      }),
+    );
+    expectClean(result);
+  });
+
+  it("rejects importing the adapter package outside the API bootstrap (route handlers and domain stay store-agnostic)", () => {
+    const result = check(
+      withFiles({
+        "apps/api/src/api/bad.ts": imp("@off-r39x/rate-limit-redis"),
+        "packages/security/src/bad.ts": imp("@off-r39x/rate-limit-redis"),
+        "apps/api/src/bootstrap/ok.ts": imp("@off-r39x/rate-limit-redis"),
+      }),
+    );
+    expectViolation(
+      result,
+      "rate-limit-adapter-bootstrap-only",
+      "apps/api/src/api/bad.ts",
+      LINE,
+      "@off-r39x/rate-limit-redis",
+    );
+    expectViolation(
+      result,
+      "rate-limit-adapter-bootstrap-only",
+      "packages/security/src/bad.ts",
+      LINE,
+      "@off-r39x/rate-limit-redis",
+    );
+    expect(result.violations.some((v) => v.includes("bootstrap/ok.ts"))).toBe(false);
+  });
+});

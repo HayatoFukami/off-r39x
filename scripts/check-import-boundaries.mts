@@ -208,10 +208,23 @@ function isWebDbBare(specifier: string): boolean {
   return /^(drizzle-orm|pg|@off-r39x\/db)(\/|$)/.test(specifier);
 }
 
+const REDIS_CLIENT = /^(ioredis|redis|iovalkey|@redis\/[^/]+|@valkey\/[^/]+)(\/|$)/;
+const RATE_LIMIT_ADAPTER = "@off-r39x/rate-limit-redis";
+
 function classify(root: string, file: string, ref: ImportRef): string | null {
   const rel = posix(relative(root, file));
   const { specifier } = ref;
   const target = resolveTarget(root, file, specifier);
+
+  // DEV-RLM-002: a Redis client may be imported by the rate limit store adapter only.
+  if (REDIS_CLIENT.test(specifier) && !isUnder(rel, "packages/rate-limit-redis/src"))
+    return "redis-client-only-in-store-adapter";
+  // The adapter itself is composed only by the API bootstrap; handlers and domain code stay store-agnostic.
+  if (
+    (specifier === RATE_LIMIT_ADAPTER || specifier.startsWith(`${RATE_LIMIT_ADAPTER}/`)) &&
+    !isUnder(rel, "apps/api/src/bootstrap")
+  )
+    return "rate-limit-adapter-bootstrap-only";
 
   if (target !== null && isUnder(target, "tests")) return "production-no-tests";
   if (target === null && /^@off-r39x\/tests(\/|$)/.test(specifier)) return "production-no-tests";
