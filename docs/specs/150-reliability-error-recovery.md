@@ -1152,17 +1152,17 @@ SPEC-160は少なくとも次のReliability semanticを観測可能にする。
 39. Case resolution前にpost-recovery authority / invariantを再検証する。
 40. `recovery.exception.execute`がgeneric SQL / state editorを提供しない。
 41. rate limit storeのtimeout / 接続不能 / 実行エラー / メモリ上限で `503 TEMPORARY_UNAVAILABLE` とし、再試行せず、unlimited / process-local counterへ切り替えない。短絡中も同じ結果を返す。
-41. last Administrator emergency recoveryが通常Role Assignment APIと分離される。
-42. `UCR-130-001〜004/006` および `UCR-150-001〜002` はCanonical化済みとして扱い、`UCR-130-005` のみ未反映として扱う。
-43. automatic repair対象とdetection-only対象が§42のmatrixどおり分離される。
-44. confirmed Order entitlement mismatchをoutside-transactionでblind repairしない。
-45. retry storm防止としてnested automatic retryが最大1層になる。
-46. Client `request_id`をIdempotency Authorityにしない。
-47. manual recoveryはcurrent stateを再読込してpreconditionを再評価する。
-48. Recovery failureでも既存確定historyを削除しない。
-49. SPEC-160が観測可能なReliability semanticをemit可能にするがlog / audit schemaを本書で固定しない。
-50. `INV-010-01〜10`、関連`FR-*`、`BR-*`、`DI-030-*`、`AR-*`、`PAY-*`、`TQR-*`、`KRK-*`、`DB-*`、`API-*`、`EML-*`、`ADM-*` / `STF-*` / `OPS-*`、`SEC-*`へ追跡できる。
-51. Manual Recovery Runbookは §46〜§48 / §53 / §55 / §56 のcanonical operation（`API-ADM-REC-003〜007`, `API-ADM-GDS-005`, `API-ADM-EML-004〜005`, `API-ADM-TQR-001`, `API-ADM-KRK-007`, `API-ADM-PAY-001`）だけを使用し、new route / state / retry / capability / lock / generic commandを追加しない。
+42. last Administrator emergency recoveryが通常Role Assignment APIと分離される。
+43. `UCR-130-001〜004/006` および `UCR-150-001〜002` はCanonical化済みとして扱い、`UCR-130-005` のみ未反映として扱う。
+44. automatic repair対象とdetection-only対象が§42のmatrixどおり分離される。
+45. confirmed Order entitlement mismatchをoutside-transactionでblind repairしない。
+46. retry storm防止としてnested automatic retryが最大1層になる。
+47. Client `request_id`をIdempotency Authorityにしない。
+48. manual recoveryはcurrent stateを再読込してpreconditionを再評価する。
+49. Recovery failureでも既存確定historyを削除しない。
+50. SPEC-160が観測可能なReliability semanticをemit可能にするがlog / audit schemaを本書で固定しない。
+51. `INV-010-01〜10`、関連`FR-*`、`BR-*`、`DI-030-*`、`AR-*`、`PAY-*`、`TQR-*`、`KRK-*`、`DB-*`、`API-*`、`EML-*`、`ADM-*` / `STF-*` / `OPS-*`、`SEC-*`へ追跡できる。
+52. Manual Recovery Runbookは §46〜§48 / §53 / §55 / §56 のcanonical operation（`API-ADM-REC-003〜007`, `API-ADM-GDS-005`, `API-ADM-EML-004〜005`, `API-ADM-TQR-001`, `API-ADM-KRK-007`, `API-ADM-PAY-001`）だけを使用し、new route / state / retry / capability / lock / generic commandを追加しない。
 
 ---
 
@@ -1175,7 +1175,7 @@ SPEC-160は少なくとも次のReliability semanticを観測可能にする。
 - **Status:** `INCORPORATED`（`SPEC-110 v1.1.0`）
 - 対象: `SPEC-110 API Specification`
 - **Canonical evidence:** `API-ADM-REC-003`（Checkout Attempt result reconcile、§46）、`API-ADM-REC-004`（Payment Confirmation reconcile、§47）、`API-ADM-REC-005`（Refund result reconcile、§48）、`API-ADM-REC-006`（Notification unknown result reconcile、§53）、`API-ADM-REC-007`（Consistency Review post-verification resolve、§55）。全て `recovery.exception.execute`、operation-specific precondition、same Business Cause / Provider key、generic state input / arbitrary SQLなし、result unknownをsuccessにせず、raw provider bodyをresponseへ返さない。
-- **本書側反映:** §3.1、§46〜§48、§53、§55、Acceptance 51。
+- **本書側反映:** §3.1、§46〜§48、§53、§55、Acceptance 52。
 
 ### UCR-150-002
 

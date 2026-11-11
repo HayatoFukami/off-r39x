@@ -1149,6 +1149,7 @@ Test:
 - 未一致pathと未対応methodは `public_read` のper-IP ruleだけで評価され、global ruleを消費しない
 - `429` と `503` のresponseにcounter key、該当rule、Email、Auth Subject、IPが含まれない
 - resource keyの評価は、存在するresourceと存在しないresourceで同一結果になる
+- login identifierの正規化（`SEC-ABU-024`）: 大文字小文字、前後の空白、Unicode NFKCで一致する全角半角が、同一のcounter keyに集約される。文字列でない値（欠落、`null`、数値、配列、object）、空、320文字超は取り出せなかったものとして扱われ、identifier ruleだけが省略される
 - `auth_form_proxy` のlogin identifierはJSON bodyの `email` から取り出され、上限（64 KiB・3秒）超過、JSON不正、`email` 欠落のときはidentifier ruleだけが省略され、per-IP ruleは常に評価される（`SEC-ABU-024`）
 - 段階1の `429` / `503` は、exactなWeb originに対してだけ `Access-Control-Allow-Origin` と `Access-Control-Expose-Headers: X-Request-Id, Retry-After` を返し、他のOriginやOriginなしにはCORS headerを付けない。`/api/v1/*` では `Access-Control-Allow-Credentials` を付けず、`/auth/*` ではexactなWeb originに対してだけ `Access-Control-Allow-Credentials: true` を付ける（`SEC-ABU-025`）
 

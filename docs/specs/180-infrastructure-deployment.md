@@ -470,6 +470,7 @@ Railwayから`SIGTERM`を受けたprocessは次を実行する。
 | 2 | Railway Redisのprivate network内TLS提供の有無 | staging | No |
 | 3 | Railway Redisの実バージョン | staging | No（確認後にCI versionを同一majorへ合わせる） |
 | 4 | `maxmemory-policy noeviction` と `maxmemory` をRailway Redisで設定できること | staging | Yes |
+| 5 | 認証Provider（Neon Auth）がemailを同一と扱う範囲（大文字小文字、空白、Unicode正規化等）が、`SPEC-140` `SEC-ABU-024` の正規化と整合すること | staging | No（差分があれば正規化手順を拡張する） |
 
 **INF-RLS-008:** #1と#4が未確認のままProduction promotionしない。`TRUSTED_PROXY_HOPS` の誤設定は、全利用者のClient IPを1つに集約し、IP単位のruleで全員が拒否される（`SEC-API-030`）。
 
