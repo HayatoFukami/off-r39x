@@ -19,8 +19,10 @@ const BY_CLASS = {
   ],
   stripe_webhook: ["API-WHK-001"],
   resend_webhook: ["API-WHK-EML-001"],
-  // `/auth/*` proxy routes have no Operation ID and are classified by path (auth_form_proxy).
+  // `/auth/*` proxy routes have no Operation ID and are classified by path: the session routes
+  // are auth_session, every other allowed route is auth_form_proxy (SEC-ABU-027).
   auth_form_proxy: [],
+  auth_session: [],
   self_read: [
     "API-AUTH-001",
     "API-AUTH-002",
@@ -143,7 +145,7 @@ export function rateLimitClassOf(operationId: string): RouteClassId | undefined 
  * DEV-RLM-005: a route is registered with its rate limit class. `operationId` must be a listed
  * Operation (otherwise a type error), and `rateLimitClass` is required and must be that
  * Operation's class. Routes without an Operation ID (the `/auth/*` proxy) use `operationId: null`
- * and may only use `auth_form_proxy`.
+ * and may only use `auth_form_proxy` or `auth_session`.
  */
 export type RouteRegistration = {
   readonly method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -155,7 +157,7 @@ export type RouteRegistration = {
         readonly rateLimitClass: C;
       };
     }[RouteClassId]
-  | { readonly operationId: null; readonly rateLimitClass: "auth_form_proxy" }
+  | { readonly operationId: null; readonly rateLimitClass: "auth_form_proxy" | "auth_session" }
 );
 
 /** Startup/test check (API-RLC-001): no duplicate Operation IDs, and the declared class equals §56.1. */
@@ -167,8 +169,8 @@ export function assertRouteRegistry(routes: readonly RouteRegistration[]): void 
     if (endpoints.has(endpoint)) throw new Error("Duplicate route registration");
     endpoints.add(endpoint);
     if (entry.operationId === null) {
-      if (entry.rateLimitClass !== "auth_form_proxy")
-        throw new Error("Route without Operation ID must use auth_form_proxy");
+      if (entry.rateLimitClass !== "auth_form_proxy" && entry.rateLimitClass !== "auth_session")
+        throw new Error("Route without Operation ID must use auth_form_proxy or auth_session");
       continue;
     }
     if (operations.has(entry.operationId)) throw new Error("Operation ID registered twice");

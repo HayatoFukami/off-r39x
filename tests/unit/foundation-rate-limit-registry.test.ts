@@ -75,7 +75,18 @@ describe("registry vs SPEC-140 §68", () => {
       .map(cells);
     const matrix = new Map(rows.map((row) => [row[1]?.replaceAll("`", ""), row]));
     expect([...matrix.keys()].sort()).toEqual([...RATE_LIMIT_CLASS_IDS].sort());
-    expect(RATE_LIMIT_CLASS_IDS).toHaveLength(15);
+    // 14 Operation classes (incl. auth_session) + the 2 guards (SPEC-140 §68).
+    expect(RATE_LIMIT_CLASS_IDS).toHaveLength(16);
+    // SEC-ABU-027: auth_session is per-IP 100 / 600, with no additional rule and no guard.
+    expect(RATE_LIMIT_REGISTRY.auth_session).toMatchObject({
+      kind: "route",
+      primary: "ip",
+      burst: 100,
+      sustained: 600,
+      additional: {},
+    });
+    expect(RATE_LIMIT_REGISTRY.auth_session).not.toHaveProperty("guard");
+    expect(RATE_LIMIT_REGISTRY.auth_form_proxy).not.toHaveProperty("guard");
     for (const id of RATE_LIMIT_CLASS_IDS) {
       const row = matrix.get(id);
       expect(row, id).toBeDefined();
@@ -292,9 +303,10 @@ describe("Operation -> class assignment", () => {
     // The class set of §56.1 plus the two guards is exactly the §68 Class ID set.
     const classSet = new Set(table.map((row) => (row[0] ?? "").replace(/`|（.*）/g, "")));
     expect([...classSet, ...GUARD_CLASS_IDS].sort()).toEqual([...RATE_LIMIT_CLASS_IDS].sort());
-    // TST-RLM-007: the 13 Operation classes are the §68 set without the two guards, which are
+    // TST-RLM-007: the 14 Operation classes are the §68 set without the two guards, which are
     // never an Operation class (their targets are checked in TC-RLM-006-001 / TST-RLM-005).
-    expect(classSet.size).toBe(13);
+    expect(classSet.size).toBe(14);
+    expect(classSet.has("auth_session") && classSet.has("auth_form_proxy")).toBe(true);
     for (const guard of GUARD_CLASS_IDS) expect(classSet.has(guard)).toBe(false);
     expect([...RATE_LIMIT_CLASS_IDS].filter((id) => !classSet.has(id)).sort()).toEqual(
       [...GUARD_CLASS_IDS].sort(),
@@ -469,5 +481,37 @@ describe("counter keys (SEC-ABU-015 / 016)", () => {
     expect(normalizeLoginIdentifier("   ")).toBeUndefined();
     expect(normalizeLoginIdentifier(42)).toBeUndefined();
     expect(normalizeLoginIdentifier("a".repeat(321))).toBeUndefined();
+  });
+
+  it("TC-RLM-004-226 the login identifier normalisation of SEC-ABU-024: trim, NFKC, lower case, 1 to 320 characters, strings only", () => {
+    const same = [
+      "User@Example.test",
+      " user@example.test ",
+      "\u3000USER@example.test\n",
+      "ＵＳＥＲ＠example.test",
+    ];
+    for (const value of same)
+      expect(normalizeLoginIdentifier(value), value).toBe("user@example.test");
+    // Not a string: the identifier cannot be taken, whatever the value.
+    for (const value of [
+      undefined,
+      null,
+      0,
+      123,
+      true,
+      ["a@example.test"],
+      { email: "a@example.test" },
+    ])
+      expect(normalizeLoginIdentifier(value), String(value)).toBeUndefined();
+    // Empty (also after trimming) and over-long values are not usable.
+    for (const value of ["", "   ", "\u3000"])
+      expect(normalizeLoginIdentifier(value)).toBeUndefined();
+    expect(normalizeLoginIdentifier("a".repeat(320))).toHaveLength(320);
+    expect(normalizeLoginIdentifier("a".repeat(321))).toBeUndefined();
+    // The limit applies to the normalised text: a compatibility character that expands is counted expanded.
+    expect(normalizeLoginIdentifier("㈱".repeat(106))).toBe("(株)".repeat(106));
+    expect(normalizeLoginIdentifier("㈱".repeat(107))).toBeUndefined();
+    // The lower casing does not depend on the process locale (Turkish dotted / dotless i).
+    expect(normalizeLoginIdentifier("I@example.test")).toBe("i@example.test");
   });
 });

@@ -48,6 +48,7 @@ describe("rule planning per stage (SEC-ABU-017, §68)", () => {
     const plans: Record<RouteClassId, Plan> = {
       public_read: { pre: [...burstSustained("public_read"), [10000, 60]] },
       auth_form_proxy: { pre: [...burstSustained("auth_form_proxy"), [5, 600]] },
+      auth_session: { pre: burstSustained("auth_session") },
       self_read: { pre: [[240, 60]], subject: burstSustained("self_read") },
       purchase_checkout: {
         guard: true,

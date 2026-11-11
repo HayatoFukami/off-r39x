@@ -502,9 +502,148 @@ describe("login identifier extraction (SEC-ABU-024, TST-RLM-004)", () => {
     await new Promise((resolve) => setTimeout(resolve, 3_400));
     expect(trs.store.calls).toHaveLength(1);
     expect(hasIdentifierRule(trs.store.calls[0] ?? { rules: [] })).toBe(false);
-    controller?.close();
+    try {
+      controller?.close();
+    } catch {
+      // the proxy may already have cancelled the stalled stream
+    }
     await Promise.resolve(pending).catch(() => undefined);
   }, 15_000);
+});
+
+describe("auth_session and auth_form_proxy routing (SEC-ABU-027, TST-RLM-004)", () => {
+  type Call = { rules: readonly { limit: number; windowMs: number }[] };
+  const shape = (call: Call | undefined) =>
+    (call?.rules ?? []).map((rule) => [rule.limit, rule.windowMs]);
+  const send = (app: ReturnType<typeof authApp>["app"], method: string, path: string, ip: string) =>
+    app.request(
+      new Request(`https://api.example.test${path}`, {
+        method,
+        headers: { Origin: WEB, "Content-Type": "application/json" },
+        ...(method === "POST" ? { body: JSON.stringify({ email: "route@example.test" }) } : {}),
+      }),
+      undefined,
+      peer(ip),
+    );
+
+  it("TC-RLM-004-227 get-session, token and sign-out are auth_session: per-IP 100/10 s and 600/60 s only, no identifier rule", async () => {
+    for (const [method, path, ip] of [
+      ["GET", "/auth/get-session", "203.0.113.90"],
+      ["GET", "/auth/token", "203.0.113.91"],
+      ["POST", "/auth/sign-out", "203.0.113.92"],
+    ] as const) {
+      const { app, trs } = authApp({ burst: 4 });
+      expect((await send(app, method, path, ip)).status, `${method} ${path}`).toBe(200);
+      expect(trs.store.calls, `${method} ${path}`).toHaveLength(1);
+      expect(shape(trs.store.calls[0]), `${method} ${path}`).toEqual([
+        [100, 10_000],
+        [600, 60_000],
+      ]);
+    }
+  });
+
+  it("TC-RLM-004-228 every other allowed /auth/* route stays auth_form_proxy (burst, sustained and, for POST, the identifier rule)", async () => {
+    const { app, trs } = authApp({ burst: 4 });
+    expect((await send(app, "POST", "/auth/sign-in/email", "203.0.113.93")).status).toBe(200);
+    expect(shape(trs.store.calls[0])).toEqual([
+      [4, 10_000],
+      [20, 60_000],
+      [1, 600_000],
+    ]);
+    const other = authApp({ burst: 4 });
+    expect((await send(other.app, "GET", "/auth/verify-email", "203.0.113.94")).status).toBe(200);
+    expect(shape(other.trs.store.calls[0])).toEqual([
+      [4, 10_000],
+      [20, 60_000],
+    ]);
+  });
+
+  it("TC-RLM-004-229 an unregistered /auth/* path or a wrong method on a session path is public_read, not auth_session", async () => {
+    for (const [method, path, ip] of [
+      ["GET", "/auth/unknown-path", "203.0.113.95"],
+      ["POST", "/auth/get-session", "203.0.113.96"],
+      ["GET", "/auth/sign-out", "203.0.113.97"],
+    ] as const) {
+      const { app, trs } = authApp({ burst: 4 });
+      const response = await send(app, method, path, ip);
+      expect(response.status, `${method} ${path}`).not.toBe(429);
+      expect(trs.store.calls.length, `${method} ${path}`).toBeGreaterThanOrEqual(1);
+      const rules = shape(trs.store.calls[0]);
+      expect(rules, `${method} ${path}`).toContainEqual([20, 10_000]);
+      expect(rules, `${method} ${path}`).not.toContainEqual([100, 10_000]);
+    }
+  });
+
+  it("TC-RLM-004-230 auth_session does not read the request body and its 429 carries the credentialed CORS of /auth/*", async () => {
+    const { app, trs } = authApp({ burst: 4 });
+    const ip = "203.0.113.98";
+    let responseStatus = 200;
+    for (let i = 0; i < 101 && responseStatus === 200; i++)
+      responseStatus = (await send(app, "GET", "/auth/get-session", ip)).status;
+    // The 101st request in the burst window is the first rejection (auth_form_proxy would stop at 5).
+    expect(responseStatus).toBe(429);
+    const rejected = await send(app, "GET", "/auth/get-session", ip);
+    expect(rejected.status).toBe(429);
+    expect(rejected.headers.get("Access-Control-Allow-Origin")).toBe(WEB);
+    expect(rejected.headers.get("Access-Control-Allow-Credentials")).toBe("true");
+    expect(rejected.headers.get("Retry-After")).toMatch(/^[1-9]\d*$/);
+    for (const call of trs.store.calls) expect(call.rules).toHaveLength(2);
+  });
+});
+
+describe("login identifier normalization through the API (SEC-ABU-024, TST-RLM-004)", () => {
+  const loginWith = (email: unknown) =>
+    new Request("https://api.example.test/auth/sign-in/email", {
+      method: "POST",
+      headers: { Origin: WEB, "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+
+  it("TC-RLM-004-231 case, surrounding whitespace and NFKC variants of one identifier share a single counter", async () => {
+    const { app } = authApp({ burst: 5 });
+    expect(
+      (await app.request(loginWith("User@Example.test"), undefined, peer("203.0.113.100"))).status,
+    ).toBe(200);
+    for (const [i, variant] of [
+      "user@example.test",
+      "  USER@EXAMPLE.TEST  ",
+      "\u0055ser@Example.test\n",
+      "ｕｓｅｒ@ｅｘａｍｐｌｅ.test",
+    ].entries())
+      expect(
+        (await app.request(loginWith(variant), undefined, peer(`203.0.113.${101 + i}`))).status,
+        JSON.stringify(variant),
+      ).toBe(429);
+    // A different identifier is not affected.
+    expect(
+      (await app.request(loginWith("other@example.test"), undefined, peer("203.0.113.110"))).status,
+    ).toBe(200);
+  });
+
+  it("TC-RLM-004-232 a non-string, empty, whitespace-only or over-320-character identifier omits only the identifier rule; the per-IP rules are still evaluated", async () => {
+    const { app, trs } = authApp({ burst: 5 });
+    const values: unknown[] = [
+      123,
+      null,
+      ["a@example.test"],
+      { a: 1 },
+      "",
+      "   ",
+      `${"a".repeat(320)}@example.test`,
+    ];
+    for (const [i, value] of values.entries()) {
+      const before = trs.store.calls.length;
+      const response = await app.request(loginWith(value), undefined, peer(`203.0.113.${120 + i}`));
+      expect(response.status, JSON.stringify(value)?.slice(0, 40)).toBe(200);
+      const calls = trs.store.calls.slice(before);
+      expect(calls, JSON.stringify(value)?.slice(0, 40)).toHaveLength(1);
+      const rules = (calls[0]?.rules ?? []).map((rule) => [rule.limit, rule.windowMs]);
+      expect(rules).toEqual([
+        [5, 10_000],
+        [20, 60_000],
+      ]);
+    }
+  });
 });
 
 describe("Client IP derivation through the API (SEC-API-031, TST-RLM-008)", () => {

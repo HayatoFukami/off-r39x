@@ -81,6 +81,9 @@ export const RATE_LIMIT_REGISTRY = Object.freeze({
   auth_form_proxy: route("ip", 5, 20, {
     "auth_form_proxy.identifier": additional("identifier", "pre_auth", "resource", 5, 600),
   }),
+  // SEC-ABU-027: session lookups / sign-out of the `/auth/*` proxy. Per-IP only (stage 1), no
+  // identifier rule, no guard; its counters are independent of auth_form_proxy.
+  auth_session: route("ip", 100, 600),
   // IP 240/min and 300/min are looser than the sustained subject limit; the Burst/Sustained
   // columns therefore belong to the subject, the IP only carries the additional rule.
   self_read: route("auth_subject", 30, 120, {

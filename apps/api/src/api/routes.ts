@@ -6,12 +6,21 @@ import { assertRouteRegistry, type RouteClassId, type RouteRegistration } from "
 import { TrieRouter } from "hono/router/trie-router";
 import { AUTH_ROUTES } from "./auth-proxy.ts";
 
+// SEC-ABU-027 / SPEC-110 §56.1: session lookup and sign-out are auth_session, every other allowed
+// `/auth/*` route is auth_form_proxy (authentication attempts).
+const AUTH_SESSION_ROUTES: ReadonlySet<string> = new Set([
+  "GET /auth/get-session",
+  "GET /auth/token",
+  "POST /auth/sign-out",
+]);
 const authTransportRoutes: readonly RouteRegistration[] = Object.entries(AUTH_ROUTES).map(
   ([path, method]) => ({
     method,
     path: `/auth/${path}`,
     operationId: null,
-    rateLimitClass: "auth_form_proxy",
+    rateLimitClass: AUTH_SESSION_ROUTES.has(`${method} /auth/${path}`)
+      ? ("auth_session" as const)
+      : ("auth_form_proxy" as const),
   }),
 );
 
