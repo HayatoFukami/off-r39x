@@ -19628,6 +19628,29 @@
       "critical": true
     },
     {
+      "test_case_id": "TC-RLM-003-008",
+      "level": "Integration",
+      "suite": "integration",
+      "upstream_rule_ids": ["TST-RLM-003", "SEC-ABU-019", "SEC-ABU-013", "INF-RLS-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Disposable real Redis from TEST_REDIS_URL (never skipped); synthetic keys under a per-session HMAC key version",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "at the maxmemory boundary an evaluation is applied to every rule or to none, wherever the boundary falls"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
       "test_case_id": "TC-RLM-003-102",
       "level": "Unit",
       "suite": "unit",
@@ -20840,6 +20863,29 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-RLM-007-003",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["TST-RLM-007", "API-RLC-001", "DEV-RLM-005"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Synthetic in-process fixtures only (memory store double / pure functions); no network",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "a mounted route that is not in the registry is reported; middleware, OPTIONS and health are the only exceptions"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-RLM-008-001",
       "level": "Unit",
       "suite": "unit",
@@ -21121,7 +21167,13 @@
       "test_case_id": "TC-RLM-009-201",
       "level": "API",
       "suite": "api",
-      "upstream_rule_ids": ["TST-RLM-009", "OBS-SEC-007", "OBS-SEC-008", "OBS-SEC-009"],
+      "upstream_rule_ids": [
+        "TST-RLM-009",
+        "OBS-SEC-007",
+        "OBS-SEC-008",
+        "OBS-SEC-009",
+        "REL-SEC-007"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": ["API-AUTH-001"],
       "db_constraint_names": [],
@@ -21148,7 +21200,7 @@
       "test_case_id": "TC-RLM-009-202",
       "level": "API",
       "suite": "api",
-      "upstream_rule_ids": ["TST-RLM-009", "OBS-SEC-008"],
+      "upstream_rule_ids": ["TST-RLM-009", "OBS-SEC-008", "REL-SEC-007"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],

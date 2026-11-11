@@ -807,6 +807,7 @@ describe("rate limit events and metrics at the API layer (TST-RLM-009)", () => {
     expect(decisions[0]).toMatchObject({
       result: "REJECTED",
       error_code: "RATE_LIMIT_EXCEEDED",
+      failure_class: "SECURITY_FAILURE",
       class_id: "self_read",
       rule_category: "sustained",
       retry_after_seconds: expect.any(Number),
@@ -815,6 +816,8 @@ describe("rate limit events and metrics at the API layer (TST-RLM-009)", () => {
     expect(decisions[1]).toMatchObject({
       result: "FAILED",
       error_code: "TEMPORARY_UNAVAILABLE",
+      // SPEC-150 REL-SEC-007: the HTTP result is a 503, the classification is a security failure.
+      failure_class: "SECURITY_FAILURE",
       class_id: "self_read",
     });
     expect(decisions[1]).not.toHaveProperty("retry_after_seconds");
@@ -822,7 +825,11 @@ describe("rate limit events and metrics at the API layer (TST-RLM-009)", () => {
       (e) => e.event_name === "security.fail_closed.triggered",
     );
     expect(failClosed).toHaveLength(1);
-    expect(failClosed[0]).toMatchObject({ control_category: "rate_limit" });
+    expect(failClosed[0]).toMatchObject({
+      control_category: "rate_limit",
+      error_code: "TEMPORARY_UNAVAILABLE",
+      failure_class: "SECURITY_FAILURE",
+    });
     const all = h.lines.join("\n");
     for (const secret of [IP, "203.0.113.200", SUBJECT, "rl:v", GOOD])
       expect(all).not.toContain(secret);
@@ -847,5 +854,6 @@ describe("rate limit events and metrics at the API layer (TST-RLM-009)", () => {
       (e) => e.event_name === "ratelimit.decision.completed" && e.result === "FAILED",
     );
     expect(failed).toHaveLength(12);
+    for (const event of failed) expect(event).toMatchObject({ failure_class: "SECURITY_FAILURE" });
   });
 });

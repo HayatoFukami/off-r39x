@@ -84,7 +84,9 @@ function logDecision(
     ...actor,
     class_id: classId,
     error_code: "TEMPORARY_UNAVAILABLE",
-    failure_class: "TEMPORARY_FAILURE",
+    // SPEC-150 REL-SEC-007: a rate limit store failure is classified SECURITY_FAILURE (the HTTP
+    // result stays 503 TEMPORARY_UNAVAILABLE).
+    failure_class: "SECURITY_FAILURE",
   });
   failClosed(c, classId);
 }
@@ -99,7 +101,9 @@ function failClosed(c: AppContext, classId?: RouteClassId): void {
     control_category: "rate_limit",
     ...(classId ? { class_id: classId } : {}),
     error_code: "TEMPORARY_UNAVAILABLE",
-    failure_class: "TEMPORARY_FAILURE",
+    // SPEC-150 REL-SEC-007: a rate limit store failure is classified SECURITY_FAILURE (the HTTP
+    // result stays 503 TEMPORARY_UNAVAILABLE).
+    failure_class: "SECURITY_FAILURE",
   });
 }
 

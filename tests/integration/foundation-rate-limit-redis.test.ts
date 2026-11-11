@@ -399,6 +399,43 @@ describe("store failure on real Redis (TST-RLM-003)", () => {
     );
   });
 
+  it("TC-RLM-003-008 at the maxmemory boundary an evaluation is applied to every rule or to none, wherever the boundary falls", async () => {
+    const s = store();
+    const rules = ["a", "b", "c"].map((name) => rule(`boundary-${name}`, 1_000_000, 600_000));
+    const policy = (await session.redis.config("GET", "maxmemory-policy")) as string[];
+    // Warm up: connect and load the script first, so only counter growth moves the memory figure.
+    expect((await s.evaluate("admit", rules, member())).allowed).toBe(true);
+    let admitted = 1;
+    const used = Number(
+      /^used_memory:([0-9]+)/m.exec(await session.redis.info("memory"))?.[1] ?? Number.NaN,
+    );
+    expect(Number.isFinite(used)).toBe(true);
+    let refused = 0;
+    await session.redis.config("SET", "maxmemory-policy", "noeviction");
+    // Close enough that a few evaluations cross it, far enough that the first ones are admitted.
+    await session.redis.config("SET", "maxmemory", String(used + 65_536));
+    try {
+      for (let i = 0; i < 20_000 && refused < 5; i += 1) {
+        try {
+          expect((await s.evaluate("admit", rules, member())).allowed).toBe(true);
+          admitted += 1;
+        } catch {
+          refused += 1;
+        }
+      }
+    } finally {
+      await session.redis.config("SET", "maxmemory", "0");
+      await session.redis.config("SET", "maxmemory-policy", policy[1] ?? "noeviction");
+    }
+    // The boundary was really reached, and some evaluations passed before it.
+    expect(refused).toBeGreaterThan(0);
+    expect(admitted).toBeGreaterThan(0);
+    // Every admitted evaluation wrote to all three counters and no refused one wrote to any.
+    for (const r of rules) expect(await session.redis.zcard(r.key), r.key).toBe(admitted);
+    // With the limit lifted the store works again.
+    expect((await s.evaluate("admit", rules, member())).allowed).toBe(true);
+  });
+
   it("TC-RLM-003-004 a script execution error is store_unavailable (not allowed, not rejected)", async () => {
     const s = store();
     await expect(s.evaluate("admit", [rule("invalid", 0, 1000)], member())).rejects.toMatchObject({

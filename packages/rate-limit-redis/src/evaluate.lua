@@ -9,9 +9,15 @@
 -- Returns { allowed, exceeded_1, retry_after_ms_1, exceeded_2, retry_after_ms_2, ... }.
 --
 -- Time is read from the store (SEC-ABU-014). The read phase never writes. An admit that finds
--- any exceeded rule returns without writing anything, so a rejection consumes no counter. The
--- first write of the write phase is a ZADD, so a store that is out of memory (noeviction) refuses
--- the whole evaluation before any key changed (SEC-ABU-019).
+-- any exceeded rule returns without writing anything, so a rejection consumes no counter.
+--
+-- Memory limit (noeviction): Redis decides once, when the script starts, whether the server is out
+-- of memory. A script that starts over the limit has its first write (the ZADD of rule 1) refused,
+-- before any key changed, so the evaluation fails as a whole (SEC-ABU-019). A script that starts
+-- under the limit finishes all of its writes even if they cross maxmemory, so an evaluation is
+-- applied to every rule or to none, never to some; the overshoot is at most the writes of one
+-- evaluation and the next script fails closed. maxmemory therefore needs headroom above the
+-- working set of the counters (TC-RLM-003-008; see docs/backend-foundation.md).
 local mode = ARGV[1]
 local member = ARGV[2]
 if mode ~= 'admit' and mode ~= 'check' and mode ~= 'record' then

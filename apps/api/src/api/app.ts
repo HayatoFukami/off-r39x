@@ -22,6 +22,7 @@ import {
   createRateLimitStageOne,
   type PrincipalRateLimitHooks,
 } from "./rate-limit.ts";
+import { assertMountedRoutesClassified } from "./routes.ts";
 import { type ErrorCode, errorSchema, errorStatuses } from "./schemas/common.ts";
 
 export { type ApiEnvironment, ApiFailure } from "./failure.ts";
@@ -283,6 +284,8 @@ export function createApp(dependencies: AppDependencies) {
     }
     return failure(c, "RESOURCE_NOT_FOUND");
   });
+  // DEV-RLM-005: every mounted route must be in the rate limit registry (startup failure otherwise).
+  assertMountedRoutesClassified(app.routes);
   return app;
 }
 export function requirePrincipal(

@@ -1,6 +1,12 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
+import {
+  assertMountedRoutesClassified,
+  createRouteClassifier,
+  findUnclassifiedRoutes,
+} from "../../apps/api/src/api/routes.ts";
 import {
   assertRouteRegistry,
   createCounterKeyFactory,
@@ -293,6 +299,45 @@ describe("Operation -> class assignment", () => {
     expect([...RATE_LIMIT_CLASS_IDS].filter((id) => !classSet.has(id)).sort()).toEqual(
       [...GUARD_CLASS_IDS].sort(),
     );
+  });
+
+  it("TC-RLM-007-003 a mounted route that is not in the registry is reported; middleware, OPTIONS and health are the only exceptions", () => {
+    const mounted = new Hono();
+    mounted.use("*", async (_c, next) => next());
+    mounted.use("/api/v1/*", async (_c, next) => next());
+    mounted.get("/api/v1/self/principal", (c) => c.body(null));
+    mounted.on(["POST", "OPTIONS"], "/auth/sign-in/email", (c) => c.body(null));
+    mounted.get("/internal/health/live", (c) => c.body(null));
+    mounted.get("/internal/health/ready", (c) => c.body(null));
+    expect(findUnclassifiedRoutes(mounted.routes)).toEqual([]);
+    expect(() => assertMountedRoutesClassified(mounted.routes)).not.toThrow();
+
+    // A later route that nobody added to the registry is found, whatever the method or shape.
+    mounted.get("/api/v1/offerings/:id", (c) => c.body(null));
+    mounted.post("/api/v1/orders", (c) => c.body(null));
+    mounted.get("/files/*", (c) => c.body(null));
+    mounted.all("/webhooks/stripe", (c) => c.body(null));
+    expect(findUnclassifiedRoutes(mounted.routes).sort()).toEqual([
+      "ALL /webhooks/stripe",
+      "GET /api/v1/offerings/:id",
+      "GET /files/*",
+      "POST /api/v1/orders",
+    ]);
+    expect(() => assertMountedRoutesClassified(mounted.routes)).toThrow(
+      "Routes without a rate limit class registration",
+    );
+    // The registered routes themselves are recognised (parameterised ones included).
+    const classify = createRouteClassifier([
+      {
+        method: "GET",
+        path: "/api/v1/self/principal",
+        operationId: "API-AUTH-001",
+        rateLimitClass: "self_read",
+      },
+    ]);
+    expect(
+      findUnclassifiedRoutes([{ method: "GET", path: "/api/v1/self/principal" }], classify),
+    ).toEqual([]);
   });
 
   it("TC-RLM-007-002 an Operation outside the table, a wrong class or a duplicate is rejected by startup validation and by the type system", () => {
