@@ -1397,7 +1397,7 @@ For **every** metric below, forbidden labels are exactly the high-cardinality/se
 | `r39x_api_failures_total` | Counter | failures | API operation ends non-success excluding normal 4xx validation unless security/domain tracked elsewhere | `environment,operation,domain,failure_class` | bounded operation registry |
 | `r39x_authentication_failures_total` | Counter | failures | auth required/invalid/expired/unavailable | `environment,result,reason_category` | <= 16 reason categories |
 | `r39x_authorization_denials_total` | Counter | denials | capability/ownership/last-admin denial | `environment,operation,reason_category` | bounded |
-| `r39x_rate_limit_decisions_total` | Counter | decisions | every rate limit evaluation outcome | `environment,class_id,result` where `result=allowed|rejected|store_unavailable` | <= 16 classes x 3 results |
+| `r39x_rate_limit_decisions_total` | Counter | decisions | every rate limit evaluation outcome | `environment,class_id,result` where `result=allowed|rejected|store_unavailable` | <= 17 classes x 3 results |
 | `r39x_rate_limit_store_duration_seconds` | Histogram | seconds | each rate limit store operation | `environment,result` where `result=ok|timeout|error` | exactly 3 results |
 | `r39x_db_pool_acquire_duration_seconds` | Histogram | seconds | every pool checkout | `environment,service,result` | low |
 | `r39x_db_pool_acquire_failures_total` | Counter | failures | acquire timeout/error | `environment,service,reason_category` | low |

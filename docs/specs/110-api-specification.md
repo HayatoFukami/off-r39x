@@ -2109,6 +2109,7 @@ Request ID、Operation ID、Public Reference、safe provider object IDの限定�
 | `stripe_webhook` | `API-WHK-001` |
 | `resend_webhook` | `API-WHK-EML-001` |
 | `auth_session` | `/auth/*` proxyのうち `GET /auth/get-session`、`GET /auth/token`、`POST /auth/sign-out`（Operation IDを持たないroute） |
+| `auth_callback` | `/auth/*` proxyのうち `GET /auth/verify-email`、`GET /auth/magic-link/verify`（メールのリンクから開かれる認証完了のGET。Operation IDを持たないroute） |
 | `auth_form_proxy` | `/auth/*` proxyのうち上記以外の許可されたroute（Operation IDを持たないroute） |
 | `self_read` | `API-AUTH-001`, `API-AUTH-002`, `API-PUR-ELG-001`, `API-ORD-001`, `API-ORD-003`, `API-TKT-001`, `API-TKT-002`, `API-KRK-SELF-001`, `API-KRK-SELF-002`, `API-GDS-SELF-001`, `API-GDS-SELF-002` |
 | `self_read`（Administrator read） | §41のAdministrator read catalogの全Operation、および `API-ADM-EML-001`, `API-ADM-EML-002`, `API-ADM-EML-003`（`SPEC-120`） |
