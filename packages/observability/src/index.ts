@@ -126,7 +126,9 @@ const event = z
     http_status: z.number().int().min(100).max(599).nullable().optional(),
     // SPEC-160 §24.1 ratelimit.decision.completed / security.fail_closed.triggered
     class_id: safe.optional(),
-    rule_category: z.enum(["burst", "sustained", "resource", "global", "guard"]).optional(),
+    rule_category: z
+      .enum(["burst", "sustained", "resource", "global", "guard", "concurrency"])
+      .optional(),
     retry_after_seconds: z.number().int().positive().optional(),
     control_category: safe.optional(),
   })

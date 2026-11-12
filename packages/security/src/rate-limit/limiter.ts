@@ -3,7 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { DeadlineError, TIMEOUTS, withDeadline } from "@off-r39x/reliability";
 import type { RateLimitConfig } from "./config.ts";
-import { type CounterKeyFactory, createCounterKeyFactory } from "./keys.ts";
+import { type CounterKeyFactory, createCounterKeyFactory, identifierPair } from "./keys.ts";
 import {
   BURST_WINDOW_SECONDS,
   classDefinition,
@@ -72,8 +72,13 @@ export interface RateLimiterOptions {
 export interface PreAuthInput {
   readonly classId: RouteClassId;
   readonly ip: string;
-  /** Already normalised login identifier (auth_form_proxy only). */
-  readonly loginIdentifier?: string | undefined;
+  readonly operationId?: string | undefined;
+}
+export interface LoginIdentifierInput {
+  readonly classId: "auth_form_proxy";
+  readonly ip: string;
+  /** Normalised login identifier; undefined when none could be taken from the body (SEC-ABU-024). */
+  readonly loginIdentifier: string | undefined;
   readonly operationId?: string | undefined;
 }
 export interface SubjectInput {
@@ -83,10 +88,15 @@ export interface SubjectInput {
 }
 export interface ResourceInput {
   readonly classId: RouteClassId;
-  /** Values keyed by additional rule ID of the `resource` phase. */
-  readonly values: Readonly<Record<string, string>>;
+  /**
+   * Values keyed by additional rule ID of the `resource` phase. A rule may name several resources
+   * (a cart); they are one atomic evaluation, at most MAX_RESOURCES_PER_EVALUATION distinct ones.
+   */
+  readonly values: Readonly<Record<string, string | readonly string[]>>;
   readonly operationId?: string | undefined;
 }
+/** SPEC-140 SEC-ABU-029: the largest cart, so the largest number of resources in one evaluation. */
+export const MAX_RESOURCES_PER_EVALUATION = 50;
 export interface WebhookVerifiedInput {
   readonly classId: RouteClassId;
   readonly operationId?: string | undefined;
@@ -98,6 +108,11 @@ export interface RateLimiter {
    * the guard confirmation. The Webhook global rule is not part of it (SEC-ABU-030).
    */
   preAuth(input: PreAuthInput): Promise<RateLimitDecision>;
+  /**
+   * Stage 1b (SEC-ABU-024, auth_form_proxy only): the (source IP, login identifier) pair, after the
+   * body is read and before the relay. A missing identifier omits only this rule.
+   */
+  loginIdentifier(input: LoginIdentifierInput): Promise<RateLimitDecision>;
   /** SEC-ABU-018: unmatched path or unsupported method; public_read per-IP burst/sustained only. */
   unmatched(ip: string): Promise<RateLimitDecision>;
   /** Stage 2, after token verification: per-subject rules. */
@@ -109,7 +124,11 @@ export interface RateLimiter {
    * validated: resource / QR digest / target resource / target profile rules.
    */
   resource(input: ResourceInput): Promise<RateLimitDecision>;
-  /** SEC-ABU-021 (3): record one token verification failure for the route class's guard. */
+  /**
+   * SEC-ABU-021 (2)-(4): one token verification failure as one atomic evaluation of the route class's
+   * guard. Within the limit it is recorded (allowed; the caller answers 401); at the limit it is
+   * refused and not recorded (rejected; 429).
+   */
   recordAuthFailure(classId: RouteClassId, ip: string): Promise<RateLimitDecision>;
   /** INF-HLT-004. Throws unless the store is usable. */
   assertReady(): Promise<void>;
@@ -174,24 +193,29 @@ export function createRateLimiter(options: RateLimiterOptions): RateLimiter {
   const additionalRules = (
     classId: RateLimitClassId,
     phase: RulePhase,
-    resolve: (ruleId: string, subject: RuleSubject) => string | undefined,
+    resolve: (ruleId: string, subject: RuleSubject) => string | readonly string[] | undefined,
   ): PlannedRule[] => {
     const planned: PlannedRule[] = [];
     const limits = options.config[classId].additional as Readonly<Record<string, number>>;
     for (const [ruleId, rule] of Object.entries(classDefinition(classId).additional)) {
       if (rule.phase !== phase) continue;
-      const value = resolve(ruleId, rule.subject);
-      if (value === undefined) continue;
+      const resolved = resolve(ruleId, rule.subject);
+      if (resolved === undefined) continue;
+      // Distinct values only: a resource repeated in one cart counts once (SEC-ABU-029).
+      const values = typeof resolved === "string" ? [resolved] : [...new Set(resolved)];
+      if (values.length > MAX_RESOURCES_PER_EVALUATION)
+        throw new RangeError("Too many resources in one rate limit evaluation");
       const limit = limits[ruleId];
       if (limit === undefined) throw new Error("Rate limit configuration is incomplete");
-      planned.push({
-        ruleId,
-        subject: rule.subject,
-        value,
-        limit,
-        windowSeconds: rule.windowSeconds,
-        category: rule.category,
-      });
+      for (const value of values)
+        planned.push({
+          ruleId,
+          subject: rule.subject,
+          value,
+          limit,
+          windowSeconds: rule.windowSeconds,
+          category: rule.category,
+        });
     }
     return planned;
   };
@@ -298,31 +322,28 @@ export function createRateLimiter(options: RateLimiterOptions): RateLimiter {
 
   return Object.freeze({
     async preAuth(input: PreAuthInput): Promise<RateLimitDecision> {
+      // SEC-ABU-021 (1): stage 1 neither confirms nor records the guard, so the guard state never
+      // refuses a request before its token is verified.
       const definition = classDefinition(input.classId);
-      const guard = guardFor(input.classId);
-      if (guard) {
-        // Check only (SEC-ABU-021 (1)); the failure is recorded after verification fails.
-        const decision = await evaluate(
-          guard,
-          input.operationId,
-          "check",
-          guardRules(guard, input.ip),
-        );
-        if (decision.result !== "allowed") return decision;
-      }
       const planned = [
         ...(definition.primary === "ip" ? primaryRules(input.classId, "ip", input.ip) : []),
         ...additionalRules(input.classId, "pre_auth", (_, subject) =>
-          subject === "ip"
-            ? input.ip
-            : subject === "global"
-              ? ""
-              : subject === "identifier"
-                ? input.loginIdentifier
-                : undefined,
+          subject === "ip" ? input.ip : subject === "global" ? "" : undefined,
         ),
       ];
       return evaluate(input.classId, input.operationId, "admit", planned);
+    },
+    async loginIdentifier(input: LoginIdentifierInput): Promise<RateLimitDecision> {
+      if (input.loginIdentifier === undefined) return ALLOWED;
+      const pair = identifierPair(input.ip, input.loginIdentifier);
+      return evaluate(
+        input.classId,
+        input.operationId,
+        "admit",
+        additionalRules(input.classId, "login_identifier", (_, subject) =>
+          subject === "identifier" ? pair : undefined,
+        ),
+      );
     },
     async unmatched(ip: string): Promise<RateLimitDecision> {
       return evaluate("public_read", undefined, "admit", primaryRules("public_read", "ip", ip));
@@ -349,7 +370,7 @@ export function createRateLimiter(options: RateLimiterOptions): RateLimiter {
         ([, rule]) => rule.phase === "resource",
       );
       for (const [ruleId] of required)
-        if (typeof input.values[ruleId] !== "string")
+        if (input.values[ruleId] === undefined)
           throw new Error("Rate limit resource key is required");
       return evaluate(
         input.classId,
@@ -362,9 +383,8 @@ export function createRateLimiter(options: RateLimiterOptions): RateLimiter {
       const guard = guardFor(classId);
       if (!guard) return ALLOWED;
       const planned = guardRules(guard, ip);
-      // A successful record is not an evaluation outcome (SEC-ABU-021: it is not counted as a
-      // decision); a failure to record is, and is never skipped.
-      return finish(guard, undefined, planned, await execute("record", planned), false);
+      // SEC-ABU-021 (4): one atomic admit-or-refuse evaluation; a refused failure is not recorded.
+      return finish(guard, undefined, planned, await execute("admit", planned));
     },
     async assertReady(): Promise<void> {
       await withDeadline(() => options.store.assertReady(), deadlineMs);

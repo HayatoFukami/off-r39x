@@ -26,7 +26,30 @@ export function createCounterKeyFactory(hmacKey: Uint8Array, version: number): C
   });
 }
 
-/** Canonical text form of an IP address, or undefined when `value` is not a plain IP literal. */
+/**
+ * Eight 16-bit groups of a compressed IPv6 literal in the WHATWG canonical form, or undefined.
+ */
+function ipv6Groups(text: string): number[] | undefined {
+  const halves = text.split("::");
+  if (halves.length > 2) return undefined;
+  const head = halves[0] ? halves[0].split(":") : [];
+  const tail = halves.length === 2 && halves[1] ? halves[1].split(":") : [];
+  const fill = 8 - head.length - tail.length;
+  if (halves.length === 1 ? head.length !== 8 : fill < 1) return undefined;
+  const parts = [
+    ...head,
+    ...Array.from({ length: halves.length === 2 ? fill : 0 }, () => "0"),
+    ...tail,
+  ];
+  if (!parts.every((part) => /^[0-9a-f]{1,4}$/.test(part))) return undefined;
+  return parts.map((part) => Number.parseInt(part, 16));
+}
+
+/**
+ * Canonical text form of an IP address for the counter keys, or undefined when `value` is not a
+ * plain IP literal. IPv4-mapped IPv6 is its IPv4 address; any other IPv6 is its /64 prefix, so
+ * addresses that one subscriber can rotate inside a /64 share one key (SEC-API-032).
+ */
 export function normalizeIp(value: string | undefined): string | undefined {
   if (value === undefined) return undefined;
   const text = value.trim();
@@ -42,10 +65,23 @@ export function normalizeIp(value: string | undefined): string | undefined {
       const low = Number.parseInt(mapped[2] ?? "", 16);
       return `${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`;
     }
-    return host;
+    const groups = ipv6Groups(host);
+    if (!groups) return undefined;
+    return `${groups
+      .slice(0, 4)
+      .map((group) => group.toString(16))
+      .join(":")}::`;
   } catch {
     return undefined;
   }
+}
+
+/**
+ * HMAC input of the (source IP, login identifier) pair (SEC-ABU-024). Each part is prefixed with its
+ * UTF-8 byte length, so no two different pairs share an input.
+ */
+export function identifierPair(ip: string, identifier: string): string {
+  return `${Buffer.byteLength(ip, "utf8")}:${ip}${Buffer.byteLength(identifier, "utf8")}:${identifier}`;
 }
 
 /** Login identifier normalisation for the per-identifier rule; undefined means "no usable identifier". */

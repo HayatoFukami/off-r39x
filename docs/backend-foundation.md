@@ -58,7 +58,7 @@ Worker の停止は、新規処理を止めて協調終了を待ち、15秒を�
 ## 共有 Rate Limit（UCR-140-003）
 
 - 判定ロジック・key導出・Class ID registry・store portは `packages/security/src/rate-limit/`、Redis adapterは `packages/rate-limit-redis/`（Redis clientをimportできる唯一の場所、`pnpm check:boundaries` で検査）。原子的評価のLuaは `packages/rate-limit-redis/src/evaluate.lua` をsource管理し、script hash（EVALSHA）で呼ぶ。`pnpm build:backend` がLuaをbundleへ埋め込む。
-- API: 評価は3段階（`apps/api/src/api/rate-limit.ts`、SEC-ABU-017 / 029 / 030、SPEC-110 §24.1）。Stage 1（IP等、guardの確認）を draining の後・CORS/origin/body/認証/DBより前、Stage 2（subject）をtoken検証の後・Principal解決（DB）の前（Webhookは署名検証の成功後・receipt dedupe（DB）の前にglobal ruleだけ）、Stage 3（resource / QR digest / target resource / target profile）を対象の認可確認（owner relation = 手順6、Role + Capability = 手順7）が成功した後・Domain preconditionとmutationの前に評価する。routeは `apps/api/src/api/routes.ts` のregistryでOperation IDとclassを必須にし、SPEC-110 §56.1と不一致なら型エラーまたは起動失敗。store障害・timeout・判定不能は `503 TEMPORARY_UNAVAILABLE`（Fail Closed、process-local fallbackなし）、超過は `429 RATE_LIMIT_EXCEEDED` と整数秒 `Retry-After`。
+- API: 評価は3段階（`apps/api/src/api/rate-limit.ts`、SEC-ABU-017 / 029 / 030、SPEC-110 §24.1）。Stage 1（IP等。guardは確認も記録もしない）を draining の後・CORS/origin/body/認証/DBより前。`auth_form_proxy` は per-IP を body読取りより先に評価し、body読取り後に段階1bで (IP, 正規化済みidentifier) の組を評価する（SEC-ABU-017 / 024 / 031）、Stage 2（subject）をtoken検証の後・Principal解決（DB）の前（Webhookは署名検証の成功後・receipt dedupe（DB）の前にglobal ruleだけ）、Stage 3（resource / QR digest / target resource / target profile）を対象の認可確認（owner relation = 手順6、Role + Capability = 手順7）が成功した後・Domain preconditionとmutationの前に評価する。token検証に失敗したrequestだけが、そのclassのAuthentication-failure guardを1回の atomic 評価として評価する（上限内は記録して401、上限超過は記録せず429。有効tokenのrequestはguardの状態で拒否されない。SEC-ABU-020 / 021）。routeは `apps/api/src/api/routes.ts` のregistryでOperation IDとclassを必須にし、SPEC-110 §56.1と不一致なら型エラーまたは起動失敗。store障害・timeout・判定不能は `503 TEMPORARY_UNAVAILABLE`（Fail Closed、process-local fallbackなし）、超過は `429 RATE_LIMIT_EXCEEDED` と整数秒 `Retry-After`。
 - 環境変数（API serviceのみ。workerに `RATE_LIMIT_REDIS_URL` / `RATE_LIMIT_HMAC_KEY` を置くと起動拒否）: `RATE_LIMIT_REDIS_URL`（Secret、`redis://` / `rediss://`）、`RATE_LIMIT_HMAC_KEY`（Secret、base64 32 byte）、`RATE_LIMIT_HMAC_KEY_VERSION`、`RATE_LIMIT_CONFIG`（JSON、全Class IDがcanonical ceiling以下の正整数）、`TRUSTED_PROXY_HOPS`（0以上の整数、`0` は直接peer）。いずれかの欠落・不正は起動失敗、store到達不能はreadiness=false。
 - Client IPは `X-Forwarded-For` の右から `TRUSTED_PROXY_HOPS` 番目からだけ導出し、`Forwarded` / `X-Real-IP` は使わない。段数0・header欠落・要素不足・解釈不能ならsocket peer、peerも無ければ評価不能として503（SEC-API-031。`TRUSTED_PROXY_HOPS` の値と実ingressの整合は未検証）。
 - Redisがメモリ上限（`maxmemory` + `noeviction`）に達したときの保証範囲: Redisはscript開始時に一度だけOOMかを判定する。上限超過の状態で始まったscriptは最初の書込み（rule 1のZADD）が拒否され、何も書かれずに評価全体が `503` になる（Fail Closed）。上限未満で始まったscriptは、途中で上限を越えても全ruleの書込みを完了する。したがって評価は「全ruleに適用」か「どれにも適用されない」のどちらかで、一部のruleだけ記録されることはない（TC-RLM-003-008）。readinessはこの書込みを伴う（下記）。越える量は高々1評価分の書込みで、直後のscriptがFail Closedになる。そのため `maxmemory` はcounter全体の作業集合に対して余裕を持って設定し、`used_memory` が `maxmemory` へ近づくことを運用で監視する必要がある。具体的な余裕量・監視閾値はRailway Redisの実測が前提で、Issue #45で確認する（本リポジトリは値を定めない）。
@@ -69,42 +69,8 @@ Worker の停止は、新規処理を止めて協調終了を待ち、15秒を�
 - Stage 3（SEC-ABU-029）: `requireResourceRateLimit(limiter, valuesOf)` は認可確認の後に置く。`requireCapability` が通ると `authorizationConfirmed` を立て、owner relationを確認するself operation（および手順6だけを通るoperation）は `markAuthorizationConfirmed(c)` を呼ぶ。この印が無いままStage 3に到達したrouteは実装の欠陥として500で拒否し、共有counterには触れない。`valuesOf` は認可確認の後にだけ呼ばれるため、QR digestはStaff Capability確認の後に導出され、QR照会より前に評価される。403 / 404で終わったrequestはStage 3のcounterを変化させず、Stage 3の429 / 503はDomain preconditionとmutationへ進まない。
 - Webhook（SEC-ABU-030）: `stripe_webhook` / `resend_webhook` のglobal rule（3,000/分）はregistryでphase `webhook_verified` を持ち、署名検証前のStage 1にはsource IPのburst / sustainedだけを評価する。署名検証が成功した後、receipt dedupe（DB）の前に `requireWebhookGlobalRateLimit(limiter)` を置く。無効署名はglobal counterを消費せず、超過は `429 RATE_LIMIT_EXCEEDED` と `Retry-After` でReceiptを作らない。Webhook routeはまだ未実装で、このhookと限度の検証はfixtureのrouteで行う。
 - `/auth/*` 許可表（API-RLC-004、SPEC-110 §23.1）: `apps/api/src/api/routes.ts` の `CANONICAL_AUTH_ALLOWLIST`（15経路のmethod・path・class）が実装の許可リスト（`AUTH_ROUTES` + class割当）と完全一致しなければ、module読込時の `assertAuthAllowlist` と `createApp` の `assertMountedAuthRoutes`（実際にmountしたroute）が起動を失敗させる。testは仕様書 `docs/specs/110-api-specification.md` の表そのものを読んで突き合わせる。表にない経路・methodは404 / 405で `public_read` のper-IP ruleだけで評価される。Google OAuth callbackは `UCR-110-002` が未解決のため含めない。
-- login identifierは `auth_form_proxy` のPOST JSON `email`（先頭64 KiB・3秒まで。文字列でない値・空・正規化後に1〜320文字を外れる値は取り出せない扱い、それ以外はtrim・NFKC・locale非依存の小文字化で正規化）。取り出せなければidentifier ruleだけ省略し、per-IP ruleは常に評価する（SEC-ABU-024）。Stage 1の429/503は、exactなWeb originにだけ `Access-Control-Allow-Origin`・`Vary: Origin`・`Access-Control-Expose-Headers: X-Request-Id, Retry-After` を付ける（`/api/v1/*` では `Allow-Credentials` を付けない。`/auth/*` は認証proxyの既存どおり `true`。SEC-ABU-025）。
-- 観測: eventは `ratelimit.decision.completed`（rejected／store_unavailableのみ）と `security.fail_closed.triggered`（`control_category: rate_limit`）、metricは `r39x_rate_limit_decisions_total` / `r39x_rate_limit_store_duration_seconds`（`bootstrap()` が返す `rateLimitMetrics` に蓄積。exporter／Better Stackへの配線は未実装）、`r39x_rate_limit_store_ready`（Gauge 0/1、label `environment`。最初のprobe結果が出るまでseriesを出さず、未取得を0にしない）、alertは `OBS-ALT-041`（`store_unavailable` を1件以上／1分、最低request件数なし）・`OBS-ALT-042`（`store_ready=0` が1分評価で2回連続、CRITICAL）・`OBS-ALT-014`（security configuration。store到達不能では発火しない）のrule定義と純関数評価器（`packages/observability`）。readinessのstore確認は、接続・script実行に加えて固定のreadinessキー（`rl:readiness:v1`、1秒で失効）へのSETを行う（evaluate.lua の mode `ready`）。読取りだけの確認では `maxmemory` + `noeviction` のOOMを検出できず、全requestが503になっても readiness が成功してしまうため（TC-RLM-001-003、TC-RLM-009-120）。probeは同じ確認（`limiter.assertReady`）を `apps/api/src/api/store-probe.ts` がrequest処理と独立に30秒間隔（上限30秒）で実行し、`bootstrap()` が起動する（停止は `close()`）。OOM中は `r39x_rate_limit_store_ready` が0になる。
-- テスト: 実Redis（`TEST_REDIS_URL` 必須）は `tests/integration/foundation-rate-limit-redis.test.ts`、障害注入は `tests/harness/rate-limit/faults.ts` のDIのみ、API層は `tests/api/foundation-rate-limit-api.test.ts`（memory storeはAPI層に限る）。ローカルでは `docker run --rm -d -p 127.0.0.1:6379:6379 redis:7` 等で使い捨てRedisを用意する。
-
-## 検証記録
-
-初回実装の記録は [backend-foundation-evidence.md](backend-foundation-evidence.md)、監査後修正と現在の制限は [backend-foundation-audit-evidence.md](backend-foundation-audit-evidence.md) を参照。
-
-## 未検証・公開ブロッカー
-
-- Neon Auth の実際の管理 schema / version を確認した限定 Directory の配置・権限検証。合成 Provider table を使う PG17 テストは Neon 互換性の証明ではない。
-- Neon JWT の実 issuer / audience / JWKS / Ed25519 / 最大900秒の互換性。
-- `/auth/*` は限定transport候補を実装済み。`NEON_AUTH_BASE_URL` を環境固定HTTPS URL（末尾slashなし、Providerの `/auth` を含む）として設定する。公開method/pathはソースの限定表のみ。実NeonでのCookie・Origin・CSRF・redirect、全4認証方式、同一Subject連携、Safari互換性は未検証であり、Production公開gateは未達。管理API・汎用転送・独自Session cacheは追加しない。
-- 共有 Rate Limit（UCR-140-003）は実装済みで、実Redisに対する合成テストを持つ。次の外部事実は未確認で、本リポジトリは値を確定しない（SPEC-180 §17.2）: ① Railway ingressが付与するforwarded headerと `TRUSTED_PROXY_HOPS`（現実装は `X-Forwarded-For` の右からN番目を使うため、実ingressの形と一致するかをstagingで確認する。**Production promotionをblock**）、② private network内のRedis TLS、③ Railway Redisの実version、④ `maxmemory-policy noeviction` と `maxmemory` の設定可否（**Production promotionをblock**）。`rate-limit-redis` serviceの配備、メモリ量の実測、OBS-ALT-041 / 042の通知配線（Better Stack）は運用側の作業であり未実施。
-- 非本番の Stripe / Resend credentials、承認済み送信先、Provider Contract Smoke。Resend の same-key replay は同じ payload/key の `POST /emails` であり、未確認の検索 API を作らない。
-- 個別 Worker handler、claim/lease/通知永続化、業務照合・復旧の実装。空の起動基盤を配送・reconciliation の完了と扱わない。
-- 本番の監視配線、監査の運用、バックアップ、restore rehearsal、staging・全システム G1〜G10 の公開 gate。この基盤 suite だけで公開を許可しない。
-
-## 仕様矛盾の報告（正式仕様は未変更）
-
-### UCR-BACKEND-001
-
-- 対象: SPEC-150 §14 `REL-DB-001`、§16 `REL-DB-011`
-- 現在の仕様: `REL-DB-001` は自動 transaction retry を `40001` / `40P01` のみに限定する一方、`REL-DB-011` は lock timeout にも最大4回の retry を要求する。
-- 要求する変更: Canonical Owner で lock timeout の SQLSTATE と retry 可否・適用 policy を統一する。
-- 理由: `55P03` 等を agent 判断で retry allowlist に追加できない。
-- 変更しない場合の影響: 矛盾する lock-timeout 自動 retry は実装せず上位へ返す。明示的な `40001` / `40P01` のみを retry する基盤として扱い、lock-timeout 要件を満たしたとは報告しない。
-- 影響を受ける可能性がある仕様書: SPEC-100、SPEC-150、SPEC-170、SPEC-190。
-
-`UCR-130-005` の deferred operational index は追加しない。
-
-## 監査後の実装境界
-
-- DB readinessはmigration journalに加え、release対象のPG17 catalog（列・default・制約定義／検証状態・Index定義／有効状態・sequence・schema owner）をsource-controlledな期待値と照合する。既存release以外の業務table実装を証明しない。
-- Directoryは3列の型／grantだけでなく、直接投影、Subjectの有効な一意Index、Subject／verified列のNOT NULLと有効な一意Indexによってcardinalityを確認する。catalogとOIDを用い、Directoryを読めないReconへ行読取権限を要求しない。実Neonのsource mappingはdeploymentで確認し、Provider所有tableは変更しない。
-- Stripe lookupはSDK Fetch transportを明示採用し、本文処理まで10秒のadapter deadlineと単調時計の確認を適用する。SDKの自動network retryは0。旧Node socket inactivity timeoutへの依存を除いた。
-- `GET /api/v1/self/principal` (`API-AUTH-001`) は公開RPC型と同じbuilderでmountする。署名済みJWT→現在Directory／Profile／Role→メール確認→共有guardを経てnavigation情報だけを返す。GETによるProfile作成は行わない。
-- 本変更は全SPEC-110の実装ではない。Profile provisioning／編集を含むその他のoperation、購入・予約・決済、Worker業務handlerは追加していない。
-- `NEON_AUTH_BASE_URL`／Directory mapping／共有guardが成立しない標準API起動はReadyにならない。空Worker registryも引き続きReadyにならない。合成依存による正常系試験を、標準3プロセスの本番Readyと読み替えない。
+- login identifierは `auth_form_proxy` のPOST JSON `email`（先頭64 KiB・3秒まで。文字列でない値・空・正規化後に1〜320文字を外れる値は取り出せない扱い、それ以外はtrim・NFKC・locale非依存の小文字化で正規化）。取り出せなければidentifier ruleだけ省略し、per-IP ruleは常に評価する（SEC-ABU-024）。identifier ruleの組のkeyは (source IP, identifier) を長さ接頭辞付きでHMACに入れる（同じidentifierでも別IPは別の枠）。body読取りの同時実行はIPごとに3件・process全体で256件まで、超過は body を読まず `429`（`Retry-After: 1`、storeを呼ばず `rule_category=concurrency`）。読取りは3秒・64 KiBで打ち切り、slotは応答完了・打切り・切断のいずれでも必ず解放する。段階1の拒否は body を読まず `Connection: close` で返す（SEC-ABU-031）。Stage 1の429/503は、exactなWeb originにだけ `Access-Control-Allow-Origin`・`Vary: Origin`・`Access-Control-Expose-Headers: X-Request-Id, Retry-After` を付ける（`/api/v1/*` では `Allow-Credentials` を付けない。`/auth/*` は認証proxyの既存どおり `true`。SEC-ABU-025）。
+- JWKS（REL-AUTH-002、SEC-ABU-021）: `packages/auth` の `createJwksKeyResolver` が `kid` ごとに鍵を cache する。未知の `kid` による refresh は process 単位で single-flight、かつ開始は30秒に1回まで。refresh の実行中・間隔内に cache で検証できない token は待たずに `503` とし、guardには数えない。refresh の失敗も `503`（判定不能は未認証ではない）。
+- IP正規化（SEC-API-032）: counter key に使う IP は、IPv4-mapped IPv6 を対応する IPv4 とし、その他の IPv6 は /64 に集約する。同じ /64 内で address を変えても per-IP rule を回避できない。
+- Cart（SEC-ABU-029 / API-RLC-006）: 1つのruleは複数のresourceを持てる（distinct のみ、最大50）。全resourceを1回のatomic評価に含め、1つでも超過すれば全counterを記録せず `429`。cart の route はまだ未実装で、この port の検証は limiter の単体・実Redisテストで行う。
+- 読取り専用 operation（API-RLC-005）: `API-STF-GDS-002`（Goods Handoff の対象確認）は `self_read` に属し、完了用 `goods_handoff` の counter を消費しない。

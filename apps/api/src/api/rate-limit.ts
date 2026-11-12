@@ -165,15 +165,17 @@ export interface StageOneOptions {
 }
 
 /**
- * Stage 1 (SEC-ABU-017): per-IP / webhook / global / login-identifier rules and the guard check.
- * Without a configured limiter every registered route fails closed (INF-HLT-004); health and
- * preflight are never evaluated (SEC-ABU-018).
+ * Stage 1 (SEC-ABU-017): the per-IP / global rules before anything else. `auth_form_proxy` then reads
+ * its body (bounded, SEC-ABU-031) and evaluates the (IP, identifier) rule as stage 1b (SEC-ABU-024).
+ * The guard is not consulted here (SEC-ABU-021). Without a configured limiter every registered route
+ * fails closed (INF-HLT-004); health and preflight are never evaluated (SEC-ABU-018).
  */
 export function createRateLimitStageOne(
   options: StageOneOptions,
 ): MiddlewareHandler<ApiEnvironment> {
   const classify = options.classify ?? classifyRequest;
   const peerOf = options.peerOf ?? peerAddress;
+  const bodySlots = createBodyReadSlots();
   return async (c, next) => {
     const method = c.req.method;
     const path = c.req.path;
@@ -209,21 +211,78 @@ export function createRateLimitStageOne(
       await next();
       return;
     }
-    const loginIdentifier =
-      route.classId === "auth_form_proxy" && method === "POST"
-        ? await readLoginIdentifier(c.req.raw)
-        : undefined;
-    enforceDecision(
-      c,
-      route.classId,
-      await rateLimit.limiter.preAuth({
-        classId: route.classId,
-        ip,
-        loginIdentifier,
-        operationId: route.operationId ?? undefined,
-      }),
-    );
+    const operationId = route.operationId ?? undefined;
+    const formProxy = route.classId === "auth_form_proxy" && method === "POST";
+    // SEC-ABU-031: the per-IP rule is evaluated before the body is read. A refusal answers without
+    // reading the body and closes the connection.
+    const stageOne = await rateLimit.limiter.preAuth({ classId: route.classId, ip, operationId });
+    if (formProxy && stageOne.result !== "allowed") c.header("Connection", "close");
+    enforceDecision(c, route.classId, stageOne);
+    if (formProxy) {
+      // SEC-ABU-031: at most 3 concurrent body reads per IP and 256 per process; over that the request
+      // is refused without reading and without a store call (rule_category=concurrency).
+      const release = bodySlots.acquire(ip);
+      if (!release) {
+        c.header("Connection", "close");
+        logDecision(c, route.classId, {
+          result: "rejected",
+          ruleCategory: "concurrency",
+          retryAfterSeconds: 1,
+        });
+        throw new ApiFailure("RATE_LIMIT_EXCEEDED", undefined, 1);
+      }
+      let loginIdentifier: string | undefined;
+      try {
+        loginIdentifier = await readLoginIdentifier(c.req.raw);
+      } finally {
+        release();
+      }
+      // SEC-ABU-024 stage 1b: the (source IP, identifier) pair, after the body and before the relay.
+      enforceDecision(
+        c,
+        route.classId,
+        await rateLimit.limiter.loginIdentifier({
+          classId: "auth_form_proxy",
+          ip,
+          loginIdentifier,
+          operationId,
+        }),
+      );
+    }
     await next();
+  };
+}
+
+/** SEC-ABU-031: process-local bounds on concurrent body reads (connection and memory protection). */
+export const BODY_READ_SLOTS_PER_IP = 3;
+export const BODY_READ_SLOTS_PER_PROCESS = 256;
+
+export interface BodyReadSlots {
+  /** Returns the release function of the slot, or undefined when a bound is reached. */
+  acquire(ip: string): (() => void) | undefined;
+}
+export function createBodyReadSlots(
+  perIp: number = BODY_READ_SLOTS_PER_IP,
+  perProcess: number = BODY_READ_SLOTS_PER_PROCESS,
+): BodyReadSlots {
+  const byIp = new Map<string, number>();
+  let total = 0;
+  return {
+    acquire(ip) {
+      const current = byIp.get(ip) ?? 0;
+      if (current >= perIp || total >= perProcess) return undefined;
+      byIp.set(ip, current + 1);
+      total += 1;
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        total -= 1;
+        const remaining = (byIp.get(ip) ?? 1) - 1;
+        if (remaining > 0) byIp.set(ip, remaining);
+        else byIp.delete(ip);
+      };
+    },
   };
 }
 

@@ -26,6 +26,8 @@ const BY_CLASS = {
   auth_session: [],
   auth_callback: [],
   self_read: [
+    // SPEC-110 §56.1 / API-RLC-005: read-only, so it never consumes the goods_handoff counter.
+    "API-STF-GDS-002",
     "API-AUTH-001",
     "API-AUTH-002",
     "API-PUR-ELG-001",
@@ -83,7 +85,7 @@ const BY_CLASS = {
   qr_display: ["API-TKT-003", "API-KRK-SELF-003"],
   profile_mutation: ["API-AUTH-003", "API-AUTH-004"],
   staff_checkin: ["API-STF-CHK-001", "API-STF-CHK-002"],
-  goods_handoff: ["API-STF-GDS-001", "API-STF-GDS-002"],
+  goods_handoff: ["API-STF-GDS-001"],
   admin_mutation: [
     "API-ADM-CNT-002",
     "API-ADM-CNT-005",

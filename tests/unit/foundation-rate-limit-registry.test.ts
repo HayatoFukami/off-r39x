@@ -541,9 +541,9 @@ describe("Client IP derivation (TST-RLM-008)", () => {
         "10.0.0.9",
       ],
       [
-        "IPv6 is canonicalised",
+        "IPv6 is reduced to its /64 prefix (SEC-API-032)",
         { peer, forwarded: "2001:DB8:0:0:0:0:0:1", trustedProxyHops: 1 },
-        "2001:db8::1",
+        "2001:db8:0:0::",
       ],
       [
         "IPv4-mapped IPv6 peer folds to IPv4",

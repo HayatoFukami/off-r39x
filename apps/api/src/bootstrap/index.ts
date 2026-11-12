@@ -8,7 +8,7 @@ import { createRateLimiter, RATE_LIMIT_CLASS_IDS, type RateLimitStore } from "@o
 import { createApp } from "../api/app.ts";
 import { createAuthProxy } from "../api/auth-proxy.ts";
 import { createRateLimitMetricsObserver } from "../api/rate-limit.ts";
-import { startRateLimitStoreProbe } from "../api/store-probe.ts";
+import { startReadinessProbe } from "../api/readiness-probe.ts";
 
 export interface BootstrapOverrides {
   /** Test seam (DI only): replaces the Redis store adapter. Never reads configuration. */
@@ -77,30 +77,40 @@ export function bootstrap(
     ...(authProxy ? { authProxy } : {}),
     rateLimit: { limiter, trustedProxyHops: config.rateLimit.trustedProxyHops },
     draining: () => draining,
-    ready: async () => {
-      const observed = await checkReadiness(database.pool, {
-        environment: config.environment,
-        expectedEnvironmentMarker: config.database.expectedEnvironmentMarker,
-        environmentMarkerSetting: config.database.environmentMarkerSetting,
-        metadata: config.database.metadata,
-        ...(migrationSetHash ? { migrationSetHash } : {}),
-        ...(config.database.directoryMapping
-          ? { directoryMapping: config.database.directoryMapping }
-          : {}),
-      });
-      if (!observed.ready || !authProxy || draining) return false;
-      await limiter.assertReady();
-      return !draining;
-    },
+    // INF-HLT-005: the readiness answer is the snapshot of the background probe; it runs no check.
+    ready: () => !draining && readinessProbe.isReady(),
   });
-  // INF-HLT-004 / OBS-ALT-042: the store probe is independent of request handling (<= 30 s).
-  const storeProbe = startRateLimitStoreProbe({
-    check: () => limiter.assertReady(),
+  // INF-HLT-005 / INF-HLT-004 / OBS-ALT-042: one background probe (at most every 30 s, one run at a
+  // time) runs the readiness checks; its store item feeds r39x_rate_limit_store_ready.
+  const readinessProbe = startReadinessProbe({
+    check: async () => {
+      const storeReady = await limiter.assertReady().then(
+        () => true,
+        () => false,
+      );
+      let ready = false;
+      try {
+        const observed = await checkReadiness(database.pool, {
+          environment: config.environment,
+          expectedEnvironmentMarker: config.database.expectedEnvironmentMarker,
+          environmentMarkerSetting: config.database.environmentMarkerSetting,
+          metadata: config.database.metadata,
+          ...(migrationSetHash ? { migrationSetHash } : {}),
+          ...(config.database.directoryMapping
+            ? { directoryMapping: config.database.directoryMapping }
+            : {}),
+        });
+        ready = observed.ready && authProxy !== undefined && storeReady;
+      } catch {
+        ready = false;
+      }
+      return { ready, storeReady };
+    },
     metrics: rateLimitMetrics,
   });
   const server = serve({ fetch: app.fetch, port, hostname: "0.0.0.0" });
   const close = async () => {
-    storeProbe.stop();
+    readinessProbe.stop();
     await new Promise<void>((resolve, reject) =>
       server.close((error) => (error ? reject(error) : resolve())),
     );
@@ -110,5 +120,15 @@ export function bootstrap(
   const beginDrain = () => {
     draining = true;
   };
-  return { app, server, close, beginDrain, verifier, principals, rateLimitMetrics };
+  // The readiness probe is exposed for tests and operators; the health answer itself is the snapshot.
+  return {
+    app,
+    server,
+    close,
+    beginDrain,
+    verifier,
+    principals,
+    rateLimitMetrics,
+    readinessProbe,
+  };
 }

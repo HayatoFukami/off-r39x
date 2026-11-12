@@ -124,22 +124,30 @@ it("TC-STARTUP-AUDIT-001 actual API bootstrap moves Ready->notReady->Ready on DB
     await vi.waitFor(() => expect(storeReady()).toEqual([{ environment: "test", value: 1 }]));
     vi.useRealTimers();
     const get = (path = "ready") => fetch(`http://127.0.0.1:18931/internal/health/${path}`);
+    // INF-HLT-005: the health answer is the snapshot of the latest probe run, so each change is seen
+    // by the next run (no per-request check). The test runs that probe itself.
+    const probeNow = () => runtime?.readinessProbe.probeNow() ?? Promise.resolve();
+    await probeNow();
     expect((await get("live")).status).toBe(200);
     expect((await get()).status).toBe(200);
     store.inject("FP.RATELIMIT.STORE_UNAVAILABLE");
+    await probeNow();
     expect((await get()).status).toBe(503);
     expect((await get("live")).status).toBe(200);
     store.inject(undefined);
+    await probeNow();
     expect((await get()).status).toBe(200);
     await setup.query(
       "ALTER TABLE app.business_profiles DROP CONSTRAINT uq_business_profiles_auth_subject",
     );
     dropped = true;
+    await probeNow();
     expect((await get()).status).toBe(503);
     await setup.query(
       "ALTER TABLE app.business_profiles ADD CONSTRAINT uq_business_profiles_auth_subject UNIQUE(auth_subject)",
     );
     dropped = false;
+    await probeNow();
     expect((await get()).status).toBe(200);
     runtime.beginDrain();
     expect((await get()).status).toBe(503);

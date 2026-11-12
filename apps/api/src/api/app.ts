@@ -40,7 +40,11 @@ const authErrorCodes = {
 export interface AppDependencies {
   webOrigin: string;
   allowedHosts?: readonly string[];
-  ready: () => Promise<boolean>;
+  /**
+   * INF-HLT-005: reads the readiness snapshot only. It must not run a check per request (the
+   * background probe does that), so health requests cost no database or store call.
+   */
+  ready: () => boolean | Promise<boolean>;
   logger?: ReturnType<typeof createLogger>;
   draining?: () => boolean;
   auth?: { verifier: TokenVerifier; store: PrincipalStore };

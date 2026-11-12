@@ -1,5 +1,9 @@
 import { TIMEOUTS } from "@off-r39x/reliability";
-import { createRemoteJWKSet, errors, exportJWK, type JWTVerifyGetKey, jwtVerify } from "jose";
+import { errors, exportJWK, importJWK, type JWK, type JWTVerifyGetKey, jwtVerify } from "jose";
+
+/** The key material jose verifies with (a CryptoKey / KeyObject / secret), as importJWK returns it. */
+type VerificationKey = Awaited<ReturnType<typeof importJWK>>;
+
 import { z } from "zod";
 
 export class AuthFailure extends Error {
@@ -21,6 +25,74 @@ export interface VerifiedIdentity {
 export interface TokenVerifier {
   verify(token: string): Promise<VerifiedIdentity>;
 }
+/** SPEC-150 REL-AUTH-002: a JWKS refresh starts at most once per 30 seconds per process. */
+export const JWKS_MIN_REFRESH_INTERVAL_MS = 30_000;
+
+const jwksDocument = z.object({ keys: z.array(z.record(z.string(), z.unknown())) });
+
+export interface JwksKeyResolverOptions {
+  readonly jwksUrl: string;
+  /** Test seams. */
+  readonly fetch?: typeof fetch;
+  readonly now?: () => number;
+  readonly minRefreshIntervalMs?: number;
+  readonly timeoutMs?: number;
+}
+
+/**
+ * The trusted key resolver. Keys are cached by `kid`. An unknown `kid` starts one refresh, single-
+ * flight and at most once per interval: while a refresh is in flight, or within the interval, a token
+ * that the cache cannot verify is `unavailable` at once (never waited for, never counted as an auth
+ * failure). The request that starts a refresh waits for it; a `kid` still unknown after it is
+ * `unauthenticated`. A refresh that cannot be completed is `unavailable`.
+ */
+export function createJwksKeyResolver(options: JwksKeyResolverOptions): JWTVerifyGetKey {
+  const url = new URL(options.jwksUrl);
+  const fetcher = options.fetch ?? fetch;
+  const now = options.now ?? (() => Date.now());
+  const interval = options.minRefreshIntervalMs ?? JWKS_MIN_REFRESH_INTERVAL_MS;
+  const timeoutMs = options.timeoutMs ?? TIMEOUTS.jwksMs;
+  let cache = new Map<string, VerificationKey>();
+  let lastStartedAt = Number.NEGATIVE_INFINITY;
+  let inFlight: Promise<void> | undefined;
+
+  async function refresh(): Promise<void> {
+    try {
+      const response = await fetcher(url, {
+        signal: AbortSignal.timeout(timeoutMs),
+        redirect: "error",
+      });
+      if (!response.ok) throw new Error("JWKS endpoint failed");
+      const document = jwksDocument.parse(await response.json());
+      const fresh = new Map<string, VerificationKey>();
+      for (const entry of document.keys) {
+        if (typeof entry.kid !== "string" || entry.kty !== "OKP" || entry.crv !== "Ed25519")
+          continue;
+        fresh.set(entry.kid, await importJWK(entry as JWK, "EdDSA"));
+      }
+      cache = fresh;
+    } catch {
+      throw new AuthFailure("unavailable");
+    }
+  }
+
+  return async (header) => {
+    const kid = typeof header.kid === "string" ? header.kid : undefined;
+    if (kid === undefined) throw new AuthFailure("unauthenticated");
+    const cached = cache.get(kid);
+    if (cached) return cached;
+    if (inFlight || now() - lastStartedAt < interval) throw new AuthFailure("unavailable");
+    lastStartedAt = now();
+    inFlight = refresh().finally(() => {
+      inFlight = undefined;
+    });
+    await inFlight;
+    const refreshed = cache.get(kid);
+    if (!refreshed) throw new AuthFailure("unauthenticated");
+    return refreshed;
+  };
+}
+
 export function createTokenVerifier(
   config: { issuer: string; audience: string; jwksUrl: string },
   key?: JWTVerifyGetKey,
@@ -28,13 +100,7 @@ export function createTokenVerifier(
   const url = new URL(config.jwksUrl);
   if (url.protocol !== "https:" || url.username || url.password || url.hash)
     throw new Error("Invalid JWKS configuration");
-  const resolve =
-    key ??
-    createRemoteJWKSet(url, {
-      timeoutDuration: TIMEOUTS.jwksMs,
-      cooldownDuration: 30000,
-      cacheMaxAge: 600000,
-    });
+  const resolve = key ?? createJwksKeyResolver({ jwksUrl: config.jwksUrl });
   return {
     async verify(token) {
       try {
@@ -47,6 +113,7 @@ export function createTokenVerifier(
             try {
               resolved = await resolve(header, token);
             } catch (error) {
+              if (error instanceof AuthFailure) throw error;
               if (
                 error instanceof errors.JWKSNoMatchingKey ||
                 error instanceof errors.JOSENotSupported

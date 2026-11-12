@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  createCounterKeyFactory,
   createRateLimiter,
   parseRateLimitConfig,
   RATE_LIMIT_REGISTRY,
@@ -15,6 +16,9 @@ import { createMemoryStore } from "../harness/rate-limit/memory-store.ts";
 const hmacKey = new Uint8Array(32).fill(5);
 const IP = "203.0.113.5";
 const SUBJECT = "aef69f82-c9b7-4fd1-9a6f-126f5748e9ae";
+const keyFactory = createCounterKeyFactory(hmacKey, 1);
+const ipKey = (ruleId: string, ip: string) => keyFactory.key(ruleId, "ip", ip);
+const resourceKey = (ruleId: string, value: string) => keyFactory.key(ruleId, "resource", value);
 
 function build(extra: Partial<RateLimiterOptions> = {}, overrides: Record<string, unknown> = {}) {
   const store = createMemoryStore();
@@ -49,7 +53,8 @@ describe("rule planning per stage (SEC-ABU-017, §68)", () => {
     ];
     const plans: Record<RouteClassId, Plan> = {
       public_read: { pre: [...burstSustained("public_read"), [10000, 60]] },
-      auth_form_proxy: { pre: [...burstSustained("auth_form_proxy"), [5, 600]] },
+      // The identifier rule is stage 1b (SEC-ABU-024), tested separately below.
+      auth_form_proxy: { pre: burstSustained("auth_form_proxy") },
       auth_session: { pre: burstSustained("auth_session") },
       auth_callback: { pre: burstSustained("auth_callback") },
       self_read: { pre: [[240, 60]], subject: burstSustained("self_read") },
@@ -103,21 +108,9 @@ describe("rule planning per stage (SEC-ABU-017, §68)", () => {
     };
     for (const [classId, plan] of Object.entries(plans) as [RouteClassId, Plan][]) {
       const { store, limiter } = build();
-      await limiter.preAuth({ classId, ip: IP, loginIdentifier: "user@example.com" });
-      const expectedPre = [
-        ...(plan.guard
-          ? [
-              {
-                mode: "check",
-                rules: [
-                  [20, 10],
-                  [50, 60],
-                ],
-              },
-            ]
-          : []),
-        ...(plan.pre ? [{ mode: "admit", rules: plan.pre }] : []),
-      ];
+      await limiter.preAuth({ classId, ip: IP });
+      // Stage 1 never consults the guard (SEC-ABU-021 (1)); the identifier rule is stage 1b.
+      const expectedPre = [...(plan.pre ? [{ mode: "admit", rules: plan.pre }] : [])];
       expect(rulesOf(store.calls), `${classId} stage 1`).toEqual(expectedPre);
       store.calls.length = 0;
       await limiter.subject({ classId, subject: SUBJECT });
@@ -227,31 +220,43 @@ describe("Authentication-failure guard (SEC-ABU-020 / 021 / 022)", () => {
     auth_failure_guard_attendee: { burst_limit: 2, sustained_limit: 5 },
     auth_failure_guard_operator: { burst_limit: 3, sustained_limit: 5 },
   };
-  it("TC-RLM-005-102 the guard confirms before and records after; only a recorded failure counts, per IP, with independent classes", async () => {
-    const { limiter } = build({}, guards);
+  it("TC-RLM-005-102 the guard is never consulted before verification; a failure is one atomic evaluation: within the limit it is recorded, the limit+1 failure is a 429 and is not recorded; per IP, independent classes", async () => {
+    const { store, limiter } = build({}, guards);
     const attendee = () => limiter.preAuth({ classId: "purchase_checkout", ip: IP });
-    const operator = () => limiter.preAuth({ classId: "admin_mutation", ip: IP });
-    // A confirmation alone never counts.
+    // Stage 1 neither confirms nor records the guard (SEC-ABU-021 (1)): valid-token requests pass.
     for (let i = 0; i < 10; i += 1) expect((await attendee()).result).toBe("allowed");
+    expect(store.calls.some((call) => call.rules.some((rule) => rule.key.includes("guard")))).toBe(
+      false,
+    );
+    // Two attendee failures are recorded (burst limit 2); the third is refused and not recorded.
     expect((await limiter.recordAuthFailure("purchase_checkout", IP)).result).toBe("allowed");
     expect((await limiter.recordAuthFailure("qr_display", IP)).result).toBe("allowed");
-    // Two attendee failures reached the burst limit of 2.
-    expect(await attendee()).toMatchObject({ result: "rejected", ruleCategory: "guard" });
-    expect(await limiter.preAuth({ classId: "qr_display", ip: IP })).toMatchObject({
+    expect(await limiter.recordAuthFailure("purchase_checkout", IP)).toMatchObject({
       result: "rejected",
+      ruleCategory: "guard",
     });
+    expect(store.count(ipKey("auth_failure_guard_attendee.burst", IP))).toBe(2);
+    // A valid-token request is not refused by the guard state (SEC-ABU-021 (3)).
+    expect((await attendee()).result).toBe("allowed");
     // The operator guard is a separate counter with its own limit.
-    expect((await operator()).result).toBe("allowed");
+    expect((await limiter.recordAuthFailure("admin_mutation", IP)).result).toBe("allowed");
     // Another IP is not affected.
-    expect(
-      (await limiter.preAuth({ classId: "purchase_checkout", ip: "203.0.113.6" })).result,
-    ).toBe("allowed");
-    // Concurrent failures may overrun the guard: recording never rejects (SEC-ABU-021).
-    for (let i = 0; i < 20; i += 1)
-      expect((await limiter.recordAuthFailure("profile_mutation", IP)).result).toBe("allowed");
+    expect((await limiter.recordAuthFailure("purchase_checkout", "203.0.113.6")).result).toBe(
+      "allowed",
+    );
     // Classes without a guard (SEC-ABU-023) are not recorded at all.
     expect((await limiter.recordAuthFailure("self_read", IP)).result).toBe("allowed");
     expect((await limiter.recordAuthFailure("public_read", IP)).result).toBe("allowed");
+  });
+
+  it("TC-RLM-005-104 concurrent failures never overrun the guard: a parallel burst records exactly the limit and every other failure is a 429", async () => {
+    const { store, limiter } = build({}, guards);
+    const results = await Promise.all(
+      Array.from({ length: 20 }, () => limiter.recordAuthFailure("profile_mutation", IP)),
+    );
+    expect(results.filter((r) => r.result === "allowed")).toHaveLength(2);
+    expect(results.filter((r) => r.result === "rejected")).toHaveLength(18);
+    expect(store.count(ipKey("auth_failure_guard_attendee.burst", IP))).toBe(2);
   });
 
   it("TC-RLM-005-103 a guard record that cannot be stored is reported as store_unavailable, never skipped", async () => {
@@ -266,6 +271,110 @@ describe("Authentication-failure guard (SEC-ABU-020 / 021 / 022)", () => {
     expect((await limiter.recordAuthFailure("purchase_checkout", IP)).result).toBe(
       "store_unavailable",
     );
+  });
+});
+
+describe("login identifier rule, stage 1b (SEC-ABU-024)", () => {
+  const identifierConfig = {
+    auth_form_proxy: {
+      burst_limit: 10,
+      sustained_limit: 40,
+      additional: { "auth_form_proxy.identifier": { limit: 5, window_seconds: 600 } },
+    },
+  };
+  it("TC-RLM-004-257 the identifier counter is keyed by the (source IP, identifier) pair: one IP is limited for its own pairs only, and pairs that differ only in where the IP ends are different keys", async () => {
+    const { store, limiter } = build({}, identifierConfig);
+    const pair = (ip: string, email: string) =>
+      limiter.loginIdentifier({ classId: "auth_form_proxy", ip, loginIdentifier: email });
+    for (let i = 0; i < 5; i += 1)
+      expect((await pair(IP, "a@example.test")).result).toBe("allowed");
+    expect(await pair(IP, "a@example.test")).toMatchObject({
+      result: "rejected",
+      ruleCategory: "resource",
+    });
+    // Another IP with the same identifier (the victim's own IP) and another identifier from the
+    // attacker's IP are not affected.
+    expect((await pair("203.0.113.6", "a@example.test")).result).toBe("allowed");
+    expect((await pair(IP, "b@example.test")).result).toBe("allowed");
+    // Without a length prefix "10.0.0.1" + "0x" and "10.0.0.10" + "x" would share one digest input.
+    expect((await pair("10.0.0.1", "0x")).result).toBe("allowed");
+    expect((await pair("10.0.0.10", "x")).result).toBe("allowed");
+    const identifierKeys = store
+      .keys()
+      .filter((key) => key.startsWith("rl:v1:auth_form_proxy.identifier:"));
+    expect(identifierKeys).toHaveLength(5);
+  });
+
+  it("TC-RLM-004-258 the identifier rule is not part of Stage 1 and an absent identifier omits only that rule", async () => {
+    const { store, limiter } = build({}, identifierConfig);
+    await limiter.preAuth({ classId: "auth_form_proxy", ip: IP });
+    const stage1 = store.calls.at(-1);
+    expect(stage1?.rules.map((rule) => rule.key.split(":")[2])).toEqual([
+      "auth_form_proxy.burst",
+      "auth_form_proxy.sustained",
+    ]);
+    const before = store.calls.length;
+    expect(
+      await limiter.loginIdentifier({
+        classId: "auth_form_proxy",
+        ip: IP,
+        loginIdentifier: undefined,
+      }),
+    ).toEqual({ result: "allowed" });
+    expect(store.calls.length).toBe(before);
+  });
+});
+
+describe("multi-resource evaluation in one atomic call (SEC-ABU-029, API-RLC-006)", () => {
+  const cartConfig = {
+    purchase_checkout: {
+      burst_limit: 3,
+      sustained_limit: 12,
+      additional: { "purchase_checkout.resource": { limit: 2, window_seconds: 60 } },
+    },
+  };
+  it("TC-RLM-004-259 distinct resources of one cart are one evaluation: the whole set is refused and no counter moves when one resource is full, duplicates count once", async () => {
+    const { store, limiter } = build({}, cartConfig);
+    const cart = (values: string[]) =>
+      limiter.resource({
+        classId: "purchase_checkout",
+        values: { "purchase_checkout.resource": values },
+      });
+    expect((await cart(["a", "b"])).result).toBe("allowed");
+    expect((await cart(["b", "c"])).result).toBe("allowed");
+    // "b" is at its limit of 2: the evaluation is refused and "a" (which had room) is not recorded.
+    expect(await cart(["a", "b"])).toMatchObject({ result: "rejected", ruleCategory: "resource" });
+    const count = (value: string) => store.count(resourceKey("purchase_checkout.resource", value));
+    expect([count("a"), count("b"), count("c")]).toEqual([1, 2, 1]);
+    // Duplicates in the cart are one resource each.
+    expect((await cart(["c", "c", "d"])).result).toBe("allowed");
+    expect([count("c"), count("d")]).toEqual([2, 1]);
+    // Every resource of the evaluation is one rule of the same single store call.
+    expect(store.calls.at(-1)?.rules).toHaveLength(2);
+  });
+
+  it("TC-RLM-004-260 a cart of 50 distinct resources is one atomic evaluation; more than 50 is refused before any store call", async () => {
+    const { store, limiter } = build({}, cartConfig);
+    const fifty = Array.from({ length: 50 }, (_, i) => `item-${i}`);
+    const before = store.calls.length;
+    expect(
+      (
+        await limiter.resource({
+          classId: "purchase_checkout",
+          values: { "purchase_checkout.resource": fifty },
+        })
+      ).result,
+    ).toBe("allowed");
+    expect(store.calls.length - before).toBe(1);
+    expect(store.calls.at(-1)?.rules).toHaveLength(50);
+    const tooMany = Array.from({ length: 51 }, (_, i) => `over-${i}`);
+    await expect(
+      limiter.resource({
+        classId: "purchase_checkout",
+        values: { "purchase_checkout.resource": tooMany },
+      }),
+    ).rejects.toThrow();
+    expect(store.calls.length - before).toBe(1);
   });
 });
 

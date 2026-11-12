@@ -356,13 +356,17 @@ describe("evaluation order and result mapping (TST-RLM-004)", () => {
         undefined,
         peer(ip),
       );
+    // The counter is per (source IP, identifier) (SEC-ABU-024): one IP refuses its third attempt.
     expect((await post("User@Example.test", "203.0.113.1")).status).toBe(200);
-    expect((await post(" user@example.test ", "203.0.113.2")).status).toBe(200);
-    const blocked = await post("USER@example.test", "203.0.113.3");
+    expect((await post(" user@example.test ", "203.0.113.1")).status).toBe(200);
+    const blocked = await post("USER@example.test", "203.0.113.1");
     expect(blocked.status).toBe(429);
     expect(blocked.headers.get("Retry-After")).toMatch(/^[1-9]\d*$/);
     expect(transportCalls).toBe(2);
-    expect((await post("other@example.test", "203.0.113.3")).status).toBe(200);
+    // The same identifier from another IP is a different counter and is relayed.
+    expect((await post("user@example.test", "203.0.113.2")).status).toBe(200);
+    expect(transportCalls).toBe(3);
+    expect((await post("other@example.test", "203.0.113.1")).status).toBe(200);
     const text = await blocked.clone().text();
     expect(text).not.toContain("example.test");
     // An oversized body leaves only the IP rules in force and never turns into a 500.
@@ -553,11 +557,12 @@ describe("auth_session and auth_form_proxy routing (SEC-ABU-027, TST-RLM-004)", 
   it("TC-RLM-004-228 every other allowed /auth/* route stays auth_form_proxy (burst, sustained and, for POST, the identifier rule)", async () => {
     const { app, trs } = authApp({ burst: 4 });
     expect((await send(app, "POST", "/auth/sign-in/email", "203.0.113.93")).status).toBe(200);
+    // Stage 1 is the per-IP rules; stage 1b (after the body) is the (IP, identifier) pair.
     expect(shape(trs.store.calls[0])).toEqual([
       [4, 10_000],
       [20, 60_000],
-      [1, 600_000],
     ]);
+    expect(shape(trs.store.calls[1])).toEqual([[1, 600_000]]);
     const other = authApp({ burst: 4 });
     expect(
       (await send(other.app, "POST", "/auth/request-password-reset", "203.0.113.94")).status,
@@ -565,8 +570,8 @@ describe("auth_session and auth_form_proxy routing (SEC-ABU-027, TST-RLM-004)", 
     expect(shape(other.trs.store.calls[0])).toEqual([
       [4, 10_000],
       [20, 60_000],
-      [1, 600_000],
     ]);
+    expect(shape(other.trs.store.calls[1])).toEqual([[1, 600_000]]);
   });
   it("TC-RLM-004-238 auth_form_proxy at its canonical ceiling: 10 attempts per 10 s from one IP are admitted, the 11th is a 429; the rules are 10/10 s, 40/60 s and 5 per identifier per 10 min", async () => {
     const trs = createTestRateLimit();
@@ -596,9 +601,12 @@ describe("auth_session and auth_form_proxy routing (SEC-ABU-027, TST-RLM-004)", 
       );
     for (let n = 1; n <= 10; n++) expect((await attempt(n)).status, `attempt ${n}`).toBe(200);
     expect((await attempt(11)).status).toBe(429);
+    // Stage 1 (per IP) and stage 1b (per IP + identifier, after the body) are separate evaluations.
     expect((trs.store.calls[0]?.rules ?? []).map((rule) => [rule.limit, rule.windowMs])).toEqual([
       [10, 10_000],
       [40, 60_000],
+    ]);
+    expect((trs.store.calls[1]?.rules ?? []).map((rule) => [rule.limit, rule.windowMs])).toEqual([
       [5, 600_000],
     ]);
   });
@@ -623,8 +631,8 @@ describe("auth_session and auth_form_proxy routing (SEC-ABU-027, TST-RLM-004)", 
     expect(shape(otp.trs.store.calls[0])).toEqual([
       [4, 10_000],
       [20, 60_000],
-      [1, 600_000],
     ]);
+    expect(shape(otp.trs.store.calls[1])).toEqual([[1, 600_000]]);
     // A wrong method on a callback path is not auth_callback either.
     const wrong = authApp({ burst: 4 });
     await send(wrong.app, "POST", "/auth/verify-email", "203.0.113.133");
@@ -672,25 +680,31 @@ describe("login identifier normalization through the API (SEC-ABU-024, TST-RLM-0
       body: JSON.stringify({ email }),
     });
 
-  it("TC-RLM-004-231 case, surrounding whitespace and NFKC variants of one identifier share a single counter", async () => {
-    const { app } = authApp({ burst: 5 });
-    expect(
-      (await app.request(loginWith("User@Example.test"), undefined, peer("203.0.113.100"))).status,
-    ).toBe(200);
-    for (const [i, variant] of [
+  it("TC-RLM-004-231 case, surrounding whitespace and NFKC variants of one identifier share a single counter per source IP", async () => {
+    const { app } = authApp({ burst: 10 });
+    const ip = "203.0.113.100";
+    // The identifier limit of this helper is 1 per 10 min for each (IP, identifier) pair.
+    expect((await app.request(loginWith("User@Example.test"), undefined, peer(ip))).status).toBe(
+      200,
+    );
+    for (const variant of [
       "user@example.test",
       "  USER@EXAMPLE.TEST  ",
-      "\u0055ser@Example.test\n",
+      "User@Example.test\n",
       "ｕｓｅｒ@ｅｘａｍｐｌｅ.test",
-    ].entries())
+    ])
       expect(
-        (await app.request(loginWith(variant), undefined, peer(`203.0.113.${101 + i}`))).status,
+        (await app.request(loginWith(variant), undefined, peer(ip))).status,
         JSON.stringify(variant),
       ).toBe(429);
-    // A different identifier is not affected.
+    // The same identifier from another IP is a different counter (SEC-ABU-024).
     expect(
-      (await app.request(loginWith("other@example.test"), undefined, peer("203.0.113.110"))).status,
+      (await app.request(loginWith("user@example.test"), undefined, peer("203.0.113.101"))).status,
     ).toBe(200);
+    // A different identifier from the refused IP is not affected.
+    expect((await app.request(loginWith("other@example.test"), undefined, peer(ip))).status).toBe(
+      200,
+    );
   });
 
   it("TC-RLM-004-232 a non-string, empty, whitespace-only or over-320-character identifier omits only the identifier rule; the per-IP rules are still evaluated", async () => {
@@ -818,7 +832,12 @@ function miniApp(
 }
 const call = (app: Hono<ApiEnvironment>, path: string, token = GOOD, ip = IP) =>
   app.request(path, { headers: { Authorization: `Bearer ${token}` } }, peer(ip));
-const records = (trs: TestRateLimit) => trs.store.calls.filter((entry) => entry.mode === "record");
+/** Failures actually recorded by any guard (the burst counter holds exactly the recorded entries). */
+const records = (trs: TestRateLimit) =>
+  trs.store
+    .keys()
+    .filter((key) => key.includes("auth_failure_guard") && key.includes(".burst:"))
+    .reduce((total, key) => total + trs.store.count(key), 0);
 
 describe("Authentication-failure guard at the API layer (TST-RLM-005)", () => {
   it("TC-RLM-005-201 only token verification failures are recorded; valid tokens, unverified Email, denial and Business failures are not", async () => {
@@ -840,16 +859,16 @@ describe("Authentication-failure guard at the API layer (TST-RLM-005)", () => {
     expect((await call(m.app, "/buy/cap")).status).toBe(403);
     step();
     expect((await call(m.app, "/buy/rule")).status).toBe(422);
-    expect(records(trs)).toEqual([]);
+    expect(records(trs)).toBe(0);
     expect((await call(m.app, "/buy/ok", BAD)).status).toBe(401);
     expect((await call(m.app, "/buy/ok", BAD)).status).toBe(401);
-    expect(records(trs)).toHaveLength(2);
+    expect(records(trs)).toBe(2);
     // A request without a usable Authorization header is also a failed verification.
     expect((await m.app.request("/buy/ok", {}, peer())).status).toBe(401);
-    expect(records(trs)).toHaveLength(3);
+    expect(records(trs)).toBe(3);
   });
 
-  it("TC-RLM-005-202 at or above the limit Stage 1 answers 429 and token verification is not reached, even for a valid token", async () => {
+  it("TC-RLM-005-202 the guard never refuses a valid token: once the guard is used up a valid token is verified and admitted; a failing token beyond the limit is a 429 that is not recorded", async () => {
     const trs = createTestRateLimit({
       overrides: { auth_failure_guard_attendee: guard(2) },
     });
@@ -857,13 +876,18 @@ describe("Authentication-failure guard at the API layer (TST-RLM-005)", () => {
     m.app.get("/buy/ok", m.principal, (c) => c.json({ ok: true }));
     expect((await call(m.app, "/buy/ok", BAD)).status).toBe(401);
     expect((await call(m.app, "/buy/ok", BAD)).status).toBe(401);
+    // The failure beyond the limit: refused with Retry-After, and not recorded.
+    const refused = await call(m.app, "/buy/ok", BAD);
+    expect(refused.status).toBe(429);
+    expect(refused.headers.get("Retry-After")).toMatch(/^[1-9]\d*$/);
+    expect(records(trs)).toBe(2);
+    // A valid token is verified (the verifier is reached) and admitted despite the guard state.
     m.order.length = 0;
-    const res = await call(m.app, "/buy/ok", GOOD);
-    expect(res.status).toBe(429);
-    expect(res.headers.get("Retry-After")).toMatch(/^[1-9]\d*$/);
-    expect(m.order).toEqual([]);
+    expect((await call(m.app, "/buy/ok", GOOD)).status).toBe(200);
+    expect(m.order).toContain("verify");
+    expect(records(trs)).toBe(2);
     // Another IP is not affected.
-    expect((await call(m.app, "/buy/ok", GOOD, "203.0.113.77")).status).toBe(200);
+    expect((await call(m.app, "/buy/ok", BAD, "203.0.113.77")).status).toBe(401);
   });
 
   it("TC-RLM-005-203 attendee and operator guards are configured and evaluated independently", async () => {
@@ -877,11 +901,14 @@ describe("Authentication-failure guard at the API layer (TST-RLM-005)", () => {
     m.app.get("/buy/ok", m.principal, (c) => c.json({ ok: true }));
     m.app.get("/handoff/ok", m.principal, (c) => c.json({ ok: true }));
     expect((await call(m.app, "/buy/ok", BAD)).status).toBe(401);
-    expect((await call(m.app, "/buy/ok")).status).toBe(429);
+    // The attendee guard is used up for failures only; a valid token is still admitted.
+    expect((await call(m.app, "/buy/ok")).status).toBe(200);
+    expect((await call(m.app, "/buy/ok", BAD)).status).toBe(429);
     // Operator routes use their own counter and limit.
     expect((await call(m.app, "/handoff/ok")).status).toBe(200);
     for (let i = 0; i < 3; i++) expect((await call(m.app, "/handoff/ok", BAD)).status).toBe(401);
-    expect((await call(m.app, "/handoff/ok")).status).toBe(429);
+    expect((await call(m.app, "/handoff/ok", BAD)).status).toBe(429);
+    expect((await call(m.app, "/handoff/ok")).status).toBe(200);
   });
 
   it("TC-RLM-005-204 an unavailable auth service is not counted, and a store failure while recording is a 503, not a 401", async () => {
@@ -897,7 +924,7 @@ describe("Authentication-failure guard at the API layer (TST-RLM-005)", () => {
     );
     unavailable.app.get("/buy/ok", unavailable.principal, (c) => c.json({ ok: true }));
     expect((await call(unavailable.app, "/buy/ok")).status).toBe(403);
-    expect(records(trs)).toEqual([]);
+    expect(records(trs)).toBe(0);
 
     const trs2 = createTestRateLimit();
     const m = miniApp(
@@ -920,9 +947,11 @@ describe("Authentication-failure guard at the API layer (TST-RLM-005)", () => {
     const trs = createTestRateLimit({ overrides: { auth_failure_guard_attendee: guard(2) } });
     const m = miniApp(trs, { "/buy": "purchase_checkout" });
     m.app.get("/buy/ok", m.principal, (c) => c.json({ ok: true }));
+    // Atomic (SEC-ABU-021 (4)): exactly the limit is recorded, the other failures are 429s.
     const batch = await Promise.all(Array.from({ length: 8 }, () => call(m.app, "/buy/ok", BAD)));
-    expect(batch.every((res) => res.status === 401)).toBe(true);
-    expect(records(trs).length).toBe(8);
+    expect(batch.filter((res) => res.status === 401)).toHaveLength(2);
+    expect(batch.filter((res) => res.status === 429)).toHaveLength(6);
+    expect(records(trs)).toBe(2);
     expect((await call(m.app, "/buy/ok", BAD)).status).toBe(429);
 
     const strict = createTestRateLimit({ overrides: selfRead(3, 120) });
@@ -1041,24 +1070,25 @@ describe("resource rule evaluation (TST-RLM-004)", () => {
         return c.json({ ok: true });
       },
     );
-    // Stages 1 and 2 pass; only the third store operation (Stage 3) fails.
+    // The subject rules (Stage 2) pass; only the Stage 3 operation, the second store call of this
+    // route (the guard is not consulted before verification), fails.
     const evaluate = trs.store.evaluate.bind(trs.store);
     let operations = 0;
     trs.store.evaluate = async (mode, rules, id) => {
       operations += 1;
-      if (operations === 3) throw new RateLimitStoreError("error");
+      if (operations === 2) throw new RateLimitStoreError("error");
       return evaluate(mode, rules, id);
     };
     const res = await call(m.app, "/qr/a");
     expect(res.status).toBe(503);
     expect((await res.json()).code).toBe("TEMPORARY_UNAVAILABLE");
-    expect(operations).toBe(3);
+    expect(operations).toBe(2);
     expect(handled).toBe(0);
   });
 });
 
 describe("Stage 3 shared resource counters after authorization (SEC-ABU-029, TST-RLM-004)", () => {
-  it("TC-RLM-004-239 Stage 3 runs after Role + Capability and before the Domain precondition: guard check, verify, store, db, then store", async () => {
+  it("TC-RLM-004-239 Stage 3 runs after Role + Capability and before the Domain precondition: verify, stage 2 store, db, Stage 3 store, then the domain", async () => {
     const trs = createTestRateLimit();
     const m = authedApp(trs, { "/adm": "role_assignment" });
     const order = m.order;
@@ -1081,7 +1111,7 @@ describe("Stage 3 shared resource counters after authorization (SEC-ABU-029, TST
     );
     const res = await call(m.app, "/adm/roles/P1", ADMIN_TOKEN);
     expect(res.status).toBe(200);
-    expect(order).toEqual(["store:check", "verify", "store:admit", "db", "store:admit", "domain"]);
+    expect(order).toEqual(["verify", "store:admit", "db", "store:admit", "domain"]);
   });
 
   it("TC-RLM-004-240 a valid-JWT holder without Administrator cannot consume the target-profile slot of API-ADM-ROL-002: the 403s leave the counter untouched and the real administrator can still grant", async () => {
@@ -1564,4 +1594,214 @@ describe("rate limit events and metrics at the API layer (TST-RLM-009)", () => {
     expect(failed).toHaveLength(12);
     for (const event of failed) expect(event).toMatchObject({ failure_class: "SECURITY_FAILURE" });
   });
+});
+
+describe("auth_form_proxy body reading order and bounds (SEC-ABU-017 / 024 / 031, TST-RLM-004)", () => {
+  const FORM_WEB = "https://web.example.test";
+  type Call = { rules: readonly { limit: number; windowMs: number }[] };
+  const shape = (call: Call | undefined) =>
+    (call?.rules ?? []).map((rule) => [rule.limit, rule.windowMs]);
+  const formApp = (overrides: Record<string, unknown> = {}) => {
+    const trs = createTestRateLimit({
+      overrides: {
+        auth_form_proxy: {
+          burst_limit: 10,
+          sustained_limit: 40,
+          additional: { "auth_form_proxy.identifier": { limit: 5, window_seconds: 600 } },
+        },
+        ...overrides,
+      },
+    });
+    const lines: string[] = [];
+    let relayed = 0;
+    const proxy = createAuthProxy(
+      {
+        baseUrl: "https://neon.example.test/auth",
+        publicAuthOrigin: "https://api.example.test",
+        webOrigin: FORM_WEB,
+      },
+      async () => {
+        relayed += 1;
+        return Response.json({ ok: true });
+      },
+    );
+    const app = createApp({
+      webOrigin: FORM_WEB,
+      ready: async () => true,
+      authProxy: proxy,
+      rateLimit: trs.rateLimit,
+      logger: createLogger({ service: "API", environment: "test", actor_type: "GUEST" }, (line) => {
+        lines.push(line);
+      }),
+    });
+    return { app, trs, lines, relayed: () => relayed };
+  };
+  const formRequest = (email: string) =>
+    new Request("https://api.example.test/auth/sign-in/email", {
+      method: "POST",
+      headers: { Origin: FORM_WEB, "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password: "synthetic" }),
+    });
+
+  it("TC-RLM-004-261 the per-IP rule is evaluated before the body is read: a refusal reads no byte of the body and answers Connection: close", async () => {
+    const { app } = formApp({
+      auth_form_proxy: {
+        burst_limit: 1,
+        sustained_limit: 40,
+        additional: { "auth_form_proxy.identifier": { limit: 5, window_seconds: 600 } },
+      },
+    });
+    const ip = "203.0.113.150";
+    expect((await app.request(formRequest("first@example.test"), undefined, peer(ip))).status).toBe(
+      200,
+    );
+    let pulls = 0;
+    // highWaterMark 0: nothing is pulled until someone reads the body.
+    const body = new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          pulls += 1;
+          controller.enqueue(new TextEncoder().encode('{"email":"second@example.test"}'));
+          controller.close();
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    const refused = await app.request(
+      new Request("https://api.example.test/auth/sign-in/email", {
+        method: "POST",
+        headers: { Origin: FORM_WEB, "Content-Type": "application/json" },
+        body,
+        duplex: "half",
+      } as RequestInit),
+      undefined,
+      peer(ip),
+    );
+    expect(refused.status).toBe(429);
+    expect(refused.headers.get("Connection")).toBe("close");
+    expect(pulls).toBe(0);
+  });
+
+  it("TC-RLM-004-262 the identifier rule is stage 1b: it runs after the body is read, refuses before the relay, and the per-IP counter stays consumed", async () => {
+    const { app, trs, relayed } = formApp({
+      auth_form_proxy: {
+        burst_limit: 10,
+        sustained_limit: 40,
+        additional: { "auth_form_proxy.identifier": { limit: 1, window_seconds: 600 } },
+      },
+    });
+    const ip = "203.0.113.151";
+    expect((await app.request(formRequest("same@example.test"), undefined, peer(ip))).status).toBe(
+      200,
+    );
+    const refused = await app.request(formRequest("same@example.test"), undefined, peer(ip));
+    expect(refused.status).toBe(429);
+    expect(relayed()).toBe(1);
+    // Two requests: stage 1 then stage 1b each. The refused request still consumed its per-IP slot.
+    expect(shape(trs.store.calls[0])).toEqual([
+      [10, 10_000],
+      [40, 60_000],
+    ]);
+    expect(shape(trs.store.calls[1])).toEqual([[1, 600_000]]);
+    expect(shape(trs.store.calls[2])).toEqual([
+      [10, 10_000],
+      [40, 60_000],
+    ]);
+    expect(shape(trs.store.calls[3])).toEqual([[1, 600_000]]);
+  });
+
+  it("TC-RLM-004-263 at most 3 body reads per IP: the 4th concurrent body is a 429 (Retry-After: 1) that reads no body and makes no store call, is logged as rule_category=concurrency, and a released slot is available again", async () => {
+    const { app, trs, lines } = formApp();
+    const ip = "203.0.113.160";
+    const controllers: ReadableStreamDefaultController<Uint8Array>[] = [];
+    const slowRequest = () =>
+      app.request(
+        new Request("https://api.example.test/auth/sign-in/email", {
+          method: "POST",
+          headers: { Origin: FORM_WEB, "Content-Type": "application/json" },
+          body: new ReadableStream<Uint8Array>({
+            start(controller) {
+              controllers.push(controller);
+            },
+          }),
+          duplex: "half",
+        } as RequestInit),
+        undefined,
+        peer(ip),
+      );
+    const held = [slowRequest(), slowRequest(), slowRequest()].map((r) => Promise.resolve(r));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const storeCallsBefore = trs.store.calls.length;
+    const fourth = await app.request(
+      new Request("https://api.example.test/auth/sign-in/email", {
+        method: "POST",
+        headers: { Origin: FORM_WEB, "Content-Type": "application/json" },
+        body: JSON.stringify({ email: "fourth@example.test" }),
+      }),
+      undefined,
+      peer(ip),
+    );
+    expect(fourth.status).toBe(429);
+    expect(fourth.headers.get("Retry-After")).toBe("1");
+    expect(fourth.headers.get("Connection")).toBe("close");
+    // The per-IP rule of the 4th request was evaluated (stage 1); the concurrency refusal itself is not
+    // a store call.
+    expect(trs.store.calls.length - storeCallsBefore).toBe(1);
+    expect(lines.some((line) => line.includes('"rule_category":"concurrency"'))).toBe(true);
+    // A released slot (the first body fails) is available again.
+    controllers[0]?.error(new Error("client gone"));
+    await Promise.allSettled([held[0]]);
+    const fifth = Promise.resolve(slowRequest());
+    const outcome = await Promise.race([
+      fifth.then((res) => res.status),
+      new Promise<string>((resolve) => setTimeout(() => resolve("still reading"), 200)),
+    ]);
+    expect(outcome).toBe("still reading");
+    for (const controller of controllers) controller.error(new Error("client gone"));
+    await Promise.allSettled([...held, fifth]);
+  });
+
+  it("TC-RLM-004-264 at most 256 body reads per process: the 257th concurrent body is refused without reading, whatever its IP", async () => {
+    const { app } = formApp({
+      auth_form_proxy: {
+        burst_limit: 10,
+        sustained_limit: 40,
+        additional: { "auth_form_proxy.identifier": { limit: 5, window_seconds: 600 } },
+      },
+    });
+    const controllers: ReadableStreamDefaultController<Uint8Array>[] = [];
+    const slow = (ip: string) =>
+      app.request(
+        new Request("https://api.example.test/auth/sign-in/email", {
+          method: "POST",
+          headers: { Origin: FORM_WEB, "Content-Type": "application/json" },
+          body: new ReadableStream<Uint8Array>({
+            start(controller) {
+              controllers.push(controller);
+            },
+          }),
+          duplex: "half",
+        } as RequestInit),
+        undefined,
+        peer(ip),
+      );
+    // 85 IPs with 3 held reads each, and one more IP with 1: 256 held in total.
+    const held: (Response | Promise<Response>)[] = [];
+    for (let i = 0; i < 85; i += 1) for (let j = 0; j < 3; j += 1) held.push(slow(`10.20.${i}.1`));
+    held.push(slow("10.20.200.1"));
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const refused = await app.request(
+      new Request("https://api.example.test/auth/sign-in/email", {
+        method: "POST",
+        headers: { Origin: FORM_WEB, "Content-Type": "application/json" },
+        body: JSON.stringify({ email: "over@example.test" }),
+      }),
+      undefined,
+      peer("10.20.201.1"),
+    );
+    expect(refused.status).toBe(429);
+    expect(refused.headers.get("Retry-After")).toBe("1");
+    for (const controller of controllers) controller.error(new Error("client gone"));
+    await Promise.allSettled(held);
+  }, 30_000);
 });

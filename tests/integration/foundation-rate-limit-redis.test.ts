@@ -2,7 +2,7 @@
 // fails the file; there is no skip and no fake store here.
 import { createHash, createHmac } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { startRateLimitStoreProbe } from "../../apps/api/src/api/store-probe.ts";
+import { startReadinessProbe } from "../../apps/api/src/api/readiness-probe.ts";
 import { createRedisRateLimitStore } from "../../packages/rate-limit-redis/src/index.ts";
 import {
   createCounterKeyFactory,
@@ -130,8 +130,14 @@ describe("real Redis is mandatory (DEV-RLM-008)", () => {
     await session.redis.config("SET", "maxmemory-policy", "noeviction");
     await session.redis.config("SET", "maxmemory", "1");
     // The timer is driven by the test; the first sample starts immediately, as in bootstrap.
-    const probe = startRateLimitStoreProbe({
-      check: () => limiter.assertReady(),
+    const probe = startReadinessProbe({
+      check: async () => {
+        const storeReady = await limiter.assertReady().then(
+          () => true,
+          () => false,
+        );
+        return { ready: storeReady, storeReady };
+      },
       metrics: { storeReady: (ready: boolean) => samples.push(ready) },
       setTimer: () => undefined,
       clearTimer: () => undefined,
@@ -328,7 +334,8 @@ describe("sliding window log on Redis (TST-RLM-002)", () => {
     };
     const limiter = limiterFor({});
     await limiter.preAuth({ classId: "public_read", ip: raw.ip });
-    await limiter.preAuth({
+    await limiter.preAuth({ classId: "auth_form_proxy", ip: raw.ip });
+    await limiter.loginIdentifier({
       classId: "auth_form_proxy",
       ip: raw.ip,
       loginIdentifier: raw.email,

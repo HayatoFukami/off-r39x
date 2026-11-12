@@ -6,19 +6,26 @@ export const BURST_WINDOW_SECONDS = 10;
 export const SUSTAINED_WINDOW_SECONDS = 60;
 
 /** `SPEC-160` §24.1 rule_category. */
-export type RuleCategory = "burst" | "sustained" | "resource" | "global" | "guard";
+export type RuleCategory = "burst" | "sustained" | "resource" | "global" | "guard" | "concurrency";
 /** Which identity a rule is counted for. */
 export type RuleSubject = "ip" | "auth_subject" | "identifier" | "resource" | "global";
 /**
  * Evaluation phase (SPEC-140 SEC-ABU-017 / SPEC-110 §24.1).
  * pre_auth: stage 1, before authentication (token verification / Webhook signature verification).
+ * login_identifier: stage 1b of auth_form_proxy, after the body is read and before the relay
+ *   (SEC-ABU-024). It is a separate evaluation from pre_auth.
  * subject: stage 2 after token verification, before any DB access.
  * webhook_verified: stage 2 after a successful Webhook signature verification, before the DB
  *   (SEC-ABU-030: the Webhook global rule never counts an invalid signature).
  * resource: stage 3 after the target's authorization check (owner relation / Role + Capability)
  *   succeeded, before the Domain precondition (SEC-ABU-029).
  */
-export type RulePhase = "pre_auth" | "subject" | "webhook_verified" | "resource";
+export type RulePhase =
+  | "pre_auth"
+  | "login_identifier"
+  | "subject"
+  | "webhook_verified"
+  | "resource";
 
 interface AdditionalRuleDefinition {
   readonly subject: RuleSubject;
@@ -83,7 +90,7 @@ export const RATE_LIMIT_REGISTRY = Object.freeze({
     "public_read.global": additional("global", "pre_auth", "global", 10000, 60),
   }),
   auth_form_proxy: route("ip", 10, 40, {
-    "auth_form_proxy.identifier": additional("identifier", "pre_auth", "resource", 5, 600),
+    "auth_form_proxy.identifier": additional("identifier", "login_identifier", "resource", 5, 600),
   }),
   // SEC-ABU-027: session lookups / sign-out of the `/auth/*` proxy. Per-IP only (stage 1), no
   // identifier rule, no guard; its counters are independent of auth_form_proxy.

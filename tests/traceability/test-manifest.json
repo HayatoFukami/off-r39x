@@ -20527,7 +20527,7 @@
       "fault_points": [],
       "expected_http": [200, 429],
       "expected_domain_postconditions": [
-        "case, surrounding whitespace and NFKC variants of one identifier share a single counter"
+        "case, surrounding whitespace and NFKC variants of one identifier share a single counter per source IP"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -20729,7 +20729,7 @@
       "fault_points": [],
       "expected_http": [200],
       "expected_domain_postconditions": [
-        "Stage 3 runs after Role + Capability and before the Domain precondition: guard check, verify, store, db, then store"
+        "Stage 3 runs after Role + Capability and before the Domain precondition: verify, stage 2 store, db, Stage 3 store, then the domain"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -20968,6 +20968,190 @@
       "critical": true
     },
     {
+      "test_case_id": "TC-RLM-004-257",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["TST-RLM-004", "SEC-ABU-024", "SEC-ABU-015"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Synthetic in-process fixtures only (memory store double / pure functions); no network",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "the identifier counter is keyed by the (source IP, identifier) pair: one IP is limited for its own pairs only, and pairs that differ only in where the IP ends are different keys"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-004-258",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["TST-RLM-004", "SEC-ABU-024", "SEC-ABU-017"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Synthetic in-process fixtures only (memory store double / pure functions); no network",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "the identifier rule is not part of Stage 1 and an absent identifier omits only that rule"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-004-259",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["TST-RLM-004", "SEC-ABU-029", "SEC-ABU-013", "API-RLC-006"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Synthetic in-process fixtures only (memory store double / pure functions); no network",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "distinct resources of one cart are one evaluation: the whole set is refused and no counter moves when one resource is full, duplicates count once"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-004-260",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["TST-RLM-004", "SEC-ABU-029", "API-RLC-006"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Synthetic in-process fixtures only (memory store double / pure functions); no network",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "a cart of 50 distinct resources is one atomic evaluation; more than 50 is refused before any store call"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-004-261",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["TST-RLM-004", "SEC-ABU-031", "SEC-ABU-017"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "the per-IP rule is evaluated before the body is read: a refusal reads no byte of the body and answers Connection: close"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-004-262",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["TST-RLM-004", "SEC-ABU-024", "SEC-ABU-013", "SEC-ABU-017"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "the identifier rule is stage 1b: it runs after the body is read, refuses before the relay, and the per-IP counter stays consumed"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-004-263",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["TST-RLM-004", "SEC-ABU-031", "SEC-ABU-017"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "at most 3 body reads per IP: the 4th concurrent body is a 429 (Retry-After: 1) that reads no body and makes no store call, is logged as rule_category=concurrency, and a released slot is available again"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-004-264",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["TST-RLM-004", "SEC-ABU-031"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "at most 256 body reads per process: the 257th concurrent body is refused without reading, whatever its IP"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
       "test_case_id": "TC-RLM-005-102",
       "level": "Unit",
       "suite": "unit",
@@ -20988,7 +21172,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "the guard confirms before and records after; only a recorded failure counts, per IP, with independent classes"
+        "the guard is never consulted before verification; a failure is one atomic evaluation: within the limit it is recorded, the limit+1 failure is a 429 and is not recorded; per IP, independent classes"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -21012,6 +21196,29 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "a guard record that cannot be stored is reported as store_unavailable, never skipped"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-005-104",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["TST-RLM-005", "SEC-ABU-021", "SEC-ABU-013"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Synthetic in-process fixtures only (memory store double / pure functions); no network",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "concurrent failures never overrun the guard: a parallel burst records exactly the limit and every other failure is a 429"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -21057,7 +21264,7 @@
       "fault_points": [],
       "expected_http": [200, 401, 429],
       "expected_domain_postconditions": [
-        "at or above the limit Stage 1 answers 429 and token verification is not reached, even for a valid token"
+        "the guard never refuses a valid token: once the guard is used up a valid token is verified and admitted; a failing token beyond the limit is a 429 that is not recorded"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -21127,6 +21334,75 @@
       "expected_http": [200, 401, 429],
       "expected_domain_postconditions": [
         "concurrent failures may overrun the guard limit, but a non-guard rule never admits more than its limit"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-005-207",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["TST-RLM-005", "REL-AUTH-002", "SEC-ABU-021"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Synthetic in-process fixtures only (memory store double / pure functions); no network",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "a kid already in the cache verifies without any refresh; the first unknown kid starts one refresh"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-005-208",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["TST-RLM-005", "REL-AUTH-002", "SEC-ABU-020", "SEC-ABU-021"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Synthetic in-process fixtures only (memory store double / pure functions); no network",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "refresh is single-flight and at most once per 30 s: a request during the refresh or within 30 s answers unavailable at once, without fetching and without counting as an auth failure; after 30 s the next unknown kid refreshes again"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-005-209",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["TST-RLM-005", "REL-AUTH-002", "SEC-ABU-020"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Synthetic in-process fixtures only (memory store double / pure functions); no network",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "a refresh that cannot be completed is unavailable, never unauthenticated (the token's validity is not decided)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -21642,6 +21918,29 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-RLM-007-202",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["TST-RLM-007", "API-RLC-005"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Synthetic in-process fixtures only (memory store double / pure functions); no network",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "API-STF-GDS-002 is a self_read operation and no longer shares the goods_handoff counter"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-RLM-008-001",
       "level": "Unit",
       "suite": "unit",
@@ -21686,6 +21985,52 @@
       "expected_http": [200, 429],
       "expected_domain_postconditions": [
         "only X-Forwarded-For is read; other forwarded headers and missing, short or unreadable chains use the direct peer"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-RLM-008-003",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["TST-RLM-008", "SEC-API-032"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Synthetic in-process fixtures only (memory store double / pure functions); no network",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "IPv6 addresses in one /64 are one IP; another /64 is another IP; IPv4-mapped IPv6 is its IPv4"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-RLM-008-004",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["TST-RLM-008", "SEC-API-032", "SEC-API-031"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Synthetic in-process fixtures only (memory store double / pure functions); no network",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "the derived Client IP from a forwarded header is the /64 form, so rotating addresses inside one /64 cannot evade a per-IP rule"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -22072,7 +22417,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "the probe runs the readiness store check on its own timer, at most every 30 seconds, with no request involved"
+        "the probe runs on its own timer at most every 30 seconds, with no request involved; an interval above 30 seconds is refused"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -22095,7 +22440,7 @@
       "fault_points": ["FP.RATELIMIT.STORE_UNAVAILABLE"],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "a failing store check is recorded as 0 and a recovered one as 1; the probe never throws"
+        "a failing check (database or store) is recorded as not ready and the store gauge as 0; recovery is 1; the probe never throws"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -22118,7 +22463,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "probes never overlap, an interval above 30 seconds is refused, and a stopped probe records nothing more"
+        "probes never overlap, and a stopped probe records nothing more"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -22202,6 +22547,75 @@
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
       "expected_observability": ["ratelimit.decision.completed"],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-RLM-009-203",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["TST-RLM-009", "INF-HLT-005"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Synthetic in-process fixtures only (memory store double / pure functions); no network",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "not ready before the first probe completes, ready after a success, not ready after a failure"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-RLM-009-204",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["TST-RLM-009", "INF-HLT-005", "SEC-ABU-018"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Synthetic in-process fixtures only (memory store double / pure functions); no network",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "reading the state never runs a check, and probes do not overlap: a slow check is not stacked by the interval"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-RLM-009-205",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["TST-RLM-009", "INF-HLT-005", "INF-HLT-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Synthetic in-process fixtures only (memory store double / pure functions); no network",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "a probe that stopped completing is not ready after 90 s; the store gauge comes from the same run as the readiness state"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": false
     }
