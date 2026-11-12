@@ -19114,6 +19114,29 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-RLM-001-003",
+      "level": "Integration",
+      "suite": "integration",
+      "upstream_rule_ids": ["TST-RLM-001", "INF-HLT-004", "SEC-ABU-019"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Disposable real Redis from TEST_REDIS_URL (never skipped); synthetic keys under a per-session HMAC key version",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "readiness is a write: out of memory with noeviction it fails although reads still answer, and it recovers once the limit is lifted"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-RLM-002-001",
       "level": "Integration",
       "suite": "integration",
@@ -22096,6 +22119,29 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "probes never overlap, an interval above 30 seconds is refused, and a stopped probe records nothing more"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": ["r39x_rate_limit_store_ready"],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-RLM-009-120",
+      "level": "Integration",
+      "suite": "integration",
+      "upstream_rule_ids": ["TST-RLM-009", "INF-HLT-004", "OBS-ALT-042"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Disposable real Redis from TEST_REDIS_URL (never skipped); synthetic keys under a per-session HMAC key version",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "the store probe and the limiter readiness record and report 0 while the store is out of memory with noeviction, and 1 again after the limit is lifted"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],

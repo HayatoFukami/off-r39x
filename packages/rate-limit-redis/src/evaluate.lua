@@ -2,7 +2,7 @@
 -- (SPEC-140 SEC-ABU-012 / 013 / 014 / 016). Source controlled and invoked by script hash (DEV-RLM-003).
 --
 -- KEYS[i]   counter key of rule i (a sorted set: member = request id, score = store time in ms)
--- ARGV[1]   mode: admit | check | record
+-- ARGV[1]   mode: admit | check | record | ready
 -- ARGV[2]   member id for this request (unique per evaluation)
 -- ARGV[2*i+1], ARGV[2*i+2]   limit and window in ms of rule i
 --
@@ -10,6 +10,9 @@
 --
 -- Time is read from the store (SEC-ABU-014). The read phase never writes. An admit that finds
 -- any exceeded rule returns without writing anything, so a rejection consumes no counter.
+-- Mode ready (INF-HLT-004) is the only other write: one SET of KEYS[1] (a fixed readiness key, not
+-- a counter, expiring after one second). Readiness therefore needs a successful write, which
+-- noeviction refuses when the store is out of memory; a read-only check would still pass there.
 --
 -- Memory limit (noeviction): Redis decides once, when the script starts, whether the server is out
 -- of memory. A script that starts over the limit has its first write (the ZADD of rule 1) refused,
@@ -20,11 +23,17 @@
 -- working set of the counters (TC-RLM-003-008; see docs/backend-foundation.md).
 local mode = ARGV[1]
 local member = ARGV[2]
-if mode ~= 'admit' and mode ~= 'check' and mode ~= 'record' then
+if mode ~= 'admit' and mode ~= 'check' and mode ~= 'record' and mode ~= 'ready' then
   return redis.error_reply('ERR unsupported mode')
 end
 local time = redis.call('TIME')
 local now = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
+
+if mode == 'ready' then
+  -- A write that noeviction refuses at the memory limit: the readiness proof (INF-HLT-004).
+  redis.call('SET', KEYS[1], now, 'PX', 1000)
+  return { 1 }
+end
 
 local result = { 1 }
 local allowed = true

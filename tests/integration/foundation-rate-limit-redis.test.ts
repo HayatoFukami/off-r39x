@@ -2,6 +2,7 @@
 // fails the file; there is no skip and no fake store here.
 import { createHash, createHmac } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { startRateLimitStoreProbe } from "../../apps/api/src/api/store-probe.ts";
 import { createRedisRateLimitStore } from "../../packages/rate-limit-redis/src/index.ts";
 import {
   createCounterKeyFactory,
@@ -103,6 +104,50 @@ describe("real Redis is mandatory (DEV-RLM-008)", () => {
     // SPEC-180 INF-HLT-004: a flushed script cache is reloaded, still ready.
     await session.redis.script("FLUSH");
     await expect(store().assertReady()).resolves.toBeUndefined();
+  });
+
+  it("TC-RLM-001-003 readiness is a write: out of memory with noeviction it fails although reads still answer, and it recovers once the limit is lifted", async () => {
+    const s = store();
+    await expect(s.assertReady()).resolves.toBeUndefined();
+    const policy = (await session.redis.config("GET", "maxmemory-policy")) as string[];
+    await session.redis.config("SET", "maxmemory-policy", "noeviction");
+    await session.redis.config("SET", "maxmemory", "1");
+    try {
+      // The read-only check of the previous design still passed here; the write refuses (OOM).
+      await expect(s.assertReady()).rejects.toThrow();
+      expect(await session.redis.ping()).toBe("PONG");
+    } finally {
+      await session.redis.config("SET", "maxmemory", "0");
+      await session.redis.config("SET", "maxmemory-policy", policy[1] ?? "noeviction");
+    }
+    await expect(s.assertReady()).resolves.toBeUndefined();
+  });
+
+  it("TC-RLM-009-120 the store probe and the limiter readiness record and report 0 while the store is out of memory with noeviction, and 1 again after the limit is lifted", async () => {
+    const limiter = limiterFor({});
+    const samples: boolean[] = [];
+    const policy = (await session.redis.config("GET", "maxmemory-policy")) as string[];
+    await session.redis.config("SET", "maxmemory-policy", "noeviction");
+    await session.redis.config("SET", "maxmemory", "1");
+    // The timer is driven by the test; the first sample starts immediately, as in bootstrap.
+    const probe = startRateLimitStoreProbe({
+      check: () => limiter.assertReady(),
+      metrics: { storeReady: (ready: boolean) => samples.push(ready) },
+      setTimer: () => undefined,
+      clearTimer: () => undefined,
+    });
+    try {
+      await probe.probeNow();
+      expect(samples).toEqual([false]);
+      await expect(limiter.assertReady()).rejects.toThrow();
+    } finally {
+      await session.redis.config("SET", "maxmemory", "0");
+      await session.redis.config("SET", "maxmemory-policy", policy[1] ?? "noeviction");
+    }
+    await probe.probeNow();
+    expect(samples).toEqual([false, true]);
+    await expect(limiter.assertReady()).resolves.toBeUndefined();
+    probe.stop();
   });
 });
 

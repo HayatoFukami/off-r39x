@@ -18,6 +18,9 @@ export interface RedisRateLimitStoreOptions {
   readonly deadlineMs?: number;
 }
 
+/** Fixed key of the readiness write (evaluate.lua mode `ready`). Not a counter and never HMAC-derived. */
+const READINESS_KEY = "rl:readiness:v1";
+
 function parseOutcome(reply: unknown, rules: number): StoreOutcome {
   if (!Array.isArray(reply) || reply.length !== 1 + 2 * rules)
     throw new RateLimitStoreError("error");
@@ -113,11 +116,16 @@ export function createRedisRateLimitStore(options: RedisRateLimitStoreOptions): 
         return parseOutcome(reply, rules.length);
       });
     },
-    /** INF-HLT-004: connection and script execution (a no-rule check reads the store clock). */
+    /**
+     * INF-HLT-004: connection, script execution and a successful write. The write is what makes this
+     * fail under `maxmemory` + `noeviction`; a read-only check would still pass there (and every
+     * request would then get 503).
+     */
     assertReady(): Promise<void> {
       return guarded(async () => {
         await connected();
-        parseOutcome(await run([], ["check", "ready"]), 0);
+        const outcome = parseOutcome(await run([READINESS_KEY], ["ready", "readiness"]), 0);
+        if (!outcome.allowed) throw new RateLimitStoreError("error");
       });
     },
     async close(): Promise<void> {
