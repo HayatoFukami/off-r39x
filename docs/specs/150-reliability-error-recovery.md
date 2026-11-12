@@ -362,7 +362,7 @@ delay = random_uniform(0, cap_n)   # full jitter
 
 **REL-AUTH-001:** Auth verificationが3秒deadlineを超過、JWKS取得不能、issuer / keyを安全に確認不能な場合、protected operationは`SECURITY_FAILURE`またはtemporary auth failureとしてFail Closedにする。
 
-**REL-AUTH-002:** JWKS refreshはtrusted configured endpointへ最大1回だけ行う。refresh失敗後にdecode-only JWT、expired token grace、cached successful roleで続行しない。
+**REL-AUTH-002:** JWKS refreshはtrusted configured endpointへ最大1回だけ行う。refresh失敗後にdecode-only JWT、expired token grace、cached successful roleで続行しない。JWKS refreshは、未知のkey id（`kid`）や署名検証の失敗を理由に、requestごとに起動しない。refreshはprocess単位で同時に1件（single-flight）とし、直近のrefresh開始から30秒の間は新たに開始しない。refreshが実行中または間隔内で、cacheのkeyでは検証できないtokenを受け取ったrequestは、refreshの完了を待たず `503 TEMPORARY_UNAVAILABLE` とする。これは「tokenの有効性を判定できなかった場合」であり、Authentication-failure guardに数えない（`SPEC-140` `SEC-ABU-020`）。cacheのkeyで検証できるtokenは、refreshの影響を受けない。これは、無効tokenの大量送信が認証基盤への通信を増やさないための上限である。30秒は運用判断値であり、より長い間隔への変更はSPEC-150の変更を必要とする。
 
 **REL-AUTH-003:** Session refresh failureはBrowser / React SPA側で再認証を要求し、Hono APIのprotected mutationを未検証Sessionで継続しない。
 
