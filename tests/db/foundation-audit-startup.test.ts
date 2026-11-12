@@ -102,11 +102,27 @@ it("TC-STARTUP-AUDIT-001 actual API bootstrap moves Ready->notReady->Ready on DB
   let runtime: ReturnType<typeof bootstrap> | undefined;
   let dropped = false;
   try {
+    // INF-HLT-004 / OBS-ALT-042: the store probe runs on its own timer (<= 30 s). The interval is
+    // faked here so the test does not wait; no request is sent while the store is down.
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    store.inject("FP.RATELIMIT.STORE_UNAVAILABLE");
     runtime = bootstrap(env, { rateLimitStore: store });
     await new Promise<void>((resolve, reject) => {
       runtime?.server.once("listening", resolve);
       runtime?.server.once("error", reject);
     });
+    const storeReady = () => runtime?.rateLimitMetrics.snapshot().storeReady;
+    await vi.waitFor(() => expect(storeReady()).toEqual([{ environment: "test", value: 0 }]));
+    store.inject(undefined);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.waitFor(() => expect(storeReady()).toEqual([{ environment: "test", value: 1 }]));
+    store.inject("FP.RATELIMIT.STORE_UNAVAILABLE");
+    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.waitFor(() => expect(storeReady()).toEqual([{ environment: "test", value: 0 }]));
+    store.inject(undefined);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.waitFor(() => expect(storeReady()).toEqual([{ environment: "test", value: 1 }]));
+    vi.useRealTimers();
     const get = (path = "ready") => fetch(`http://127.0.0.1:18931/internal/health/${path}`);
     expect((await get("live")).status).toBe(200);
     expect((await get()).status).toBe(200);
@@ -128,6 +144,7 @@ it("TC-STARTUP-AUDIT-001 actual API bootstrap moves Ready->notReady->Ready on DB
     runtime.beginDrain();
     expect((await get()).status).toBe(503);
   } finally {
+    vi.useRealTimers();
     if (dropped)
       await setup.query(
         "ALTER TABLE app.business_profiles ADD CONSTRAINT uq_business_profiles_auth_subject UNIQUE(auth_subject)",

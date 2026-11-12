@@ -172,9 +172,9 @@ export function createLogger(
   });
 }
 
-// SPEC-160 §24.1 / §42 / §47 (OBS-SEC-007..009, OBS-ALT-041): rate limit metrics and the alert rule.
-// Nothing here accepts a counter key, IP, Subject, Email, QR digest or resource reference: the only
-// inputs are the bounded Class ID registry values and the three result enums.
+// SPEC-160 §24.1 / §42 / §47 (OBS-SEC-007..009, OBS-ALT-041..043): rate limit metrics and the alert
+// rules. Nothing here accepts a counter key, IP, Subject, Email, QR digest or resource reference:
+// the only inputs are the bounded Class ID registry values and the three result enums.
 
 export const RATE_LIMIT_DECISION_RESULTS = ["allowed", "rejected", "store_unavailable"] as const;
 export const RATE_LIMIT_STORE_RESULTS = ["ok", "timeout", "error"] as const;
@@ -203,12 +203,19 @@ export interface RateLimitMetricsSnapshot {
     readonly sum: number;
     readonly buckets: readonly { readonly le: number; readonly count: number }[];
   }[];
+  /**
+   * `r39x_rate_limit_store_ready`: one series per environment, absent until the first probe result
+   * (OBS-MET-002: an unknown value is never published as 0).
+   */
+  readonly storeReady: readonly { readonly environment: string; readonly value: 0 | 1 }[];
 }
 export interface RateLimitMetrics {
   /** `r39x_rate_limit_decisions_total{environment,class_id,result}` */
   decision(classId: string, result: RateLimitDecisionResult): void;
   /** `r39x_rate_limit_store_duration_seconds{environment,result}` */
   storeOperation(result: RateLimitStoreResult, seconds: number): void;
+  /** `r39x_rate_limit_store_ready{environment}` Gauge 0/1: the independent store probe (INF-HLT-004). */
+  storeReady(ready: boolean): void;
   snapshot(): RateLimitMetricsSnapshot;
 }
 
@@ -219,6 +226,7 @@ export function createRateLimitMetrics(options: {
 }): RateLimitMetrics {
   const classes = new Set(options.classIds);
   const decisions = new Map<string, number>();
+  let ready: 0 | 1 | undefined;
   const durations = new Map<RateLimitStoreResult, { count: number; sum: number; counts: number[] }>(
     RATE_LIMIT_STORE_RESULTS.map((result) => [
       result,
@@ -242,6 +250,9 @@ export function createRateLimitMetrics(options: {
         if (seconds <= bound) series.counts[index] = (series.counts[index] ?? 0) + 1;
       });
     },
+    storeReady(value: boolean) {
+      ready = value ? 1 : 0;
+    },
     snapshot(): RateLimitMetricsSnapshot {
       return {
         decisions: [...decisions].map(([key, value]) => {
@@ -263,15 +274,20 @@ export function createRateLimitMetrics(options: {
             count: series.counts[index] ?? 0,
           })),
         })),
+        storeReady: ready === undefined ? [] : [{ environment: options.environment, value: ready }],
       };
     },
   });
 }
 
-/** `OBS-ALT-041` Rate-limit store unavailable: store_unavailable decisions >= 5 in 1 minute, HIGH Security. */
+/**
+ * `OBS-ALT-041` Rate-limit store unavailable: `store_unavailable` decisions >= 1 in 1 minute with no
+ * minimum request count (OBS-ALT-043), HIGH Security. The first `store_unavailable` opens the
+ * alert; later ones are deduplicated (§46.1), never one notification per request.
+ */
 export const RATE_LIMIT_STORE_UNAVAILABLE_ALERT = Object.freeze({
   ruleId: "OBS-ALT-041",
-  threshold: 5,
+  threshold: 1,
   windowMs: 60_000,
   severity: "HIGH",
   category: "Security",
@@ -279,29 +295,90 @@ export const RATE_LIMIT_STORE_UNAVAILABLE_ALERT = Object.freeze({
   repeatMs: 4 * 60 * 60 * 1000,
 });
 
+/**
+ * `OBS-ALT-042` Rate-limit store readiness failure: `r39x_rate_limit_store_ready` = 0 on 2
+ * consecutive 1-minute evaluations, CRITICAL Security. Independent of request volume.
+ */
+export const RATE_LIMIT_STORE_READINESS_ALERT = Object.freeze({
+  ruleId: "OBS-ALT-042",
+  consecutiveEvaluations: 2,
+  evaluationMs: 60_000,
+  windowMs: 60_000,
+  severity: "CRITICAL",
+  category: "Security",
+  /** SPEC-160 §46.1: CRITICAL repeats at most every 60 minutes while unresolved. */
+  repeatMs: 60 * 60 * 1000,
+});
+
 export interface AlertState {
   readonly open: boolean;
   readonly lastNotifiedMs: number | undefined;
   /** Start of the continuous period in which the condition has been false. */
   readonly clearSinceMs: number | undefined;
+  /** Consecutive evaluations in which the raw signal was bad (rules with a consecutive condition). */
+  readonly streak: number;
 }
 export const ALERT_INITIAL_STATE: AlertState = Object.freeze({
   open: false,
   lastNotifiedMs: undefined,
   clearSinceMs: undefined,
+  streak: 0,
 });
 export interface AlertEvaluation {
   readonly firing: boolean;
   readonly notification: "open" | "repeat" | "resolve" | null;
-  /** `environment + alert_rule_id` (no bounded dimension for this rule). */
+  /** `environment + alert_rule_id` (no bounded dimension for these rules). */
   readonly dedupeKey: string;
   readonly state: AlertState;
 }
 
+/** SPEC-160 §46.1 dedupe / cooldown shared by the rate limit rules. */
+function advanceAlert(
+  rule: { readonly windowMs: number; readonly repeatMs: number },
+  dedupeKey: string,
+  firing: boolean,
+  nowMs: number,
+  state: AlertState,
+  streak: number,
+): AlertEvaluation {
+  if (firing) {
+    if (!state.open)
+      return {
+        firing,
+        notification: "open",
+        dedupeKey,
+        state: { open: true, lastNotifiedMs: nowMs, clearSinceMs: undefined, streak },
+      };
+    const due = (state.lastNotifiedMs ?? 0) + rule.repeatMs <= nowMs;
+    return {
+      firing,
+      notification: due ? "repeat" : null,
+      dedupeKey,
+      state: {
+        open: true,
+        lastNotifiedMs: due ? nowMs : state.lastNotifiedMs,
+        clearSinceMs: undefined,
+        streak,
+      },
+    };
+  }
+  if (!state.open) return { firing, notification: null, dedupeKey, state: { ...state, streak } };
+  const clearSince = state.clearSinceMs ?? nowMs;
+  if (nowMs - clearSince >= rule.windowMs)
+    return { firing, notification: "resolve", dedupeKey, state: ALERT_INITIAL_STATE };
+  return {
+    firing,
+    notification: null,
+    dedupeKey,
+    state: { ...state, clearSinceMs: clearSince, streak },
+  };
+}
+
 /**
  * Evaluates OBS-ALT-041 at `nowMs` over `storeUnavailableAtMs` (timestamps of store_unavailable
- * decisions). One notification opens the alert (never one per request); resolve needs one full
- * window without the condition (§46.1). Pure: the caller keeps `state`.
+ * decisions). One decision in the last minute fires; one notification opens the alert (never one
+ * per request); resolve needs one full window without the condition (§46.1). Pure: the caller keeps
+ * `state`.
  */
 export function evaluateRateLimitStoreUnavailableAlert(input: {
   readonly environment: string;
@@ -310,35 +387,85 @@ export function evaluateRateLimitStoreUnavailableAlert(input: {
   readonly state?: AlertState;
 }): AlertEvaluation {
   const rule = RATE_LIMIT_STORE_UNAVAILABLE_ALERT;
-  const state = input.state ?? ALERT_INITIAL_STATE;
   const inWindow = input.storeUnavailableAtMs.filter(
     (at) => at > input.nowMs - rule.windowMs && at <= input.nowMs,
   ).length;
-  const firing = inWindow >= rule.threshold;
+  return advanceAlert(
+    rule,
+    `${input.environment}:${rule.ruleId}`,
+    inWindow >= rule.threshold,
+    input.nowMs,
+    input.state ?? ALERT_INITIAL_STATE,
+    0,
+  );
+}
+
+/**
+ * Evaluates OBS-ALT-042; call it once per 1-minute evaluation with the latest
+ * `r39x_rate_limit_store_ready` sample (`undefined` = no sample, which says nothing: the streak and
+ * the alert are left as they are, and it is never read as 0, OBS-MET-002). Two consecutive
+ * evaluations with value 0 fire, whatever the request volume. Pure: the caller keeps `state`.
+ */
+export function evaluateRateLimitStoreReadinessAlert(input: {
+  readonly environment: string;
+  readonly ready: 0 | 1 | undefined;
+  readonly nowMs: number;
+  readonly state?: AlertState;
+}): AlertEvaluation {
+  const rule = RATE_LIMIT_STORE_READINESS_ALERT;
+  const state = input.state ?? ALERT_INITIAL_STATE;
   const dedupeKey = `${input.environment}:${rule.ruleId}`;
-  if (firing) {
-    if (!state.open)
-      return {
-        firing,
-        notification: "open",
-        dedupeKey,
-        state: { open: true, lastNotifiedMs: input.nowMs, clearSinceMs: undefined },
-      };
-    const due = (state.lastNotifiedMs ?? 0) + rule.repeatMs <= input.nowMs;
+  if (input.ready === undefined)
     return {
-      firing,
-      notification: due ? "repeat" : null,
+      firing: state.streak >= rule.consecutiveEvaluations,
+      notification: null,
       dedupeKey,
-      state: {
-        open: true,
-        lastNotifiedMs: due ? input.nowMs : state.lastNotifiedMs,
-        clearSinceMs: undefined,
-      },
+      state,
     };
-  }
-  if (!state.open) return { firing, notification: null, dedupeKey, state };
-  const clearSince = state.clearSinceMs ?? input.nowMs;
-  if (input.nowMs - clearSince >= rule.windowMs)
-    return { firing, notification: "resolve", dedupeKey, state: ALERT_INITIAL_STATE };
-  return { firing, notification: null, dedupeKey, state: { ...state, clearSinceMs: clearSince } };
+  const streak = input.ready === 0 ? state.streak + 1 : 0;
+  return advanceAlert(
+    rule,
+    dedupeKey,
+    streak >= rule.consecutiveEvaluations,
+    input.nowMs,
+    state,
+    streak,
+  );
+}
+
+/**
+ * Why a readiness evaluation failed. `security_configuration` is the OBS-ALT-014 population
+ * (security config / Secret / key invalid); `rate_limit_store_unreachable` is a runtime
+ * reachability failure of the store, which `OBS-ALT-041` / `OBS-ALT-042` cover and which
+ * OBS-ALT-014 must not be read as (OBS-ALT-043).
+ */
+export type ReadinessFailureReason =
+  | "security_configuration"
+  | "rate_limit_store_unreachable"
+  | "other";
+
+/** `OBS-ALT-014` Security configuration invalid: Production not Ready due to required security config / Secret / key failure, 1 readiness evaluation, CRITICAL. */
+export const SECURITY_CONFIGURATION_ALERT = Object.freeze({
+  ruleId: "OBS-ALT-014",
+  windowMs: 60_000,
+  severity: "CRITICAL",
+  category: "Security",
+  repeatMs: 60 * 60 * 1000,
+});
+
+export function evaluateSecurityConfigurationAlert(input: {
+  readonly environment: string;
+  readonly failureReasons: readonly ReadinessFailureReason[];
+  readonly nowMs: number;
+  readonly state?: AlertState;
+}): AlertEvaluation {
+  const rule = SECURITY_CONFIGURATION_ALERT;
+  return advanceAlert(
+    rule,
+    `${input.environment}:${rule.ruleId}`,
+    input.environment === "production" && input.failureReasons.includes("security_configuration"),
+    input.nowMs,
+    input.state ?? ALERT_INITIAL_STATE,
+    0,
+  );
 }

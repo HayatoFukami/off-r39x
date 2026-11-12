@@ -3,8 +3,11 @@ import {
   ALERT_INITIAL_STATE,
   createLogger,
   createRateLimitMetrics,
+  evaluateRateLimitStoreReadinessAlert,
   evaluateRateLimitStoreUnavailableAlert,
+  evaluateSecurityConfigurationAlert,
   RATE_LIMIT_STORE_BUCKETS,
+  RATE_LIMIT_STORE_READINESS_ALERT,
   RATE_LIMIT_STORE_UNAVAILABLE_ALERT,
 } from "../../packages/observability/src/index.ts";
 import { RATE_LIMIT_CLASS_IDS } from "../../packages/security/src/index.ts";
@@ -72,6 +75,18 @@ describe("rate limit metrics (OBS-SEC-007..009, SPEC-160 §40/§42)", () => {
   });
 });
 
+describe("r39x_rate_limit_store_ready (SPEC-160 §42, INF-HLT-004)", () => {
+  it("TC-RLM-009-116 the gauge is 0 or 1 with the environment label only, and is absent until the first probe result (never a published 0)", () => {
+    const m = metrics();
+    expect(m.snapshot().storeReady).toEqual([]);
+    m.storeReady(true);
+    expect(m.snapshot().storeReady).toEqual([{ environment: "test", value: 1 }]);
+    m.storeReady(false);
+    expect(m.snapshot().storeReady).toEqual([{ environment: "test", value: 0 }]);
+    expect(Object.keys(m.snapshot().storeReady[0] ?? {}).sort()).toEqual(["environment", "value"]);
+  });
+});
+
 describe("rate limit log event schema (SPEC-160 §24.1)", () => {
   const lines: string[] = [];
   const logger = createLogger({ service: "API", environment: "test", actor_type: "GUEST" }, (l) => {
@@ -108,15 +123,15 @@ describe("rate limit log event schema (SPEC-160 §24.1)", () => {
   });
 });
 
-describe("OBS-ALT-041 rate limit store unavailable alert (SPEC-160 §47, §46.1)", () => {
+describe("OBS-ALT-041 / 042 rate limit store alerts (SPEC-160 §47, §46.1, OBS-ALT-043)", () => {
   const T0 = 1_700_000_000_000;
   const at = (n: number, spacingMs = 1000, start = T0) =>
     Array.from({ length: n }, (_, i) => start + i * spacingMs);
 
-  it("TC-RLM-009-105 the rule is the specified HIGH Security threshold: 5 store_unavailable decisions in 1 minute", () => {
+  it("TC-RLM-009-105 the rule is the specified HIGH Security threshold: 1 store_unavailable decision in 1 minute, no minimum request count", () => {
     expect(RATE_LIMIT_STORE_UNAVAILABLE_ALERT).toMatchObject({
       ruleId: "OBS-ALT-041",
-      threshold: 5,
+      threshold: 1,
       windowMs: 60_000,
       severity: "HIGH",
       category: "Security",
@@ -124,15 +139,11 @@ describe("OBS-ALT-041 rate limit store unavailable alert (SPEC-160 §47, §46.1)
   });
 
   for (const [name, events, now, firing] of [
-    ["4 in the window does not fire", at(4), T0 + 10_000, false],
+    ["1 in the window fires", at(1), T0 + 10_000, true],
+    ["4 in the window fires", at(4), T0 + 10_000, true],
     ["5 in the window fires", at(5), T0 + 10_000, true],
-    [
-      "5 spread over exactly the window edge fires",
-      [T0, T0 + 1, T0 + 2, T0 + 3, T0 + 59_999],
-      T0 + 59_999,
-      true,
-    ],
-    ["entries older than 1 minute no longer count", at(5), T0 + 61_000, false],
+    ["a single decision at the window edge fires", [T0 + 1], T0 + 60_000, true],
+    ["entries older than 1 minute no longer count", at(5), T0 + 65_000, false],
     ["no events does not fire", [], T0, false],
   ] as [string, number[], number, boolean][])
     it(`TC-RLM-009-106 ${name}`, () => {
@@ -201,5 +212,142 @@ describe("OBS-ALT-041 rate limit store unavailable alert (SPEC-160 §47, §46.1)
     expect(relapse.firing).toBe(true);
     expect(relapse.notification).toBeNull();
     expect(relapse.state.clearSinceMs).toBeUndefined();
+  });
+
+  it("TC-RLM-009-111 1 to 4 requests a minute that all end in a 503 still notify OBS-ALT-041 exactly once, not once per request", () => {
+    let state = ALERT_INITIAL_STATE;
+    const decisions: number[] = [];
+    const notifications: (string | null)[] = [];
+    for (let minute = 0; minute < 30; minute++) {
+      const count = (minute % 4) + 1;
+      for (let i = 0; i < count; i++) decisions.push(T0 + minute * 60_000 + i * 5_000);
+      const result = evaluateRateLimitStoreUnavailableAlert({
+        environment: "production",
+        storeUnavailableAtMs: decisions,
+        nowMs: T0 + minute * 60_000 + 30_000,
+        state,
+      });
+      state = result.state;
+      notifications.push(result.notification);
+    }
+    expect(notifications.filter((n) => n !== null)).toEqual(["open"]);
+    expect(notifications[0]).toBe("open");
+  });
+
+  it("TC-RLM-009-112 OBS-ALT-042 is the CRITICAL Security readiness rule: r39x_rate_limit_store_ready = 0 on 2 consecutive 1-minute evaluations", () => {
+    expect(RATE_LIMIT_STORE_READINESS_ALERT).toMatchObject({
+      ruleId: "OBS-ALT-042",
+      consecutiveEvaluations: 2,
+      evaluationMs: 60_000,
+      severity: "CRITICAL",
+      category: "Security",
+    });
+  });
+
+  it("TC-RLM-009-113 OBS-ALT-042 notifies when the probe reports 0 on two consecutive evaluations, with zero requests and zero decisions", () => {
+    const step = (ready: 0 | 1 | undefined, minute: number, state: typeof ALERT_INITIAL_STATE) =>
+      evaluateRateLimitStoreReadinessAlert({
+        environment: "production",
+        ready,
+        nowMs: T0 + minute * 60_000,
+        state,
+      });
+    const first = step(0, 0, ALERT_INITIAL_STATE);
+    expect(first.firing).toBe(false);
+    expect(first.notification).toBeNull();
+    const second = step(0, 1, first.state);
+    expect(second.firing).toBe(true);
+    expect(second.notification).toBe("open");
+    expect(second.dedupeKey).toBe("production:OBS-ALT-042");
+    // Still failing: no per-evaluation notification, a CRITICAL repeat only after 60 minutes.
+    const third = step(0, 2, second.state);
+    expect(third.notification).toBeNull();
+    const nearRepeat = step(0, 60, third.state);
+    expect(nearRepeat.notification).toBeNull();
+    const repeat = step(0, 61, nearRepeat.state);
+    expect(repeat.notification).toBe("repeat");
+    // Recovery: ready=1 clears the streak and resolves after one full evaluation window.
+    const recovering = step(1, 62, repeat.state);
+    expect(recovering.firing).toBe(false);
+    expect(recovering.notification).toBeNull();
+    expect(step(1, 63, recovering.state).notification).toBe("resolve");
+  });
+
+  it("TC-RLM-009-114 a single 0 between healthy samples never fires OBS-ALT-042, and a missing sample is never read as 0", () => {
+    let state = ALERT_INITIAL_STATE;
+    for (const [ready, minute] of [
+      [0, 0],
+      [1, 1],
+      [0, 2],
+      [1, 3],
+    ] as [0 | 1, number][]) {
+      const result = evaluateRateLimitStoreReadinessAlert({
+        environment: "production",
+        ready,
+        nowMs: T0 + minute * 60_000,
+        state,
+      });
+      expect(result.notification).toBeNull();
+      state = result.state;
+    }
+    let unknown = ALERT_INITIAL_STATE;
+    for (let minute = 0; minute < 5; minute++) {
+      const result = evaluateRateLimitStoreReadinessAlert({
+        environment: "production",
+        ready: undefined,
+        nowMs: T0 + minute * 60_000,
+        state: unknown,
+      });
+      expect(result.firing).toBe(false);
+      expect(result.notification).toBeNull();
+      unknown = result.state;
+    }
+    // One real 0 followed by a missing sample neither completes nor resets the streak.
+    const zero = evaluateRateLimitStoreReadinessAlert({
+      environment: "production",
+      ready: 0,
+      nowMs: T0,
+      state: ALERT_INITIAL_STATE,
+    });
+    const gap = evaluateRateLimitStoreReadinessAlert({
+      environment: "production",
+      ready: undefined,
+      nowMs: T0 + 60_000,
+      state: zero.state,
+    });
+    expect(gap.state.streak).toBe(1);
+    expect(gap.notification).toBeNull();
+  });
+
+  it("TC-RLM-009-115 OBS-ALT-014 (security configuration) does not fire when only the rate limit store is unreachable; it keeps its own rule ID", () => {
+    const storeDown = evaluateSecurityConfigurationAlert({
+      environment: "production",
+      failureReasons: ["rate_limit_store_unreachable"],
+      nowMs: T0,
+    });
+    expect(storeDown.firing).toBe(false);
+    expect(storeDown.notification).toBeNull();
+    const misconfigured = evaluateSecurityConfigurationAlert({
+      environment: "production",
+      failureReasons: ["security_configuration"],
+      nowMs: T0,
+    });
+    expect(misconfigured.firing).toBe(true);
+    expect(misconfigured.dedupeKey).toBe("production:OBS-ALT-014");
+    expect(
+      evaluateSecurityConfigurationAlert({
+        environment: "staging",
+        failureReasons: ["security_configuration"],
+        nowMs: T0,
+      }).firing,
+    ).toBe(false);
+    // The store rules use their own rule IDs and dedupe keys.
+    expect(
+      evaluateRateLimitStoreUnavailableAlert({
+        environment: "production",
+        storeUnavailableAtMs: [T0],
+        nowMs: T0,
+      }).dedupeKey,
+    ).toBe("production:OBS-ALT-041");
   });
 });

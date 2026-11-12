@@ -8,6 +8,7 @@ import { createRateLimiter, RATE_LIMIT_CLASS_IDS, type RateLimitStore } from "@o
 import { createApp } from "../api/app.ts";
 import { createAuthProxy } from "../api/auth-proxy.ts";
 import { createRateLimitMetricsObserver } from "../api/rate-limit.ts";
+import { startRateLimitStoreProbe } from "../api/store-probe.ts";
 
 export interface BootstrapOverrides {
   /** Test seam (DI only): replaces the Redis store adapter. Never reads configuration. */
@@ -92,8 +93,14 @@ export function bootstrap(
       return !draining;
     },
   });
+  // INF-HLT-004 / OBS-ALT-042: the store probe is independent of request handling (<= 30 s).
+  const storeProbe = startRateLimitStoreProbe({
+    check: () => limiter.assertReady(),
+    metrics: rateLimitMetrics,
+  });
   const server = serve({ fetch: app.fetch, port, hostname: "0.0.0.0" });
   const close = async () => {
+    storeProbe.stop();
     await new Promise<void>((resolve, reject) =>
       server.close((error) => (error ? reject(error) : resolve())),
     );
