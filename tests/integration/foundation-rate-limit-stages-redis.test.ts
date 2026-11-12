@@ -211,3 +211,55 @@ describe("auth_session against the real Redis (SEC-ABU-027, TST-RLM-002 / 004)",
     ]);
   });
 });
+
+describe("auth_callback against the real Redis (SEC-ABU-028, TST-RLM-002 / 004)", () => {
+  it("TC-RLM-004-236 after auth_form_proxy is used up for an IP (5 per 10 s), both email-link GETs are still admitted and leave the other classes' counters unchanged", async () => {
+    const { call, count } = authApp();
+    const address = ip(92);
+    for (let i = 0; i < 5; i++)
+      expect((await call("POST", "/auth/sign-in/email", address)).status).toBe(200);
+    expect((await call("POST", "/auth/sign-in/email", address)).status).toBe(429);
+    const formBefore = await count("auth_form_proxy.burst", address);
+    for (const path of ["/auth/verify-email", "/auth/magic-link/verify"])
+      expect((await call("GET", path, address)).status, path).toBe(200);
+    expect(await count("auth_callback.burst", address)).toBe(2);
+    expect(await count("auth_callback.sustained", address)).toBe(2);
+    expect(await count("auth_form_proxy.burst", address)).toBe(formBefore);
+    expect(await count("auth_session.burst", address)).toBe(0);
+    // The OTP POST is a form attempt: it is rejected by the used-up auth_form_proxy class and does
+    // not touch the callback counters.
+    expect((await call("POST", "/auth/email-otp/verify-email", address)).status).toBe(429);
+    expect(await count("auth_callback.burst", address)).toBe(2);
+  });
+
+  it("TC-RLM-004-237 auth_callback stops at 30 per 10 s without changing the auth_form_proxy or auth_session counters, and form attempts do not change the callback counters", async () => {
+    const { call, count } = authApp();
+    const address = ip(93);
+    const admitted = await Promise.all(
+      Array.from({ length: 30 }, () => call("GET", "/auth/verify-email", address)),
+    );
+    expect(admitted.map((response) => response.status).filter((status) => status !== 200)).toEqual(
+      [],
+    );
+    const rejected = await call("GET", "/auth/magic-link/verify", address);
+    expect(rejected.status).toBe(429);
+    expect(rejected.headers.get("Retry-After")).toMatch(/^[1-9]\d*$/);
+    expect(await count("auth_callback.burst", address)).toBe(30);
+    expect(await count("auth_form_proxy.burst", address)).toBe(0);
+    expect(await count("auth_form_proxy.sustained", address)).toBe(0);
+    expect(await count("auth_session.burst", address)).toBe(0);
+    // The other classes keep working for the same IP, and do not move the callback counters.
+    expect((await call("GET", "/auth/get-session", address)).status).toBe(200);
+    expect((await call("POST", "/auth/sign-in/email", address)).status).toBe(200);
+    expect(await count("auth_form_proxy.burst", address)).toBe(1);
+    expect(await count("auth_session.burst", address)).toBe(1);
+    expect(await count("auth_callback.burst", address)).toBe(30);
+    expect(await count("auth_callback.sustained", address)).toBe(30);
+    // Only the two per-IP rule kinds exist for auth_callback: no identifier and no guard counter.
+    const owned = (await session.keys()).filter((key) => key.includes(":auth_callback."));
+    expect([...new Set(owned.map((key) => key.split(":")[2]))].sort()).toEqual([
+      "auth_callback.burst",
+      "auth_callback.sustained",
+    ]);
+  });
+});

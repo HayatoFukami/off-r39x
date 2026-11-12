@@ -198,6 +198,45 @@ describe("API startup validation of the rate limit configuration (TST-RLM-006, I
     }
   });
 
+  it("TC-RLM-006-109 auth_callback (SEC-ABU-028) is required, is capped at 30/120, takes no additional rule, and a lower limit is valid", () => {
+    for (const environment of ["test", "staging"]) {
+      const env = environmentOf(environment);
+      const without = JSON.parse(ceilingConfigText());
+      delete without.auth_callback;
+      expect(
+        () => parse({ ...env, RATE_LIMIT_CONFIG: config(without) }),
+        `${environment} missing`,
+      ).toThrow("Invalid server configuration");
+      for (const [burst_limit, sustained_limit] of [
+        [31, 120],
+        [30, 121],
+      ]) {
+        const over = JSON.parse(ceilingConfigText());
+        over.auth_callback = { burst_limit, sustained_limit };
+        expect(
+          () => parse({ ...env, RATE_LIMIT_CONFIG: config(over) }),
+          `${environment} ${burst_limit}/${sustained_limit}`,
+        ).toThrow("Invalid server configuration");
+      }
+      const extra = JSON.parse(ceilingConfigText());
+      extra.auth_callback = {
+        burst_limit: 30,
+        sustained_limit: 120,
+        additional: { "auth_callback.identifier": { limit: 5, window_seconds: 600 } },
+      };
+      expect(
+        () => parse({ ...env, RATE_LIMIT_CONFIG: config(extra) }),
+        `${environment} additional`,
+      ).toThrow("Invalid server configuration");
+      const lower = JSON.parse(ceilingConfigText());
+      lower.auth_callback = { burst_limit: 10, sustained_limit: 60 };
+      expect(
+        () => parse({ ...env, RATE_LIMIT_CONFIG: config(lower) }),
+        `${environment} lower`,
+      ).not.toThrow();
+    }
+  });
+
   for (const [name, value, valid] of [
     ["missing", undefined, false],
     ["empty", "", false],

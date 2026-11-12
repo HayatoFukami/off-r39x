@@ -75,8 +75,8 @@ describe("registry vs SPEC-140 §68", () => {
       .map(cells);
     const matrix = new Map(rows.map((row) => [row[1]?.replaceAll("`", ""), row]));
     expect([...matrix.keys()].sort()).toEqual([...RATE_LIMIT_CLASS_IDS].sort());
-    // 14 Operation classes (incl. auth_session) + the 2 guards (SPEC-140 §68).
-    expect(RATE_LIMIT_CLASS_IDS).toHaveLength(16);
+    // 15 Operation classes (incl. auth_session, auth_callback) + the 2 guards (SPEC-140 §68).
+    expect(RATE_LIMIT_CLASS_IDS).toHaveLength(17);
     // SEC-ABU-027: auth_session is per-IP 100 / 600, with no additional rule and no guard.
     expect(RATE_LIMIT_REGISTRY.auth_session).toMatchObject({
       kind: "route",
@@ -86,6 +86,15 @@ describe("registry vs SPEC-140 §68", () => {
       additional: {},
     });
     expect(RATE_LIMIT_REGISTRY.auth_session).not.toHaveProperty("guard");
+    // SEC-ABU-028: auth_callback is per-IP 30 / 120, with no additional rule and no guard.
+    expect(RATE_LIMIT_REGISTRY.auth_callback).toMatchObject({
+      kind: "route",
+      primary: "ip",
+      burst: 30,
+      sustained: 120,
+      additional: {},
+    });
+    expect(RATE_LIMIT_REGISTRY.auth_callback).not.toHaveProperty("guard");
     expect(RATE_LIMIT_REGISTRY.auth_form_proxy).not.toHaveProperty("guard");
     for (const id of RATE_LIMIT_CLASS_IDS) {
       const row = matrix.get(id);
@@ -303,10 +312,11 @@ describe("Operation -> class assignment", () => {
     // The class set of §56.1 plus the two guards is exactly the §68 Class ID set.
     const classSet = new Set(table.map((row) => (row[0] ?? "").replace(/`|（.*）/g, "")));
     expect([...classSet, ...GUARD_CLASS_IDS].sort()).toEqual([...RATE_LIMIT_CLASS_IDS].sort());
-    // TST-RLM-007: the 14 Operation classes are the §68 set without the two guards, which are
+    // TST-RLM-007: the 15 Operation classes are the §68 set without the two guards, which are
     // never an Operation class (their targets are checked in TC-RLM-006-001 / TST-RLM-005).
-    expect(classSet.size).toBe(14);
-    expect(classSet.has("auth_session") && classSet.has("auth_form_proxy")).toBe(true);
+    expect(classSet.size).toBe(15);
+    for (const id of ["auth_session", "auth_callback", "auth_form_proxy"])
+      expect(classSet.has(id), id).toBe(true);
     for (const guard of GUARD_CLASS_IDS) expect(classSet.has(guard)).toBe(false);
     expect([...RATE_LIMIT_CLASS_IDS].filter((id) => !classSet.has(id)).sort()).toEqual(
       [...GUARD_CLASS_IDS].sort(),

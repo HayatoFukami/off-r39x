@@ -551,11 +551,41 @@ describe("auth_session and auth_form_proxy routing (SEC-ABU-027, TST-RLM-004)", 
       [1, 600_000],
     ]);
     const other = authApp({ burst: 4 });
-    expect((await send(other.app, "GET", "/auth/verify-email", "203.0.113.94")).status).toBe(200);
+    expect(
+      (await send(other.app, "POST", "/auth/request-password-reset", "203.0.113.94")).status,
+    ).toBe(200);
     expect(shape(other.trs.store.calls[0])).toEqual([
       [4, 10_000],
       [20, 60_000],
+      [1, 600_000],
     ]);
+  });
+  it("TC-RLM-004-235 GET /auth/verify-email and GET /auth/magic-link/verify are auth_callback (per-IP 30/10 s and 120/60 s, no identifier rule); the OTP POST stays auth_form_proxy", async () => {
+    for (const [path, ip] of [
+      ["/auth/verify-email", "203.0.113.130"],
+      ["/auth/magic-link/verify", "203.0.113.131"],
+    ] as const) {
+      const { app, trs } = authApp({ burst: 4 });
+      expect((await send(app, "GET", path, ip)).status, path).toBe(200);
+      expect(trs.store.calls, path).toHaveLength(1);
+      expect(shape(trs.store.calls[0]), path).toEqual([
+        [30, 10_000],
+        [120, 60_000],
+      ]);
+    }
+    const otp = authApp({ burst: 4 });
+    expect(
+      (await send(otp.app, "POST", "/auth/email-otp/verify-email", "203.0.113.132")).status,
+    ).toBe(200);
+    expect(shape(otp.trs.store.calls[0])).toEqual([
+      [4, 10_000],
+      [20, 60_000],
+      [1, 600_000],
+    ]);
+    // A wrong method on a callback path is not auth_callback either.
+    const wrong = authApp({ burst: 4 });
+    await send(wrong.app, "POST", "/auth/verify-email", "203.0.113.133");
+    expect(shape(wrong.trs.store.calls[0])).not.toContainEqual([30, 10_000]);
   });
 
   it("TC-RLM-004-229 an unregistered /auth/* path or a wrong method on a session path is public_read, not auth_session", async () => {
