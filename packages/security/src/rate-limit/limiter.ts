@@ -11,6 +11,7 @@ import {
   type RateLimitClassId,
   type RouteClassId,
   type RuleCategory,
+  type RulePhase,
   type RuleSubject,
   SUSTAINED_WINDOW_SECONDS,
 } from "./registry.ts";
@@ -86,15 +87,27 @@ export interface ResourceInput {
   readonly values: Readonly<Record<string, string>>;
   readonly operationId?: string | undefined;
 }
+export interface WebhookVerifiedInput {
+  readonly classId: RouteClassId;
+  readonly operationId?: string | undefined;
+}
 
 export interface RateLimiter {
-  /** Stage 1 (SEC-ABU-017): per-IP / webhook / global / identifier rules and the guard confirmation. */
+  /**
+   * Stage 1 (SEC-ABU-017): per-IP / webhook source IP / `public_read` global / identifier rules and
+   * the guard confirmation. The Webhook global rule is not part of it (SEC-ABU-030).
+   */
   preAuth(input: PreAuthInput): Promise<RateLimitDecision>;
   /** SEC-ABU-018: unmatched path or unsupported method; public_read per-IP burst/sustained only. */
   unmatched(ip: string): Promise<RateLimitDecision>;
   /** Stage 2, after token verification: per-subject rules. */
   subject(input: SubjectInput): Promise<RateLimitDecision>;
-  /** Stage 2, after input validation: resource / QR digest rules. */
+  /** Stage 2 (SEC-ABU-030), after a successful Webhook signature verification: the global rule. */
+  webhookVerified(input: WebhookVerifiedInput): Promise<RateLimitDecision>;
+  /**
+   * Stage 3 (SEC-ABU-029), after the target's authorization check succeeded and its key input was
+   * validated: resource / QR digest / target resource / target profile rules.
+   */
   resource(input: ResourceInput): Promise<RateLimitDecision>;
   /** SEC-ABU-021 (3): record one token verification failure for the route class's guard. */
   recordAuthFailure(classId: RouteClassId, ip: string): Promise<RateLimitDecision>;
@@ -160,7 +173,7 @@ export function createRateLimiter(options: RateLimiterOptions): RateLimiter {
 
   const additionalRules = (
     classId: RateLimitClassId,
-    phase: "pre_auth" | "subject" | "resource",
+    phase: RulePhase,
     resolve: (ruleId: string, subject: RuleSubject) => string | undefined,
   ): PlannedRule[] => {
     const planned: PlannedRule[] = [];
@@ -320,6 +333,16 @@ export function createRateLimiter(options: RateLimiterOptions): RateLimiter {
         ...primaryRules(input.classId, "auth_subject", input.subject),
         ...additionalRules(input.classId, "subject", () => undefined),
       ]);
+    },
+    async webhookVerified(input: WebhookVerifiedInput): Promise<RateLimitDecision> {
+      return evaluate(
+        input.classId,
+        input.operationId,
+        "admit",
+        additionalRules(input.classId, "webhook_verified", (_, subject) =>
+          subject === "global" ? "" : undefined,
+        ),
+      );
     },
     async resource(input: ResourceInput): Promise<RateLimitDecision> {
       const required = Object.entries(classDefinition(input.classId).additional).filter(

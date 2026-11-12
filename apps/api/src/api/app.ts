@@ -20,9 +20,10 @@ import {
   type AppRateLimit,
   createPrincipalRateLimitHooks,
   createRateLimitStageOne,
+  markAuthorizationConfirmed,
   type PrincipalRateLimitHooks,
 } from "./rate-limit.ts";
-import { assertMountedRoutesClassified } from "./routes.ts";
+import { assertMountedAuthRoutes, assertMountedRoutesClassified } from "./routes.ts";
 import { type ErrorCode, errorSchema, errorStatuses } from "./schemas/common.ts";
 
 export { type ApiEnvironment, ApiFailure } from "./failure.ts";
@@ -87,6 +88,7 @@ export function createApp(dependencies: AppDependencies) {
     c.set("operationId", undefined);
     c.set("rateLimitClass", undefined);
     c.set("clientIp", undefined);
+    c.set("authorizationConfirmed", false);
     c.header("X-Request-Id", c.get("requestId"));
     c.header("Cache-Control", "no-store");
     await next();
@@ -286,6 +288,8 @@ export function createApp(dependencies: AppDependencies) {
   });
   // DEV-RLM-005: every mounted route must be in the rate limit registry (startup failure otherwise).
   assertMountedRoutesClassified(app.routes);
+  // API-RLC-004: the mounted `/auth/*` routes equal the SPEC-110 §23.1 allowlist (method, path, class).
+  assertMountedAuthRoutes(app.routes, Boolean(dependencies.authProxy));
   return app;
 }
 export function requirePrincipal(
@@ -343,6 +347,8 @@ export function requireCapability(capability: Capability): MiddlewareHandler<Api
       throw new AuthFailure("denied");
     }
     securityEvent(c, "authorization.decision.completed");
+    // SEC-ABU-029: Role + Capability passed (step 7); Stage 3 resource rules may now be evaluated.
+    markAuthorizationConfirmed(c);
     await next();
   };
 }

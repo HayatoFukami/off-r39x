@@ -1,6 +1,8 @@
-// SEC-ABU-017/018/019/021, SPEC-110 §24.1: Stage 1 / Stage 2 rate limit middleware. Every stage
-// runs before DB access and before Role / Capability evaluation. A 429 and a 503 are different
-// results and never read as one another (SEC-ABU-009).
+// SEC-ABU-017/018/019/021/029/030, SPEC-110 §24.1: the three rate limit stages. Stage 1 (before
+// authentication) and Stage 2 (after token / Webhook signature verification) run before DB access.
+// Stage 3 (resource / QR digest / target) runs only after the target's authorization check
+// succeeded, so an unauthorized principal never reaches a shared counter. A 429 and a 503 are
+// different results and never read as one another (SEC-ABU-009).
 import { randomUUID } from "node:crypto";
 import { AuthFailure } from "@off-r39x/auth";
 import type { RateLimitMetrics } from "@off-r39x/observability";
@@ -262,12 +264,35 @@ export function createPrincipalRateLimitHooks(limiter: RateLimiter): PrincipalRa
   };
 }
 
-/** Stage 2 (SEC-ABU-017): resource / QR digest rules, evaluated after input validation, before DB. */
+/**
+ * SEC-ABU-029: records that the target's authorization check (SPEC-110 §24 step 6 owner relation,
+ * or step 7 Role + Capability) succeeded. `requireCapability` does it; an owner-relation check (and
+ * an Operation without an owner relation, after step 6) calls it itself. Stage 3 refuses to run
+ * without it, so a route can never evaluate a shared resource counter before authorization.
+ */
+export function markAuthorizationConfirmed(c: AppContext): void {
+  c.set("authorizationConfirmed", true);
+}
+
+/**
+ * Stage 3 (SEC-ABU-017 / SEC-ABU-029): resource / QR digest / target resource / target profile
+ * rules. Mount it after the authorization check and before the Domain precondition and the
+ * mutation. `valuesOf` runs only after authorization (the QR digest is derived from the QR token
+ * only then); the key input must already be syntactically validated. A 403 / 404 ending the
+ * request earlier therefore never changes a Stage 3 counter, and a 429 / 503 here stops the
+ * request before the Domain precondition.
+ */
 export function requireResourceRateLimit(
   limiter: RateLimiter,
-  valuesOf: (c: AppContext) => Readonly<Record<string, string>>,
+  valuesOf: (
+    c: AppContext,
+  ) => Readonly<Record<string, string>> | Promise<Readonly<Record<string, string>>>,
 ): MiddlewareHandler<ApiEnvironment> {
   return async (c, next) => {
+    // A route that reaches Stage 3 without an authorization check is an implementation defect;
+    // it is never admitted to the shared counters (500, not a silent pass).
+    if (c.get("authorizationConfirmed") !== true)
+      throw new Error("Stage 3 rate limit evaluated before the authorization check");
     const classId = c.get("rateLimitClass");
     if (!classId) throw new ApiFailure("TEMPORARY_UNAVAILABLE");
     const operationId = c.get("operationId");
@@ -276,9 +301,31 @@ export function requireResourceRateLimit(
       classId,
       await limiter.resource({
         classId,
-        values: valuesOf(c),
+        values: await valuesOf(c),
         ...(operationId ? { operationId } : {}),
       }),
+    );
+    await next();
+  };
+}
+
+/**
+ * Stage 2 for Webhooks (SEC-ABU-030): the class's global rule, evaluated only after the signature
+ * verification succeeded and before any DB access (receipt dedupe). Mount it right after the
+ * signature verification step; an invalid signature ends the request earlier and never counts.
+ * The `429` carries `Retry-After`; the request does not reach the Receipt creation.
+ */
+export function requireWebhookGlobalRateLimit(
+  limiter: RateLimiter,
+): MiddlewareHandler<ApiEnvironment> {
+  return async (c, next) => {
+    const classId = c.get("rateLimitClass");
+    if (!classId) throw new ApiFailure("TEMPORARY_UNAVAILABLE");
+    const operationId = c.get("operationId");
+    enforceDecision(
+      c,
+      classId,
+      await limiter.webhookVerified({ classId, ...(operationId ? { operationId } : {}) }),
     );
     await next();
   };

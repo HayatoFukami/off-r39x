@@ -1,7 +1,21 @@
 // Real Redis (SEC-ABU-026, SEC-ABU-013, TST-RLM-002 / 004). TEST_REDIS_URL is mandatory.
+import { randomUUID } from "node:crypto";
+import { Hono } from "hono";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createApp } from "../../apps/api/src/api/app.ts";
+import {
+  type ApiEnvironment,
+  ApiFailure,
+  createApp,
+  requireCapability,
+  requirePrincipal,
+} from "../../apps/api/src/api/app.ts";
 import { createAuthProxy } from "../../apps/api/src/api/auth-proxy.ts";
+import {
+  createPrincipalRateLimitHooks,
+  createRateLimitStageOne,
+  requireResourceRateLimit,
+} from "../../apps/api/src/api/rate-limit.ts";
+import { AuthFailure } from "../../packages/auth/src/index.ts";
 import { createRedisRateLimitStore } from "../../packages/rate-limit-redis/src/index.ts";
 import {
   createCounterKeyFactory,
@@ -262,4 +276,153 @@ describe("auth_callback against the real Redis (SEC-ABU-028, TST-RLM-002 / 004)"
       "auth_callback.sustained",
     ]);
   });
+});
+
+/**
+ * A mini API over the real limiter and the real Redis store, with a Stage 3 route behind
+ * Role + Capability (SEC-ABU-029). Tokens map to subjects: `admin-…` / `staff-…` hold the role,
+ * every other subject is an ordinary valid-JWT holder.
+ */
+function authorizedApp(classId: "role_assignment" | "staff_checkin") {
+  const store = createRedisRateLimitStore({ url: session.url });
+  stores.push(store);
+  const limiter = createRateLimiter({
+    store,
+    config: parseRateLimitConfig(ceilingConfigText()),
+    hmacKey: TEST_HMAC_KEY,
+    hmacKeyVersion: session.keyVersion,
+  });
+  const app = new Hono<ApiEnvironment>();
+  app.use("*", async (c, next) => {
+    c.set("requestId", randomUUID());
+    await next();
+  });
+  app.use(
+    "*",
+    createRateLimitStageOne({
+      rateLimit: { limiter, trustedProxyHops: 0 },
+      classify: () => ({ classId, operationId: null }),
+    }),
+  );
+  app.onError((error, c) => {
+    if (error instanceof ApiFailure) {
+      if (error.code === "RATE_LIMIT_EXCEEDED")
+        c.header("Retry-After", String(error.retryAfterSeconds));
+      return c.json({ code: error.code }, error.code === "RATE_LIMIT_EXCEEDED" ? 429 : 503);
+    }
+    if (error instanceof AuthFailure) return c.json({ code: error.kind }, 403);
+    return c.json({ code: "INTERNAL_ERROR" }, 500);
+  });
+  const principal = requirePrincipal(
+    { verify: async (token) => ({ subject: token.split(".")[2] ?? "" }) },
+    {
+      findByAuthSubject: async (subject: string) => ({
+        directory: { authSubject: subject, emailVerified: true },
+        profile: { id: "1", publicRef: PROFILE, authSubject: subject },
+        roles: subject.startsWith("admin-")
+          ? ["ADMINISTRATOR"]
+          : subject.startsWith("staff-")
+            ? ["STAFF"]
+            : [],
+      }),
+    },
+    createPrincipalRateLimitHooks(limiter),
+  );
+  const rule =
+    classId === "role_assignment" ? "role_assignment.profile" : "staff_checkin.qr_digest";
+  const domain = { executed: 0 };
+  app.get(
+    "/x/:target",
+    principal,
+    requireCapability(
+      classId === "role_assignment" ? "role_assignment.manage" : "entry_checkin.execute",
+    ),
+    requireResourceRateLimit(limiter, (c) => ({ [rule]: c.req.param("target") ?? "" })),
+    (c) => {
+      domain.executed += 1;
+      return c.json({ ok: true });
+    },
+  );
+  const call = (subject: string, target: string, address = "203.0.113.150") =>
+    app.request(
+      `/x/${target}`,
+      { headers: { Authorization: `Bearer e30.e30.${subject}` } },
+      peer(address),
+    );
+  const keyFactory = createCounterKeyFactory(TEST_HMAC_KEY, session.keyVersion);
+  const count = (ruleId: string, target: string) =>
+    session.redis.zcard(keyFactory.key(ruleId, "resource", target));
+  return { call, domain, count, rule };
+}
+const PROFILE = "5c2d5d1e-7f4a-4a3b-9d0e-3a1b2c4d5e6f";
+
+describe("Stage 3 after authorization against the real Redis (SEC-ABU-029, TST-RLM-002 / 004)", () => {
+  it("TC-RLM-004-254 ordinary valid-JWT holders naming a victim profile get 403 and leave the role_assignment profile counter at 0; real administrators then use the whole 5 per 10 min slot and the 6th is a 429 that never reaches the Domain precondition", async () => {
+    const { call, domain, count, rule } = authorizedApp("role_assignment");
+    const victim = unique("victim");
+    // 60 distinct attackers (each inside its own burst / sustained limit) name the same profile.
+    for (let i = 0; i < 60; i++) {
+      const res = await call(unique("user"), victim, ip(100 + (i % 50)));
+      expect(res.status).toBe(403);
+    }
+    expect(await count(rule, victim)).toBe(0);
+    expect(domain.executed).toBe(0);
+    for (let i = 0; i < 5; i++)
+      expect((await call(unique("admin"), victim)).status, `grant ${i + 1}`).toBe(200);
+    expect(await count(rule, victim)).toBe(5);
+    expect(domain.executed).toBe(5);
+    const over = await call(unique("admin"), victim);
+    expect(over.status).toBe(429);
+    expect(over.headers.get("Retry-After")).toMatch(/^[1-9]\d*$/);
+    expect(domain.executed).toBe(5);
+    expect(await count(rule, victim)).toBe(5);
+    // Another target of the same class is untouched.
+    expect((await call(unique("admin"), unique("other"))).status).toBe(200);
+  }, 60_000);
+
+  it("TC-RLM-004-255 staff_checkin: non-Staff principals scanning one QR digest leave its counter at 0; Staff consume the 30 per minute slot and the 31st is a 429 before any QR lookup", async () => {
+    const { call, domain, count, rule } = authorizedApp("staff_checkin");
+    const digest = unique("digest");
+    for (let i = 0; i < 40; i++)
+      expect((await call(unique("user"), digest, ip(160 + (i % 40)))).status).toBe(403);
+    expect(await count(rule, digest)).toBe(0);
+    const staff = unique("staff");
+    for (let i = 0; i < 30; i++)
+      expect((await call(staff, digest, ip(210))).status, `scan ${i + 1}`).toBe(200);
+    expect(domain.executed).toBe(30);
+    const over = await call(staff, digest, ip(210));
+    expect(over.status).toBe(429);
+    expect(domain.executed).toBe(30);
+    expect(await count(rule, digest)).toBe(30);
+  }, 60_000);
+});
+
+describe("Webhook global rule against the real Redis (SEC-ABU-030, TST-RLM-002 / 004)", () => {
+  it("TC-RLM-004-256 pre-signature traffic from many source IPs never consumes the stripe_webhook global rule: 4,000 such requests later, 3,000 verified requests are still admitted and the 3,001st is a 429", async () => {
+    const { limiter } = build();
+    // 80 source IPs x 50 requests: each IP is far inside its own 100/10 s and 300/60 s limits.
+    for (let address = 1; address <= 80; address++)
+      for (let i = 0; i < 50; i++) {
+        const stage1 = await limiter.preAuth({
+          classId: "stripe_webhook",
+          ip: `198.51.100.${address}`,
+        });
+        expect(stage1.result).toBe("allowed");
+      }
+    let admitted = 0;
+    for (let i = 0; i < 3000; i++)
+      if ((await limiter.webhookVerified({ classId: "stripe_webhook" })).result === "allowed")
+        admitted += 1;
+    expect(admitted).toBe(3000);
+    const over = await limiter.webhookVerified({ classId: "stripe_webhook" });
+    expect(over).toMatchObject({ result: "rejected", ruleCategory: "global" });
+    if (over.result === "rejected") expect(over.retryAfterSeconds).toBeGreaterThanOrEqual(1);
+    // resend_webhook has its own global counter.
+    expect((await limiter.webhookVerified({ classId: "resend_webhook" })).result).toBe("allowed");
+    // Stage 1 for a source IP is still evaluated on its own rules only.
+    const keyFactory = createCounterKeyFactory(TEST_HMAC_KEY, session.keyVersion);
+    expect(await session.redis.zcard(keyFactory.key("stripe_webhook.global", "global", ""))).toBe(
+      3000,
+    );
+  }, 180_000);
 });

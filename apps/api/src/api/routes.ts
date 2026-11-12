@@ -33,6 +33,60 @@ const authTransportRoutes: readonly RouteRegistration[] = Object.entries(AUTH_RO
   }),
 );
 
+/**
+ * SPEC-110 §23.1 "Canonical `/auth/*` allowlist" (15 routes: method, path, class). The table is the
+ * single authority (API-RLC-004); the implementation's allowlist (`AUTH_ROUTES` + class
+ * assignment) must equal it exactly. Changing it is a SPEC-110 change made together with the
+ * implementation's allowlist. Google OAuth callbacks are not in it (UCR-110-002 is unresolved).
+ */
+export const CANONICAL_AUTH_ALLOWLIST: readonly (readonly [
+  method: string,
+  path: string,
+  classId: RouteClassId,
+])[] = Object.freeze([
+  ["GET", "/auth/get-session", "auth_session"],
+  ["GET", "/auth/token", "auth_session"],
+  ["POST", "/auth/sign-out", "auth_session"],
+  ["GET", "/auth/verify-email", "auth_callback"],
+  ["GET", "/auth/magic-link/verify", "auth_callback"],
+  ["POST", "/auth/sign-up/email", "auth_form_proxy"],
+  ["POST", "/auth/sign-in/email", "auth_form_proxy"],
+  ["POST", "/auth/sign-in/social", "auth_form_proxy"],
+  ["POST", "/auth/sign-in/email-otp", "auth_form_proxy"],
+  ["POST", "/auth/sign-in/magic-link", "auth_form_proxy"],
+  ["POST", "/auth/send-verification-email", "auth_form_proxy"],
+  ["POST", "/auth/request-password-reset", "auth_form_proxy"],
+  ["POST", "/auth/reset-password", "auth_form_proxy"],
+  ["POST", "/auth/email-otp/send-verification-otp", "auth_form_proxy"],
+  ["POST", "/auth/email-otp/verify-email", "auth_form_proxy"],
+]);
+
+/**
+ * API-RLC-004: the implementation's `/auth/*` entries (method, path, class) must equal the allowlist
+ * exactly: an extra route, a missing route or a different class is an error (the service must not
+ * become Ready). Operation-ID-less routes outside the table are never admitted as `auth_form_proxy`.
+ */
+export function assertAuthAllowlist(
+  implemented: readonly { method: string; path: string; classId: string }[],
+  canonical: readonly (readonly [string, string, string])[] = CANONICAL_AUTH_ALLOWLIST,
+): void {
+  const key = (method: string, path: string, classId: string) => `${method} ${path} ${classId}`;
+  const expected = new Set(canonical.map(([m, p, c]) => key(m, p, c)));
+  const actual = new Map<string, number>();
+  for (const route of implemented)
+    actual.set(
+      key(route.method, route.path, route.classId),
+      (actual.get(key(route.method, route.path, route.classId)) ?? 0) + 1,
+    );
+  const extra = [...actual.keys()].filter((entry) => !expected.has(entry));
+  const missing = [...expected].filter((entry) => !actual.has(entry));
+  const duplicated = [...actual].filter(([, count]) => count > 1).map(([entry]) => entry);
+  if (extra.length || missing.length || duplicated.length)
+    throw new Error(
+      `/auth/* allowlist does not match SPEC-110 §23.1 (extra: ${extra.join("; ") || "none"}; missing: ${missing.join("; ") || "none"}; duplicated: ${duplicated.join("; ") || "none"})`,
+    );
+}
+
 export const ROUTES: readonly RouteRegistration[] = Object.freeze([
   {
     method: "GET",
@@ -43,6 +97,13 @@ export const ROUTES: readonly RouteRegistration[] = Object.freeze([
   ...authTransportRoutes,
 ]);
 assertRouteRegistry(ROUTES);
+assertAuthAllowlist(
+  ROUTES.filter((route) => route.path.startsWith("/auth/")).map((route) => ({
+    method: route.method,
+    path: route.path,
+    classId: route.rateLimitClass,
+  })),
+);
 
 export interface RouteClassification {
   readonly classId: RouteClassId;
@@ -99,6 +160,28 @@ export function assertMountedRoutesClassified(
   const missing = findUnclassifiedRoutes(mounted, classify);
   if (missing.length)
     throw new Error(`Routes without a rate limit class registration: ${missing.join(", ")}`);
+}
+
+/**
+ * API-RLC-004 at app construction: the `/auth/*` routes actually mounted (OPTIONS and middleware
+ * aside) are exactly the §23.1 allowlist when the auth proxy is configured, and none otherwise.
+ */
+export function assertMountedAuthRoutes(
+  mounted: readonly MountedRoute[],
+  authProxyConfigured: boolean,
+  classify: RouteClassifier = classifyRequest,
+): void {
+  const entries = mounted
+    .filter(
+      (route) =>
+        route.path.startsWith("/auth/") && route.method !== "OPTIONS" && route.method !== "ALL",
+    )
+    .map((route) => ({
+      method: route.method,
+      path: route.path,
+      classId: classify(route.method, route.path)?.classId ?? "unregistered",
+    }));
+  assertAuthAllowlist(entries, authProxyConfigured ? CANONICAL_AUTH_ALLOWLIST : []);
 }
 
 /** SEC-ABU-018: the only requests that never query the store. */

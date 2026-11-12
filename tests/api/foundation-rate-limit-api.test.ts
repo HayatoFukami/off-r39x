@@ -14,11 +14,19 @@ import {
   createPrincipalRateLimitHooks,
   createRateLimitMetricsObserver,
   createRateLimitStageOne,
+  markAuthorizationConfirmed,
   requireResourceRateLimit,
+  requireWebhookGlobalRateLimit,
 } from "../../apps/api/src/api/rate-limit.ts";
+import { CANONICAL_AUTH_ALLOWLIST } from "../../apps/api/src/api/routes.ts";
 import { AuthFailure } from "../../packages/auth/src/index.ts";
 import { createLogger, createRateLimitMetrics } from "../../packages/observability/src/index.ts";
-import { RATE_LIMIT_CLASS_IDS, type RouteClassId } from "../../packages/security/src/index.ts";
+import {
+  RATE_LIMIT_CLASS_IDS,
+  RATE_LIMIT_REGISTRY,
+  RateLimitStoreError,
+  type RouteClassId,
+} from "../../packages/security/src/index.ts";
 import { createTestRateLimit, peer, type TestRateLimit } from "../harness/rate-limit/api.ts";
 
 const SUBJECT = "aef69f82-c9b7-4fd1-9a6f-126f5748e9ae";
@@ -739,7 +747,11 @@ describe("Client IP derivation through the API (SEC-API-031, TST-RLM-008)", () =
 function miniApp(
   trs: TestRateLimit,
   routes: Record<string, RouteClassId>,
-  options: { verify?: (token: string) => Promise<{ subject: string }> } = {},
+  options: {
+    verify?: (token: string) => Promise<{ subject: string }>;
+    /** Per-subject roles (default: the shared `setRoles` value). */
+    rolesFor?: (subject: string) => ("STAFF" | "ADMINISTRATOR")[];
+  } = {},
 ) {
   const order: string[] = [];
   const app = new Hono<ApiEnvironment>();
@@ -780,12 +792,12 @@ function miniApp(
       },
     },
     {
-      findByAuthSubject: async () => {
+      findByAuthSubject: async (subject: string) => {
         order.push("db");
         return {
-          directory: { authSubject: SUBJECT, emailVerified: verified },
-          profile: { id: "1", publicRef: PROFILE_REF, authSubject: SUBJECT },
-          roles,
+          directory: { authSubject: subject, emailVerified: verified },
+          profile: { id: "1", publicRef: PROFILE_REF, authSubject: subject },
+          roles: options.rolesFor ? options.rolesFor(subject) : roles,
         };
       },
     },
@@ -924,8 +936,48 @@ describe("Authentication-failure guard at the API layer (TST-RLM-005)", () => {
   });
 });
 
+const OTHER = "0d6a2a35-1a52-4d3a-8f55-42b5d4ad06a1";
+const ADMIN_SUBJECT = "6f1c7d3a-5b0e-4a6d-9f21-8c3e4d5a6b7c";
+const ADMIN_TOKEN = "e30.e30.YWRtaW4";
+const OTHER_TOKEN = "e30.e30.b3RoZXI";
+const subjectOf = (token: string) =>
+  token.endsWith("YWRtaW4") ? ADMIN_SUBJECT : token.endsWith("b3RoZXI") ? OTHER : SUBJECT;
+/** Roles by subject: the administrator has them, the ordinary valid-JWT holder has none. */
+const rolesBySubject = (subject: string): ("STAFF" | "ADMINISTRATOR")[] =>
+  subject === ADMIN_SUBJECT ? ["ADMINISTRATOR", "STAFF"] : [];
+const authedApp = (trs: TestRateLimit, routes: Record<string, RouteClassId>) =>
+  miniApp(trs, routes, {
+    verify: async (token) => {
+      if (token.endsWith("YmFk")) throw new AuthFailure("unauthenticated");
+      return { subject: subjectOf(token) };
+    },
+    rolesFor: rolesBySubject,
+  });
+/** A complete override that only lowers `limit` of one Stage 3 rule (and keeps the Stage 2 subject rules out of the way). */
+const stage3Override = (
+  classId: string,
+  rules: Record<string, [limit: number, windowSeconds: number]>,
+  burst: number,
+  sustained: number,
+) => ({
+  [classId]: {
+    burst_limit: burst,
+    sustained_limit: sustained,
+    additional: Object.fromEntries(
+      Object.entries(rules).map(([id, [limit, window_seconds]]) => [id, { limit, window_seconds }]),
+    ),
+  },
+});
+/** Number of times a rule of this exact shape was presented to the store. */
+const evaluationsOf = (trs: TestRateLimit, limit: number, windowMs: number) =>
+  trs.store.calls.filter(
+    (entry) =>
+      entry.mode === "admit" &&
+      entry.rules.some((rule) => rule.limit === limit && rule.windowMs === windowMs),
+  ).length;
+
 describe("resource rule evaluation (TST-RLM-004)", () => {
-  it("TC-RLM-004-211 the resource key is evaluated before any lookup, so existing and missing resources behave identically", async () => {
+  it("TC-RLM-004-211 the Stage 3 key is evaluated before any lookup, so existing and missing resources behave identically for an authorized principal", async () => {
     const outcome = async (resource: string) => {
       const trs = createTestRateLimit({
         overrides: {
@@ -941,6 +993,11 @@ describe("resource rule evaluation (TST-RLM-004)", () => {
       m.app.get(
         "/qr/:id",
         m.principal,
+        // The owner relation (SPEC-110 §24 step 6) is what authorizes this request.
+        async (c, next) => {
+          markAuthorizationConfirmed(c);
+          await next();
+        },
         requireResourceRateLimit(trs.rateLimit.limiter, (c) => ({
           "qr_display.ticket": c.req.param("id") ?? "",
         })),
@@ -965,13 +1022,17 @@ describe("resource rule evaluation (TST-RLM-004)", () => {
     expect(existing.lookups).toBe(3);
   });
 
-  it("TC-RLM-004-212 a resource rule rejection is a 429 / store failure a 503 before the handler runs", async () => {
+  it("TC-RLM-004-212 a Stage 3 store failure is a 503 before the handler runs", async () => {
     const trs = createTestRateLimit();
     const m = miniApp(trs, { "/qr": "qr_display" });
     let handled = 0;
     m.app.get(
       "/qr/:id",
       m.principal,
+      async (c, next) => {
+        markAuthorizationConfirmed(c);
+        await next();
+      },
       requireResourceRateLimit(trs.rateLimit.limiter, (c) => ({
         "qr_display.ticket": c.req.param("id") ?? "",
       })),
@@ -980,9 +1041,452 @@ describe("resource rule evaluation (TST-RLM-004)", () => {
         return c.json({ ok: true });
       },
     );
-    trs.faults.inject("FP.RATELIMIT.STORE_UNAVAILABLE");
-    expect((await call(m.app, "/qr/a")).status).toBe(503);
+    // Stages 1 and 2 pass; only the third store operation (Stage 3) fails.
+    const evaluate = trs.store.evaluate.bind(trs.store);
+    let operations = 0;
+    trs.store.evaluate = async (mode, rules, id) => {
+      operations += 1;
+      if (operations === 3) throw new RateLimitStoreError("error");
+      return evaluate(mode, rules, id);
+    };
+    const res = await call(m.app, "/qr/a");
+    expect(res.status).toBe(503);
+    expect((await res.json()).code).toBe("TEMPORARY_UNAVAILABLE");
+    expect(operations).toBe(3);
     expect(handled).toBe(0);
+  });
+});
+
+describe("Stage 3 shared resource counters after authorization (SEC-ABU-029, TST-RLM-004)", () => {
+  it("TC-RLM-004-239 Stage 3 runs after Role + Capability and before the Domain precondition: guard check, verify, store, db, then store", async () => {
+    const trs = createTestRateLimit();
+    const m = authedApp(trs, { "/adm": "role_assignment" });
+    const order = m.order;
+    const evaluate = trs.store.evaluate.bind(trs.store);
+    trs.store.evaluate = async (mode, rules, id) => {
+      order.push(`store:${mode}`);
+      return evaluate(mode, rules, id);
+    };
+    m.app.get(
+      "/adm/roles/:target",
+      m.principal,
+      requireCapability("role_assignment.manage"),
+      requireResourceRateLimit(trs.rateLimit.limiter, (c) => ({
+        "role_assignment.profile": c.req.param("target") ?? "",
+      })),
+      (c) => {
+        order.push("domain");
+        return c.json({ ok: true });
+      },
+    );
+    const res = await call(m.app, "/adm/roles/P1", ADMIN_TOKEN);
+    expect(res.status).toBe(200);
+    expect(order).toEqual(["store:check", "verify", "store:admit", "db", "store:admit", "domain"]);
+  });
+
+  it("TC-RLM-004-240 a valid-JWT holder without Administrator cannot consume the target-profile slot of API-ADM-ROL-002: the 403s leave the counter untouched and the real administrator can still grant", async () => {
+    const trs = createTestRateLimit({
+      overrides: stage3Override("role_assignment", { "role_assignment.profile": [5, 600] }, 3, 10),
+    });
+    const m = authedApp(trs, { "/adm": "role_assignment" });
+    let granted = 0;
+    m.app.get(
+      "/adm/roles/:target",
+      m.principal,
+      requireCapability("role_assignment.manage"),
+      requireResourceRateLimit(trs.rateLimit.limiter, (c) => ({
+        "role_assignment.profile": c.req.param("target") ?? "",
+      })),
+      (c) => {
+        granted += 1;
+        return c.json({ ok: true });
+      },
+    );
+    // An ordinary principal names the victim profile again and again (403 every time).
+    for (let i = 0; i < 12; i++) {
+      trs.store.advance(11_000);
+      expect((await call(m.app, "/adm/roles/VICTIM", OTHER_TOKEN)).status).toBe(403);
+    }
+    expect(evaluationsOf(trs, 5, 600_000)).toBe(0);
+    expect(granted).toBe(0);
+    // The legitimate administrator still has the whole slot for the same target.
+    for (let i = 0; i < 5; i++) {
+      trs.store.advance(11_000);
+      expect((await call(m.app, "/adm/roles/VICTIM", ADMIN_TOKEN)).status).toBe(200);
+    }
+    expect(granted).toBe(5);
+    // The principal that holds the Capability consumes Stage 3: limit + 1 is a 429.
+    trs.store.advance(11_000);
+    const res = await call(m.app, "/adm/roles/VICTIM", ADMIN_TOKEN);
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toMatch(/^[1-9]\d*$/);
+    expect(granted).toBe(5);
+  });
+
+  const cases: {
+    name: string;
+    classId: RouteClassId;
+    rule: string;
+    limit: number;
+    windowSeconds: number;
+    /** Every additional rule of the class (a class override is complete). */
+    rules: Record<string, [limit: number, windowSeconds: number]>;
+    stepMs: number;
+    burst: number;
+    sustained: number;
+    capability?: Parameters<typeof requireCapability>[0];
+    /** Owner-relation (step 6) route: the Ticket belongs to SUBJECT only. */
+    ownerOnly?: boolean;
+  }[] = [
+    {
+      name: "high_risk_recovery target resource (per minute)",
+      classId: "high_risk_recovery",
+      rule: "high_risk_recovery.resource_minute",
+      limit: 2,
+      windowSeconds: 60,
+      rules: {
+        "high_risk_recovery.resource_minute": [2, 60],
+        "high_risk_recovery.resource_hour": [10, 3600],
+      },
+      stepMs: 11_000,
+      burst: 2,
+      sustained: 6,
+      capability: "recovery.exception.execute",
+    },
+    {
+      name: "high_risk_recovery target resource (per hour)",
+      classId: "high_risk_recovery",
+      rule: "high_risk_recovery.resource_hour",
+      limit: 4,
+      windowSeconds: 3600,
+      rules: {
+        "high_risk_recovery.resource_minute": [2, 60],
+        "high_risk_recovery.resource_hour": [4, 3600],
+      },
+      stepMs: 31_000,
+      burst: 2,
+      sustained: 6,
+      capability: "recovery.exception.execute",
+    },
+    {
+      name: "admin_mutation target resource",
+      classId: "admin_mutation",
+      rule: "admin_mutation.resource",
+      limit: 4,
+      windowSeconds: 60,
+      rules: { "admin_mutation.resource": [4, 60] },
+      stepMs: 11_000,
+      burst: 10,
+      sustained: 30,
+      capability: "public_content.manage",
+    },
+    {
+      name: "goods_handoff Goods Item",
+      classId: "goods_handoff",
+      rule: "goods_handoff.item",
+      limit: 4,
+      windowSeconds: 60,
+      rules: { "goods_handoff.item": [4, 60] },
+      stepMs: 11_000,
+      burst: 10,
+      sustained: 60,
+      capability: "goods_handoff.execute",
+    },
+    {
+      name: "staff_checkin QR digest",
+      classId: "staff_checkin",
+      rule: "staff_checkin.qr_digest",
+      limit: 4,
+      windowSeconds: 60,
+      rules: { "staff_checkin.qr_digest": [4, 60], "staff_checkin.ip": [300, 60] },
+      stepMs: 11_000,
+      burst: 40,
+      sustained: 180,
+      capability: "entry_checkin.execute",
+    },
+    {
+      name: "qr_display Ticket (another principal's Ticket is a 404)",
+      classId: "qr_display",
+      rule: "qr_display.ticket",
+      limit: 4,
+      windowSeconds: 60,
+      rules: { "qr_display.ticket": [4, 60] },
+      stepMs: 11_000,
+      burst: 6,
+      sustained: 30,
+      ownerOnly: true,
+    },
+  ];
+  for (const scenario of cases)
+    it(`TC-RLM-004-241 ${scenario.name}: a 403 / 404 leaves the shared counter untouched; the authorized principal consumes it and limit + 1 is a 429 that never reaches the Domain precondition`, async () => {
+      const trs = createTestRateLimit({
+        overrides: stage3Override(
+          scenario.classId,
+          scenario.rules,
+          scenario.burst,
+          scenario.sustained,
+        ),
+      });
+      const prefix = `/${scenario.classId}`;
+      const m = authedApp(trs, { [prefix]: scenario.classId });
+      let digestDerivations = 0;
+      let domain = 0;
+      const owner: import("hono").MiddlewareHandler<ApiEnvironment> = async (c, next) => {
+        // Owner relation (SPEC-110 §24 step 6): only SUBJECT owns the Ticket.
+        if (c.get("principal").subject !== SUBJECT)
+          return c.json({ code: "RESOURCE_NOT_FOUND" }, 404);
+        markAuthorizationConfirmed(c);
+        await next();
+        return;
+      };
+      m.app.get(
+        `${prefix}/:resource`,
+        m.principal,
+        scenario.ownerOnly ? owner : requireCapability(scenario.capability as never),
+        requireResourceRateLimit(trs.rateLimit.limiter, (c) => {
+          digestDerivations += 1; // the QR digest is derived only after authorization
+          // Every resource-phase rule of the class needs its key (the `.ip` rule is Stage 1).
+          return Object.fromEntries(
+            Object.keys(scenario.rules)
+              .filter((rule) => !rule.endsWith(".ip"))
+              .map((rule) => [rule, `digest-of-${c.req.param("resource")}`]),
+          );
+        }),
+        (c) => {
+          domain += 1;
+          return c.json({ ok: true });
+        },
+      );
+      const authorized = scenario.ownerOnly ? GOOD : ADMIN_TOKEN;
+      const outsider = OTHER_TOKEN;
+      for (let i = 0; i < 12; i++) {
+        trs.store.advance(scenario.stepMs);
+        const res = await call(m.app, `${prefix}/TARGET`, outsider);
+        expect([403, 404]).toContain(res.status);
+      }
+      expect(digestDerivations).toBe(0);
+      expect(domain).toBe(0);
+      expect(
+        evaluationsOf(trs, scenario.limit, scenario.windowSeconds * 1000),
+        "no Stage 3 evaluation for the unauthorized principal",
+      ).toBe(0);
+      for (let i = 0; i < scenario.limit; i++) {
+        trs.store.advance(scenario.stepMs);
+        expect((await call(m.app, `${prefix}/TARGET`, authorized)).status).toBe(200);
+      }
+      expect(domain).toBe(scenario.limit);
+      trs.store.advance(scenario.stepMs);
+      const over = await call(m.app, `${prefix}/TARGET`, authorized);
+      expect(over.status).toBe(429);
+      expect(over.headers.get("Retry-After")).toMatch(/^[1-9]\d*$/);
+      expect(domain).toBe(scenario.limit);
+      expect(digestDerivations).toBe(scenario.limit + 1);
+    });
+
+  it("TC-RLM-004-242 a failed authentication never reaches Stage 3, and distinct targets have distinct Stage 3 keys", async () => {
+    const trs = createTestRateLimit({
+      overrides: stage3Override("admin_mutation", { "admin_mutation.resource": [2, 60] }, 10, 30),
+    });
+    const m = authedApp(trs, { "/adm": "admin_mutation" });
+    m.app.get(
+      "/adm/:id",
+      m.principal,
+      requireCapability("public_content.manage"),
+      requireResourceRateLimit(trs.rateLimit.limiter, (c) => ({
+        "admin_mutation.resource": c.req.param("id") ?? "",
+      })),
+      (c) => c.json({ ok: true }),
+    );
+    expect((await call(m.app, "/adm/X", BAD)).status).toBe(401);
+    expect(evaluationsOf(trs, 2, 60_000)).toBe(0);
+    expect((await call(m.app, "/adm/X", ADMIN_TOKEN)).status).toBe(200);
+    expect((await call(m.app, "/adm/X", ADMIN_TOKEN)).status).toBe(200);
+    expect((await call(m.app, "/adm/X", ADMIN_TOKEN)).status).toBe(429);
+    // A different target of the same administrator is a different Stage 3 key.
+    expect((await call(m.app, "/adm/Y", ADMIN_TOKEN)).status).toBe(200);
+  });
+
+  it("TC-RLM-004-243 a route that evaluates Stage 3 without an authorization check is refused (500) and never touches the shared counters", async () => {
+    const trs = createTestRateLimit();
+    const m = authedApp(trs, { "/qr": "qr_display" });
+    m.app.get(
+      "/qr/:id",
+      m.principal,
+      requireResourceRateLimit(trs.rateLimit.limiter, (c) => ({
+        "qr_display.ticket": c.req.param("id") ?? "",
+      })),
+      (c) => c.json({ ok: true }),
+    );
+    const res = await call(m.app, "/qr/a");
+    expect(res.status).toBe(500);
+    expect(evaluationsOf(trs, 12, 60_000)).toBe(0);
+  });
+});
+
+describe("Webhook global rule after signature verification (SEC-ABU-030, TST-RLM-004)", () => {
+  /** A mini Webhook endpoint: the signature check stands in for the provider verification (no DB). */
+  const webhookApp = (trs: TestRateLimit, classId: "stripe_webhook" | "resend_webhook") => {
+    const app = new Hono<ApiEnvironment>();
+    const seen = { signatureChecks: 0, receipts: 0 };
+    app.use("*", async (c, next) => {
+      c.set("requestId", randomUUID());
+      await next();
+    });
+    app.use(
+      "*",
+      createRateLimitStageOne({
+        rateLimit: trs.rateLimit,
+        classify: () => ({ classId, operationId: null }),
+      }),
+    );
+    app.onError((error, c) => {
+      if (error instanceof ApiFailure) {
+        if (error.code === "RATE_LIMIT_EXCEEDED")
+          c.header("Retry-After", String(error.retryAfterSeconds));
+        return c.json({ code: error.code }, error.code === "RATE_LIMIT_EXCEEDED" ? 429 : 503);
+      }
+      return c.json({ code: "INTERNAL_ERROR" }, 500);
+    });
+    app.post(
+      "/hook",
+      async (c, next) => {
+        seen.signatureChecks += 1;
+        if (c.req.header("x-signature") !== "valid")
+          return c.json({ code: "INVALID_SIGNATURE" }, 400);
+        await next();
+        return;
+      },
+      requireWebhookGlobalRateLimit(trs.rateLimit.limiter),
+      (c) => {
+        seen.receipts += 1; // receipt dedupe / creation (DB access)
+        return c.json({ ok: true });
+      },
+    );
+    const send = (ip: string, signature: string) =>
+      app.request("/hook", { method: "POST", headers: { "x-signature": signature } }, peer(ip));
+    return { send, seen };
+  };
+  const globalOverride = (classId: "stripe_webhook" | "resend_webhook", limit: number) =>
+    stage3Override(classId, { [`${classId}.global`]: [limit, 60] }, 100, 300);
+
+  for (const classId of ["stripe_webhook", "resend_webhook"] as const)
+    it(`TC-RLM-004-251 ${classId}: invalid signatures from many source IPs never consume the global rule, so a valid signature is still processed; only verified requests count and global + 1 is a 429`, async () => {
+      const trs = createTestRateLimit({ overrides: globalOverride(classId, 6) });
+      const hook = webhookApp(trs, classId);
+      // 60 source IPs, each far inside its own burst limit, all with invalid signatures.
+      for (let ip = 1; ip <= 60; ip++)
+        for (let i = 0; i < 3; i++)
+          expect((await hook.send(`198.51.100.${ip}`, "forged")).status).toBe(400);
+      expect(hook.seen.receipts).toBe(0);
+      expect(evaluationsOf(trs, 6, 60_000)).toBe(0);
+      for (let i = 0; i < 6; i++)
+        expect((await hook.send("203.0.113.77", "valid")).status).toBe(200);
+      expect(hook.seen.receipts).toBe(6);
+      const over = await hook.send("203.0.113.77", "valid");
+      expect(over.status).toBe(429);
+      expect(over.headers.get("Retry-After")).toMatch(/^[1-9]\d*$/);
+      expect((await over.json()).code).toBe("RATE_LIMIT_EXCEEDED");
+      expect(hook.seen.receipts).toBe(6);
+      // An invalid signature after the global limit is still a plain 400, not a 429.
+      expect((await hook.send("198.51.100.200", "forged")).status).toBe(400);
+    });
+
+  it("TC-RLM-004-252 before the signature check only the source IP burst / sustained rules are evaluated: the global rule is absent from Stage 1", async () => {
+    const trs = createTestRateLimit();
+    const hook = webhookApp(trs, "stripe_webhook");
+    await hook.send("203.0.113.5", "forged");
+    const stage1 = trs.store.calls[0];
+    expect(stage1?.rules.map((rule) => rule.limit).sort((a, b) => a - b)).toEqual([100, 300]);
+    expect(stage1?.rules.some((rule) => rule.limit === 3000)).toBe(false);
+    await hook.send("203.0.113.5", "valid");
+    const stage2 = trs.store.calls[2];
+    expect(stage2?.rules.map((rule) => [rule.limit, rule.windowMs])).toEqual([[3000, 60_000]]);
+  });
+
+  it("TC-RLM-004-253 a source IP over its own burst limit is rejected in Stage 1 before the signature check, and a Stage 2 store failure is a 503 that creates no Receipt", async () => {
+    const trs = createTestRateLimit({
+      overrides: stage3Override("stripe_webhook", { "stripe_webhook.global": [3000, 60] }, 2, 300),
+    });
+    const hook = webhookApp(trs, "stripe_webhook");
+    expect((await hook.send("203.0.113.9", "valid")).status).toBe(200);
+    expect((await hook.send("203.0.113.9", "valid")).status).toBe(200);
+    const checksBefore = hook.seen.signatureChecks;
+    expect((await hook.send("203.0.113.9", "valid")).status).toBe(429);
+    expect(hook.seen.signatureChecks).toBe(checksBefore);
+
+    const evaluate = trs.store.evaluate.bind(trs.store);
+    let operations = 0;
+    trs.store.evaluate = async (mode, rules, id) => {
+      operations += 1;
+      if (operations === 2) throw new RateLimitStoreError("error"); // the post-signature global rule
+      return evaluate(mode, rules, id);
+    };
+    const receipts = hook.seen.receipts;
+    expect((await hook.send("203.0.113.44", "valid")).status).toBe(503);
+    expect(hook.seen.receipts).toBe(receipts);
+  });
+});
+
+describe("/auth/* allowlist at runtime (API-RLC-004, TST-RLM-007)", () => {
+  const proxied: string[] = [];
+  const authApp = (trs: TestRateLimit) =>
+    createApp({
+      webOrigin: WEB,
+      ready: async () => true,
+      rateLimit: trs.rateLimit,
+      authProxy: {
+        handle: async (request: Request) => {
+          proxied.push(`${request.method} ${new URL(request.url).pathname}`);
+          return new Response(null, { status: 204 });
+        },
+      } as never,
+    });
+
+  it("TC-RLM-007-201 every route of the SPEC-110 §23.1 table is served in its class; a route or method outside it is a 404 / 405 evaluated by public_read per-IP only", async () => {
+    const trs = createTestRateLimit();
+    const app = authApp(trs);
+    proxied.length = 0;
+    for (const [method, path, classId] of CANONICAL_AUTH_ALLOWLIST) {
+      trs.store.calls.length = 0;
+      const res = await app.request(
+        path,
+        {
+          method,
+          ...(method === "POST"
+            ? {
+                body: JSON.stringify({ email: `user-${path.length}-${method}@example.com` }),
+                headers: { "content-type": "application/json" },
+              }
+            : {}),
+        },
+        peer(),
+      );
+      expect(res.status, `${method} ${path}`).toBe(204);
+      const first = trs.store.calls[0];
+      expect(first?.mode).toBe("admit");
+      const expectedBurst = RATE_LIMIT_REGISTRY[classId].burst;
+      expect(first?.rules[0]?.limit, `${path} is evaluated as ${classId}`).toBe(expectedBurst);
+    }
+    expect(proxied).toHaveLength(15);
+    proxied.length = 0;
+    for (const [method, path] of [
+      ["GET", "/auth/sign-in/email"],
+      ["POST", "/auth/get-session"],
+      ["POST", "/auth/verify-email"],
+      ["POST", "/auth/sign-in/phone"],
+      ["GET", "/auth/callback/google"],
+      ["GET", "/auth/ok"],
+    ] as const) {
+      trs.store.calls.length = 0;
+      const res = await app.request(path, { method }, peer());
+      expect([404, 405], `${method} ${path}`).toContain(res.status);
+      expect(trs.store.calls).toHaveLength(1);
+      expect(trs.store.calls[0]?.rules.map((rule) => [rule.limit, rule.windowMs])).toEqual([
+        [RATE_LIMIT_REGISTRY.public_read.burst, 10_000],
+        [RATE_LIMIT_REGISTRY.public_read.sustained, 60_000],
+      ]);
+    }
+    expect(proxied).toEqual([]);
   });
 });
 

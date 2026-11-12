@@ -14,6 +14,8 @@ export type ApiEnvironment = {
     operationId: string | undefined;
     rateLimitClass: RouteClassId | undefined;
     clientIp: string | undefined;
+    /** SEC-ABU-029: set once the target's authorization check (owner relation / Capability) passed. */
+    authorizationConfirmed: boolean | undefined;
   };
 };
 

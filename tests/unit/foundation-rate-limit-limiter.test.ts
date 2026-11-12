@@ -34,9 +34,11 @@ const rulesOf = (calls: ReturnType<typeof createMemoryStore>["calls"]) =>
   }));
 
 describe("rule planning per stage (SEC-ABU-017, §68)", () => {
-  it("TC-RLM-004-102 each class evaluates exactly its SPEC-140 §68 rules in the specified stage", async () => {
+  it("TC-RLM-004-102 each class evaluates exactly its SPEC-140 §68 rules in the specified stage (Webhook global after the signature, resource rules in Stage 3)", async () => {
     type Plan = {
       pre?: number[][];
+      /** Stage 2 after a successful Webhook signature verification (SEC-ABU-030). */
+      webhook?: number[][];
       guard?: boolean;
       subject?: number[][];
       resource?: { values: Record<string, string>; rules: number[][] };
@@ -96,8 +98,8 @@ describe("rule planning per stage (SEC-ABU-017, §68)", () => {
           ],
         },
       },
-      stripe_webhook: { pre: [...burstSustained("stripe_webhook"), [3000, 60]] },
-      resend_webhook: { pre: [...burstSustained("resend_webhook"), [3000, 60]] },
+      stripe_webhook: { pre: burstSustained("stripe_webhook"), webhook: [[3000, 60]] },
+      resend_webhook: { pre: burstSustained("resend_webhook"), webhook: [[3000, 60]] },
     };
     for (const [classId, plan] of Object.entries(plans) as [RouteClassId, Plan][]) {
       const { store, limiter } = build();
@@ -123,9 +125,14 @@ describe("rule planning per stage (SEC-ABU-017, §68)", () => {
         plan.subject ? [{ mode: "admit", rules: plan.subject }] : [],
       );
       store.calls.length = 0;
+      await limiter.webhookVerified({ classId });
+      expect(rulesOf(store.calls), `${classId} verified Webhook`).toEqual(
+        plan.webhook ? [{ mode: "admit", rules: plan.webhook }] : [],
+      );
+      store.calls.length = 0;
       if (plan.resource) {
         await limiter.resource({ classId, values: plan.resource.values });
-        expect(rulesOf(store.calls), `${classId} resource`).toEqual([
+        expect(rulesOf(store.calls), `${classId} stage 3`).toEqual([
           { mode: "admit", rules: plan.resource.rules },
         ]);
       }

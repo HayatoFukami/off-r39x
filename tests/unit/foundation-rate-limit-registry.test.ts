@@ -3,9 +3,13 @@ import { resolve } from "node:path";
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
 import {
+  assertAuthAllowlist,
+  assertMountedAuthRoutes,
   assertMountedRoutesClassified,
+  CANONICAL_AUTH_ALLOWLIST,
   createRouteClassifier,
   findUnclassifiedRoutes,
+  ROUTES,
 } from "../../apps/api/src/api/routes.ts";
 import {
   assertRouteRegistry,
@@ -403,6 +407,96 @@ describe("Operation -> class assignment", () => {
         { method: "GET", path: "/x", operationId: null, rateLimitClass: "public_read" } as never,
       ]),
     ).toThrow();
+  });
+});
+
+describe("/auth/* allowlist equals SPEC-110 §23.1 (API-RLC-004, TST-RLM-007)", () => {
+  /** The 15 rows of the Canonical `/auth/*` allowlist table, read from the specification itself. */
+  const specTable = (): [string, string, string][] => {
+    const body = spec("110-api-specification.md");
+    const start = body.indexOf("**Canonical `/auth/*` allowlist:**");
+    expect(start).toBeGreaterThan(0);
+    const rows: [string, string, string][] = [];
+    for (const line of body.slice(start, start + 4000).split("\n")) {
+      const row = cells(line);
+      if (row.length === 4 && /^\d+$/.test(row[0] ?? ""))
+        rows.push([
+          (row[1] ?? "").replace(/`/g, ""),
+          (row[2] ?? "").replace(/`/g, ""),
+          (row[3] ?? "").replace(/`/g, ""),
+        ]);
+    }
+    return rows;
+  };
+  const implemented = () =>
+    ROUTES.filter((route) => route.path.startsWith("/auth/")).map((route) => ({
+      method: route.method,
+      path: route.path,
+      classId: route.rateLimitClass as string,
+    }));
+  const asKeys = (rows: readonly (readonly string[])[]) => rows.map((row) => row.join(" ")).sort();
+
+  it("TC-RLM-007-004 the implemented allowlist (method, path, class) is exactly the 15 routes of the SPEC-110 §23.1 table", () => {
+    const fromSpec = specTable();
+    expect(fromSpec).toHaveLength(15);
+    expect(asKeys(CANONICAL_AUTH_ALLOWLIST)).toEqual(asKeys(fromSpec));
+    expect(asKeys(implemented().map((r) => [r.method, r.path, r.classId]))).toEqual(
+      asKeys(fromSpec),
+    );
+    expect(() => assertAuthAllowlist(implemented(), fromSpec)).not.toThrow();
+    // No Google OAuth callback and no other route is admitted while UCR-110-002 is unresolved.
+    expect(implemented().every((route) => route.path.startsWith("/auth/"))).toBe(true);
+    // The §56.1 rows of the three /auth classes name the same routes as the table.
+    const text = spec("110-api-specification.md");
+    for (const classId of ["auth_session", "auth_callback", "auth_form_proxy"]) {
+      const row = text.split("\n").find((line) => line.startsWith(`| \`${classId}\` |`)) ?? "";
+      const named = [...row.matchAll(/`(?:GET |POST )?(\/auth\/[a-z/-]+)`/g)].map((m) => m[1]);
+      const expected = fromSpec.filter((r) => r[2] === classId).map((r) => r[1]);
+      for (const path of named) expect(expected, `${classId} ${path}`).toContain(path);
+    }
+  });
+
+  it("TC-RLM-007-005 an extra route, a missing route, a different class or a duplicate makes the startup check fail", () => {
+    const base = implemented();
+    expect(() => assertAuthAllowlist(base)).not.toThrow();
+    const extra = [
+      ...base,
+      { method: "POST", path: "/auth/sign-in/phone", classId: "auth_form_proxy" },
+    ];
+    expect(() => assertAuthAllowlist(extra)).toThrow("extra");
+    expect(() => assertAuthAllowlist(base.slice(1))).toThrow("missing");
+    const reclassed = base.map((r) =>
+      r.path === "/auth/verify-email" ? { ...r, classId: "auth_form_proxy" } : r,
+    );
+    expect(() => assertAuthAllowlist(reclassed)).toThrow();
+    const otherMethod = base.map((r) =>
+      r.path === "/auth/get-session" ? { ...r, method: "POST" } : r,
+    );
+    expect(() => assertAuthAllowlist(otherMethod)).toThrow();
+    expect(() => assertAuthAllowlist([...base, ...base.slice(0, 1)])).toThrow("duplicated");
+    // A Google OAuth callback path is not in the table, so it cannot be added on the quiet.
+    expect(() =>
+      assertAuthAllowlist([
+        ...base,
+        { method: "GET", path: "/auth/callback/google", classId: "auth_callback" },
+      ]),
+    ).toThrow("extra");
+  });
+
+  it("TC-RLM-007-006 the mounted /auth/* routes must equal the table when the proxy exists, and be absent when it does not", () => {
+    const mount = (extra: [string, string][] = [], without: string[] = []) => {
+      const app = new Hono();
+      app.use("/auth/*", async (_c, next) => next());
+      for (const [method, path] of CANONICAL_AUTH_ALLOWLIST)
+        if (!without.includes(path)) app.on([method, "OPTIONS"], path, (c) => c.body(null));
+      for (const [method, path] of extra) app.on([method], path, (c) => c.body(null));
+      return app.routes;
+    };
+    expect(() => assertMountedAuthRoutes(mount(), true)).not.toThrow();
+    expect(() => assertMountedAuthRoutes(mount([["POST", "/auth/sign-in/phone"]]), true)).toThrow();
+    expect(() => assertMountedAuthRoutes(mount([], ["/auth/token"]), true)).toThrow();
+    expect(() => assertMountedAuthRoutes(mount(), false)).toThrow();
+    expect(() => assertMountedAuthRoutes([], false)).not.toThrow();
   });
 });
 

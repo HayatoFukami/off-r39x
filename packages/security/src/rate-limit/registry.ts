@@ -11,10 +11,14 @@ export type RuleCategory = "burst" | "sustained" | "resource" | "global" | "guar
 export type RuleSubject = "ip" | "auth_subject" | "identifier" | "resource" | "global";
 /**
  * Evaluation phase (SPEC-140 SEC-ABU-017 / SPEC-110 §24.1).
- * pre_auth: stage 1, before token verification. subject: stage 2 after token verification.
- * resource: stage 2 after the resource/QR input was syntactically validated.
+ * pre_auth: stage 1, before authentication (token verification / Webhook signature verification).
+ * subject: stage 2 after token verification, before any DB access.
+ * webhook_verified: stage 2 after a successful Webhook signature verification, before the DB
+ *   (SEC-ABU-030: the Webhook global rule never counts an invalid signature).
+ * resource: stage 3 after the target's authorization check (owner relation / Role + Capability)
+ *   succeeded, before the Domain precondition (SEC-ABU-029).
  */
-export type RulePhase = "pre_auth" | "subject" | "resource";
+export type RulePhase = "pre_auth" | "subject" | "webhook_verified" | "resource";
 
 interface AdditionalRuleDefinition {
   readonly subject: RuleSubject;
@@ -142,11 +146,13 @@ export const RATE_LIMIT_REGISTRY = Object.freeze({
     },
     "auth_failure_guard_operator",
   ),
+  // SEC-ABU-030: before the signature check only the source IP burst / sustained rules apply; the
+  // global rule is evaluated after a successful signature verification (stage 2).
   stripe_webhook: route("ip", 100, 300, {
-    "stripe_webhook.global": additional("global", "pre_auth", "global", 3000, 60),
+    "stripe_webhook.global": additional("global", "webhook_verified", "global", 3000, 60),
   }),
   resend_webhook: route("ip", 100, 300, {
-    "resend_webhook.global": additional("global", "pre_auth", "global", 3000, 60),
+    "resend_webhook.global": additional("global", "webhook_verified", "global", 3000, 60),
   }),
   auth_failure_guard_attendee: guardClass(),
   auth_failure_guard_operator: guardClass(),
