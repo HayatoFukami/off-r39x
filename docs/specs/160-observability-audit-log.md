@@ -743,7 +743,7 @@ ratelimit.decision.completed
 | `class_id` | `SPEC-140` §68のClass ID（有限集合） |
 | `result` | 共通の `result` enum（§15。`SUCCESS\|REJECTED\|FAILED\|PENDING\|NOOP`）。`rejected` → `REJECTED`、`store_unavailable` → `FAILED`。`allowed` は本eventを出力しない |
 | `error_code` | `rejected` → `RATE_LIMIT_EXCEEDED`、`store_unavailable` → `TEMPORARY_UNAVAILABLE` |
-| `rule_category` | `burst` / `sustained` / `resource` / `global` / `guard`（`rejected`時の該当categoryのうち最初のもの） |
+| `rule_category` | `burst` / `sustained` / `resource` / `global` / `guard` / `concurrency`（`rejected`時の該当categoryのうち最初のもの。`concurrency` は `auth_form_proxy` のbody読取りslot上限による拒否で、`SPEC-140` `SEC-ABU-031`。storeを呼ばない） |
 | `operation_id` | `SPEC-110` のOperation ID（Operation IDを持たないrouteは省略） |
 | `retry_after_seconds` | `rejected`時のみ |
 

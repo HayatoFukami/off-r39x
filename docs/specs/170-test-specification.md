@@ -1141,7 +1141,7 @@ Test:
 
 **TST-RLM-004:** 次をAPI層のTest（fake storeを許可）で行う。
 
-- 評価順: 段階1（IP等）→ 認証（token検証またはWebhook署名検証）→ 段階2（subject、webhookのglobal）→ 認可確認（owner relation / Role + Capability）→ 段階3（resource / QR digest）が `SPEC-110` §24.1 の位置にある。段階1と段階2はDB accessの前、段階3は認可確認の後でDomain preconditionの前である。段階1 / 段階2の `429` / `503` の時点でEmail verified check以降へ進まず、段階3の `429` / `503` の時点でDomain preconditionとmutationへ進まない
+- 評価順: 段階1（IP等。`auth_form_proxy` はその後にbody読取りと段階1b）→ 認証（token検証またはWebhook署名検証。token検証に失敗した場合だけAuthentication-failure guardを評価する）→ 段階2（subject、webhookのglobal）→ 認可確認（owner relation / Role + Capability）→ 段階3（resource / QR digest）が `SPEC-110` §24.1 の位置にある。段階1と段階2はDB accessの前、段階3は認可確認の後でDomain preconditionの前である。段階1 / 段階2の `429` / `503` の時点でEmail verified check以降へ進まず、段階3の `429` / `503` の時点でDomain preconditionとmutationへ進まない
 - 段階2は、token検証とAuth Subject取得（DBなし）の後、Principal / Business Profile解決（DBあり）の前に評価される。段階2が `429` / `503` の場合、Principal解決のためのDB accessが1件も発生しない
 - 評価の独立性: 段階1でadmitされ段階2で拒否されたrequestは、段階1のruleのcounterを消費し、段階2のcounterは変化しない。段階2でadmitされ段階3で拒否されたrequestは、段階1・段階2のcounterを消費し、段階3のcounterは変化しない（`SEC-ABU-013`）
 - **共有resourceの枠は未認可の主体が消費できない**（`SEC-ABU-029`）: 有効なJWTを持つ一般利用者（Administratorでない主体）が `API-ADM-ROL-002` の `target_profile_ref` に特定profileを指定して繰り返しrequestしても（`403`）、`role_assignment` の対象profile枠は変化せず、正規のAdministratorの同一対象へのRole付与は `429` にならない。`high_risk_recovery` のtarget枠、`admin_mutation` のtarget resource枠、`goods_handoff` のGoods Item枠、`staff_checkin` のQR digest枠も、Staff / Admin Capabilityを持たない主体の `403` で変化しない。`qr_display` のTicket枠は、他人のTicket参照を指定した利用者の `404` / `403` で変化せず、所有者の枠を消費しない。Capabilityを持つ主体のrequestは段階3を消費し、上限+1で `429` になる。未認可の主体のrequestは、subjectとIPのruleでのみ上限が掛かる
@@ -1150,20 +1150,28 @@ Test:
 - health endpointとCORS preflightは対象外で、storeへ問い合わせない
 - 未一致pathと未対応methodは `public_read` のper-IP ruleだけで評価され、global ruleを消費しない
 - `429` と `503` のresponseにcounter key、該当rule、Email、Auth Subject、IPが含まれない
-- resource keyの評価は、認可された主体にとって、存在するresourceと存在しないresourceで同一結果になる（認可されない主体は段階3に到達しない）
+- **段階3の評価位置と結果を、次の別々のassertで検証する**（`SEC-ABU-029`）。(a) 認可確認（owner relation / Role + Capability）が `403` / `404` で終わったrequestは、段階3のcounterを変化させない。(b) 認可確認を通過した主体が未知のresource（例: 未知の `goods_item_ref`）を指定した場合、段階3はresourceの存在確認より前に評価・記録され、その後の `404` を返す。段階3のcounterは1件増えている。(c) 段階3を通過した後に手順8以降（Domain precondition）で `404` / `409` になったrequestも、段階3のcounterを消費したままである。(d) 同じcounter履歴（同数のadmit済みrequest）に揃えた2つのkey、すなわち存在するresourceのkeyと存在しないresourceのkeyでは、上限内は同一にadmitされ、上限+1は同一に `429` になる。異なる履歴のkey同士の結果は比較しない
+- **複数Itemのcart**（`SEC-ABU-029`、`API-RLC-006`）: 2件と50件のItemを含む `API-PUR-CART-001` で、後方のItemのresourceだけが上限（60/分）に達している場合、requestは `429` になり、**全てのresourceのcounterが変化しない**（先頭のItemのcounterも記録されない）。`Retry-After` は超過したresourceのうち最長である。全resourceに余裕がある場合は、全てのdistinct resourceのcounterが1件ずつ増え、quantityには依存しない。同一Itemの重複、Karaoke混入、50件超は `400` で、段階3のcounterを変化させない。先頭のItemだけを評価する実装、およびItemごとに別々に記録する実装はこのtestで失敗する
+- **identifier ruleが他IPの本人を妨害しない**（`SEC-ABU-024`）: 攻撃者のIP Aが、被害者のemailを指定した `auth_form_proxy` のPOSTを5回送って `429` になった後も、別のIP Bからの被害者本人の同じemailのPOST（ログイン、OTP、password reset）は `429` にならずProviderへ中継される。IP Aは同じemailでは `429` のままで、IP Aから別のemailを指定したPOSTはidentifier ruleでは拒否されない（per-IP ruleは別に評価される）。同一IP内の同じemailは同じ枠を共有する。identifierを取り出せないrequestはidentifier ruleだけが省略される
+- **IP上限超過中のslow bodyが読取りを占有しない**（`SEC-ABU-031`）: IPのper-IP ruleが超過している間、そのIPから本文を送信し切らないPOSTを並行に大量に送っても、bodyは読み取られず、body読取りのslotは消費されず、即座に `429` が返り接続が閉じる。IP上限内のIPでは、同時読取りがIPごとに3件、またはprocess全体で256件を超えるrequestは `429`（`Retry-After: 1`）になり、bodyを読まない。この拒否はrate limit storeを呼ばず、`rule_category=concurrency` の `rejected` として観測される。slotは応答完了・打切り・接続切断で必ず解放される。同一IPからの正規の同時ログイン（上限内）は拒否されない
+- **health endpointの検査コスト**（`SEC-ABU-018`、`INF-HLT-005`）: `/internal/health/ready` を連続して多数回requestしても、DB・Redis・外部serviceへのcallはrequest数に比例せず、背景のprobeの実行回数（最大30秒間隔、同時1件）だけである。最初のprobe完了前はReadyにならない。probeが90秒を超えて更新されなければReady=falseになる。responseは内部状態を含まない
+- **Goods Handoffのpreview**（`API-RLC-005`）: `API-STF-GDS-002` は `self_read` で評価され、`goods_handoff` のcounterを変化させない。同じ `goods_item_ref` を1分に10回以上previewした直後でも、`API-STF-GDS-001` のcompleteは `goods_handoff` のGoods Item枠（10回/分）に余裕があり `429` にならない
 - `/auth/*` の経路別class（`SEC-ABU-027`、`SEC-ABU-028`）: `GET /auth/get-session`、`GET /auth/token`、`POST /auth/sign-out` は `auth_session`、`GET /auth/verify-email`、`GET /auth/magic-link/verify` は `auth_callback`、それ以外の許可されたroute（`POST /auth/email-otp/verify-email` を含む）は `auth_form_proxy` で評価される。同一IPからの並行する正常なセッション参照が `auth_session` の上限内であれば `429` にならず、同一IPの `auth_form_proxy` の試行が上限に達しても、`auth_session` のrequestは影響を受けない。逆に `auth_session` の上限に達しても `auth_form_proxy` のcounterは変化しない
 - 認証完了GETの共有IP（`SEC-ABU-028`）: 同一IPから `auth_form_proxy` の試行を上限（10回/10秒）まで消費した後でも、`GET /auth/verify-email` と `GET /auth/magic-link/verify` の有効な確認リンクのrequestは `429` にならず、`auth_callback` の上限内で通る。`auth_callback` の上限に達しても `auth_form_proxy` と `auth_session` のcounterは変化せず、`auth_form_proxy` の消費も `auth_callback` のcounterを変化させない。`POST /auth/email-otp/verify-email` は `auth_callback` ではなく `auth_form_proxy` で評価される
 - login identifierの正規化（`SEC-ABU-024`）: 大文字小文字、前後の空白、Unicode NFKCで一致する全角半角が、同一のcounter keyに集約される。文字列でない値（欠落、`null`、数値、配列、object）、空、320文字超は取り出せなかったものとして扱われ、identifier ruleだけが省略される
-- `auth_form_proxy` のlogin identifierはJSON bodyの `email` から取り出され、上限（64 KiB・3秒）超過、JSON不正、`email` 欠落のときはidentifier ruleだけが省略され、per-IP ruleは常に評価される（`SEC-ABU-024`）
-- 段階1の `429` / `503` は、exactなWeb originに対してだけ `Access-Control-Allow-Origin` と `Access-Control-Expose-Headers: X-Request-Id, Retry-After` を返し、他のOriginやOriginなしにはCORS headerを付けない。`/api/v1/*` では `Access-Control-Allow-Credentials` を付けず、`/auth/*` ではexactなWeb originに対してだけ `Access-Control-Allow-Credentials: true` を付ける（`SEC-ABU-025`）
+- `auth_form_proxy` のlogin identifierはJSON bodyの `email` から取り出され、上限（64 KiB・3秒）超過、JSON不正、`email` 欠落のときはidentifier ruleだけが省略され、per-IP ruleは常に評価される（`SEC-ABU-024`）。per-IP ruleは**bodyの読取りより先**に評価され、identifier ruleはbody読取り後の段階1bで評価される。段階1bでidentifier ruleが拒否してもper-IPのcounterは消費されたままである（`SEC-ABU-013`）
+- 段階1（`auth_form_proxy` の段階1bとbody読取り上限を含む）の `429` / `503` は、exactなWeb originに対してだけ `Access-Control-Allow-Origin` と `Access-Control-Expose-Headers: X-Request-Id, Retry-After` を返し、他のOriginやOriginなしにはCORS headerを付けない。`/api/v1/*` では `Access-Control-Allow-Credentials` を付けず、`/auth/*` ではexactなWeb originに対してだけ `Access-Control-Allow-Credentials: true` を付ける（`SEC-ABU-025`）
 
 **TST-RLM-005:** Authentication-failure guardを次のとおりTestする。
 
 - token検証に失敗したrequestだけを数え、有効tokenのrequest、Email未検証、Authorization denial、Business Rule失敗は数えない
 - `Authorization` headerの欠落・形式不正、署名・期限・issuer等が無効なtokenは数え、認証基盤に到達できずtokenの有効性を判定できなかった場合は数えない（`SEC-ABU-020`）
-- 段階1で上限以上なら `429` を返し、token検証へ進まない
+- **共有IPの有効tokenがguardに巻き込まれない**（`SEC-ABU-021`）: 同一IPから無効tokenを `auth_failure_guard_operator` のlimitまで送ってguardを使い切った後でも、同じIPの正規のStaff / Administratorの有効なJWTによる `goods_handoff` / `admin_mutation` 等のrequestは `429` にならず、段階2へ進んで処理される。そのrequestはguardのcounterを変化させない。attendee向けguardでも同様である
+- guardは段階1で確認も記録もされない。token検証に失敗したrequestだけが、guardを1回の評価として評価する: limit内なら記録して `401`、limit+1回目の失敗は記録せず `429` になる。guardの状態に関係なく、有効tokenのrequestは検証の結果で処理される
+- guardの評価でstoreに到達できない場合は、失敗requestが `503` になる（`SEC-ABU-019`）
 - `auth_failure_guard_attendee` と `auth_failure_guard_operator` が独立して設定・評価される
-- 並行する失敗requestによるlimit超過（overrun）はguardに限って許容し、他のruleでは許容しない
+- 並行する失敗requestでも、guardは他のruleと同じくatomicで、limitを超えて記録しない（overrunを許容しない）
+- 未知の `kid` のtokenを大量に送っても、JWKS refreshはprocess単位でsingle-flight、30秒間隔を超えて起動せず、refresh中・間隔内のrequestは待たずに `503` となり、guardに数えない。cacheのkeyで検証できる有効tokenはrefreshの影響を受けない（`SPEC-150` `REL-AUTH-002`）
 
 **TST-RLM-006:** 設定をtable-drivenでTestする。`RATE_LIMIT_CONFIG` が、欠落・0・負数・非整数・parse不能・canonical ceiling超過・Class ID欠落のいずれかなら、staging / productionでReady=falseになり、暗黙fallbackしない。`TRUSTED_PROXY_HOPS` が未設定・負数・非整数ならReady=falseで、`0` はdirect peerを意味する有効値である。追加ruleの `window_seconds` がcanonical値と異なる場合（短縮も延長も）もReady=falseになる。例えば `auth_form_proxy.identifier`（5回/600秒）を `limit=5, window_seconds=1` にしても検証を通過しない。`limit` だけをceiling以下に下げる設定は通る。`RATE_LIMIT_HMAC_KEY` / version欠落でReady=falseになる。development / testではceiling以下の小さい値を設定できる。
 
@@ -1171,7 +1179,7 @@ Test:
 
 `/auth/*` の許可routeをTestする（`API-RLC-004`）。実装の許可リスト（method、path、Class）が `SPEC-110` §23.1の許可表（15経路）と完全に一致する。表にない経路を実装が持つ、表の経路が実装にない、またはClassが異なる場合は、startupとtestが失敗しReadyにならない。Operation IDを持たない経路が `auth_form_proxy` として暗黙に通らない。表にないmethod / pathは `405` / `404` となり、`public_read` のper-IP ruleだけで評価される。
 
-**TST-RLM-008:** Client IP導出をTestする。`TRUSTED_PROXY_HOPS` が `N` のとき、信頼するproxyがN段付与した部分だけからClient IPを導出し、Clientが偽装しうるforwarded headerの部分を採用しない。`0` ではforwarded headerを一切採用せずdirect peerを使用する（`SEC-API-024〜025`、`SEC-API-030`）。参照するheaderは `X-Forwarded-For` だけで、右から `N` 番目を採用する。`N=0`、header欠落、要素数が `N` 未満、または解釈できない要素のときはdirect peerを使用し、direct peerも得られない場合は `503 TEMPORARY_UNAVAILABLE` になる（`SEC-API-031`）。具体的なheader名と段数はRailway ingressの外部事実であり（`SPEC-180` §17.2 #1）、Testはfixtureで定義した合成headerだけを使用する。
+**TST-RLM-008:** Client IP導出をTestする。`TRUSTED_PROXY_HOPS` が `N` のとき、信頼するproxyがN段付与した部分だけからClient IPを導出し、Clientが偽装しうるforwarded headerの部分を採用しない。`0` ではforwarded headerを一切採用せずdirect peerを使用する（`SEC-API-024〜025`、`SEC-API-030`）。参照するheaderは `X-Forwarded-For` だけで、右から `N` 番目を採用する。`N=0`、header欠落、要素数が `N` 未満、または解釈できない要素のときはdirect peerを使用し、direct peerも得られない場合は `503 TEMPORARY_UNAVAILABLE` になる（`SEC-API-031`）。具体的なheader名と段数はRailway ingressの外部事実であり（`SPEC-180` §17.2 #1）、Testはfixtureで定義した合成headerだけを使用する。導出したClient IPは `SEC-API-032` で正規化される: 同じ/64に属するIPv6の複数addressは同じcounter keyになり、per-IP ruleをaddressの変更で回避できない。IPv4-mapped IPv6は対応するIPv4と同じkeyになる。異なる/64、およびIPv4は別のkeyになる。
 
 **TST-RLM-009:** rate limitのeventとmetricをTestする。`ratelimit.decision.completed` は `rejected` / `store_unavailable` のときに出力され、共通 `result` は `REJECTED` / `FAILED`、`error_code` は `RATE_LIMIT_EXCEEDED` / `TEMPORARY_UNAVAILABLE` になる。`allowed` はmetricのみである。`r39x_rate_limit_decisions_total` はlabelが `SPEC-160` §40 の許可集合に収まり、counter key・IP・subjectを含まない。`store_unavailable` はsampling dropされない。
 

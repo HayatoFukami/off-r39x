@@ -471,8 +471,9 @@ Railwayから`SIGTERM`を受けたprocessは次を実行する。
 | 3 | Railway Redisの実バージョン | staging | No（確認後にCI versionを同一majorへ合わせる） |
 | 4 | `maxmemory-policy noeviction` と `maxmemory` をRailway Redisで設定できること | staging | Yes |
 | 5 | 認証Provider（Neon Auth）がemailを同一と扱う範囲（大文字小文字、空白、Unicode正規化等）が、`SPEC-140` `SEC-ABU-024` の正規化と整合すること | staging | No（差分があれば正規化手順を拡張する） |
+| 6 | 認証Provider（Neon Auth）のprovider-side rate / bot protection（`SPEC-140` `SEC-ABU-005`）がProductionで有効化でき、同一アカウント（email）への多数のIPに分散した試行を抑止する強度を持つこと。application側はIPごとの同一identifierへの試行（5回/10分）とIP全体の試行を抑えるが、多数のIPに分散した試行の総量は抑えない（`SEC-ABU-024`） | staging | Yes（`SEC-ABU-005` の要件。有効化できない、または強度が不足する場合は、Production promotionの前に別の対策を `SPEC-140` のUCRとして定める） |
 
-**INF-RLS-008:** #1と#4が未確認のままProduction promotionしない。`TRUSTED_PROXY_HOPS` の誤設定は、全利用者のClient IPを1つに集約し、IP単位のruleで全員が拒否される（`SEC-API-030`）。
+**INF-RLS-008:** #1、#4、#6が未確認のままProduction promotionしない。`TRUSTED_PROXY_HOPS` の誤設定は、全利用者のClient IPを1つに集約し、IP単位のruleで全員が拒否される（`SEC-API-030`）。
 
 ---
 
@@ -990,7 +991,9 @@ Reconciliation Worker additionally:
 
 **INF-HLT-003:** readinessはStripe / Resendへlive network requestを必須にしない。Provider outageはdependency degradationとして扱いprocessをReadyのまま維持し、mutation自体は上流Reliability / Security ruleで失敗またはreconcileする。
 
-**INF-HLT-004:** rate limit storeはProviderではなくSecurity Controlの一部である。readinessはrate limit storeへの接続とscript実行を確認し、storeに到達できない、またはconfigurationが不正な場合はReady=falseとする（`INF-HLT-002`）。新しいdeploymentはstore接続を確認できるまでactiveにならない。実行中のstore障害時は `SPEC-150` §58.1 に従い `503` でFail Closedとし、liveness（`INF-HLT-001`）はstoreを判定に含めない。APIはreadinessと同じstore確認（接続とscript実行）を、request処理とは独立に一定間隔（最大30秒）で実行し、結果をmetric `r39x_rate_limit_store_ready`（`SPEC-160` §42）として記録する。これにより、requestが少ない時間帯のstore到達不能も `OBS-ALT-042` で検知できる。
+**INF-HLT-004:** rate limit storeはProviderではなくSecurity Controlの一部である。readinessはrate limit storeへの接続とscript実行を確認し、storeに到達できない、またはconfigurationが不正な場合はReady=falseとする（`INF-HLT-002`）。新しいdeploymentはstore接続を確認できるまでactiveにならない。実行中のstore障害時は `SPEC-150` §58.1 に従い `503` でFail Closedとし、liveness（`INF-HLT-001`）はstoreを判定に含めない。APIはstore確認（接続とscript実行）を、request処理とは独立した背景のprobe（`INF-HLT-005`）が一定間隔（最大30秒）で実行し、結果をmetric `r39x_rate_limit_store_ready`（`SPEC-160` §42）として記録する。これにより、requestが少ない時間帯のstore到達不能も `OBS-ALT-042` で検知できる。
+
+**INF-HLT-005:** `/internal/health/ready` は、requestごとにDB・Redis・外部serviceを呼ばない。APIは本節のreadiness検査（Commonの1〜10とAPI additionally）を、requestとは独立した背景のprobeが最大30秒間隔で、process内に同時に1件だけ実行し、結果をprocess内のreadiness snapshotとして保持する。`/internal/health/ready` はsnapshotだけを返す。成功時は `200 {"status":"ok"}`、失敗時は内部状態を含まない `503` とする。processの起動直後で最初のprobeが完了するまではReadyにしない。最後に成功したprobeの完了から90秒を超えてsnapshotが更新されない場合は、probe自体の停止とみなしてReady=falseにする（`INF-HLT-002`）。外部から `/internal/health/ready` を連打しても、DB / Redisへの検査は増えない（`SPEC-140` `SEC-ABU-018`）。Railway deploy healthcheckのtimeout（§41、180秒）は、最初のprobeの完了より十分長い。`r39x_rate_limit_store_ready` は、このsnapshotのrate limit store項目から導出する（`INF-HLT-004`）。
 
 ## 41. Railway deploy healthcheck
 
