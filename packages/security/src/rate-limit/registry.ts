@@ -78,7 +78,7 @@ export const RATE_LIMIT_REGISTRY = Object.freeze({
   public_read: route("ip", 20, 120, {
     "public_read.global": additional("global", "pre_auth", "global", 10000, 60),
   }),
-  auth_form_proxy: route("ip", 5, 20, {
+  auth_form_proxy: route("ip", 10, 40, {
     "auth_form_proxy.identifier": additional("identifier", "pre_auth", "resource", 5, 600),
   }),
   // SEC-ABU-027: session lookups / sign-out of the `/auth/*` proxy. Per-IP only (stage 1), no

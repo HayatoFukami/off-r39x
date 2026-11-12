@@ -167,7 +167,7 @@ function authApp() {
 }
 
 describe("auth_session against the real Redis (SEC-ABU-027, TST-RLM-002 / 004)", () => {
-  it("TC-RLM-004-233 100 concurrent get-session calls from one IP are all admitted (auth_form_proxy would stop at 5) and the 101st is a 429", async () => {
+  it("TC-RLM-004-233 100 concurrent get-session calls from one IP are all admitted (auth_form_proxy would stop at 10) and the 101st is a 429", async () => {
     const { call } = authApp();
     const address = ip(90);
     const first = await Promise.all(
@@ -189,7 +189,7 @@ describe("auth_session against the real Redis (SEC-ABU-027, TST-RLM-002 / 004)",
       expect((await call("GET", "/auth/get-session", address)).status).toBe(200);
     expect(await count("auth_session.burst", address)).toBe(3);
     expect(await count("auth_session.sustained", address)).toBe(3);
-    // Session lookups left the form counters untouched (the form class would have rejected the 6th).
+    // Session lookups left the form counters untouched (the form class would have rejected the 11th).
     expect(await count("auth_form_proxy.burst", address)).toBe(0);
     for (let i = 0; i < 2; i++)
       expect((await call("POST", "/auth/sign-in/email", address)).status).toBe(200);
@@ -199,7 +199,7 @@ describe("auth_session against the real Redis (SEC-ABU-027, TST-RLM-002 / 004)",
     expect(await count("auth_session.burst", address)).toBe(3);
     expect(await count("auth_session.sustained", address)).toBe(3);
     // Exhausting the form burst does not block session lookups from the same IP.
-    for (let i = 0; i < 4; i++) await call("POST", "/auth/sign-in/email", address);
+    for (let i = 0; i < 8; i++) await call("POST", "/auth/sign-in/email", address);
     expect((await call("POST", "/auth/sign-in/email", address)).status).toBe(429);
     expect((await call("GET", "/auth/get-session", address)).status).toBe(200);
     expect((await call("POST", "/auth/sign-out", address)).status).toBe(200);
@@ -213,10 +213,10 @@ describe("auth_session against the real Redis (SEC-ABU-027, TST-RLM-002 / 004)",
 });
 
 describe("auth_callback against the real Redis (SEC-ABU-028, TST-RLM-002 / 004)", () => {
-  it("TC-RLM-004-236 after auth_form_proxy is used up for an IP (5 per 10 s), both email-link GETs are still admitted and leave the other classes' counters unchanged", async () => {
+  it("TC-RLM-004-236 after auth_form_proxy is used up for an IP (10 per 10 s), both email-link GETs are still admitted and leave the other classes' counters unchanged", async () => {
     const { call, count } = authApp();
     const address = ip(92);
-    for (let i = 0; i < 5; i++)
+    for (let i = 0; i < 10; i++)
       expect((await call("POST", "/auth/sign-in/email", address)).status).toBe(200);
     expect((await call("POST", "/auth/sign-in/email", address)).status).toBe(429);
     const formBefore = await count("auth_form_proxy.burst", address);

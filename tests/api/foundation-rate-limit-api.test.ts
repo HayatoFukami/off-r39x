@@ -560,6 +560,41 @@ describe("auth_session and auth_form_proxy routing (SEC-ABU-027, TST-RLM-004)", 
       [1, 600_000],
     ]);
   });
+  it("TC-RLM-004-238 auth_form_proxy at its canonical ceiling: 10 attempts per 10 s from one IP are admitted, the 11th is a 429; the rules are 10/10 s, 40/60 s and 5 per identifier per 10 min", async () => {
+    const trs = createTestRateLimit();
+    const proxy = createAuthProxy(
+      {
+        baseUrl: "https://neon.example.test/auth",
+        publicAuthOrigin: "https://api.example.test",
+        webOrigin: WEB,
+      },
+      async () => Response.json({ ok: true }),
+    );
+    const app = createApp({
+      webOrigin: WEB,
+      ready: async () => true,
+      authProxy: proxy,
+      rateLimit: trs.rateLimit,
+    });
+    const attempt = (n: number) =>
+      app.request(
+        new Request("https://api.example.test/auth/sign-in/email", {
+          method: "POST",
+          headers: { Origin: WEB, "Content-Type": "application/json" },
+          body: JSON.stringify({ email: `shared-${n}@example.test` }),
+        }),
+        undefined,
+        peer("203.0.113.140"),
+      );
+    for (let n = 1; n <= 10; n++) expect((await attempt(n)).status, `attempt ${n}`).toBe(200);
+    expect((await attempt(11)).status).toBe(429);
+    expect((trs.store.calls[0]?.rules ?? []).map((rule) => [rule.limit, rule.windowMs])).toEqual([
+      [10, 10_000],
+      [40, 60_000],
+      [5, 600_000],
+    ]);
+  });
+
   it("TC-RLM-004-235 GET /auth/verify-email and GET /auth/magic-link/verify are auth_callback (per-IP 30/10 s and 120/60 s, no identifier rule); the OTP POST stays auth_form_proxy", async () => {
     for (const [path, ip] of [
       ["/auth/verify-email", "203.0.113.130"],
@@ -610,7 +645,7 @@ describe("auth_session and auth_form_proxy routing (SEC-ABU-027, TST-RLM-004)", 
     let responseStatus = 200;
     for (let i = 0; i < 101 && responseStatus === 200; i++)
       responseStatus = (await send(app, "GET", "/auth/get-session", ip)).status;
-    // The 101st request in the burst window is the first rejection (auth_form_proxy would stop at 5).
+    // The 101st request in the burst window is the first rejection (auth_form_proxy would stop at 10).
     expect(responseStatus).toBe(429);
     const rejected = await send(app, "GET", "/auth/get-session", ip);
     expect(rejected.status).toBe(429);

@@ -20543,7 +20543,7 @@
       "fault_points": [],
       "expected_http": [200, 429],
       "expected_domain_postconditions": [
-        "100 concurrent get-session calls from one IP are all admitted (auth_form_proxy would stop at 5) and the 101st is a 429"
+        "100 concurrent get-session calls from one IP are all admitted (auth_form_proxy would stop at 10) and the 101st is a 429"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -20618,7 +20618,7 @@
       "fault_points": [],
       "expected_http": [200, 429],
       "expected_domain_postconditions": [
-        "after auth_form_proxy is used up for an IP (5 per 10 s), both email-link GETs are still admitted and leave the other classes' counters unchanged"
+        "after auth_form_proxy is used up for an IP (10 per 10 s), both email-link GETs are still admitted and leave the other classes' counters unchanged"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -20648,6 +20648,35 @@
       "expected_http": [200, 429],
       "expected_domain_postconditions": [
         "auth_callback stops at 30 per 10 s without changing the auth_form_proxy or auth_session counters, and form attempts do not change the callback counters"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-004-238",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": [
+        "TST-RLM-004",
+        "SEC-ABU-023",
+        "SEC-ABU-010",
+        "SEC-ABU-024",
+        "SEC-ABU-015"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [200, 429],
+      "expected_domain_postconditions": [
+        "auth_form_proxy at its canonical ceiling: 10 attempts per 10 s from one IP are admitted, the 11th is a 429; the rules are 10/10 s, 40/60 s and 5 per identifier per 10 min"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],

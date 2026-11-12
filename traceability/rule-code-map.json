@@ -3933,7 +3933,8 @@
         "TC-RLM-006-102",
         "TC-RLM-006-107",
         "TC-RLM-006-108",
-        "TC-RLM-006-109"
+        "TC-RLM-006-109",
+        "TC-RLM-004-238"
       ],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
@@ -3998,7 +3999,8 @@
         "TC-RLM-004-217",
         "TC-RLM-004-226",
         "TC-RLM-004-231",
-        "TC-RLM-004-232"
+        "TC-RLM-004-232",
+        "TC-RLM-004-238"
       ],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
@@ -4114,7 +4116,8 @@
         "TC-RLM-004-234",
         "TC-RLM-004-235",
         "TC-RLM-004-236",
-        "TC-RLM-004-237"
+        "TC-RLM-004-237",
+        "TC-RLM-004-238"
       ],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
@@ -4376,7 +4379,8 @@
         "TC-RLM-004-228",
         "TC-RLM-004-231",
         "TC-RLM-004-232",
-        "TC-RLM-004-235"
+        "TC-RLM-004-235",
+        "TC-RLM-004-238"
       ],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
