@@ -2357,3 +2357,16 @@ retry count / backoff / queue / operator RunbookはSPEC-150。本書§48.5はSPE
 ### UCR-RLM-IMPL-006 — INCORPORATED
 
 `UCR-140-003` の実装で、段階1の `429` / `503` がCORS処理より前に返るため、Browserが `Retry-After` を読めない問題が見つかった。`SPEC-140` が `SEC-ABU-025`（v2.4.0）で規則を定め、本書は §21 からそれを参照する。API Operation、Capability、状態は追加・変更しない。
+
+### UCR-110-002 — PROPOSED
+
+- **Status:** `PROPOSED`（`SPEC-110` の本文には未反映。本記録は実装契約ではない。Canonical Ownerが本文へ取り込むまで、実装は新しいroute・Class割当を追加しない）
+- 対象: SPEC-110 §23.1（`/auth/*` proxyの限定allowlist）と §56.1（rate limit class割当）。`SPEC-140` §68 / `SEC-ABU-027` / `SEC-ABU-028` に関連する。
+- 現在の仕様: §23.1 は `/auth/*` を「採用SDKと4認証方式に必要なProvider APIへallowlist」としているが、公開するmethod / pathの一覧は本書にない。§56.1 は `GET /auth/get-session`、`GET /auth/token`、`POST /auth/sign-out`（`auth_session`）と `GET /auth/verify-email`、`GET /auth/magic-link/verify`（`auth_callback`）を個別に割り当て、それ以外を「上記以外の許可されたroute」（`auth_form_proxy`）とするが、「許可されたroute」の集合の正は実装の `AUTH_ROUTES` だけである。また、Google providerの登録callbackは「Neonが指定する正規Auth callback」とされるが、そのcallbackがHonoの `/auth/*` を経由するか、経由する場合のmethod・path・Classは本書にも `SPEC-140` にも定義がない。allowlistにないpathは `public_read` classで評価される（`SEC-ABU-018`）。
+- 要求する変更:
+  1. Neon AuthのGoogle OAuth callbackがHonoの `/auth/*` を経由するかを、外部事実として確認する（`SPEC-180` §17.2 に確認項目を追加する。本書は結果を捏造しない）。
+  2. `SPEC-110` に、許可する `/auth/*` routeの一覧（method、path、rate limit class）を表として定義し、実装の `AUTH_ROUTES` をその派生にする。一覧にないpathは404とする。
+  3. OAuth callbackが経由する場合は、メールのリンクの認証完了GETと同じ理由（共有IPの多数の利用者が同時に認証を完了する。tokenではなくProviderが検証するstateで保護される）で `auth_callback` に割り当てる案を採る。経由しない場合は、「Hono経由ではなく、本書のrate limitの対象外である」ことを本書に明記する。
+- 理由: callbackが定義のないpathになる、または `auth_form_proxy` / `public_read` の低いIP上限を共有すると、共有NATの会場Wi-Fiで来場者がGoogleログインを完了できなくなる。また、許可routeの一覧が仕様にないと、routeの追加・削除がClass割当と対応づけて検証されない（`API-RLC-001`）。
+- 変更しない場合の影響: Googleログインの完了が共有IPの上限に阻まれる、または実装がallowlistを独自に拡張して仕様と乖離する。リリースへの影響は、Googleログインを提供する場合に、外部事実の確認（上記1）が済むまで当該経路の本番公開を判断できない。
+- 影響を受ける可能性がある仕様書: SPEC-140, SPEC-170, SPEC-180
