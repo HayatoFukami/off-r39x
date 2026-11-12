@@ -990,7 +990,7 @@ Reconciliation Worker additionally:
 
 **INF-HLT-003:** readinessはStripe / Resendへlive network requestを必須にしない。Provider outageはdependency degradationとして扱いprocessをReadyのまま維持し、mutation自体は上流Reliability / Security ruleで失敗またはreconcileする。
 
-**INF-HLT-004:** rate limit storeはProviderではなくSecurity Controlの一部である。readinessはrate limit storeへの接続とscript実行を確認し、storeに到達できない、またはconfigurationが不正な場合はReady=falseとする（`INF-HLT-002`）。新しいdeploymentはstore接続を確認できるまでactiveにならない。実行中のstore障害時は `SPEC-150` §58.1 に従い `503` でFail Closedとし、liveness（`INF-HLT-001`）はstoreを判定に含めない。
+**INF-HLT-004:** rate limit storeはProviderではなくSecurity Controlの一部である。readinessはrate limit storeへの接続とscript実行を確認し、storeに到達できない、またはconfigurationが不正な場合はReady=falseとする（`INF-HLT-002`）。新しいdeploymentはstore接続を確認できるまでactiveにならない。実行中のstore障害時は `SPEC-150` §58.1 に従い `503` でFail Closedとし、liveness（`INF-HLT-001`）はstoreを判定に含めない。APIはreadinessと同じstore確認（接続とscript実行）を、request処理とは独立に一定間隔（最大30秒）で実行し、結果をmetric `r39x_rate_limit_store_ready`（`SPEC-160` §42）として記録する。これにより、requestが少ない時間帯のstore到達不能も `OBS-ALT-042` で検知できる。
 
 ## 41. Railway deploy healthcheck
 

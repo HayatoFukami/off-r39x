@@ -1141,14 +1141,16 @@ Test:
 
 **TST-RLM-004:** 次をAPI層のTest（fake storeを許可）で行う。
 
-- 評価順: 段階1（IP等）→ token検証 → 段階2（subject / resource）が `SPEC-110` §24.1 の位置にあり、いずれもDB accessの前である。`429` / `503` の時点でEmail verified check以降へ進まない
+- 評価順: 段階1（IP等）→ 認証（token検証またはWebhook署名検証）→ 段階2（subject、webhookのglobal）→ 認可確認（owner relation / Role + Capability）→ 段階3（resource / QR digest）が `SPEC-110` §24.1 の位置にある。段階1と段階2はDB accessの前、段階3は認可確認の後でDomain preconditionの前である。段階1 / 段階2の `429` / `503` の時点でEmail verified check以降へ進まず、段階3の `429` / `503` の時点でDomain preconditionとmutationへ進まない
 - 段階2は、token検証とAuth Subject取得（DBなし）の後、Principal / Business Profile解決（DBあり）の前に評価される。段階2が `429` / `503` の場合、Principal解決のためのDB accessが1件も発生しない
-- 評価の独立性: 段階1でadmitされ段階2で拒否されたrequestは、段階1のruleのcounterを消費し、段階2のcounterは変化しない（`SEC-ABU-013`）
-- `self_read` と `staff_checkin` で、段階1に評価されるのはIP ruleだけ、段階2に評価されるのはsubjectのburst / sustained（と `staff_checkin` のQR digest）だけであり、評価されるruleとその数が `SEC-ABU-026` の表どおりに固定される
+- 評価の独立性: 段階1でadmitされ段階2で拒否されたrequestは、段階1のruleのcounterを消費し、段階2のcounterは変化しない。段階2でadmitされ段階3で拒否されたrequestは、段階1・段階2のcounterを消費し、段階3のcounterは変化しない（`SEC-ABU-013`）
+- **共有resourceの枠は未認可の主体が消費できない**（`SEC-ABU-029`）: 有効なJWTを持つ一般利用者（Administratorでない主体）が `API-ADM-ROL-002` の `target_profile_ref` に特定profileを指定して繰り返しrequestしても（`403`）、`role_assignment` の対象profile枠は変化せず、正規のAdministratorの同一対象へのRole付与は `429` にならない。`high_risk_recovery` のtarget枠、`admin_mutation` のtarget resource枠、`goods_handoff` のGoods Item枠、`staff_checkin` のQR digest枠も、Staff / Admin Capabilityを持たない主体の `403` で変化しない。`qr_display` のTicket枠は、他人のTicket参照を指定した利用者の `404` / `403` で変化せず、所有者の枠を消費しない。Capabilityを持つ主体のrequestは段階3を消費し、上限+1で `429` になる。未認可の主体のrequestは、subjectとIPのruleでのみ上限が掛かる
+- **無効署名のWebhookがglobal枠を消費しない**（`SEC-ABU-030`）: 無効署名のrequestを複数のsource IPから各IPの上限内で大量に送った後も、`stripe_webhook` / `resend_webhook` のglobal counterは変化せず、署名が正しい正規のWebhookは `429` にならず処理される。署名検証が成功したrequestは、global ruleを消費し、3,000/分の+1で `429`（`Retry-After`付き）となる。無効署名のrequestはDBへ到達しない
+- `self_read` と `staff_checkin` で、段階1に評価されるのはIP ruleだけ、段階2に評価されるのはsubjectのburst / sustainedだけ、段階3に評価されるのは `staff_checkin` のQR digestだけであり、評価されるruleとその数が `SEC-ABU-026` の表どおりに固定される
 - health endpointとCORS preflightは対象外で、storeへ問い合わせない
 - 未一致pathと未対応methodは `public_read` のper-IP ruleだけで評価され、global ruleを消費しない
 - `429` と `503` のresponseにcounter key、該当rule、Email、Auth Subject、IPが含まれない
-- resource keyの評価は、存在するresourceと存在しないresourceで同一結果になる
+- resource keyの評価は、認可された主体にとって、存在するresourceと存在しないresourceで同一結果になる（認可されない主体は段階3に到達しない）
 - `/auth/*` の経路別class（`SEC-ABU-027`、`SEC-ABU-028`）: `GET /auth/get-session`、`GET /auth/token`、`POST /auth/sign-out` は `auth_session`、`GET /auth/verify-email`、`GET /auth/magic-link/verify` は `auth_callback`、それ以外の許可されたroute（`POST /auth/email-otp/verify-email` を含む）は `auth_form_proxy` で評価される。同一IPからの並行する正常なセッション参照が `auth_session` の上限内であれば `429` にならず、同一IPの `auth_form_proxy` の試行が上限に達しても、`auth_session` のrequestは影響を受けない。逆に `auth_session` の上限に達しても `auth_form_proxy` のcounterは変化しない
 - 認証完了GETの共有IP（`SEC-ABU-028`）: 同一IPから `auth_form_proxy` の試行を上限（10回/10秒）まで消費した後でも、`GET /auth/verify-email` と `GET /auth/magic-link/verify` の有効な確認リンクのrequestは `429` にならず、`auth_callback` の上限内で通る。`auth_callback` の上限に達しても `auth_form_proxy` と `auth_session` のcounterは変化せず、`auth_form_proxy` の消費も `auth_callback` のcounterを変化させない。`POST /auth/email-otp/verify-email` は `auth_callback` ではなく `auth_form_proxy` で評価される
 - login identifierの正規化（`SEC-ABU-024`）: 大文字小文字、前後の空白、Unicode NFKCで一致する全角半角が、同一のcounter keyに集約される。文字列でない値（欠落、`null`、数値、配列、object）、空、320文字超は取り出せなかったものとして扱われ、identifier ruleだけが省略される
@@ -1166,6 +1168,8 @@ Test:
 **TST-RLM-006:** 設定をtable-drivenでTestする。`RATE_LIMIT_CONFIG` が、欠落・0・負数・非整数・parse不能・canonical ceiling超過・Class ID欠落のいずれかなら、staging / productionでReady=falseになり、暗黙fallbackしない。`TRUSTED_PROXY_HOPS` が未設定・負数・非整数ならReady=falseで、`0` はdirect peerを意味する有効値である。追加ruleの `window_seconds` がcanonical値と異なる場合（短縮も延長も）もReady=falseになる。例えば `auth_form_proxy.identifier`（5回/600秒）を `limit=5, window_seconds=1` にしても検証を通過しない。`limit` だけをceiling以下に下げる設定は通る。`RATE_LIMIT_HMAC_KEY` / version欠落でReady=falseになる。development / testではceiling以下の小さい値を設定できる。
 
 **TST-RLM-007:** `SPEC-110` §56.1 の割当をTestする。全canonical Operation IDがexactly 1つのClass IDに属し、割当表にないOperation IDをrouteとして登録するとstartupおよびtestで検出される。割当表のClass ID（Operation用の15個。`auth_session`、`auth_callback`、`auth_form_proxy` を含む）が、`SPEC-140` §68のClass ID集合から `auth_failure_guard_attendee` / `auth_failure_guard_operator` を除いた集合と一致する。guard 2種は割当表のclassではなく、§68.1の対象class（`purchase_checkout`、`qr_display`、`profile_mutation`、`goods_handoff`、`admin_mutation`、`role_assignment`、`high_risk_recovery`）に付随するため、割当表との一致とは別に、§68にguard 2種のClass IDが存在することと、各guardの適用先が§68.1の表のとおりであることをTestする（`TST-RLM-005`）。
+
+`/auth/*` の許可routeをTestする（`API-RLC-004`）。実装の許可リスト（method、path、Class）が `SPEC-110` §23.1の許可表（15経路）と完全に一致する。表にない経路を実装が持つ、表の経路が実装にない、またはClassが異なる場合は、startupとtestが失敗しReadyにならない。Operation IDを持たない経路が `auth_form_proxy` として暗黙に通らない。表にないmethod / pathは `405` / `404` となり、`public_read` のper-IP ruleだけで評価される。
 
 **TST-RLM-008:** Client IP導出をTestする。`TRUSTED_PROXY_HOPS` が `N` のとき、信頼するproxyがN段付与した部分だけからClient IPを導出し、Clientが偽装しうるforwarded headerの部分を採用しない。`0` ではforwarded headerを一切採用せずdirect peerを使用する（`SEC-API-024〜025`、`SEC-API-030`）。参照するheaderは `X-Forwarded-For` だけで、右から `N` 番目を採用する。`N=0`、header欠落、要素数が `N` 未満、または解釈できない要素のときはdirect peerを使用し、direct peerも得られない場合は `503 TEMPORARY_UNAVAILABLE` になる（`SEC-API-031`）。具体的なheader名と段数はRailway ingressの外部事実であり（`SPEC-180` §17.2 #1）、Testはfixtureで定義した合成headerだけを使用する。
 
@@ -1454,7 +1458,7 @@ recovery_execution_id
 
 ## 59. Alert evaluation
 
-`OBS-ALT-001〜037` および `OBS-ALT-041` の全ruleをsynthetic time series / event sequenceでtable-driven Testする。次の表はTest oracleとして `SPEC-160` のCanonical条件をmirrorするものであり、値のCanonical Ownerは `SPEC-160` のままである。
+`OBS-ALT-001〜037` および `OBS-ALT-041〜042` の全ruleをsynthetic time series / event sequenceでtable-driven Testする。次の表はTest oracleとして `SPEC-160` のCanonical条件をmirrorするものであり、値のCanonical Ownerは `SPEC-160` のままである。
 
 | Alert | Synthetic oracle | Window / minimum | Severity |
 |---|---|---|---|
@@ -1495,7 +1499,8 @@ recovery_execution_id
 | `OBS-ALT-035` | required Audit insert failure | 1 event | CRITICAL |
 | `OBS-ALT-036` | log/metric export failures >=10 | 10m | MEDIUM |
 | `OBS-ALT-037` | alert delivery failure >=1 | 1 event | HIGH |
-| `OBS-ALT-041` | rate limit store unavailable decisions >=5 | 1m | HIGH Security |
+| `OBS-ALT-041` | rate limit store unavailable decisions >=1（最低request件数なし） | 1m | HIGH Security |
+| `OBS-ALT-042` | `r39x_rate_limit_store_ready` = 0（request量に依存しない独立probe） | 2 consecutive 1m evaluations | CRITICAL Security |
 
 各Alert Testは次を含む。
 
@@ -1509,6 +1514,7 @@ recovery_execution_id
 - cooldown
 - resolve after one full false window
 - severity escalation bypass 1回
+- `OBS-ALT-041` / `OBS-ALT-042`（`OBS-ALT-043`）: 毎分1〜4件のrequestが全件 `store_unavailable`（`503`）の入力でも `OBS-ALT-041` が1回通知され、request件数が0件でも `r39x_rate_limit_store_ready` が2回連続の1分評価で0なら `OBS-ALT-042` が通知される。`OBS-ALT-014`（security config不備）はstore到達不能で発火しない。1件ごとのrequestでは通知が重複しない（dedupe / cooldown）
 - staging/testがProduction pageしない
 
 Cooldown:
@@ -1889,7 +1895,7 @@ Generated type declarations、migration SQL、pure config manifestはline covera
 - `SEC-*`: executable/configurable controlを100% Test manifestへmap。
 - `REL-*`: executable retry/timeout/recovery ruleを100% Test manifestへmap。
 - `OBS-*`: required event/schema/metric/alert/audit/sampling ruleを100% manifestへmap。
-- `OBS-ALT-001〜037`, `OBS-ALT-041`: 100% synthetic evaluator Test。
+- `OBS-ALT-001〜037`, `OBS-ALT-041〜042`: 100% synthetic evaluator Test。
 
 **TST-COV-002:** Upstream ruleが「documentation-only / external fact」等で直接executeできない場合もmanifestから除外せず、`verification_method=document_review|config_validation|provider_contract`を明示する。
 
@@ -1974,7 +1980,7 @@ SPEC-170に準拠したTest implementationは、少なくとも次をすべて�
 29. raw QR / token / Secret / full Email / SQL bindをTest artifactへ不要に残さない。
 30. metric cardinality allowlist / forbidden labelsをTestする。
 31. Gauge query failureをzeroへ偽装しない。
-32. `OBS-ALT-001〜037` および `OBS-ALT-041` のthreshold / window / minimum / dedupe / cooldownをsynthetic inputでTestする。
+32. `OBS-ALT-001〜037` および `OBS-ALT-041〜042` のthreshold / window / minimum / dedupe / cooldownをsynthetic inputでTestする。
 33. critical observability classがsampling dropされない。
 34. normal read INFOのdeterministic 5% samplingをTestする。
 35. Production DEBUG default off / emergency 60分・10%をconfig Testできる。
@@ -2013,7 +2019,7 @@ SPEC-170に準拠したTest implementationは、少なくとも次をすべて�
 - `UCR-150-002`: `INCORPORATED`（`SPEC-130 §41.5` 等のwiring、`SPEC-110 §48.5` command）
 - `UCR-150-003`: `INCORPORATED`（`SPEC-150` `REL-DB-001` / `REL-DB-011` / §11の`55P03`行、§24 / §49 / §77のTest）
 - `UCR-140-002`: `INCORPORATED`（`SPEC-110` §21の405 / 415、`SPEC-140` `SEC-API-022`、§26のTest）
-- `UCR-140-003`: `INCORPORATED`（`SPEC-140` Part XIII / `SEC-API-030`、`SPEC-110` §21 / §24.1 / §56.1、`SPEC-150` §58.1、`SPEC-160` §24.1 / §42 / `OBS-ALT-041`、`SPEC-180` §17.1〜§17.2 / §28.1〜§28.2、§47.1のTest）
+- `UCR-140-003`: `INCORPORATED`（`SPEC-140` Part XIII / `SEC-API-030`、`SPEC-110` §21 / §24.1 / §56.1、`SPEC-150` §58.1、`SPEC-160` §24.1 / §42 / `OBS-ALT-041〜042`、`SPEC-180` §17.1〜§17.2 / §28.1〜§28.2、§47.1のTest）
 - `UCR-170-001`: `INCORPORATED`（`SPEC-110 §41 / §46〜§48` のOperation ID completeness gap解消）
 
 Canonical化済みoperationは §27.1／§27.2 のoperation-family Test対象とし、上記既知UCRのうち `UCR-130-005` のみ未反映として期待値を先取りしない。反映済みoperationへTest Caseを追加し、存在しないoperationを発明しない。新たなUCRはOwner本文への反映状況を個別確認し、自動的にINCORPORATEDと推定しない。

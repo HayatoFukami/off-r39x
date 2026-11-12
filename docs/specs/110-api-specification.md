@@ -500,6 +500,28 @@ Railway Honoはlogical `PUBLIC_AUTH_ORIGIN` の `/auth/*` でNeon Authの認証t
 - Google provider登録のcallbackはNeonが指定する正規Auth callback、最終SPA復帰先は既存の安全なContinuationとする。両者を混同しない。
 - Cookie / redirect書換えを含む正しい中継動作はProvider contract testで検証する。Hono向け公式完成実装があるとは仮定せず、未達時は公開を停止する。
 
+**Canonical `/auth/*` allowlist:** 公開するmethod / pathは次の15経路だけである（pathは `PUBLIC_AUTH_ORIGIN` 配下の `/auth` からの相対）。rate limit classは `SPEC-140` `SEC-ABU-027` / `SEC-ABU-028` が定義し、本表がrouteとの対応の正である。
+
+| # | Method | Path | rate limit class |
+|---:|---|---|---|
+| 1 | `GET` | `/auth/get-session` | `auth_session` |
+| 2 | `GET` | `/auth/token` | `auth_session` |
+| 3 | `POST` | `/auth/sign-out` | `auth_session` |
+| 4 | `GET` | `/auth/verify-email` | `auth_callback` |
+| 5 | `GET` | `/auth/magic-link/verify` | `auth_callback` |
+| 6 | `POST` | `/auth/sign-up/email` | `auth_form_proxy` |
+| 7 | `POST` | `/auth/sign-in/email` | `auth_form_proxy` |
+| 8 | `POST` | `/auth/sign-in/social` | `auth_form_proxy` |
+| 9 | `POST` | `/auth/sign-in/email-otp` | `auth_form_proxy` |
+| 10 | `POST` | `/auth/sign-in/magic-link` | `auth_form_proxy` |
+| 11 | `POST` | `/auth/send-verification-email` | `auth_form_proxy` |
+| 12 | `POST` | `/auth/request-password-reset` | `auth_form_proxy` |
+| 13 | `POST` | `/auth/reset-password` | `auth_form_proxy` |
+| 14 | `POST` | `/auth/email-otp/send-verification-otp` | `auth_form_proxy` |
+| 15 | `POST` | `/auth/email-otp/verify-email` | `auth_form_proxy` |
+
+表にないmethod / pathは公開しない。既知pathに対する未対応methodは `405`、どの経路にも一致しないpathは `404` とし、いずれも判定の前に `public_read` のper-IP ruleだけで評価する（`SPEC-140` `SEC-ABU-018`、`SEC-API-022`）。経路の追加・削除・Class変更は本表の変更（`SPEC-110` の変更）であり、実装の許可リストを本表と同一変更で更新する（`API-RLC-004`）。Google OAuthのcallbackは、`/auth/*` を経由するかが外部事実の確認（下記 `UCR-110-002`）に依存するため、本表に含めない。経由することが確認された場合は、本表への追加（method、path、class）を `SPEC-110` の変更として行う。
+
 ## 24. Verification ordering
 
 Protected operationは `AR-AZ-*` を次の順で実装する。
@@ -518,20 +540,23 @@ Fail Closedとする。
 
 ### 24.1 Rate limit evaluation points
 
-rate limit（`SPEC-140` Part XIII）は上記の番号付き手順に次の位置で挿入する。上記1〜9の順序と意味は変更しない。いずれもDB accessの前に行う。
+rate limit（`SPEC-140` Part XIII）は上記の番号付き手順に次の位置で挿入する。上記1〜9の順序と意味は変更しない。段階1と段階2はDB accessの前に行う。段階3は、対象の認可確認（手順6 / 7）が成功した後、手順8の前に行う（`SPEC-140` `SEC-ABU-029`）。
 
 | 挿入位置 | 内容 |
 |---|---|
-| 手順1の直後、手順2の前（段階1） | route / methodからclassを確定し、per-IP、webhook source IP、global、正規化済みlogin identifier hash、Authentication-failure guardの確認を評価する（`SEC-ABU-017`） |
+| 手順1の直後、手順2の前（段階1） | route / methodからclassを確定し、per-IP、webhook source IP、`public_read` のglobal、正規化済みlogin identifier hash、Authentication-failure guardの確認を評価する（`SEC-ABU-017`）。Webhook classのglobal ruleは含まない |
 | 手順2でtoken検証に失敗した直後 | `401` を返す前に、該当するAuthentication-failure guardへ1件記録する（`SEC-ABU-020` / `SEC-ABU-021`） |
 | 手順2の成功後、手順3の前（段階2） | per-auth-subject / per-staff-subject / per-admin-subjectを評価する |
-| 同じく手順5の最初のDB accessの前 | resource keyとQR digestを、そのkeyの導出に必要な入力の構文検証後に評価する |
+| Webhookの署名検証の成功後、DB accessとReceipt作成の前（段階2） | webhook classのglobal ruleを評価する（`SEC-ABU-030`）。無効署名のrequestはglobal counterを消費しない |
+| 手順6（owner relation）または手順7（Role + Capability）の成功後、手順8の前（段階3） | resource key、QR digest、target resource / target profileを、そのkeyの導出に必要な入力の構文検証後に評価する（`SEC-ABU-029`）。手順6 / 7が失敗した（`403` / `404`）requestは、段階3のcounterに記録しない |
 
 **段階2とDB accessの境界:** 段階2が使うAuth Subject識別子は、手順2で検証済みのtokenのclaimから得る値であり、DB accessを必要としない。手順4の「Auth Subject取得」は、この検証済みの識別子を確定する非DBの手順である。DBを参照する最初の手順は手順5（Business Profile resolution）である。実装は、token検証とAuth Subject取得（DBなし）を、Principal / Business Profileの解決（DBあり）から分離し、段階2を両者の間に置く。token検証と同じ処理の中でPrincipalをDBで解決する構成のままでは、DB accessの前にrate limitを評価できないため、実装は段階2を置ける形に分離しなければならない。
 
-**評価の独立性:** 段階1、段階2のsubject rule、resource / QR digest ruleはそれぞれ独立した評価である。各評価は、その評価の内部でatomicに判定する。後の評価で拒否されたrequestも、前の評価でadmitされたruleのcounterを消費する（`SPEC-140` `SEC-ABU-013`）。
+**段階3と認可確認:** 段階3は、手順5〜7のDB accessの後に評価する。手順5〜7のDB accessは、段階2のsubject ruleで上限が掛かるため、未認可のrequestが無制限にDBへ到達することはない。手順6 / 7が `403` / `404` で終わったrequestは、共有resourceのcounter（正規の管理者・Staff・所有者の枠）を消費しない。段階3が `429` の場合は、手順8（Domain precondition）とmutationへ進まない。
 
-`429` を返した時点で、以降の手順（Email verified check、Business Profile resolution、Role / Capability評価、Domain precondition、mutation）へ進まない。`503 TEMPORARY_UNAVAILABLE`（rate limit store判定不能）も同様に以降へ進まない。health endpointとCORS preflightはrate limitの対象外である（`SEC-ABU-018`）。
+**評価の独立性:** 段階1、段階2、段階3はそれぞれ独立した評価である。各評価は、その評価の内部でatomicに判定する。後の評価で拒否されたrequestも、前の評価でadmitされたruleのcounterを消費する（`SPEC-140` `SEC-ABU-013`）。
+
+段階1または段階2で `429` を返した時点で、以降の手順（Email verified check、Business Profile resolution、Role / Capability評価、Domain precondition、mutation）へ進まない。段階3で `429` を返した場合は、手順8（Domain precondition）とmutationへ進まない。`503 TEMPORARY_UNAVAILABLE`（rate limit store判定不能）も同様に以降へ進まない。health endpointとCORS preflightはrate limitの対象外である（`SEC-ABU-018`）。
 
 ## 25. Profile provisioning
 
@@ -834,6 +859,8 @@ Trace: `PAY-BRW-*`, `UF-XFN-001,003`, `PG-XFN-001`, `PG-MYP-003〜004`.
 11. amount/currency/environment/payment timeを検証。
 12. PurposeごとのBusiness Confirmation transactionを実行。
 13. Receipt processing resultをDomain transactionと矛盾しない形で確定。
+
+**Rate limit:** 手順1〜4（署名検証まで）の前には、webhook source IPごとのburst / sustained ruleだけを評価する（段階1）。`stripe_webhook` のglobal rule（3,000/分）は、手順4の署名検証が成功した後、手順5（`app.webhook_receipts` のdedupe。DB access）の前に評価する（段階2、`SPEC-140` `SEC-ABU-030`）。無効署名（手順4）のrequestはglobal counterを消費せず、超過時は `429 RATE_LIMIT_EXCEEDED` を返してReceiptを作らない。
 
 ### 32.1 Business Confirmation transaction
 
@@ -2108,9 +2135,9 @@ Request ID、Operation ID、Public Reference、safe provider object IDの限定�
 | `public_read` | `API-PUB-001`〜`API-PUB-012` |
 | `stripe_webhook` | `API-WHK-001` |
 | `resend_webhook` | `API-WHK-EML-001` |
-| `auth_session` | `/auth/*` proxyのうち `GET /auth/get-session`、`GET /auth/token`、`POST /auth/sign-out`（Operation IDを持たないroute） |
-| `auth_callback` | `/auth/*` proxyのうち `GET /auth/verify-email`、`GET /auth/magic-link/verify`（メールのリンクから開かれる認証完了のGET。Operation IDを持たないroute） |
-| `auth_form_proxy` | `/auth/*` proxyのうち上記以外の許可されたroute（Operation IDを持たないroute） |
+| `auth_session` | §23.1の許可表で `auth_session` のroute: `GET /auth/get-session`、`GET /auth/token`、`POST /auth/sign-out`（Operation IDを持たないroute） |
+| `auth_callback` | §23.1の許可表で `auth_callback` のroute: `GET /auth/verify-email`、`GET /auth/magic-link/verify`（メールのリンクから開かれる認証完了のGET。Operation IDを持たないroute） |
+| `auth_form_proxy` | §23.1の許可表で `auth_form_proxy` のroute: `POST /auth/sign-up/email`、`/auth/sign-in/email`、`/auth/sign-in/social`、`/auth/sign-in/email-otp`、`/auth/sign-in/magic-link`、`/auth/send-verification-email`、`/auth/request-password-reset`、`/auth/reset-password`、`/auth/email-otp/send-verification-otp`、`/auth/email-otp/verify-email`（Operation IDを持たないroute） |
 | `self_read` | `API-AUTH-001`, `API-AUTH-002`, `API-PUR-ELG-001`, `API-ORD-001`, `API-ORD-003`, `API-TKT-001`, `API-TKT-002`, `API-KRK-SELF-001`, `API-KRK-SELF-002`, `API-GDS-SELF-001`, `API-GDS-SELF-002` |
 | `self_read`（Administrator read） | §41のAdministrator read catalogの全Operation、および `API-ADM-EML-001`, `API-ADM-EML-002`, `API-ADM-EML-003`（`SPEC-120`） |
 | `purchase_checkout` | `API-PUR-CART-001`, `API-PUR-ENTRY-001`, `API-PUR-KRK-001`, `API-PUR-GDS-001`, `API-CHK-001`, `API-ORD-002` |
@@ -2127,6 +2154,8 @@ Request ID、Operation ID、Public Reference、safe provider object IDの限定�
 **API-RLC-001:** 本節に載っていないcanonical Operation IDをrouteとして登録しない。classを持たないOperationは、route registryの検証（startupおよびtest）で検出し、serviceをReadyにしない。「classがないので無制限」としない。
 
 **API-RLC-002:** `API-ADM-READ-001` の「1 route = 1 Operation ID」に合わせ、1つのOperation IDが複数classに属さない。新しいOperation IDを追加する変更は、本節へのclass割当を同一変更に含める。
+
+**API-RLC-004:** `/auth/*` proxyの許可routeは、§23.1の許可表（15経路。method、path、Class）を唯一の正とする。実装の許可リストは、この表と**完全に一致**しなければならない。表にない経路を実装が公開する、または表の経路が実装にない、あるいはClassが異なる場合は、startupおよびtestで検出し、serviceをReadyにしない。Operation IDを持たない経路を、実装側だけで追加して `auth_form_proxy` として通してはならない。
 
 **API-RLC-003:** `SPEC-140` §68のClass IDまたはguardの追加・削除は `SPEC-140` の変更であり、本節のclass割当の変更はその整合を保つ。Operation IDを持たない `/auth/*` proxy、未一致path、health endpoint、CORS preflightの扱いは `SPEC-140` `SEC-ABU-018` / §68に従う。
 
@@ -2358,9 +2387,9 @@ retry count / backoff / queue / operator RunbookはSPEC-150。本書§48.5はSPE
 
 `UCR-140-003` の実装で、段階1の `429` / `503` がCORS処理より前に返るため、Browserが `Retry-After` を読めない問題が見つかった。`SPEC-140` が `SEC-ABU-025`（v2.4.0）で規則を定め、本書は §21 からそれを参照する。API Operation、Capability、状態は追加・変更しない。
 
-### UCR-110-002 — PROPOSED
+### UCR-110-002 — PARTIALLY INCORPORATED
 
-- **Status:** `PROPOSED`（`SPEC-110` の本文には未反映。本記録は実装契約ではない。Canonical Ownerが本文へ取り込むまで、実装は新しいroute・Class割当を追加しない）
+- **Status:** `PARTIALLY_INCORPORATED`。要求2（許可routeの一覧）は、PR #41 のレビューを受けて §23.1 の許可表（15経路）、§56.1、`API-RLC-004` として本文へ取り込み済みで、現在の契約は本文を正とする。要求1（Google OAuth callbackが `/auth/*` を経由するかの外部確認）と要求3（経由する場合のClass割当）は未解決のまま `PROPOSED` であり、実装契約ではない。確認結果が出るまで、実装は §23.1 の表にない経路・Class割当を追加しない
 - 対象: SPEC-110 §23.1（`/auth/*` proxyの限定allowlist）と §56.1（rate limit class割当）。`SPEC-140` §68 / `SEC-ABU-027` / `SEC-ABU-028` に関連する。
 - 現在の仕様: §23.1 は `/auth/*` を「採用SDKと4認証方式に必要なProvider APIへallowlist」としているが、公開するmethod / pathの一覧は本書にない。§56.1 は `GET /auth/get-session`、`GET /auth/token`、`POST /auth/sign-out`（`auth_session`）と `GET /auth/verify-email`、`GET /auth/magic-link/verify`（`auth_callback`）を個別に割り当て、それ以外を「上記以外の許可されたroute」（`auth_form_proxy`）とするが、「許可されたroute」の集合の正は実装の `AUTH_ROUTES` だけである。また、Google providerの登録callbackは「Neonが指定する正規Auth callback」とされるが、そのcallbackがHonoの `/auth/*` を経由するか、経由する場合のmethod・path・Classは本書にも `SPEC-140` にも定義がない。allowlistにないpathは `public_read` classで評価される（`SEC-ABU-018`）。
 - 要求する変更:
