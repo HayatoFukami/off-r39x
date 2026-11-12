@@ -1169,7 +1169,7 @@ Productionでは下表の値を**上限**とする。より厳しくすること
 | Class | Class ID | Keys | Burst / 10s | Sustained / 60s | Additional resource/global rule |
 |---|---|---|---:|---:|---|
 | Public read | `public_read` | per-IP | 20 | 120 | global 10,000/min |
-| Auth form/proxy | `auth_form_proxy` | per-IP | 5 | 20 | per normalized identifier hash 5/10min |
+| Auth form/proxy | `auth_form_proxy` | per-IP | 10 | 40 | per normalized identifier hash 5/10min |
 | Auth session | `auth_session` | per-IP | 100 | 600 | なし |
 | Auth callback | `auth_callback` | per-IP | 30 | 120 | なし |
 | Self read | `self_read` | per-auth-subject + per-IP | 30 | 120 | IP 240/min |
@@ -1201,7 +1201,7 @@ Class IDは `SPEC-110` のassignment、runtime configuration、metric label、te
 
 **SEC-ABU-027:** `/auth/*` 中継のうち、セッションの参照と終了（`GET /auth/get-session`、`GET /auth/token`、`POST /auth/sign-out`）は `auth_session` class、メールのリンクから開かれる認証完了のGET（`SEC-ABU-028`）は `auth_callback` class、それ以外の許可されたrouteは `auth_form_proxy` classとする（`SPEC-110` §56.1）。分離する理由は、会場Wi-Fi・キャリアNAT等で多数の正規利用者が同一IPを共有しても、通常のセッション参照が、認証試行向けの低いIP上限（`auth_form_proxy`）を消費しないためである。`auth_session`、`auth_callback`、`auth_form_proxy` のcounterは互いに独立し、一つの消費は他に影響しない。`auth_session` のIP上限は認証基盤への中継負荷を抑える粗い上限であり、認証試行の抑止は `auth_form_proxy` が担う。`auth_session` はtoken検証前のIP keyだけで評価され（段階1）、identifier ruleとAuthentication-failure guardを持たない。どのrouteにも一致しない `/auth/*` のpathは、`SEC-ABU-018` に従い `public_read` で評価する。
 
-**SEC-ABU-028:** `/auth/*` 中継のうち、メールのリンクから開かれる認証完了のGET（`GET /auth/verify-email`、`GET /auth/magic-link/verify`）は `auth_callback` classとする（`SPEC-110` §56.1）。これらはログインフォームの送信ではなく、利用者がメール内の確認リンクを開く操作であり、会場Wi-Fi・キャリアNAT等で同一IPの多数の利用者が、ログイン試行・メール確認・Magic Link完了を続けても、認証試行向けの低いIP上限（`auth_form_proxy`、5回/10秒）に阻まれて認証を完了できなくなることを避ける。`auth_callback` のcounterは `auth_form_proxy` と `auth_session` のcounterと独立し、互いに消費しない。`auth_callback` はtoken検証前のIP keyだけで評価され（段階1）、identifier ruleとAuthentication-failure guardを持たない。リンクのtokenは、Providerが発行する推測困難な値であることを前提とする（Providerの仕様は外部事実であり、本書は断定しない）。総当たりの抑止は、Providerのtoken検証とProvider側のrate / bot protection（`SEC-ABU-005`）が担う。本classのIP上限は中継負荷を抑える粗い上限である。メールに含まれるOTPを送信してVerifyするPOST（`POST /auth/email-otp/verify-email`）は、利用者が入力する短いコードの総当たりが想定されるため `auth_callback` に含めず、`auth_form_proxy` に残す。
+**SEC-ABU-028:** `/auth/*` 中継のうち、メールのリンクから開かれる認証完了のGET（`GET /auth/verify-email`、`GET /auth/magic-link/verify`）は `auth_callback` classとする（`SPEC-110` §56.1）。これらはログインフォームの送信ではなく、利用者がメール内の確認リンクを開く操作であり、会場Wi-Fi・キャリアNAT等で同一IPの多数の利用者が、ログイン試行・メール確認・Magic Link完了を続けても、認証試行向けの低いIP上限（`auth_form_proxy`、10回/10秒）に阻まれて認証を完了できなくなることを避ける。`auth_callback` のcounterは `auth_form_proxy` と `auth_session` のcounterと独立し、互いに消費しない。`auth_callback` はtoken検証前のIP keyだけで評価され（段階1）、identifier ruleとAuthentication-failure guardを持たない。リンクのtokenは、Providerが発行する推測困難な値であることを前提とする（Providerの仕様は外部事実であり、本書は断定しない）。総当たりの抑止は、Providerのtoken検証とProvider側のrate / bot protection（`SEC-ABU-005`）が担う。本classのIP上限は中継負荷を抑える粗い上限である。メールに含まれるOTPを送信してVerifyするPOST（`POST /auth/email-otp/verify-email`）は、利用者が入力する短いコードの総当たりが想定されるため `auth_callback` に含めず、`auth_form_proxy` に残す。
 
 **SEC-ABU-003:** Staff Check-inは当日burstを許容するためPublic mutationより高いlimitを持つが、Staff Role / Capability検証をskipしない。
 
@@ -1785,8 +1785,9 @@ Production startup / readinessで最低限次を検証する。
 - **UCR-RLM-IMPL-004:** 対象 `SEC-API-024` / `SEC-API-025` / `SEC-API-030`、`SPEC-180` §17.2 #1。参照するforwarded header名と、Client IPを得られない場合の扱いが未定義だった。決定: `X-Forwarded-For` の右から `N` 番目を使い、`N=0`・header欠落・段数不足・解釈不能ならdirect peer、direct peerも無ければ `503`。header名と段数は外部事実であり、`SPEC-180` のgateで確認する。**本書側反映:** `SEC-API-031`。
 - **UCR-RLM-IMPL-005:** 対象 §68 の `auth_form_proxy`、`SEC-ABU-015`。login identifierの抽出元と、取り出せない場合の扱いが未定義だった。決定: POST JSON bodyの `email`（最大64 KiB・3秒）、取り出せなければidentifier ruleだけ省略しper-IP ruleは常に評価する。残るリスク: bodyを巨大にしてidentifier ruleを回避できる。IP ruleは回避できない。**本書側反映:** `SEC-ABU-024`。
 - **UCR-RLM-IMPL-006:** 対象 `SPEC-110` §21 の `429` / `503` とCORS。段階1の応答はCORS処理より前に返るため、Browserが `Retry-After` を読めるかが未定義だった。決定: exactなWeb originだけを返し、`Retry-After` をexposeする。CORSの最終値の所有者は本書であるため本書に規則を置く。**本書側反映:** `SEC-ABU-025`。`SPEC-110` §21 から参照する。
-- **PR #41 第4回レビューによる追加（`auth_callback`）:** `GET /auth/verify-email` と `GET /auth/magic-link/verify` が `auth_form_proxy`（IP 5回/10秒、20回/分）に残ると、共有IPでログイン試行・メール確認・Magic Link完了が計5件続くだけで、6件目の有効な確認リンクが429になる。この2つの認証完了GETを新しいClass `auth_callback`（IP 30回/10秒、120回/分）に分け、認証試行用のcounterから独立させた。OTPのVerify（POST）は総当たり対象となるため `auth_form_proxy` に残した。**本書側反映:** §68、`SEC-ABU-023`、`SEC-ABU-028`。値は運用判断であり、運用では天井以下にのみ変更できる（`SEC-ABU-010`）。
-- **PR #41 レビューによる追加（`auth_session`）:** `/auth/*` 全体を `auth_form_proxy`（IP 5回/10秒、20回/分）に割り当てると、`GET /auth/get-session` 等の正規のセッション参照が、共有NATの数人分で429になる。セッション参照・終了を新しいClass `auth_session`（IP 100回/10秒、600回/分）に分け、認証試行は `auth_form_proxy` に残した。**本書側反映:** §68、`SEC-ABU-023`、`SEC-ABU-027`。値は運用判断であり、運用では天井以下にのみ変更できる（`SEC-ABU-010`）。
+- **利用者決定による上限変更（`auth_form_proxy`）:** 会場Wi-Fi等の共有IPでは、入場時に多数の来場者が同時にログインするため、`auth_form_proxy` のper-IP上限（5回/10秒、20回/分）が厳しすぎる懸念が出た。per-IP上限を **10回/10秒、40回/分** へ変更した。identifier単位の上限（正規化identifier hashごとに5回/10分）は変更しない。これにより、同一アカウントへの試行の抑止は維持しつつ、共有IP全体の試行は2倍まで許容される。**本書側反映:** §68。値は運用判断であり、運用では天井以下にのみ変更できる（`SEC-ABU-010`）。
+- **PR #41 第4回レビューによる追加（`auth_callback`）:** `GET /auth/verify-email` と `GET /auth/magic-link/verify` が `auth_form_proxy`（当時の案はIP 5回/10秒、20回/分。下の上限変更を参照）に残ると、共有IPでログイン試行・メール確認・Magic Link完了が上限の件数続くだけで、次の有効な確認リンクが429になる。この2つの認証完了GETを新しいClass `auth_callback`（IP 30回/10秒、120回/分）に分け、認証試行用のcounterから独立させた。OTPのVerify（POST）は総当たり対象となるため `auth_form_proxy` に残した。**本書側反映:** §68、`SEC-ABU-023`、`SEC-ABU-028`。値は運用判断であり、運用では天井以下にのみ変更できる（`SEC-ABU-010`）。
+- **PR #41 レビューによる追加（`auth_session`）:** `/auth/*` 全体を `auth_form_proxy`（当時の案はIP 5回/10秒、20回/分）に割り当てると、`GET /auth/get-session` 等の正規のセッション参照が、共有NATの数人分で429になる。セッション参照・終了を新しいClass `auth_session`（IP 100回/10秒、600回/分）に分け、認証試行は `auth_form_proxy` に残した。**本書側反映:** §68、`SEC-ABU-023`、`SEC-ABU-027`。値は運用判断であり、運用では天井以下にのみ変更できる（`SEC-ABU-010`）。
 - 影響を受ける可能性がある仕様書: SPEC-110, SPEC-170, SPEC-180
 
 ---
