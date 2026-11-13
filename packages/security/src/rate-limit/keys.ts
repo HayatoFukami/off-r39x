@@ -76,6 +76,16 @@ export function normalizeIp(value: string | undefined): string | undefined {
   }
 }
 
+const UUID_TEXT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/**
+ * SEC-ABU-015: a UUID reference is lowercase canonical (8-4-4-4-12) before duplicate detection and the
+ * HMAC input, so `ABC…`, `abc…` and mixed case are one resource and one counter. Other values
+ * (QR digests, opaque references) are left as they are.
+ */
+export function canonicalReference(value: string): string {
+  return UUID_TEXT.test(value) ? value.toLowerCase() : value;
+}
+
 /**
  * HMAC input of the (source IP, login identifier) pair (SEC-ABU-024). Each part is prefixed with its
  * UTF-8 byte length, so no two different pairs share an input.

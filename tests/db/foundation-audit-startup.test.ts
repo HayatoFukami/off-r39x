@@ -111,7 +111,12 @@ it("TC-STARTUP-AUDIT-001 actual API bootstrap moves Ready->notReady->Ready on DB
       runtime?.server.once("listening", resolve);
       runtime?.server.once("error", reject);
     });
-    const storeReady = () => runtime?.rateLimitMetrics.snapshot().storeReady;
+    // SPEC-160 §42: one series per instance; this process is the only instance.
+    const storeReady = () =>
+      runtime?.rateLimitMetrics.snapshot().storeReady.map((entry) => ({
+        environment: entry.environment,
+        value: entry.value,
+      }));
     await vi.waitFor(() => expect(storeReady()).toEqual([{ environment: "test", value: 0 }]));
     store.inject(undefined);
     await vi.advanceTimersByTimeAsync(30_000);

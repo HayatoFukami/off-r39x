@@ -3985,7 +3985,10 @@
         "TC-RLM-004-241",
         "TC-RLM-004-259",
         "TC-RLM-004-262",
-        "TC-RLM-005-104"
+        "TC-RLM-005-104",
+        "TC-RLM-004-277",
+        "TC-RLM-004-283",
+        "TC-RLM-005-225"
       ],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
@@ -3997,7 +4000,10 @@
     },
     {
       "rule_id": "SEC-ABU-015",
-      "code_paths": ["packages/security/src/rate-limit/keys.ts"],
+      "code_paths": [
+        "packages/security/src/rate-limit/keys.ts",
+        "packages/security/src/rate-limit/limiter.ts"
+      ],
       "test_case_ids": [
         "TC-RLM-002-009",
         "TC-RLM-002-101",
@@ -4011,7 +4017,12 @@
         "TC-RLM-004-231",
         "TC-RLM-004-232",
         "TC-RLM-004-238",
-        "TC-RLM-004-257"
+        "TC-RLM-004-257",
+        "TC-RLM-004-271",
+        "TC-RLM-004-272",
+        "TC-RLM-004-273",
+        "TC-RLM-004-275",
+        "TC-RLM-004-282"
       ],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
@@ -4058,7 +4069,8 @@
         "TC-RLM-004-258",
         "TC-RLM-004-261",
         "TC-RLM-004-262",
-        "TC-RLM-004-263"
+        "TC-RLM-004-263",
+        "TC-RLM-005-224"
       ],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
@@ -4098,7 +4110,9 @@
         "TC-RLM-004-219",
         "TC-RLM-003-008",
         "TC-RLM-004-253",
-        "TC-RLM-001-003"
+        "TC-RLM-001-003",
+        "TC-RLM-005-219",
+        "TC-RLM-005-224"
       ],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
@@ -4115,7 +4129,13 @@
         "TC-RLM-005-201",
         "TC-RLM-005-204",
         "TC-RLM-005-208",
-        "TC-RLM-005-209"
+        "TC-RLM-005-209",
+        "TC-RLM-005-212",
+        "TC-RLM-005-213",
+        "TC-RLM-005-216",
+        "TC-RLM-005-220",
+        "TC-RLM-005-221",
+        "TC-RLM-005-222"
       ],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
@@ -4125,7 +4145,8 @@
         "packages/security/src/rate-limit/limiter.ts",
         "apps/api/src/api/rate-limit.ts",
         "apps/api/src/api/app.ts",
-        "packages/auth/src/index.ts"
+        "packages/auth/src/index.ts",
+        "apps/api/src/api/actor-context.ts"
       ],
       "test_case_ids": [
         "TC-RLM-005-102",
@@ -4135,7 +4156,19 @@
         "TC-RLM-004-242",
         "TC-RLM-005-104",
         "TC-RLM-005-207",
-        "TC-RLM-005-208"
+        "TC-RLM-005-208",
+        "TC-RLM-005-210",
+        "TC-RLM-005-211",
+        "TC-RLM-005-212",
+        "TC-RLM-005-215",
+        "TC-RLM-005-218",
+        "TC-RLM-005-219",
+        "TC-RLM-005-220",
+        "TC-RLM-005-221",
+        "TC-RLM-005-224",
+        "TC-RLM-009-211",
+        "TC-RLM-009-212",
+        "TC-RLM-005-225"
       ],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
@@ -4254,7 +4287,11 @@
     },
     {
       "rule_id": "OBS-SEC-007",
-      "code_paths": ["packages/observability/src/index.ts", "apps/api/src/api/rate-limit.ts"],
+      "code_paths": [
+        "packages/observability/src/index.ts",
+        "apps/api/src/api/rate-limit.ts",
+        "apps/api/src/api/actor-context.ts"
+      ],
       "test_case_ids": [
         "TC-RLM-002-009",
         "TC-RLM-004-202",
@@ -4263,14 +4300,22 @@
         "TC-RLM-009-102",
         "TC-RLM-009-104",
         "TC-RLM-009-109",
-        "TC-RLM-009-201"
+        "TC-RLM-009-201",
+        "TC-RLM-009-211",
+        "TC-RLM-009-213"
       ],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
     {
       "rule_id": "OBS-SEC-008",
       "code_paths": ["packages/observability/src/index.ts", "apps/api/src/api/rate-limit.ts"],
-      "test_case_ids": ["TC-RLM-009-103", "TC-RLM-009-201", "TC-RLM-009-202"],
+      "test_case_ids": [
+        "TC-RLM-009-103",
+        "TC-RLM-009-201",
+        "TC-RLM-009-202",
+        "TC-RLM-009-211",
+        "TC-RLM-009-212"
+      ],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
     {
@@ -4280,7 +4325,13 @@
         "apps/api/src/api/rate-limit.ts",
         "apps/api/src/bootstrap/index.ts"
       ],
-      "test_case_ids": ["TC-RLM-009-101", "TC-RLM-009-102", "TC-RLM-009-110", "TC-RLM-009-201"],
+      "test_case_ids": [
+        "TC-RLM-009-101",
+        "TC-RLM-009-102",
+        "TC-RLM-009-110",
+        "TC-RLM-009-201",
+        "TC-RLM-009-213"
+      ],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
     {
@@ -4349,7 +4400,8 @@
         "TC-RLM-009-119",
         "TC-RLM-001-003",
         "TC-RLM-009-120",
-        "TC-RLM-009-205"
+        "TC-RLM-009-205",
+        "TC-RLM-004-281"
       ],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
@@ -4412,7 +4464,8 @@
         "TC-RLM-004-204",
         "TC-RLM-004-207",
         "TC-RLM-009-103",
-        "TC-RLM-003-007"
+        "TC-RLM-003-007",
+        "TC-RLM-004-278"
       ],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
@@ -4428,7 +4481,13 @@
         "packages/security/src/rate-limit/client-ip.ts",
         "apps/api/src/api/rate-limit.ts"
       ],
-      "test_case_ids": ["TC-RLM-004-208", "TC-RLM-008-001", "TC-RLM-008-002", "TC-RLM-008-004"],
+      "test_case_ids": [
+        "TC-RLM-004-208",
+        "TC-RLM-008-001",
+        "TC-RLM-008-002",
+        "TC-RLM-008-004",
+        "TC-RLM-004-280"
+      ],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
     {
@@ -4478,7 +4537,7 @@
     {
       "rule_id": "REL-SEC-007",
       "code_paths": ["apps/api/src/api/rate-limit.ts"],
-      "test_case_ids": ["TC-RLM-009-201", "TC-RLM-009-202"],
+      "test_case_ids": ["TC-RLM-009-201", "TC-RLM-009-202", "TC-RLM-009-212"],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
     {
@@ -4530,7 +4589,11 @@
         "TC-RLM-009-117",
         "TC-RLM-009-118",
         "TC-RLM-009-119",
-        "TC-RLM-009-120"
+        "TC-RLM-009-120",
+        "TC-RLM-009-206",
+        "TC-RLM-009-207",
+        "TC-RLM-009-208",
+        "TC-RLM-009-209"
       ],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
@@ -4544,7 +4607,8 @@
         "TC-RLM-009-108",
         "TC-RLM-009-111",
         "TC-RLM-009-113",
-        "TC-RLM-009-115"
+        "TC-RLM-009-115",
+        "TC-RLM-009-209"
       ],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
@@ -4561,7 +4625,9 @@
         "apps/api/src/api/app.ts",
         "apps/api/src/api/failure.ts",
         "packages/security/src/rate-limit/limiter.ts",
-        "packages/security/src/rate-limit/registry.ts"
+        "packages/security/src/rate-limit/registry.ts",
+        "packages/security/src/rate-limit/operations.ts",
+        "packages/security/src/rate-limit/keys.ts"
       ],
       "test_case_ids": [
         "TC-RLM-004-102",
@@ -4575,7 +4641,18 @@
         "TC-RLM-004-254",
         "TC-RLM-004-255",
         "TC-RLM-004-259",
-        "TC-RLM-004-260"
+        "TC-RLM-004-260",
+        "TC-RLM-004-271",
+        "TC-RLM-004-272",
+        "TC-RLM-004-273",
+        "TC-RLM-004-274",
+        "TC-RLM-004-275",
+        "TC-RLM-004-276",
+        "TC-RLM-004-277",
+        "TC-RLM-004-278",
+        "TC-RLM-004-279",
+        "TC-RLM-004-282",
+        "TC-RLM-004-283"
       ],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
@@ -4604,13 +4681,28 @@
     {
       "rule_id": "SEC-ABU-031",
       "code_paths": ["apps/api/src/api/rate-limit.ts"],
-      "test_case_ids": ["TC-RLM-004-261", "TC-RLM-004-263", "TC-RLM-004-264"],
+      "test_case_ids": [
+        "TC-RLM-004-261",
+        "TC-RLM-004-263",
+        "TC-RLM-004-264",
+        "TC-RLM-004-280",
+        "TC-RLM-004-281"
+      ],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
     {
       "rule_id": "REL-AUTH-002",
       "code_paths": ["packages/auth/src/index.ts"],
-      "test_case_ids": ["TC-RLM-005-207", "TC-RLM-005-208", "TC-RLM-005-209"],
+      "test_case_ids": [
+        "TC-RLM-005-207",
+        "TC-RLM-005-208",
+        "TC-RLM-005-209",
+        "TC-RLM-005-210",
+        "TC-RLM-005-211",
+        "TC-RLM-005-212",
+        "TC-RLM-005-213",
+        "TC-RLM-005-214"
+      ],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
     {
@@ -4630,8 +4722,22 @@
     },
     {
       "rule_id": "API-RLC-006",
-      "code_paths": ["packages/security/src/rate-limit/limiter.ts"],
-      "test_case_ids": ["TC-RLM-004-259", "TC-RLM-004-260"],
+      "code_paths": [
+        "packages/security/src/rate-limit/limiter.ts",
+        "packages/security/src/rate-limit/operations.ts",
+        "apps/api/src/api/rate-limit.ts"
+      ],
+      "test_case_ids": [
+        "TC-RLM-004-259",
+        "TC-RLM-004-260",
+        "TC-RLM-004-273",
+        "TC-RLM-004-274",
+        "TC-RLM-004-275",
+        "TC-RLM-004-276",
+        "TC-RLM-004-277",
+        "TC-RLM-004-278",
+        "TC-RLM-004-283"
+      ],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
     {
@@ -4639,9 +4745,39 @@
       "code_paths": [
         "apps/api/src/api/readiness-probe.ts",
         "apps/api/src/bootstrap/index.ts",
-        "apps/api/src/api/app.ts"
+        "apps/api/src/api/app.ts",
+        "packages/observability/src/index.ts"
       ],
-      "test_case_ids": ["TC-RLM-009-203", "TC-RLM-009-204", "TC-RLM-009-205"],
+      "test_case_ids": [
+        "TC-RLM-009-203",
+        "TC-RLM-009-204",
+        "TC-RLM-009-205",
+        "TC-RLM-009-206",
+        "TC-RLM-009-207",
+        "TC-RLM-009-208",
+        "TC-RLM-009-210"
+      ],
+      "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
+    },
+    {
+      "rule_id": "SEC-ABU-033",
+      "code_paths": [
+        "packages/auth/src/index.ts",
+        "apps/api/src/api/rate-limit.ts",
+        "apps/api/src/api/app.ts",
+        "packages/security/src/rate-limit/limiter.ts"
+      ],
+      "test_case_ids": [
+        "TC-RLM-005-215",
+        "TC-RLM-005-216",
+        "TC-RLM-005-217",
+        "TC-RLM-005-218",
+        "TC-RLM-005-220",
+        "TC-RLM-005-221",
+        "TC-RLM-005-222",
+        "TC-RLM-005-223",
+        "TC-RLM-005-225"
+      ],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     }
   ]

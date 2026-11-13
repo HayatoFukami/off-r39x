@@ -3,7 +3,12 @@
 import { randomUUID } from "node:crypto";
 import { DeadlineError, TIMEOUTS, withDeadline } from "@off-r39x/reliability";
 import type { RateLimitConfig } from "./config.ts";
-import { type CounterKeyFactory, createCounterKeyFactory, identifierPair } from "./keys.ts";
+import {
+  type CounterKeyFactory,
+  canonicalReference,
+  createCounterKeyFactory,
+  identifierPair,
+} from "./keys.ts";
 import {
   BURST_WINDOW_SECONDS,
   classDefinition,
@@ -97,6 +102,10 @@ export interface ResourceInput {
 }
 /** SPEC-140 SEC-ABU-029: the largest cart, so the largest number of resources in one evaluation. */
 export const MAX_RESOURCES_PER_EVALUATION = 50;
+/** SEC-ABU-021 (1): the read-only state of an IP's Authentication-failure guard. */
+export type GuardState =
+  | { readonly result: "ok"; readonly saturated: boolean }
+  | { readonly result: "store_unavailable" };
 export interface WebhookVerifiedInput {
   readonly classId: RouteClassId;
   readonly operationId?: string | undefined;
@@ -125,7 +134,13 @@ export interface RateLimiter {
    */
   resource(input: ResourceInput): Promise<RateLimitDecision>;
   /**
-   * SEC-ABU-021 (2)-(4): one token verification failure as one atomic evaluation of the route class's
+   * SEC-ABU-021 (1), stage 1: reads the IP's guard counter for the route class's guard without
+   * recording or refusing anything. `saturated` (the failures reached the limit) only selects the
+   * signature verification budget (SEC-ABU-033). A class without a guard makes no store call.
+   */
+  guardState(classId: RouteClassId, ip: string): Promise<GuardState>;
+  /**
+   * SEC-ABU-021 (5): one token verification failure as one atomic evaluation of the route class's
    * guard. Within the limit it is recorded (allowed; the caller answers 401); at the limit it is
    * refused and not recorded (rejected; 429).
    */
@@ -201,8 +216,12 @@ export function createRateLimiter(options: RateLimiterOptions): RateLimiter {
       if (rule.phase !== phase) continue;
       const resolved = resolve(ruleId, rule.subject);
       if (resolved === undefined) continue;
-      // Distinct values only: a resource repeated in one cart counts once (SEC-ABU-029).
-      const values = typeof resolved === "string" ? [resolved] : [...new Set(resolved)];
+      // Canonical form first (SEC-ABU-015), then distinct values only: a resource repeated in one
+      // cart counts once (SEC-ABU-029), whatever the case of its UUID.
+      const values =
+        typeof resolved === "string"
+          ? [canonicalReference(resolved)]
+          : [...new Set(resolved.map(canonicalReference))];
       if (values.length > MAX_RESOURCES_PER_EVALUATION)
         throw new RangeError("Too many resources in one rate limit evaluation");
       const limit = limits[ruleId];
@@ -385,6 +404,18 @@ export function createRateLimiter(options: RateLimiterOptions): RateLimiter {
       const planned = guardRules(guard, ip);
       // SEC-ABU-021 (4): one atomic admit-or-refuse evaluation; a refused failure is not recorded.
       return finish(guard, undefined, planned, await execute("admit", planned));
+    },
+    async guardState(classId: RouteClassId, ip: string): Promise<GuardState> {
+      const guard = guardFor(classId);
+      if (!guard) return { result: "ok", saturated: false };
+      const planned = guardRules(guard, ip);
+      const outcome = await execute("check", planned);
+      // A read is not a decision: only a store failure is reported (SEC-ABU-019).
+      if (!outcome) {
+        finish(guard, undefined, planned, undefined);
+        return { result: "store_unavailable" };
+      }
+      return { result: "ok", saturated: !outcome.allowed };
     },
     async assertReady(): Promise<void> {
       await withDeadline(() => options.store.assertReady(), deadlineMs);

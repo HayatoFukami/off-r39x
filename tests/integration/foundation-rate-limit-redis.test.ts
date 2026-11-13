@@ -537,3 +537,88 @@ describe("store failure on real Redis (TST-RLM-003)", () => {
     expect(await session.redis.zcard(target.key)).toBe(6);
   });
 });
+
+describe("guard read, UUID canonical form and multi-resource evaluation on real Redis (seventh review)", () => {
+  const guardOnly = { auth_failure_guard_attendee: { burst_limit: 2, sustained_limit: 50 } };
+
+  it("TC-RLM-005-225 the stage 1 guard read only reads: it creates no key, flips to saturated at the limit, and a refused failure is not recorded", async () => {
+    const limiter = limiterFor(guardOnly);
+    const ip = "198.51.100.77";
+    const guardKeys = async () =>
+      (await session.keys()).filter((key) => key.includes("auth_failure_guard_attendee"));
+    for (let i = 0; i < 5; i += 1)
+      expect(await limiter.guardState("purchase_checkout", ip)).toEqual({
+        result: "ok",
+        saturated: false,
+      });
+    expect(await guardKeys()).toHaveLength(0);
+    expect((await limiter.recordAuthFailure("purchase_checkout", ip)).result).toBe("allowed");
+    expect(await limiter.guardState("purchase_checkout", ip)).toMatchObject({ saturated: false });
+    expect((await limiter.recordAuthFailure("purchase_checkout", ip)).result).toBe("allowed");
+    expect(await limiter.guardState("purchase_checkout", ip)).toEqual({
+      result: "ok",
+      saturated: true,
+    });
+    const burstKey = (await guardKeys()).find((key) => key.includes(".burst:")) ?? "";
+    expect(await session.redis.zcard(burstKey)).toBe(2);
+    // Reads do not record, and the refused (limit + 1) failure is not recorded either.
+    await limiter.guardState("purchase_checkout", ip);
+    expect((await limiter.recordAuthFailure("purchase_checkout", ip)).result).toBe("rejected");
+    expect(await session.redis.zcard(burstKey)).toBe(2);
+  });
+
+  it("TC-RLM-004-282 upper, lower and mixed case spellings of one UUID share one Redis counter", async () => {
+    const limiter = limiterFor({
+      qr_display: {
+        burst_limit: 6,
+        sustained_limit: 30,
+        additional: { "qr_display.ticket": { limit: 3, window_seconds: 60 } },
+      },
+    });
+    const id = "0d6a2a35-1a52-4d3a-8f55-42b5d4ad06a1";
+    const use = (value: string) =>
+      limiter.resource({ classId: "qr_display", values: { "qr_display.ticket": value } });
+    const ticketKeys = async () =>
+      (await session.keys()).filter((key) => key.includes("qr_display.ticket"));
+    // Earlier tests of this session may have used other tickets: only the delta is this test's.
+    const before = new Set(await ticketKeys());
+    expect((await use(id.toUpperCase())).result).toBe("allowed");
+    expect((await use(id)).result).toBe("allowed");
+    expect((await use("0D6a2a35-1A52-4d3a-8f55-42B5D4ad06a1")).result).toBe("allowed");
+    expect((await use(id.toUpperCase())).result).toBe("rejected");
+    const keys = (await ticketKeys()).filter((key) => !before.has(key));
+    expect(keys).toHaveLength(1);
+    expect(await session.redis.zcard(keys[0] ?? "")).toBe(3);
+  });
+
+  it("TC-RLM-004-283 a cart of 50 distinct resources is one atomic evaluation on Redis: when one is full no counter of the cart is recorded", async () => {
+    const limiter = limiterFor({
+      purchase_checkout: {
+        burst_limit: 3,
+        sustained_limit: 12,
+        additional: { "purchase_checkout.resource": { limit: 1, window_seconds: 60 } },
+      },
+    });
+    const refs = Array.from(
+      { length: 50 },
+      (_, i) => `00000000-0000-4000-8000-${String(i + 900).padStart(12, "0")}`,
+    );
+    const cart = (items: readonly string[]) =>
+      limiter.resource({
+        classId: "purchase_checkout",
+        values: { "purchase_checkout.resource": items },
+      });
+    const resourceKeys = async () =>
+      (await session.keys()).filter((key) => key.includes("purchase_checkout.resource"));
+    expect((await cart(refs.slice(0, 1))).result).toBe("allowed");
+    expect(await resourceKeys()).toHaveLength(1);
+    // The full item blocks the whole 50-item cart; none of the other 49 creates a key.
+    expect((await cart(refs)).result).toBe("rejected");
+    expect(await resourceKeys()).toHaveLength(1);
+    // Without the full item the whole cart is admitted at once, one entry per item.
+    expect((await cart(refs.slice(1))).result).toBe("allowed");
+    const keys = await resourceKeys();
+    expect(keys).toHaveLength(50);
+    for (const key of keys) expect(await session.redis.zcard(key)).toBe(1);
+  });
+});

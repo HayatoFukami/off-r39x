@@ -80,10 +80,19 @@ describe("r39x_rate_limit_store_ready (SPEC-160 §42, INF-HLT-004)", () => {
     const m = metrics();
     expect(m.snapshot().storeReady).toEqual([]);
     m.storeReady(true);
-    expect(m.snapshot().storeReady).toEqual([{ environment: "test", value: 1 }]);
+    expect(m.snapshot().storeReady).toEqual([
+      { environment: "test", instance: expect.stringMatching(/^[0-9a-f]{8}$/), value: 1 },
+    ]);
     m.storeReady(false);
-    expect(m.snapshot().storeReady).toEqual([{ environment: "test", value: 0 }]);
-    expect(Object.keys(m.snapshot().storeReady[0] ?? {}).sort()).toEqual(["environment", "value"]);
+    expect(m.snapshot().storeReady).toEqual([
+      { environment: "test", instance: expect.stringMatching(/^[0-9a-f]{8}$/), value: 0 },
+    ]);
+    // SPEC-160 §42: environment and the low-cardinality instance label (one series per replica).
+    expect(Object.keys(m.snapshot().storeReady[0] ?? {}).sort()).toEqual([
+      "environment",
+      "instance",
+      "value",
+    ]);
   });
 });
 

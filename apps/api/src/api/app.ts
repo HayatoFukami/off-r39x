@@ -7,6 +7,7 @@ import {
   hasCapability,
   type PrincipalStore,
   resolvePrincipal,
+  type TokenInspection,
   type TokenVerifier,
 } from "@off-r39x/auth";
 import type { createLogger, LogEvent } from "@off-r39x/observability";
@@ -14,6 +15,7 @@ import { Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { TrieRouter } from "hono/router/trie-router";
 import { secureHeaders } from "hono/secure-headers";
+import { actorContext } from "./actor-context.ts";
 import { AUTH_ROUTES, type AuthProxy } from "./auth-proxy.ts";
 import { type ApiEnvironment, ApiFailure } from "./failure.ts";
 import {
@@ -92,6 +94,7 @@ export function createApp(dependencies: AppDependencies) {
     c.set("operationId", undefined);
     c.set("rateLimitClass", undefined);
     c.set("clientIp", undefined);
+    c.set("guardSaturated", undefined);
     c.set("authorizationConfirmed", false);
     c.header("X-Request-Id", c.get("requestId"));
     c.header("Cache-Control", "no-store");
@@ -303,12 +306,16 @@ export function requirePrincipal(
 ): MiddlewareHandler<ApiEnvironment> {
   return async (c, next) => {
     let identity: Awaited<ReturnType<TokenVerifier["verify"]>>;
+    // SEC-ABU-033 (a): the structure is checked first and does no cryptographic work.
+    const inspected = verifier.inspect
+      ? verifier.inspect(c.req.header("Authorization"))
+      : inspectBearerFormat(c.req.header("Authorization"));
+    // SEC-ABU-033 (b): a signature is verified only inside its budget; an exhausted one is a 429 that
+    // is not an authentication failure (the token was not judged).
+    if (inspected.ok) await hooks?.beforeVerification(c);
     try {
-      const match = /^Bearer ([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/.exec(
-        c.req.header("Authorization") ?? "",
-      );
-      if (!match?.[1]) throw new AuthFailure("unauthenticated");
-      identity = await verifier.verify(match[1]);
+      if (!inspected.ok) throw new AuthFailure("unauthenticated");
+      identity = await verifier.verify(inspected.token);
       securityEvent(c, "auth.verification.completed");
     } catch (error) {
       securityEvent(
@@ -318,7 +325,7 @@ export function requirePrincipal(
           ? "AUTH_SERVICE_UNAVAILABLE"
           : "AUTHENTICATION_REQUIRED",
       );
-      // SEC-ABU-021 (3): record the failed verification for the Authentication-failure guard.
+      // SEC-ABU-021 (5): record the failed structure check / verification for the guard.
       await hooks?.verificationFailed(c, error);
       throw error;
     }
@@ -343,6 +350,13 @@ export function requirePrincipal(
     }
     await next();
   };
+}
+/** Plain Bearer format check, for a verifier without its own structure check. */
+function inspectBearerFormat(authorization: string | undefined): TokenInspection {
+  const match = /^Bearer ([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/.exec(
+    authorization ?? "",
+  );
+  return match?.[1] ? { ok: true, token: match[1] } : { ok: false };
 }
 export function requireCapability(capability: Capability): MiddlewareHandler<ApiEnvironment> {
   return async (c, next) => {
@@ -398,21 +412,4 @@ function operationContext(c: import("hono").Context<ApiEnvironment>) {
   return execution && operation
     ? { operation_id: operation, operation_execution_id: execution }
     : {};
-}
-
-function actorContext(c: import("hono").Context<ApiEnvironment>): {
-  actor_type: NonNullable<LogEvent["actor_type"]>;
-  actor_ref?: string;
-} {
-  const principal = c.get("principal");
-  return principal
-    ? {
-        actor_type: principal.roles.includes("ADMINISTRATOR")
-          ? "ADMINISTRATOR"
-          : principal.roles.includes("STAFF")
-            ? "STAFF"
-            : "AUTHENTICATED_USER",
-        actor_ref: principal.profileRef,
-      }
-    : { actor_type: "GUEST" };
 }

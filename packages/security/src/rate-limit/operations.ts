@@ -192,3 +192,19 @@ export function assertRouteRegistry(routes: readonly RouteRegistration[]): void 
       throw new Error("Route rate limit class differs from the SPEC-110 §56.1 assignment");
   }
 }
+
+/**
+ * SEC-ABU-029 / API-RLC-006: the purchase start Operations. Each runs a read-only eligibility
+ * pre-check (the same decision as API-PUR-ELG-001) before its Stage 3 resource rule, and evaluates
+ * Stage 3 only when every target is purchasable. API-CHK-001 / API-ORD-002 keep the order of the
+ * owner relation instead.
+ */
+export const PURCHASE_START_OPERATIONS: readonly string[] = Object.freeze([
+  "API-PUR-CART-001",
+  "API-PUR-ENTRY-001",
+  "API-PUR-GDS-001",
+  "API-PUR-KRK-001",
+]);
+export function isPurchaseStartOperation(operationId: string | undefined): boolean {
+  return operationId !== undefined && PURCHASE_START_OPERATIONS.includes(operationId);
+}

@@ -30,7 +30,7 @@ it("TC-AUTH-AUDIT-004 canonical principal route resolves signed JWT against curr
     aud: "api",
     role: "ADMINISTRATOR",
   })
-    .setProtectedHeader({ alg: "EdDSA" })
+    .setProtectedHeader({ alg: "EdDSA", kid: "synthetic-key" })
     .sign(keys.privateKey);
   const verifier = createTokenVerifier(
     {

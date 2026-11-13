@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { z } from "zod";
 
 export const EVENT_NAMES = [
@@ -206,29 +207,54 @@ export interface RateLimitMetricsSnapshot {
     readonly buckets: readonly { readonly le: number; readonly count: number }[];
   }[];
   /**
-   * `r39x_rate_limit_store_ready`: one series per environment, absent until the first probe result
-   * (OBS-MET-002: an unknown value is never published as 0).
+   * `r39x_rate_limit_store_ready`: one series per live API process (`instance`), absent until the
+   * first probe result (OBS-MET-002: an unknown value is never published as 0). The value is computed
+   * at export and is 0 once the last successful probe is older than 90 seconds.
    */
-  readonly storeReady: readonly { readonly environment: string; readonly value: 0 | 1 }[];
+  readonly storeReady: readonly {
+    readonly environment: string;
+    readonly instance: string;
+    readonly value: 0 | 1;
+  }[];
 }
 export interface RateLimitMetrics {
   /** `r39x_rate_limit_decisions_total{environment,class_id,result}` */
   decision(classId: string, result: RateLimitDecisionResult): void;
   /** `r39x_rate_limit_store_duration_seconds{environment,result}` */
   storeOperation(result: RateLimitStoreResult, seconds: number): void;
-  /** `r39x_rate_limit_store_ready{environment}` Gauge 0/1: the independent store probe (INF-HLT-004). */
+  /** `r39x_rate_limit_store_ready{environment,instance}` Gauge 0/1: the independent store probe (INF-HLT-004 / 005). */
   storeReady(ready: boolean): void;
   snapshot(): RateLimitMetricsSnapshot;
+}
+
+/** SPEC-180 INF-HLT-005: a store probe that last succeeded longer ago than this exports 0. */
+export const RATE_LIMIT_STORE_READY_STALE_MS = 90_000;
+
+/**
+ * `OBS-ALT-042`: fires when any one instance exports 0, and when no instance exports a sample at
+ * all (a missing sample from every instance is a failure too). `series` are the samples of the
+ * instances alive in the last 90 seconds.
+ */
+export function evaluateStoreReadyAlert(series: readonly { readonly value: 0 | 1 }[]): boolean {
+  return series.length === 0 || series.some((entry) => entry.value === 0);
 }
 
 /** In-process registry; labels outside the bounded sets are refused (OBS-MET-001). */
 export function createRateLimitMetrics(options: {
   readonly environment: "production" | "staging" | "development" | "test";
   readonly classIds: readonly string[];
+  /** Low-cardinality process id (8 hex characters). Generated at start when absent. */
+  readonly instance?: string;
+  /** Test seam: monotonic milliseconds (default `performance.now()`). */
+  readonly now?: () => number;
 }): RateLimitMetrics {
   const classes = new Set(options.classIds);
   const decisions = new Map<string, number>();
+  const instance = options.instance ?? randomBytes(4).toString("hex");
+  if (!/^[A-Za-z0-9_-]{1,32}$/.test(instance)) throw new Error("Invalid metric label");
+  const now = options.now ?? (() => performance.now());
   let ready: 0 | 1 | undefined;
+  let lastSuccessAt: number | undefined;
   const durations = new Map<RateLimitStoreResult, { count: number; sum: number; counts: number[] }>(
     RATE_LIMIT_STORE_RESULTS.map((result) => [
       result,
@@ -254,6 +280,7 @@ export function createRateLimitMetrics(options: {
     },
     storeReady(value: boolean) {
       ready = value ? 1 : 0;
+      if (value) lastSuccessAt = now();
     },
     snapshot(): RateLimitMetricsSnapshot {
       return {
@@ -276,7 +303,22 @@ export function createRateLimitMetrics(options: {
             count: series.counts[index] ?? 0,
           })),
         })),
-        storeReady: ready === undefined ? [] : [{ environment: options.environment, value: ready }],
+        storeReady:
+          ready === undefined
+            ? []
+            : [
+                {
+                  environment: options.environment,
+                  instance,
+                  // Export-time staleness: a stopped probe is 0 although its last result was 1.
+                  value:
+                    ready === 1 &&
+                    lastSuccessAt !== undefined &&
+                    now() - lastSuccessAt <= RATE_LIMIT_STORE_READY_STALE_MS
+                      ? 1
+                      : 0,
+                },
+              ],
       };
     },
   });

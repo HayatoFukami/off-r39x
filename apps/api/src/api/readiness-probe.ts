@@ -23,7 +23,7 @@ export interface ReadinessProbeOptions {
   readonly intervalMs?: number;
   /** Defaults to, and may not exceed, 90 seconds after the last successful run. */
   readonly staleAfterMs?: number;
-  /** Test seams. */
+  /** Test seams. `now` is a monotonic millisecond clock. */
   readonly now?: () => number;
   readonly setTimer?: (run: () => void, ms: number) => unknown;
   readonly clearTimer?: (handle: unknown) => void;
@@ -52,7 +52,8 @@ export function startReadinessProbe(options: ReadinessProbeOptions): ReadinessPr
     staleAfterMs > READINESS_STALE_AFTER_MS
   )
     throw new Error("Readiness snapshot staleness must be within 90 seconds");
-  const now = options.now ?? (() => Date.now());
+  // Elapsed time is measured on the monotonic clock, never the wall clock (INF-HLT-005).
+  const now = options.now ?? (() => performance.now());
   const setTimer =
     options.setTimer ??
     ((run, ms) => {

@@ -8,13 +8,18 @@ import { AuthFailure } from "@off-r39x/auth";
 import type { RateLimitMetrics } from "@off-r39x/observability";
 import {
   deriveClientIp,
+  guardFor,
+  isPurchaseStartOperation,
   normalizeLoginIdentifier,
+  type RateLimitClassId,
   type RateLimitDecision,
   type RateLimiter,
   type RateLimitObserver,
+  type ResourceInput,
   type RouteClassId,
 } from "@off-r39x/security";
 import type { Context, MiddlewareHandler } from "hono";
+import { actorContext } from "./actor-context.ts";
 import { type ApiEnvironment, ApiFailure } from "./failure.ts";
 import { classifyRequest, isRateLimitExempt, type RouteClassifier } from "./routes.ts";
 
@@ -54,13 +59,14 @@ function requestContext(c: AppContext) {
  */
 function logDecision(
   c: AppContext,
-  classId: RouteClassId,
+  classId: RateLimitClassId,
   decision: Exclude<RateLimitDecision, { result: "allowed" }>,
 ): void {
   const logger = c.get("logger");
   if (!logger) return;
   const context = requestContext(c);
-  const actor = { actor_type: "GUEST" as const };
+  // SPEC-160 §24.1: GUEST until the Principal is resolved, then the resolved Actor Type and Profile ref.
+  const actor = actorContext(c);
   if (decision.result === "rejected") {
     logger.log({
       event_name: "ratelimit.decision.completed",
@@ -92,14 +98,14 @@ function logDecision(
   });
   failClosed(c, classId);
 }
-function failClosed(c: AppContext, classId?: RouteClassId): void {
+function failClosed(c: AppContext, classId?: RateLimitClassId): void {
   c.get("logger")?.log({
     event_name: "security.fail_closed.triggered",
     level: "ERROR",
     result: "FAILED",
     is_retry: false,
     ...requestContext(c),
-    actor_type: "GUEST",
+    ...actorContext(c),
     control_category: "rate_limit",
     ...(classId ? { class_id: classId } : {}),
     error_code: "TEMPORARY_UNAVAILABLE",
@@ -112,7 +118,7 @@ function failClosed(c: AppContext, classId?: RouteClassId): void {
 /** Maps a decision to the HTTP result. `store_unavailable` is a 503, never a 429 or a pass. */
 export function enforceDecision(
   c: AppContext,
-  classId: RouteClassId,
+  classId: RateLimitClassId,
   decision: RateLimitDecision,
 ): void {
   if (decision.result === "allowed") return;
@@ -167,7 +173,7 @@ export interface StageOneOptions {
 /**
  * Stage 1 (SEC-ABU-017): the per-IP / global rules before anything else. `auth_form_proxy` then reads
  * its body (bounded, SEC-ABU-031) and evaluates the (IP, identifier) rule as stage 1b (SEC-ABU-024).
- * The guard is not consulted here (SEC-ABU-021). Without a configured limiter every registered route
+ * The guard counter is read, never recorded or enforced here (SEC-ABU-021 (1)). Without a configured limiter every registered route
  * fails closed (INF-HLT-004); health and preflight are never evaluated (SEC-ABU-018).
  */
 export function createRateLimitStageOne(
@@ -190,8 +196,14 @@ export function createRateLimitStageOne(
       if (route.operationId) c.set("operationExecutionId", randomUUID());
     }
     const rateLimit = options.rateLimit;
+    // SEC-ABU-031: every refusal of an auth_form_proxy request before its body is read closes the
+    // connection, whichever check produced it.
+    const closesConnection = route?.classId === "auth_form_proxy" && method === "POST";
     if (!rateLimit) {
-      if (route) throw new ApiFailure("TEMPORARY_UNAVAILABLE");
+      if (route) {
+        if (closesConnection) c.header("Connection", "close");
+        throw new ApiFailure("TEMPORARY_UNAVAILABLE");
+      }
       await next();
       return;
     }
@@ -202,6 +214,7 @@ export function createRateLimitStageOne(
     });
     if (!ip) {
       // No Client IP can be derived: the per-IP rules cannot be evaluated (fail closed).
+      if (closesConnection) c.header("Connection", "close");
       failClosed(c);
       throw new ApiFailure("TEMPORARY_UNAVAILABLE");
     }
@@ -212,12 +225,21 @@ export function createRateLimitStageOne(
       return;
     }
     const operationId = route.operationId ?? undefined;
-    const formProxy = route.classId === "auth_form_proxy" && method === "POST";
+    const formProxy = closesConnection;
     // SEC-ABU-031: the per-IP rule is evaluated before the body is read. A refusal answers without
     // reading the body and closes the connection.
     const stageOne = await rateLimit.limiter.preAuth({ classId: route.classId, ip, operationId });
     if (formProxy && stageOne.result !== "allowed") c.header("Connection", "close");
     enforceDecision(c, route.classId, stageOne);
+    // SEC-ABU-021 (1): the guard counter is only read here. Whether this IP's failures reached the
+    // limit selects the signature verification budget (SEC-ABU-033); it never refuses a request.
+    const guardClass = guardFor(route.classId);
+    if (guardClass) {
+      const guardState = await rateLimit.limiter.guardState(route.classId, ip);
+      if (guardState.result === "store_unavailable")
+        enforceDecision(c, guardClass, { result: "store_unavailable" });
+      else c.set("guardSaturated", guardState.saturated);
+    }
     if (formProxy) {
       // SEC-ABU-031: at most 3 concurrent body reads per IP and 256 per process; over that the request
       // is refused without reading and without a store call (rule_category=concurrency).
@@ -286,26 +308,72 @@ export function createBodyReadSlots(
   };
 }
 
-/** Stage 2 hooks run inside `requirePrincipal` (SEC-ABU-021 (3) and the per-subject rules). */
+/** SEC-ABU-033 (b): the process-wide signature verification budget for guard-saturated IPs. */
+export const VERIFICATION_BUDGET_PER_SECOND = 50;
+export interface VerificationBudget {
+  /** Takes one verification from the process-local token bucket; false when it is empty. */
+  tryTake(): boolean;
+}
+export function createVerificationBudget(
+  options: { readonly perSecond?: number; readonly now?: () => number } = {},
+): VerificationBudget {
+  const perSecond = options.perSecond ?? VERIFICATION_BUDGET_PER_SECOND;
+  const now = options.now ?? (() => performance.now());
+  let tokens = perSecond;
+  let last = now();
+  return {
+    tryTake() {
+      const current = now();
+      if (current > last)
+        tokens = Math.min(perSecond, tokens + ((current - last) * perSecond) / 1000);
+      last = current;
+      if (tokens < 1) return false;
+      tokens -= 1;
+      return true;
+    },
+  };
+}
+
+/** Stage 2 hooks run inside `requirePrincipal` (SEC-ABU-021, SEC-ABU-033 and the per-subject rules). */
 export interface PrincipalRateLimitHooks {
+  /** SEC-ABU-033 (b): called after the structure check, before the signature is verified. */
+  beforeVerification(c: AppContext): Promise<void>;
   verificationFailed(c: AppContext, error: unknown): Promise<void>;
   verified(c: AppContext, identity: { readonly subject: string }): Promise<void>;
 }
-export function createPrincipalRateLimitHooks(limiter: RateLimiter): PrincipalRateLimitHooks {
+export function createPrincipalRateLimitHooks(
+  limiter: RateLimiter,
+  options: { readonly verificationBudget?: VerificationBudget } = {},
+): PrincipalRateLimitHooks {
+  const budget = options.verificationBudget ?? createVerificationBudget();
   const classOf = (c: AppContext): RouteClassId => {
     const classId = c.get("rateLimitClass");
     if (!classId) throw new ApiFailure("TEMPORARY_UNAVAILABLE");
     return classId;
   };
   return {
+    async beforeVerification(c) {
+      // An IP below its guard limit verifies on the normal budget. At the limit, the signature is
+      // verified only inside the process-wide budget; an exhausted budget is a 429 (Retry-After: 1),
+      // not an authentication failure, so it is not counted by the guard.
+      if (c.get("guardSaturated") !== true || budget.tryTake()) return;
+      logDecision(c, classOf(c), {
+        result: "rejected",
+        ruleCategory: "concurrency",
+        retryAfterSeconds: 1,
+      });
+      throw new ApiFailure("RATE_LIMIT_EXCEEDED", undefined, 1);
+    },
     async verificationFailed(c, error) {
-      // SEC-ABU-020: only a token that failed verification counts. An unreachable auth service
-      // (`unavailable`) says nothing about the token.
+      // SEC-ABU-020: only a token that failed the structure check or verification counts. An
+      // unreachable auth service (`unavailable`) says nothing about the token.
       if (!(error instanceof AuthFailure) || error.kind !== "unauthenticated") return;
       const classId = classOf(c);
+      const guard = guardFor(classId);
       const ip = c.get("clientIp");
       if (!ip) throw new ApiFailure("TEMPORARY_UNAVAILABLE");
-      enforceDecision(c, classId, await limiter.recordAuthFailure(classId, ip));
+      // SPEC-160 §24.1: the decision is logged under the Class ID that was evaluated (the guard's).
+      enforceDecision(c, guard ?? classId, await limiter.recordAuthFailure(classId, ip));
     },
     async verified(c, identity) {
       const classId = classOf(c);
@@ -343,27 +411,66 @@ export function markAuthorizationConfirmed(c: AppContext): void {
  */
 export function requireResourceRateLimit(
   limiter: RateLimiter,
-  valuesOf: (
-    c: AppContext,
-  ) => Readonly<Record<string, string>> | Promise<Readonly<Record<string, string>>>,
+  valuesOf: ResourceValues,
 ): MiddlewareHandler<ApiEnvironment> {
   return async (c, next) => {
-    // A route that reaches Stage 3 without an authorization check is an implementation defect;
-    // it is never admitted to the shared counters (500, not a silent pass).
-    if (c.get("authorizationConfirmed") !== true)
-      throw new Error("Stage 3 rate limit evaluated before the authorization check");
-    const classId = c.get("rateLimitClass");
-    if (!classId) throw new ApiFailure("TEMPORARY_UNAVAILABLE");
-    const operationId = c.get("operationId");
-    enforceDecision(
-      c,
+    assertAuthorized(c);
+    // A purchase start Operation must run its eligibility pre-check first (requirePurchaseStartRateLimit).
+    if (isPurchaseStartOperation(c.get("operationId")))
+      throw new Error("Purchase start Stage 3 evaluated without the eligibility pre-check");
+    await evaluateResources(c, limiter, valuesOf);
+    await next();
+  };
+}
+
+/** Key input of Stage 3 rules; a rule may name several resources (a cart, at most 50 distinct). */
+type ResourceValues = (c: AppContext) => ResourceInput["values"] | Promise<ResourceInput["values"]>;
+
+function assertAuthorized(c: AppContext): void {
+  // A route that reaches Stage 3 without an authorization check is an implementation defect;
+  // it is never admitted to the shared counters (500, not a silent pass).
+  if (c.get("authorizationConfirmed") !== true)
+    throw new Error("Stage 3 rate limit evaluated before the authorization check");
+}
+async function evaluateResources(
+  c: AppContext,
+  limiter: RateLimiter,
+  valuesOf: ResourceValues,
+): Promise<void> {
+  const classId = c.get("rateLimitClass");
+  if (!classId) throw new ApiFailure("TEMPORARY_UNAVAILABLE");
+  const operationId = c.get("operationId");
+  enforceDecision(
+    c,
+    classId,
+    await limiter.resource({
       classId,
-      await limiter.resource({
-        classId,
-        values: await valuesOf(c),
-        ...(operationId ? { operationId } : {}),
-      }),
-    );
+      values: await valuesOf(c),
+      ...(operationId ? { operationId } : {}),
+    }),
+  );
+}
+
+/**
+ * Stage 3 of a purchase start Operation (SEC-ABU-029, API-RLC-006): after the authorization check, a
+ * read-only eligibility pre-check (the same decision as API-PUR-ELG-001: no write, no lock) runs for
+ * every target. Only when every target is purchasable is Stage 3 evaluated. Otherwise Stage 3 is
+ * neither evaluated nor recorded and the request goes on to the Transaction, which returns the
+ * authoritative 409 `item_failures`. Unknown references therefore never create a counter key, and an
+ * unpurchasable request never consumes the shared product counter.
+ */
+export function requirePurchaseStartRateLimit(
+  limiter: RateLimiter,
+  options: {
+    readonly eligibility: (c: AppContext) => boolean | Promise<boolean>;
+    readonly valuesOf: ResourceValues;
+  },
+): MiddlewareHandler<ApiEnvironment> {
+  return async (c, next) => {
+    assertAuthorized(c);
+    if (!isPurchaseStartOperation(c.get("operationId")))
+      throw new Error("The purchase pre-check applies to the purchase start Operations only");
+    if (await options.eligibility(c)) await evaluateResources(c, limiter, options.valuesOf);
     await next();
   };
 }

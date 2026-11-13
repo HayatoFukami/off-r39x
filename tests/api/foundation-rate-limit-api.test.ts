@@ -126,6 +126,7 @@ describe("evaluation order and result mapping (TST-RLM-004)", () => {
     const h = harness();
     const res = await h.get();
     expect(res.status).toBe(200);
+    // self_read has no Authentication-failure guard, so stage 1 makes no guard read here.
     expect(h.order).toEqual(["store:admit", "verify", "store:admit", "db"]);
   });
 
@@ -1088,7 +1089,7 @@ describe("resource rule evaluation (TST-RLM-004)", () => {
 });
 
 describe("Stage 3 shared resource counters after authorization (SEC-ABU-029, TST-RLM-004)", () => {
-  it("TC-RLM-004-239 Stage 3 runs after Role + Capability and before the Domain precondition: verify, stage 2 store, db, Stage 3 store, then the domain", async () => {
+  it("TC-RLM-004-239 Stage 3 runs after Role + Capability and before the Domain precondition: guard read, verify, stage 2 store, db, Stage 3 store, then the domain", async () => {
     const trs = createTestRateLimit();
     const m = authedApp(trs, { "/adm": "role_assignment" });
     const order = m.order;
@@ -1111,7 +1112,8 @@ describe("Stage 3 shared resource counters after authorization (SEC-ABU-029, TST
     );
     const res = await call(m.app, "/adm/roles/P1", ADMIN_TOKEN);
     expect(res.status).toBe(200);
-    expect(order).toEqual(["verify", "store:admit", "db", "store:admit", "domain"]);
+    // SEC-ABU-021 (1): stage 1 only reads the guard counter (check), before the token is verified.
+    expect(order).toEqual(["store:check", "verify", "store:admit", "db", "store:admit", "domain"]);
   });
 
   it("TC-RLM-004-240 a valid-JWT holder without Administrator cannot consume the target-profile slot of API-ADM-ROL-002: the 403s leave the counter untouched and the real administrator can still grant", async () => {
