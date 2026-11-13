@@ -1150,11 +1150,15 @@ Test:
 - health endpointとCORS preflightは対象外で、storeへ問い合わせない
 - 未一致pathと未対応methodは `public_read` のper-IP ruleだけで評価され、global ruleを消費しない
 - `429` と `503` のresponseにcounter key、該当rule、Email、Auth Subject、IPが含まれない
-- **段階3の評価位置と結果を、次の別々のassertで検証する**（`SEC-ABU-029`）。(a) 認可確認（owner relation / Role + Capability）が `403` / `404` で終わったrequestは、段階3のcounterを変化させない。(b) 認可確認を通過した主体が未知のresource（例: 未知の `goods_item_ref`）を指定した場合、段階3はresourceの存在確認より前に評価・記録され、その後の `404` を返す。段階3のcounterは1件増えている。(c) 段階3を通過した後に手順8以降（Domain precondition）で `404` / `409` になったrequestも、段階3のcounterを消費したままである。(d) 同じcounter履歴（同数のadmit済みrequest）に揃えた2つのkey、すなわち存在するresourceのkeyと存在しないresourceのkeyでは、上限内は同一にadmitされ、上限+1は同一に `429` になる。異なる履歴のkey同士の結果は比較しない
+- **段階3の評価位置と結果を、次の別々のassertで検証する**（`SEC-ABU-029`）。(a) 認可確認（owner relation / Role + Capability）が `403` / `404` で終わったrequestは、段階3のcounterを変化させない。(b) 購入開始を除き、認可確認を通過した主体が未知のresource（例: 未知の `goods_item_ref`）を指定した場合、段階3はresourceの存在確認より前に評価・記録され、その後の `404` を返す。段階3のcounterは1件増えている。(c) 段階3を通過した後に手順8以降（Domain precondition）で `404` / `409` になったrequestも、段階3のcounterを消費したままである。(d) 同じcounter履歴（同数のadmit済みrequest）に揃えた2つのkey、すなわち存在するresourceのkeyと存在しないresourceのkeyでは、上限内は同一にadmitされ、上限+1は同一に `429` になる。異なる履歴のkey同士の結果は比較しない
 - **複数Itemのcart**（`SEC-ABU-029`、`API-RLC-006`）: 2件と50件のItemを含む `API-PUR-CART-001` で、後方のItemのresourceだけが上限（60/分）に達している場合、requestは `429` になり、**全てのresourceのcounterが変化しない**（先頭のItemのcounterも記録されない）。`Retry-After` は超過したresourceのうち最長である。全resourceに余裕がある場合は、全てのdistinct resourceのcounterが1件ずつ増え、quantityには依存しない。同一Itemの重複、Karaoke混入、50件超は `400` で、段階3のcounterを変化させない。先頭のItemだけを評価する実装、およびItemごとに別々に記録する実装はこのtestで失敗する
+- **購入不成立の要求が共有商品枠を消費しない**（`SEC-ABU-029`）: 認証済みの5主体が、購入不成立になる数量や未知のUUID（1 requestで50件）を指定したcartを連投しても、実在する商品の段階3counterは変化せず、その後の正規購入は `429` にならない。未知のUUIDでRedisのcounter keyは増えない。全対象が購入可能と判定された場合だけ段階3が記録される。事前確認が購入可能でTransactionが失敗した場合は、段階3が記録されたままである。事前確認が購入不可の場合、Transactionが権威的な `409`（`item_failures`）を返す。事前確認はOrder / Allocation / Hold / counterを書かず、lockも取らない
+- **UUIDの表記揺れ**（`SEC-ABU-015`）: 同じUUIDの大文字・小文字・混在の `offering_ref` / `goods_ref` / `slot_ref` / `order_ref` / `goods_item_ref` が、同じcounter keyを消費し、共有上限が分裂しない。cartでも、大文字小文字だけが異なる同一kind＋参照の重複は `400 VALIDATION_FAILED` になる
+- **無効JWTの署名検証の負荷**（`SEC-ABU-033`）: 構造が不正なtoken（長さ超過、区間数不正、許可されない `alg`、`kid` 欠落、`iss` 不一致、期限切れ）は、署名検証を1回も実行せずguardに数えられる。構造が正しく署名が無効なtokenを大量に送ると、そのIPの署名検証の実行数は、guardのlimitと、process全体で毎秒50回の制限枠までに収まり、枠が尽きている間は署名検証を行わず `429`（`Retry-After: 1`）となり、guardに数えない。失敗数がlimitに達していないIPの有効tokenは通常枠で検証され、影響を受けない。署名検証の実行回数を計測して検証する
 - **identifier ruleが他IPの本人を妨害しない**（`SEC-ABU-024`）: 攻撃者のIP Aが、被害者のemailを指定した `auth_form_proxy` のPOSTを5回送って `429` になった後も、別のIP Bからの被害者本人の同じemailのPOST（ログイン、OTP、password reset）は `429` にならずProviderへ中継される。IP Aは同じemailでは `429` のままで、IP Aから別のemailを指定したPOSTはidentifier ruleでは拒否されない（per-IP ruleは別に評価される）。同一IP内の同じemailは同じ枠を共有する。identifierを取り出せないrequestはidentifier ruleだけが省略される
 - **IP上限超過中のslow bodyが読取りを占有しない**（`SEC-ABU-031`）: IPのper-IP ruleが超過している間、そのIPから本文を送信し切らないPOSTを並行に大量に送っても、bodyは読み取られず、body読取りのslotは消費されず、即座に `429` が返り接続が閉じる。IP上限内のIPでは、同時読取りがIPごとに3件、またはprocess全体で256件を超えるrequestは `429`（`Retry-After: 1`）になり、bodyを読まない。この拒否はrate limit storeを呼ばず、`rule_category=concurrency` の `rejected` として観測される。slotは応答完了・打切り・接続切断で必ず解放される。同一IPからの正規の同時ログイン（上限内）は拒否されない
-- **health endpointの検査コスト**（`SEC-ABU-018`、`INF-HLT-005`）: `/internal/health/ready` を連続して多数回requestしても、DB・Redis・外部serviceへのcallはrequest数に比例せず、背景のprobeの実行回数（最大30秒間隔、同時1件）だけである。最初のprobe完了前はReadyにならない。probeが90秒を超えて更新されなければReady=falseになる。responseは内部状態を含まない
+- **`auth_form_proxy` の早期拒否は接続を閉じる**（`SEC-ABU-031`）: Client IPを導出できない `503`、rate limitの構成が欠けている `503`、段階1の `429` / `503` のいずれも、bodyを読まず `Connection: close` で応答する
+- **health endpointの検査コスト**（`SEC-ABU-018`、`INF-HLT-005`）: `/internal/health/ready` を連続して多数回requestしても、DB・Redis・外部serviceへのcallはrequest数に比例せず、背景のprobeの実行回数（最大30秒間隔、同時1件）だけである。最初のprobe完了前はReadyにならない。probeが90秒を超えて更新されなければReady=falseになる。経過時間は単調時計で測られ、壁時計が過去へ戻っても、probeが停止していれば90秒後にReady=falseになるresponseは内部状態を含まない
 - **Goods Handoffのpreview**（`API-RLC-005`）: `API-STF-GDS-002` は `self_read` で評価され、`goods_handoff` のcounterを変化させない。同じ `goods_item_ref` を1分に10回以上previewした直後でも、`API-STF-GDS-001` のcompleteは `goods_handoff` のGoods Item枠（10回/分）に余裕があり `429` にならない
 - `/auth/*` の経路別class（`SEC-ABU-027`、`SEC-ABU-028`）: `GET /auth/get-session`、`GET /auth/token`、`POST /auth/sign-out` は `auth_session`、`GET /auth/verify-email`、`GET /auth/magic-link/verify` は `auth_callback`、それ以外の許可されたroute（`POST /auth/email-otp/verify-email` を含む）は `auth_form_proxy` で評価される。同一IPからの並行する正常なセッション参照が `auth_session` の上限内であれば `429` にならず、同一IPの `auth_form_proxy` の試行が上限に達しても、`auth_session` のrequestは影響を受けない。逆に `auth_session` の上限に達しても `auth_form_proxy` のcounterは変化しない
 - 認証完了GETの共有IP（`SEC-ABU-028`）: 同一IPから `auth_form_proxy` の試行を上限（10回/10秒）まで消費した後でも、`GET /auth/verify-email` と `GET /auth/magic-link/verify` の有効な確認リンクのrequestは `429` にならず、`auth_callback` の上限内で通る。`auth_callback` の上限に達しても `auth_form_proxy` と `auth_session` のcounterは変化せず、`auth_form_proxy` の消費も `auth_callback` のcounterを変化させない。`POST /auth/email-otp/verify-email` は `auth_callback` ではなく `auth_form_proxy` で評価される
@@ -1167,8 +1171,10 @@ Test:
 - token検証に失敗したrequestだけを数え、有効tokenのrequest、Email未検証、Authorization denial、Business Rule失敗は数えない
 - `Authorization` headerの欠落・形式不正、署名・期限・issuer等が無効なtokenは数え、認証基盤に到達できずtokenの有効性を判定できなかった場合は数えない（`SEC-ABU-020`）
 - **共有IPの有効tokenがguardに巻き込まれない**（`SEC-ABU-021`）: 同一IPから無効tokenを `auth_failure_guard_operator` のlimitまで送ってguardを使い切った後でも、同じIPの正規のStaff / Administratorの有効なJWTによる `goods_handoff` / `admin_mutation` 等のrequestは `429` にならず、段階2へ進んで処理される。そのrequestはguardのcounterを変化させない。attendee向けguardでも同様である
-- guardは段階1で確認も記録もされない。token検証に失敗したrequestだけが、guardを1回の評価として評価する: limit内なら記録して `401`、limit+1回目の失敗は記録せず `429` になる。guardの状態に関係なく、有効tokenのrequestは検証の結果で処理される
+- guardは段階1で読み取られるだけで、記録も拒否もされない（読取り結果は署名検証枠の選択にだけ使われる）。構造検査または署名検証に失敗したrequestだけが、guardを1回の評価として評価する: limit内なら記録して `401`、limit+1回目の失敗は記録せず `429` になる。guardの状態に関係なく、有効tokenのrequestは検証の結果で処理される
 - guardの評価でstoreに到達できない場合は、失敗requestが `503` になる（`SEC-ABU-019`）
+- guard対象classの判定は、`ratelimit.decision.completed` と `r39x_rate_limit_decisions_total` の両方で、routeのclassではなくguardのClass IDを `class_id` として記録する。段階2・段階3・guardの拒否のeventは、解決済みのActor TypeとProfile Public Referenceを持ち、認証前の拒否だけが `GUEST` になる（`SPEC-160` §24.1）
+- JWKSのcacheしたkeyは、600秒（単調時計）で再検証され、JWKSから削除・差し替えられたkeyで署名されたtokenは、期限後に受け付けられない。再検証できない場合は、期限切れのkeyを使わず `503` になり、guardに数えない。時計が前後に補正されても、30秒の間隔と600秒の期限の判定が変わらない
 - `auth_failure_guard_attendee` と `auth_failure_guard_operator` が独立して設定・評価される
 - 並行する失敗requestでも、guardは他のruleと同じくatomicで、limitを超えて記録しない（overrunを許容しない）
 - 未知の `kid` のtokenを大量に送っても、JWKS refreshはprocess単位でsingle-flight、30秒間隔を超えて起動せず、refresh中・間隔内のrequestは待たずに `503` となり、guardに数えない。cacheのkeyで検証できる有効tokenはrefreshの影響を受けない（`SPEC-150` `REL-AUTH-002`）
@@ -1508,7 +1514,7 @@ recovery_execution_id
 | `OBS-ALT-036` | log/metric export failures >=10 | 10m | MEDIUM |
 | `OBS-ALT-037` | alert delivery failure >=1 | 1 event | HIGH |
 | `OBS-ALT-041` | rate limit store unavailable decisions >=1（最低request件数なし） | 1m | HIGH Security |
-| `OBS-ALT-042` | `r39x_rate_limit_store_ready` = 0（request量に依存しない独立probe） | 2 consecutive 1m evaluations | CRITICAL Security |
+| `OBS-ALT-042` | `r39x_rate_limit_store_ready` がいずれか1 instanceで0（request量に依存しない独立probe。全instanceの欠測も0） | 2 consecutive 1m evaluations | CRITICAL Security |
 
 各Alert Testは次を含む。
 
@@ -1522,7 +1528,7 @@ recovery_execution_id
 - cooldown
 - resolve after one full false window
 - severity escalation bypass 1回
-- `OBS-ALT-041` / `OBS-ALT-042`（`OBS-ALT-043`）: 毎分1〜4件のrequestが全件 `store_unavailable`（`503`）の入力でも `OBS-ALT-041` が1回通知され、request件数が0件でも `r39x_rate_limit_store_ready` が2回連続の1分評価で0なら `OBS-ALT-042` が通知される。`OBS-ALT-014`（security config不備）はstore到達不能で発火しない。1件ごとのrequestでは通知が重複しない（dedupe / cooldown）
+- `OBS-ALT-041` / `OBS-ALT-042`（`OBS-ALT-043`）: 毎分1〜4件のrequestが全件 `store_unavailable`（`503`）の入力でも `OBS-ALT-041` が1回通知され、request件数が0件でも `r39x_rate_limit_store_ready` が2回連続の1分評価で0なら `OBS-ALT-042` が通知される。2つのAPI instanceのうち片方だけが0（もう片方は1）でも通知される。probeが停止したinstanceは90秒後に0になり、全instanceのsampleが欠測した場合も通知される。`OBS-ALT-014`（security config不備）はstore到達不能で発火しない。1件ごとのrequestでは通知が重複しない（dedupe / cooldown）
 - staging/testがProduction pageしない
 
 Cooldown:
