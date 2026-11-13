@@ -740,11 +740,12 @@ ratelimit.decision.completed
 
 | Field | 内容 |
 |---|---|
-| `class_id` | `SPEC-140` §68のClass ID（有限集合） |
+| `class_id` | 実際に判定したClass ID（`SPEC-140` §68。有限集合）。Authentication-failure guardの判定では、routeのclassではなくguardのClass ID（`auth_failure_guard_attendee` / `auth_failure_guard_operator`）。metricの `class_id` と同じ値とする |
 | `result` | 共通の `result` enum（§15。`SUCCESS\|REJECTED\|FAILED\|PENDING\|NOOP`）。`rejected` → `REJECTED`、`store_unavailable` → `FAILED`。`allowed` は本eventを出力しない |
 | `error_code` | `rejected` → `RATE_LIMIT_EXCEEDED`、`store_unavailable` → `TEMPORARY_UNAVAILABLE` |
 | `rule_category` | `burst` / `sustained` / `resource` / `global` / `guard` / `concurrency`（`rejected`時の該当categoryのうち最初のもの。`concurrency` は `auth_form_proxy` のbody読取りslot上限による拒否で、`SPEC-140` `SEC-ABU-031`。storeを呼ばない） |
 | `operation_id` | `SPEC-110` のOperation ID（Operation IDを持たないrouteは省略） |
+| `actor_type` / `actor_ref` | §19。認証前は `GUEST`（`actor_ref=null`）。token検証とPrincipal解決の後（段階2・段階3、およびguardの評価）は、解決済みのActor Typeと許可されたBusiness Profile Public Reference |
 | `retry_after_seconds` | `rejected`時のみ |
 
 `ratelimit.decision.completed` は `rejected` と `store_unavailable` のときに出力する。`allowed` はmetricだけで観測し、request単位のlogを出さない。`store_unavailable` の場合は `security.fail_closed.triggered`（control category `rate_limit`）も出力する。
@@ -1334,6 +1335,7 @@ status_class
 control
 recovery_kind
 class_id       # SPEC-140 §68 Class ID registry
+instance       # process-local instance id (bounded by live replicas; used only by r39x_rate_limit_store_ready)
 ```
 
 Forbidden metric labels:
@@ -1399,7 +1401,7 @@ For **every** metric below, forbidden labels are exactly the high-cardinality/se
 | `r39x_authorization_denials_total` | Counter | denials | capability/ownership/last-admin denial | `environment,operation,reason_category` | bounded |
 | `r39x_rate_limit_decisions_total` | Counter | decisions | every rate limit evaluation outcome | `environment,class_id,result` where `result=allowed|rejected|store_unavailable` | <= 17 classes x 3 results |
 | `r39x_rate_limit_store_duration_seconds` | Histogram | seconds | each rate limit store operation | `environment,result` where `result=ok|timeout|error` | exactly 3 results |
-| `r39x_rate_limit_store_ready` | Gauge | 0 or 1 | rate limit storeへの接続とscript実行のprobe結果（requestの有無に依存しない。`SPEC-180` `INF-HLT-004`） | `environment` | 1 series per environment |
+| `r39x_rate_limit_store_ready` | Gauge | 0 or 1 | rate limit storeへの接続と書込みのprobe結果（requestの有無に依存しない。`SPEC-180` `INF-HLT-004` / `INF-HLT-005`）。export時にsnapshotから算出し、最後に成功したprobeから90秒を超えた場合は0 | `environment,instance` | 1 series per live API replica |
 | `r39x_db_pool_acquire_duration_seconds` | Histogram | seconds | every pool checkout | `environment,service,result` | low |
 | `r39x_db_pool_acquire_failures_total` | Counter | failures | acquire timeout/error | `environment,service,reason_category` | low |
 | `r39x_db_pool_connections` | Gauge | connections | current pool aggregate | `environment,service,state` where `state=active|idle|waiting` | exactly 3 states/service |
@@ -1567,7 +1569,7 @@ For rate-based alerts, a window MUST meet both rate/threshold and minimum-event-
 | `OBS-ALT-036` Observability export degraded | log/metric export failures >=10 | 10m | MEDIUM |
 | `OBS-ALT-037` Alert delivery failure | configured alert delivery failure >=1 | 1 event | HIGH; delivery via independent infrastructure signal per SPEC-180 |
 | `OBS-ALT-041` Rate-limit store unavailable | `store_unavailable` decisions >=1 | 1m, minimum request count なし | HIGH Security |
-| `OBS-ALT-042` Rate-limit store readiness failure | `r39x_rate_limit_store_ready` = 0（request量に依存しない独立probe） | 2 consecutive 1m evaluations | CRITICAL Security |
+| `OBS-ALT-042` Rate-limit store readiness failure | `r39x_rate_limit_store_ready` が、**いずれか1つのinstanceで** 0（request量に依存しない独立probe）。直近90秒のsampleを持つinstanceだけを対象とし、APIの全instanceからsampleが欠測した場合も0として扱う | 2 consecutive 1m evaluations | CRITICAL Security |
 
 ### 47.1 Alert payload
 
