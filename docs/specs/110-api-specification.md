@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-110
 title: API Specification
-version: 2.2.0
+version: 2.3.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -456,14 +456,17 @@ listも同じ`data`内に`items/page`を持つ。
 | 415 | `UNSUPPORTED_MEDIA_TYPE` | 未対応content type | No |
 | 422 | `DOMAIN_RULE_VIOLATION` | syntactically validだがBusiness Rule不成立 | No |
 | 422 | `OUTSIDE_CHECKIN_WINDOW` | Karaoke通常受付時間外 | No |
+| 429 | `RATE_LIMIT_EXCEEDED` | rate limit超過（`SPEC-140` Part XIII） | Yes（`Retry-After`秒後） |
 | 424 | `STRIPE_TEMPORARY_FAILURE` | Stripe依存の一時失敗 | Yes |
 | 503 | `DATABASE_TEMPORARY_FAILURE` | DB unavailable / retryable tx failure exhausted | Yes |
-| 503 | `AUTH_SERVICE_TEMPORARY_FAILURE` | identityを安全に検証不能 | Yes |
-| 503 | `TEMPORARY_UNAVAILABLE` | その他安全に判定不能 | Yes |
+| 503 | `AUTH_SERVICE_TEMPORARY_FAILURE` | identityを安全に検証不能（JWKSのcacheのkeyでtokenを検証できず、refreshも開始できない場合を含む。`SPEC-150` `REL-AUTH-002`） | Yes |
+| 503 | `TEMPORARY_UNAVAILABLE` | その他安全に判定不能（rate limit storeが利用できず上限を判定できない場合を含む） | Yes |
 | 409 | `CONSISTENCY_REVIEW_REQUIRED` | 通常競合でなくreview必要 | No |
 | 500 | `INTERNAL_ERROR` | 予期しない内部失敗 | 条件付き |
 
 `405 METHOD_NOT_ALLOWED` には、そのpathで対応するHTTP methodを列挙した `Allow` headerを付ける。どのrouteにも一致しないpathは、methodによらず `404 RESOURCE_NOT_FOUND` とする。405 / 415 は `SEC-API-022` の分類であり、Domain state conflictやAuthentication / Authorizationの結果へ変換しない。
+
+`429 RATE_LIMIT_EXCEEDED` には整数秒の `Retry-After` headerを必ず付ける（`SEC-ABU-007`）。`details` は `null` とし、counter key、該当したrule、Email、Auth Subject、IPを含めない。rate limit storeが利用できず上限を判定できない場合は `429` ではなく `503 TEMPORARY_UNAVAILABLE` を返し、上限超過と判定不能を同一視しない（`SEC-ABU-009` / `SEC-ABU-019`）。`429` / `503` を返したrequestはDomain stateを変更しない。段階1（`auth_form_proxy` の段階1bとbody読取り上限を含む）の `429` / `503` はCORS処理より前に返りうるため、exactなWeb originに対してだけ `Access-Control-Allow-Origin` と `Access-Control-Expose-Headers: X-Request-Id, Retry-After` を付ける（`SPEC-140` `SEC-ABU-025`）。
 
 Known DB constraint loserは一律500にしない。`23505` / `23P01`等はconstraint名とcurrent stateを再読込し、既知の競合 / idempotent duplicateへ分類する。未知constraint violationは`INTERNAL_ERROR`か`CONSISTENCY_REVIEW_REQUIRED`として内部監視対象にする。
 
@@ -497,6 +500,28 @@ Railway Honoはlogical `PUBLIC_AUTH_ORIGIN` の `/auth/*` でNeon Authの認証t
 - Google provider登録のcallbackはNeonが指定する正規Auth callback、最終SPA復帰先は既存の安全なContinuationとする。両者を混同しない。
 - Cookie / redirect書換えを含む正しい中継動作はProvider contract testで検証する。Hono向け公式完成実装があるとは仮定せず、未達時は公開を停止する。
 
+**Canonical `/auth/*` allowlist:** 公開するmethod / pathは次の15経路だけである（pathは `PUBLIC_AUTH_ORIGIN` 配下の `/auth` からの相対）。rate limit classは `SPEC-140` `SEC-ABU-027` / `SEC-ABU-028` が定義し、本表がrouteとの対応の正である。
+
+| # | Method | Path | rate limit class |
+|---:|---|---|---|
+| 1 | `GET` | `/auth/get-session` | `auth_session` |
+| 2 | `GET` | `/auth/token` | `auth_session` |
+| 3 | `POST` | `/auth/sign-out` | `auth_session` |
+| 4 | `GET` | `/auth/verify-email` | `auth_callback` |
+| 5 | `GET` | `/auth/magic-link/verify` | `auth_callback` |
+| 6 | `POST` | `/auth/sign-up/email` | `auth_form_proxy` |
+| 7 | `POST` | `/auth/sign-in/email` | `auth_form_proxy` |
+| 8 | `POST` | `/auth/sign-in/social` | `auth_form_proxy` |
+| 9 | `POST` | `/auth/sign-in/email-otp` | `auth_form_proxy` |
+| 10 | `POST` | `/auth/sign-in/magic-link` | `auth_form_proxy` |
+| 11 | `POST` | `/auth/send-verification-email` | `auth_form_proxy` |
+| 12 | `POST` | `/auth/request-password-reset` | `auth_form_proxy` |
+| 13 | `POST` | `/auth/reset-password` | `auth_form_proxy` |
+| 14 | `POST` | `/auth/email-otp/send-verification-otp` | `auth_form_proxy` |
+| 15 | `POST` | `/auth/email-otp/verify-email` | `auth_form_proxy` |
+
+表にないmethod / pathは公開しない。既知pathに対する未対応methodは `405`、どの経路にも一致しないpathは `404` とし、いずれも判定の前に `public_read` のper-IP ruleだけで評価する（`SPEC-140` `SEC-ABU-018`、`SEC-API-022`）。経路の追加・削除・Class変更は本表の変更（`SPEC-110` の変更）であり、実装の許可リストを本表と同一変更で更新する（`API-RLC-004`）。Google OAuthのcallbackは、`/auth/*` を経由するかが外部事実の確認（下記 `UCR-110-002`。`SPEC-180` §17.2 #7）に依存するため、本表に含めない。確認結果が出るまで、Googleログインを本番で提供しない（`SPEC-180` `INF-RLS-008`）。経由することが確認された場合は、本表への追加（method、path、class）を `SPEC-110` の変更として行う。
+
 ## 24. Verification ordering
 
 Protected operationは `AR-AZ-*` を次の順で実装する。
@@ -512,6 +537,28 @@ Protected operationは `AR-AZ-*` を次の順で実装する。
 9. mutation
 
 Fail Closedとする。
+
+### 24.1 Rate limit evaluation points
+
+rate limit（`SPEC-140` Part XIII）は上記の番号付き手順に次の位置で挿入する。上記1〜9の順序と意味は変更しない。段階1と段階2はDB accessの前に行う。段階3は、対象の認可確認（手順6 / 7）が成功した後、手順8の前に行う（`SPEC-140` `SEC-ABU-029`）。
+
+| 挿入位置 | 内容 |
+|---|---|
+| 手順1の直後、手順2の前（段階1） | route / methodからclassを確定し、per-IP、webhook source IP、`public_read` のglobalを評価する（`SEC-ABU-017`）。Webhook classのglobal rule、`auth_form_proxy` のidentifier ruleは含まない。guard対象classは、そのIPの同時検証slotを取得したうえで、guard counterを読み取るだけで、記録も拒否もしない（`SEC-ABU-021`、`SEC-ABU-033`。この読取りは判定として数えない）。`auth_form_proxy` のbody読取りは、この評価がadmitしたrequestだけが行う（`SEC-ABU-031`） |
+| `auth_form_proxy` のbody読取り後、Providerへの中継の前（段階1b） | (source IP, 正規化済みlogin identifier) の組を評価する（`SEC-ABU-024`） |
+| 手順2でtokenの構造検査または署名検証に失敗した直後 | 該当するAuthentication-failure guardを1回の評価として評価する。上限内なら1件を記録して `401`、上限に達していれば記録せず `429` を返す（`SEC-ABU-020` / `SEC-ABU-021`）。token検証に成功したrequestは、guardへ記録せず、guardの失敗数そのものを理由には拒否されない。署名検証は検証枠（通常枠または制限枠）の中で行い、失敗数が上限に達したIP、または同時検証slotを超えて並行するIPのtokenは制限枠で検証され、制限枠が尽きている間は `429` になりうる（`SEC-ABU-033`）。cacheのkeyで検証できずJWKSのrefreshも開始できない場合は `503 AUTH_SERVICE_TEMPORARY_FAILURE`（guardに数えない。`SPEC-150` `REL-AUTH-002`） |
+| 手順2の成功後、手順3の前（段階2） | per-auth-subject / per-staff-subject / per-admin-subjectを評価する |
+| Webhookの署名検証の成功後、DB accessとReceipt作成の前（段階2） | webhook classのglobal ruleを評価する（`SEC-ABU-030`）。無効署名のrequestはglobal counterを消費しない |
+| 購入開始（`API-PUR-CART-001`、`API-PUR-ENTRY-001`、`API-PUR-GDS-001`、`API-PUR-KRK-001`）のみ。手順5の後の `purchase.start` の確認（§28。owner relationを持たないため手順6に相当する確認はなく、認可確認はこのCapabilityの確認である）の成功後、段階3の前 | 読取り専用の購入可否の事前確認（`API-PUR-ELG-001` と同じ判定。書込み・lockなし）。`purchase.start` の確認より前の手順（認証、メール確認、Business Profile解決）または `purchase.start` の確認で拒否されたrequestは、事前確認にも段階3にも到達しない。全対象が購入可能な場合だけ段階3を評価し、1つでも不可なら段階3を評価せず手順8のTransactionへ進む（`SEC-ABU-029`） |
+| 手順6（owner relation）、手順7（Role + Capability）、または購入開始の `purchase.start` の確認の成功後、手順8の前（段階3） | resource key、QR digest、target resource / target profileを、そのkeyの導出に必要な入力の構文検証後に評価する（`SEC-ABU-029`。参照は `API-RLC-006` / `API-RLC-007`）。owner relationを持つself operationでは、手順6のowner-safeな取得が存在確認を兼ね、存在しない・他人の対象は段階3に到達しない。Staff / Admin operationでは、対象の存在確認（手順8以降の照会）より前に評価する（`API-ADM-ROL-003` だけは、対象profileを読取り専用の照会で解決した後）。複数Itemを持つ `API-PUR-CART-001` は、全Itemのdistinctな参照を1回のatomic評価に含める。手順6 / 7が失敗した（`403` / `404`）requestは、段階3のcounterに記録しない。段階3を通過した後に手順8以降で `404` / `409` 等になったrequestは、段階3のcounterを消費したままになる |
+
+**段階2とDB accessの境界:** 段階2が使うAuth Subject識別子は、手順2で検証済みのtokenのclaimから得る値であり、DB accessを必要としない。手順4の「Auth Subject取得」は、この検証済みの識別子を確定する非DBの手順である。DBを参照する最初の手順は手順5（Business Profile resolution）である。実装は、token検証とAuth Subject取得（DBなし）を、Principal / Business Profileの解決（DBあり）から分離し、段階2を両者の間に置く。token検証と同じ処理の中でPrincipalをDBで解決する構成のままでは、DB accessの前にrate limitを評価できないため、実装は段階2を置ける形に分離しなければならない。
+
+**段階3と認可確認:** 段階3は、手順5〜7のDB accessの後に評価する。手順5〜7のDB accessは、段階2のsubject ruleで上限が掛かるため、未認可のrequestが無制限にDBへ到達することはない。手順6 / 7（認可確認）が `403` / `404` で終わったrequestは、共有resourceのcounter（正規の管理者・Staff・所有者の枠）を消費しない。認可確認を通過した後に手順8以降で `404` / `409` 等で終わったrequestは、段階3のcounterを消費している（`SPEC-140` `SEC-ABU-013`）。段階3が `429` の場合は、手順8（Domain precondition）とmutationへ進まない。
+
+**評価の独立性:** 段階1、段階2、段階3はそれぞれ独立した評価である。各評価は、その評価の内部でatomicに判定する。後の評価で拒否されたrequestも、前の評価でadmitされたruleのcounterを消費する（`SPEC-140` `SEC-ABU-013`）。
+
+段階1または段階2で `429` を返した時点で、以降の手順（Email verified check、Business Profile resolution、Role / Capability評価、Domain precondition、mutation）へ進まない。段階3で `429` を返した場合は、手順8（Domain precondition）とmutationへ進まない。`503 TEMPORARY_UNAVAILABLE`（rate limit store判定不能）も同様に以降へ進まない。health endpointとCORS preflightはrate limitの対象外である（`SEC-ABU-018`）。
 
 ## 25. Profile provisioning
 
@@ -616,8 +663,9 @@ Public responseでは他Customer、Hold owner、Order、Reservation情報を返�
 
 - **Method / Path:** `POST /api/v1/self/purchases/cart`
 - **Auth / Capability:** verified email＋既存Business Profile、`purchase.start`。§28共通契約とIdempotency-Key必須。
-- **Body:** strict `{ items: Array<{ kind: 'ENTRY', offering_ref: uuid, quantity: integer } | { kind: 'GOODS', goods_ref: uuid, quantity: integer }> }`。1〜50 Item、quantityは1〜2147483647。各variantもstrict。空配列、同一kind＋参照の重複、Karaoke、Clientの価格／Purpose／Ownerは `400 VALIDATION_FAILED`。
+- **Body:** strict `{ items: Array<{ kind: 'ENTRY', offering_ref: uuid, quantity: integer } | { kind: 'GOODS', goods_ref: uuid, quantity: integer }> }`。1〜50 Item、quantityは1〜2147483647。各variantもstrict。空配列、同一kind＋参照の重複（UUIDはlowercase canonical形式へ正規化した後に判定する）、Karaoke、Clientの価格／Purpose／Ownerは `400 VALIDATION_FAILED`。
 - **Authority:** APIが現在の販売条件・価格・在庫／capacity・有効確保＋確定済み購入数から再検証する。事前eligibility結果は受け取らない。
+- **Rate limit:** class `purchase_checkout`（§56.1）。段階3（`SPEC-140` `SEC-ABU-029`）で、body検証の後に全Itemのdistinctな参照（ENTRYは `offering_ref`、GOODSは `goods_ref`）を1回のatomic評価に含める。1つでも上限に達していれば全counterを記録せず `429`（`API-RLC-006`）。段階3の前に購入可否の事前確認を行い、全Itemが購入可能な場合だけ段階3を評価する（`SEC-ABU-029`）。
 - **Purpose:** Entryだけなら `ENTRY_TICKET_PURCHASE`、Goodsだけなら `GOODS_PURCHASE`、双方なら `ENTRY_GOODS_PURCHASE`。全Itemを単一Order／単一Checkoutへ束ねる。
 - **DB:** `SPEC-100` §§47〜49のProfile→全Offering昇順→全Inventory昇順でlockし、全HELD Allocation・Order・明細・Goods履行拡張・counterを1 Transactionで作成する。1件でも不成立ならOrderを作らず部分確保も残さない。
 - **Business conflict:** rollback後に `409 STATE_CONFLICT`、`error.details = { item_failures: [{ kind, target_ref, reasons }] }`。`reasons` は `API-PUR-ELG-001` と同じ有限集合。不成立と確認できた全Itemを識別し、非公開／不存在を区別しない。判定不能なDB障害は503であり、在庫0や競合に変換しない。
@@ -814,6 +862,8 @@ Trace: `PAY-BRW-*`, `UF-XFN-001,003`, `PG-XFN-001`, `PG-MYP-003〜004`.
 11. amount/currency/environment/payment timeを検証。
 12. PurposeごとのBusiness Confirmation transactionを実行。
 13. Receipt processing resultをDomain transactionと矛盾しない形で確定。
+
+**Rate limit:** 手順1〜4（署名検証まで）の前には、webhook source IPごとのburst / sustained ruleだけを評価する（段階1）。`stripe_webhook` のglobal rule（3,000/分）は、手順4の署名検証が成功した後、手順5（`app.webhook_receipts` のdedupe。DB access）の前に評価する（段階2、`SPEC-140` `SEC-ABU-030`）。無効署名（手順4）のrequestはglobal counterを消費せず、超過時は `429 RATE_LIMIT_EXCEEDED` を返してReceiptを作らない。
 
 ### 32.1 Business Confirmation transaction
 
@@ -1054,7 +1104,7 @@ Known response loss retryはTicket `USED` + exactly one Check-inを再取得し�
 - **Lookup:** `goods_item_ref` = Goods Order Item Public Reference。Internal ID / Email / Customer指定検索を行わない（`AR-ROLE-015`）。
 - **Transaction:** read only
 - **Response 200:** `goods_item_ref`（uuid, non-null）, `goods_name`（text, non-null）, `quantity`（integer > 0, non-null）, `goods_order_item_state`（`PENDING_PAYMENT|FULFILLABLE|CANCELED`, non-null）, `handoff_ref`（uuid, non-null）, `handoff_state`（`PENDING|COMPLETED|VOID`, non-null）, `customer_profile_ref`（uuid, non-null; `app.goods_order_items.customer_profile_id` → `app.business_profiles.public_ref`）。raw Email、Internal ID、raw QR token、Customer全Order履歴、unrelated Ticket / Karaoke / Goods履歴を返さない。
-- **Purpose:** mutation前の対象確認。本readはcompletionを成立させず、confirmationの代替ではない。
+- **Purpose:** mutation前の対象確認。本readはcompletionを成立させず、confirmationの代替ではない。rate limit classは `self_read` であり、完了用の `goods_handoff` のGoods Item枠を消費しない（§56.1 `API-RLC-005`）。
 - **404:** unknown ref。候補検索へfallbackしない。
 - **Trace:** `FR-STF-*`, `FR-GDS-014〜015`, `PG-STF-006`, `AR-ROLE-015`, `STF-GDS-005`, `SPEC-130 §49.1`.
 
@@ -2079,6 +2129,74 @@ Public ReferenceはAuthorizationではない。
 
 Request ID、Operation ID、Public Reference、safe provider object IDの限定使用はSPEC-160へ委譲する。
 
+## 56.1 Rate limit class assignment
+
+各canonical `API-*` Operation IDは、`SPEC-140` §68のClass IDのうちexactly 1つに属する。上限値、key、追加ruleは `SPEC-140` §68が定義し、本節はどのOperationがどのclassかだけを定義する。
+
+| Class ID | Operation ID / route |
+|---|---|
+| `public_read` | `API-PUB-001`〜`API-PUB-012` |
+| `stripe_webhook` | `API-WHK-001` |
+| `resend_webhook` | `API-WHK-EML-001` |
+| `auth_session` | §23.1の許可表で `auth_session` のroute: `GET /auth/get-session`、`GET /auth/token`、`POST /auth/sign-out`（Operation IDを持たないroute） |
+| `auth_callback` | §23.1の許可表で `auth_callback` のroute: `GET /auth/verify-email`、`GET /auth/magic-link/verify`（メールのリンクから開かれる認証完了のGET。Operation IDを持たないroute） |
+| `auth_form_proxy` | §23.1の許可表で `auth_form_proxy` のroute: `POST /auth/sign-up/email`、`/auth/sign-in/email`、`/auth/sign-in/social`、`/auth/sign-in/email-otp`、`/auth/sign-in/magic-link`、`/auth/send-verification-email`、`/auth/request-password-reset`、`/auth/reset-password`、`/auth/email-otp/send-verification-otp`、`/auth/email-otp/verify-email`（Operation IDを持たないroute） |
+| `self_read` | `API-AUTH-001`, `API-AUTH-002`, `API-PUR-ELG-001`, `API-ORD-001`, `API-ORD-003`, `API-TKT-001`, `API-TKT-002`, `API-KRK-SELF-001`, `API-KRK-SELF-002`, `API-GDS-SELF-001`, `API-GDS-SELF-002` |
+| `self_read`（Administrator read） | §41のAdministrator read catalogの全Operation、および `API-ADM-EML-001`, `API-ADM-EML-002`, `API-ADM-EML-003`（`SPEC-120`） |
+| `self_read`（Staff read） | `API-STF-GDS-002`（Goods Handoffの対象確認。read-onlyで、完了用の `goods_handoff` のGoods Item枠を消費しない） |
+| `purchase_checkout` | `API-PUR-CART-001`, `API-PUR-ENTRY-001`, `API-PUR-KRK-001`, `API-PUR-GDS-001`, `API-CHK-001`, `API-ORD-002` |
+| `qr_display` | `API-TKT-003`, `API-KRK-SELF-003` |
+| `profile_mutation` | `API-AUTH-003`, `API-AUTH-004` |
+| `staff_checkin` | `API-STF-CHK-001`, `API-STF-CHK-002` |
+| `goods_handoff` | `API-STF-GDS-001` |
+| `admin_mutation` | `API-ADM-CNT-002`, `API-ADM-CNT-005`〜`API-ADM-CNT-008`, `API-ADM-CNT-011`〜`API-ADM-CNT-016`, `API-ADM-CNT-019`〜`API-ADM-CNT-021`, `API-ADM-KRK-003`〜`API-ADM-KRK-007`, `API-ADM-ENT-SALES-003`, `API-ADM-KRK-SALES-003`, `API-ADM-GDS-004`, `API-ADM-GDS-005`, `API-ADM-HOF-003` |
+| `role_assignment` | `API-ADM-ROL-002`, `API-ADM-ROL-003` |
+| `high_risk_recovery` | `API-ADM-PAY-001`, `API-ADM-TQR-001`, `API-ADM-EML-004`, `API-ADM-EML-005`, `API-ADM-REC-003`〜`API-ADM-REC-007` |
+
+`auth_failure_guard_attendee` と `auth_failure_guard_operator` はOperationのclassではなく、上記classに付随するguardである（`SPEC-140` §68.1）。
+
+**API-RLC-001:** 本節に載っていないcanonical Operation IDをrouteとして登録しない。classを持たないOperationは、route registryの検証（startupおよびtest）で検出し、serviceをReadyにしない。「classがないので無制限」としない。
+
+**API-RLC-002:** `API-ADM-READ-001` の「1 route = 1 Operation ID」に合わせ、1つのOperation IDが複数classに属さない。新しいOperation IDを追加する変更は、本節へのclass割当を同一変更に含める。
+
+**API-RLC-004:** `/auth/*` proxyの許可routeは、§23.1の許可表（15経路。method、path、Class）を唯一の正とする。実装の許可リストは、この表と**完全に一致**しなければならない。表にない経路を実装が公開する、または表の経路が実装にない、あるいはClassが異なる場合は、startupおよびtestで検出し、serviceをReadyにしない。Operation IDを持たない経路を、実装側だけで追加して `auth_form_proxy` として通してはならない。
+
+**API-RLC-005:** read-onlyのOperationを、同じ対象のmutationとresource counterを共有するclassに割り当てない。参照のGETが、同じ対象への正規のmutationの枠を消費してはならないためである（例: `API-STF-GDS-002` は `self_read`、`API-STF-GDS-001` は `goods_handoff`）。新しいread-only Operationを追加する変更は、そのOperationが属するclassにresource counterがある場合、同じ対象のmutationとcounterを共有しないことを確認する。
+
+**API-RLC-006:** `purchase_checkout` の段階3のresource（`SPEC-140` `SEC-ABU-029`）は次のとおりとする。`API-PUR-CART-001` はbodyの全Itemのdistinctな参照（ENTRYは `offering_ref`、GOODSは `goods_ref`）、`API-PUR-ENTRY-001` は `offering_ref`、`API-PUR-GDS-001` は `goods_ref`、`API-PUR-KRK-001` は `slot_ref`、`API-CHK-001` と `API-ORD-002` は `order_ref`。段階3の評価は、1回のatomic評価として行う。購入開始の4 operation（CART / ENTRY / GDS / KRK）は、`purchase.start` の確認（§28。owner relationを持たない）に成功し、全対象の購入可否の事前確認（`SPEC-140` `SEC-ABU-029`）が購入可能と判定した場合だけ評価する。`API-CHK-001` と `API-ORD-002` は、owner-safeなOrder取得（手順6）の後に評価する。この取得が存在確認を兼ねるため、存在しない・他人の `order_ref` は取得で `404` となり、段階3のcounterに到達しない（段階3は存在確認の前ではなく、存在確認を兼ねる取得の後である）。UUID形式の参照は、検証後にlowercase canonical形式へ正規化してから、重複判定とHMAC導出を行う（`SPEC-140` `SEC-ABU-015`）。
+
+**API-RLC-007:** §56.1 のうち、`SPEC-140` §68 の「Additional」列にresource ruleを持つclass（`qr_display`、`staff_checkin`、`goods_handoff`、`admin_mutation`、`role_assignment`、`high_risk_recovery`。`purchase_checkout` は `API-RLC-006`）の全Operationについて、段階3のresource参照を次の表で定める。表は各Operationの定義（path、body）を読んで作成した**設計判断**であり、Operationを追加・変更しない。resource counterのkeyは「class、参照の種類、lowercase canonical形式の参照」から導出し（`SPEC-140` `SEC-ABU-015`）、Operation IDを含めない。同じclassで同じ参照の種類を持つOperation（例: `high_risk_recovery` の `order_ref`）は、同じ対象への操作として枠を共有する。classが異なれば同じ参照でも共有しない（`admin_mutation` の `reservation_ref` と `qr_display` の `reservation_ref` は別のcounter）。
+
+| class | Operation ID | 段階3のresource参照 | 備考 |
+|---|---|---|---|
+| `qr_display` | `API-TKT-003` | `ticket_ref`（path） | owner-safeなTicket取得（手順6）の後。per Ticketの枠 |
+| `qr_display` | `API-KRK-SELF-003` | `reservation_ref`（path） | owner-safeなReservation + Ticket取得の後。pathに `ticket_ref` がなく、Ticketを得るには取得が必要なため、Reservationをkeyとする。このOperationはReservationに対応する1件のKaraoke Ticketを対象とする（`API-KRK-SELF-003`）ため、`SPEC-140` §68 の「per Ticket」と同じ範囲を、`reservation_ref` で評価する |
+| `staff_checkin` | `API-STF-CHK-001`、`API-STF-CHK-002` | QR digest | bodyのQR payloadの形式検証の後に導出する。Capability（`entry_checkin.execute` / `karaoke_checkin.execute`）の確認後、QR照会の前 |
+| `goods_handoff` | `API-STF-GDS-001` | `goods_item_ref`（path） | Capability確認後、Goods Itemの存在確認の前 |
+| `admin_mutation` | `API-ADM-CNT-002` | 固定識別子 `event` | pathにもbodyにも参照がない。Eventは1件だけなので、固定のresource識別子を使う |
+| `admin_mutation` | `API-ADM-CNT-005`、`API-ADM-CNT-011`、`API-ADM-CNT-019` | なし（新規作成） | 対象が存在しない作成。resource ruleは評価せず、subject ruleだけで抑える |
+| `admin_mutation` | `API-ADM-CNT-006`〜`API-ADM-CNT-008`、`API-ADM-CNT-015` | `faq_ref`（path） | |
+| `admin_mutation` | `API-ADM-CNT-012`〜`API-ADM-CNT-014`、`API-ADM-CNT-016` | `announcement_ref`（path） | |
+| `admin_mutation` | `API-ADM-CNT-020`、`API-ADM-CNT-021` | `logo_ref`（path） | |
+| `admin_mutation` | `API-ADM-KRK-003` | なし（一括生成） | bodyの `scope refs[]` は生成の範囲であり、変更対象のresourceではない。件数の上限が `API-ADM-KRK-003` に定義されておらず、複数参照のatomic評価へ拡張しない。resource ruleは評価せず、subject ruleとDBのlock・制約（`SPEC-100`）で抑える |
+| `admin_mutation` | `API-ADM-KRK-004`〜`API-ADM-KRK-006` | `slot_ref`（path） | |
+| `admin_mutation` | `API-ADM-KRK-007` | `reservation_ref`（path） | |
+| `admin_mutation` | `API-ADM-ENT-SALES-003` | `offering_ref`（path） | |
+| `admin_mutation` | `API-ADM-KRK-SALES-003` | `sales_configuration_ref`（path） | |
+| `admin_mutation` | `API-ADM-GDS-004`、`API-ADM-GDS-005` | `goods_ref`（path） | |
+| `admin_mutation` | `API-ADM-HOF-003` | `handoff_ref`（path） | |
+| `role_assignment` | `API-ADM-ROL-002` | `target_profile_ref`（body） | |
+| `role_assignment` | `API-ADM-ROL-003` | 対象profile（pathの `role_assignment_ref` から解決） | per target profileの枠を `API-ADM-ROL-002` と共有する。Role + Capability（`role_assignment.manage`）の確認後に、assignmentの対象profileを読取り専用の照会で解決し、解決できた場合だけ段階3を評価する。assignmentが存在しなければ `404` で、段階3は記録しない（`SPEC-140` `SEC-ABU-029`） |
+| `high_risk_recovery` | `API-ADM-PAY-001`、`API-ADM-REC-004`、`API-ADM-REC-005` | `order_ref`（path） | 同じOrderへのRefundと復旧は枠を共有する |
+| `high_risk_recovery` | `API-ADM-TQR-001` | `ticket_ref`（path） | |
+| `high_risk_recovery` | `API-ADM-EML-004`、`API-ADM-EML-005`、`API-ADM-REC-006` | `notification_ref`（path） | |
+| `high_risk_recovery` | `API-ADM-REC-003` | `checkout_attempt_ref`（path） | |
+| `high_risk_recovery` | `API-ADM-REC-007` | `case_ref`（path） | |
+
+参照を持たないOperation（上表で「なし」）は、段階3のresource ruleを評価せず、段階1・段階2のrule（IP、subject）だけを評価する。新しいOperationを§56.1のresource ruleを持つclassへ追加する変更は、本表への参照の追加（参照を持たない場合はその旨）を同一変更に含める。route registryの検証（`API-RLC-001`）は、resource ruleを持つclassの全Operationが本表に載っていることも確認する。
+
+**API-RLC-003:** `SPEC-140` §68のClass IDまたはguardの追加・削除は `SPEC-140` の変更であり、本節のclass割当の変更はその整合を保つ。Operation IDを持たない `/auth/*` proxy、未一致path、health endpoint、CORS preflightの扱いは `SPEC-140` `SEC-ABU-018` / §68に従う。
+
 ---
 
 # Part XVII — Endpoint Traceability Matrix
@@ -2226,6 +2344,7 @@ resolveConsistencyReviewCase()
 42. Notification unknown result reconcileはsame Attempt / provider keyだけを反映し、new provider key / recipient変更 / blind resendを行わない。
 43. Consistency Review resolutionはpost-verificationなしのmark-fixedを提供せず、source historyを削除しない。
 44. `API-ADM-GDS-005` Inventory adjustmentはClientからreason code / free textを受け取らず、serverがfixed `ADMINISTRATIVE_CAPACITY_ADJUSTMENT`を導出し、same-transaction Audit Eventへsigned adjustment quantity / safe before/after counters / resultと共に永続化する（`SPEC-160 §28.1`, `OBS-GDS-002,004,005`）。
+45. 全canonical Operation IDは§56.1でexactly 1つのrate limit classを持つ。`429` は `Retry-After`付きで `RATE_LIMIT_EXCEEDED`、rate limit store判定不能は `503 TEMPORARY_UNAVAILABLE` を返し、どちらもDomain stateを変更しない。
 
 ---
 
@@ -2293,3 +2412,31 @@ retry count / backoff / queue / operator RunbookはSPEC-150。本書§48.5はSPE
 `SPEC-140` が記録した「405・415に対応する公開エラーコードの不在」を、本改訂（v2.2.0）で §21 に反映した。405 は `METHOD_NOT_ALLOWED`、415 は `UNSUPPORTED_MEDIA_TYPE` とし、どちらも `Retryable=No` である。405 には `Allow` headerを付ける。`MALFORMED_REQUEST` のHTTP statusを上書きして代用しない。
 
 同時に、lock timeout（`55P03`）を標準retryable DB transaction errorとする `SPEC-150` の `UCR-150-003` を §50 とAcceptance 24へ反映した。
+
+### UCR-140-003 — INCORPORATED
+
+`SPEC-140` が記録した共有rate limitの契約（`UCR-140-003`）のうち、本書が所有する部分を本改訂（v2.3.0）で反映した。
+
+- §21: `429 RATE_LIMIT_EXCEEDED`（`Retry-After`必須、`Retryable=Yes`）を追加し、rate limit storeが利用できない場合を `503 TEMPORARY_UNAVAILABLE` に含めた。
+- §24.1: rate limitの評価位置（段階1・段階1b・Authentication-failure guardの評価・段階2・resource key）を、§24の手順1〜9の順序を変えずに定義した。
+- §56.1: 全canonical Operation IDのrate limit class割当を追加した（`API-RLC-001`〜`007`）。classを持たないOperationをReadyにしない。
+- §56.1（PR #41 第6回レビュー）: `API-STF-GDS-002`（read-only）を `goods_handoff` から `self_read` へ移し（`API-RLC-005`）、`purchase_checkout` のresource referenceを定めた（`API-RLC-006`）。§24.1 は、guardの評価をtoken検証失敗時の1回の評価とし、`auth_form_proxy` の段階1bと、複数Itemのcartの段階3を追加した。
+- §24.1 / `API-RLC-006`（PR #41 第7回レビュー）: 購入開始に、段階3の前の購入可否の事前確認を追加し、不成立の要求が共有商品枠を消費しないようにした。UUID参照はlowercase canonical形式へ正規化してから評価する。token検証は、構造検査と署名検証枠（`SEC-ABU-033`）の後に、失敗時だけguardを評価する。
+- §24.1 / §56.1 / `API-RLC-006` / `API-RLC-007`（PR #41 第9回レビュー）: 購入開始の認可確認が `purchase.start` の確認であること（owner relationは持たない）を明記し、事前確認と段階3の位置を一意にした。`purchase_checkout` 以外のresource ruleを持つ全classの全Operationについて、段階3の参照を表（`API-RLC-007`）で定めた（参照を持たないOperationの扱いを含む）。owner relationを持つself operationの段階3は、存在確認を兼ねるowner-safeな取得の後とした。guardの署名検証に同時検証slotと制限枠のIPごとの上限を加え（`SEC-ABU-033`）、JWKSを再取得できない場合を `503 AUTH_SERVICE_TEMPORARY_FAILURE` に統一した。
+
+### UCR-RLM-IMPL-006 — INCORPORATED
+
+`UCR-140-003` の実装で、段階1の `429` / `503` がCORS処理より前に返るため、Browserが `Retry-After` を読めない問題が見つかった。`SPEC-140` が `SEC-ABU-025`（v2.4.0）で規則を定め、本書は §21 からそれを参照する。API Operation、Capability、状態は追加・変更しない。
+
+### UCR-110-002 — PARTIALLY INCORPORATED
+
+- **Status:** `PARTIALLY_INCORPORATED`。要求2（許可routeの一覧）は、PR #41 のレビューを受けて §23.1 の許可表（15経路）、§56.1、`API-RLC-004` として本文へ取り込み済みで、現在の契約は本文を正とする。要求1（Google OAuth callbackが `/auth/*` を経由するかの外部確認）は、確認項目を `SPEC-180` §17.2 #7 に追加済み（PR #41 第9回レビュー。確認結果は未取得）で、要求3（経由する場合のClass割当）は確認結果に依存して未解決のまま `PROPOSED` であり、実装契約ではない。確認結果が出るまで、実装は §23.1 の表にない経路・Class割当を追加しない
+- 対象: SPEC-110 §23.1（`/auth/*` proxyの限定allowlist）と §56.1（rate limit class割当）。`SPEC-140` §68 / `SEC-ABU-027` / `SEC-ABU-028` に関連する。
+- 現在の仕様: §23.1 は `/auth/*` を「採用SDKと4認証方式に必要なProvider APIへallowlist」としているが、公開するmethod / pathの一覧は本書にない。§56.1 は `GET /auth/get-session`、`GET /auth/token`、`POST /auth/sign-out`（`auth_session`）と `GET /auth/verify-email`、`GET /auth/magic-link/verify`（`auth_callback`）を個別に割り当て、それ以外を「上記以外の許可されたroute」（`auth_form_proxy`）とするが、「許可されたroute」の集合の正は実装の `AUTH_ROUTES` だけである。また、Google providerの登録callbackは「Neonが指定する正規Auth callback」とされるが、そのcallbackがHonoの `/auth/*` を経由するか、経由する場合のmethod・path・Classは本書にも `SPEC-140` にも定義がない。allowlistにないpathは `public_read` classで評価される（`SEC-ABU-018`）。
+- 要求する変更:
+  1. Neon AuthのGoogle OAuth callbackがHonoの `/auth/*` を経由するかを、外部事実として確認する（`SPEC-180` §17.2 に確認項目を追加する。本書は結果を捏造しない）。**PR #41 第9回レビューで `SPEC-180` §17.2 #7 として追加済み**（Googleログインを本番で提供する場合のProduction promotion gate。`INF-RLS-008`）。確認結果は未取得である。
+  2. `SPEC-110` に、許可する `/auth/*` routeの一覧（method、path、rate limit class）を表として定義し、実装の `AUTH_ROUTES` をその派生にする。一覧にないpathは404とする。
+  3. OAuth callbackが経由する場合は、メールのリンクの認証完了GETと同じ理由（共有IPの多数の利用者が同時に認証を完了する。tokenではなくProviderが検証するstateで保護される）で `auth_callback` に割り当てる案を採る。経由しない場合は、「Hono経由ではなく、本書のrate limitの対象外である」ことを本書に明記する。
+- 理由: callbackが定義のないpathになる、または `auth_form_proxy` / `public_read` の低いIP上限を共有すると、共有NATの会場Wi-Fiで来場者がGoogleログインを完了できなくなる。また、許可routeの一覧が仕様にないと、routeの追加・削除がClass割当と対応づけて検証されない（`API-RLC-001`）。
+- 変更しない場合の影響: Googleログインの完了が共有IPの上限に阻まれる、または実装がallowlistを独自に拡張して仕様と乖離する。リリースへの影響は、Googleログインを提供する場合に、外部事実の確認（上記1）が済むまで当該経路の本番公開を判断できない。
+- 影響を受ける可能性がある仕様書: SPEC-140, SPEC-170, SPEC-180

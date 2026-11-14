@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-140
 title: Security Specification
-version: 2.3.0
+version: 2.4.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -676,6 +676,12 @@ Public APIをBrowser direct readへ開放する必要がある場合も、Origin
 
 **SEC-API-026:** forwarded hostをabsolute URL、redirect、Email CTA、Stripe return URLのAuthorityにしない。
 
+**SEC-API-030:** staging / productionでは、rate limitが使用するClient IPの導出方法を明示的なruntime configuration（信頼するproxy段数を表す0以上の整数。名称は `SPEC-180` が定義する）で与える。未設定、負数、非整数、parse不能はstartup security configuration failureとしてserviceをReadyにしない。`0` は「trusted proxyなし。direct peerを使用する」を明示する値であり、未設定とは区別する。Railway ingressが実際に付与するheaderと段数は外部事実であり、本書は捏造しない。`SPEC-180` が定める検証gateを通過するまで、段数を確定値として扱わない。
+
+**SEC-API-031:** rate limitのClient IPは次の手順で導出する。参照するforwarded headerは `X-Forwarded-For` だけとし、`Forwarded`、`X-Real-IP` 等の他のheaderはClient IPの導出に使用しない。信頼するproxy段数が `N`（1以上）のとき、`X-Forwarded-For` をカンマで分割した要素の右から `N` 番目をClient IPとする。`N` が `0` の場合、headerが欠落している場合、要素数が `N` 未満の場合、または該当要素をIPアドレスとして解釈できない場合は、direct peerのアドレスを使用する（`SEC-API-025`）。direct peerのアドレスも得られずClient IPを導出できない場合は、IP単位のruleを評価できないため、`503 TEMPORARY_UNAVAILABLE` でFail Closedとする（`SEC-ABU-019`）。参照するheader名と段数はRailway ingressの外部事実であり、`SPEC-180` §17.2 #1 の確認結果によって変更しうる。
+
+**SEC-API-032:** rate limitのcounter keyに使うClient IPは、`SEC-API-031` で導出した後、次のとおり正規化する。IPv4-mapped IPv6（`::ffff:a.b.c.d`）は対応するIPv4とする。それ以外のIPv6は上位64bit（/64）にmaskし、同じ/64に属する全addressを1つのIPとして扱う。IPv4はそのまま扱う。正規化した値を `SEC-ABU-015` のHMAC入力にする。理由は、IPv6では1つの利用者が通常 /64 以上を割り当てられ、addressを変えながらrequestするとaddress単位のper-IP ruleを回避でき、counter keyの数も無制限に増やせるためである。同じ/64を共有する別の利用者は、IPv4のNATと同じ共有IPとして扱う（`SEC-ABU-032`）。/64は本書の設計判断であり、外部事実ではない。
+
 ## 37. Enumeration resistance
 
 **SEC-API-027:** Login、Password reset、Email verification開始等、Account存在を不要に開示するoperationは、成功 / 不存在でUser-visible文言とresponse timing差を過度に変えない。Providerがgeneric responseを返せる場合はそれを維持する。
@@ -781,6 +787,8 @@ RLSを追加のdefense-in-depthとして将来採用してよいが、Hono API a
 | QR lookup HMAC key | S1 Critical | Hono QR component only |
 | QR AEAD encryption key | S1 Critical | Hono QR display / rotation component only |
 | Application signing/encryption key | S1 Critical | その用途のserver component only |
+| Rate limit store connection credential | S1 Critical | Hono rate limit component only（API serviceのみ。Worker / Migrator / Purge / Backupへ配布しない） |
+| Rate limit counter HMAC key | S1 Critical | Hono rate limit component only（API serviceのみ） |
 | CSRF token / OAuth state | S2 Ephemeral | Provider protocolの必要な当事者のみ。認証中継で保護しlogへ出さない |
 
 **SEC-KEY-001:** S1 Secretを`VITE_*`、Client-side environment、HTML、source map、analytics、error messageへ公開しない。Pagesの静的buildへserver Secretを渡さない。
@@ -801,6 +809,7 @@ RLSを追加のdefense-in-depthとして将来採用してよいが、Hono API a
 - Resend API / webhook secret
 - QR HMAC / AEAD keys
 - application signing keys
+- Rate limit store credential / Rate limit counter HMAC key
 
 **SEC-KEY-005:** Production SecretをCI log、developer shell history、issue tracker、chat、test fixtureへコピーしない。
 
@@ -1105,7 +1114,7 @@ Rate limitはDomain authorizationの代替ではない。Rate limitを通過し�
 
 **SEC-ABU-001:** Production rate limitはmulti-instanceで共有されるenforcement layerを使用する。per-process in-memory counterだけをProductionの唯一controlにしない。
 
-具体的なCloudflare Pages / Railway / edge / shared store wiringは `SPEC-180` が選定する。
+具体的なCloudflare Pages / Railway / edge / shared store wiringは `SPEC-180` が選定する。共有storeの製品・配置・Secret・readinessは `SPEC-180` が定義し、本書は共有storeが満たすべきcontrol semanticsを定義する。
 
 **SEC-ABU-002:** Rate limit configurationがmissing、0、negative、parse不能の場合は「unlimited」へfallbackせずstartup / readinessをfailureにする。
 
@@ -1122,26 +1131,134 @@ sustained_window_seconds = 60
 
 Productionでは下表の値を**上限**とする。より厳しくすることは可能だが、上限を増やす場合はSPEC-140変更を必要とする。
 
+**SEC-ABU-010:** §68の各Class ID（「Class ID」列）のburst / sustained上限と追加ruleの上限は、実装内のcanonical ceilingとして保持する。runtime configurationは各classの `burst_limit` / `sustained_limit` と追加rule値を与える。staging / productionでは全値が正の整数かつ対応するcanonical ceiling以下でなければならず、欠落・0・負数・非整数・parse不能・ceiling超過は `SEC-ABU-002` に従いserviceをReadyにしない。追加ruleの `window_seconds` は§68に記載されたwindowに**固定**され、runtime configurationで変更できない。変更できるのは `limit` だけで、canonical ceiling以下に限る。windowを短縮すると、同じ `limit` でもwindowあたりの許可数が増えてcanonical上限を実質的に緩和し、延長するとcanonicalの意図と異なる制限になるため、canonical値と一致しない `window_seconds` は欠落・ceiling超過と同じく `SEC-ABU-002` に従いReadyにしない。configuration欠落時にceiling値へ暗黙fallbackしない。development / testはceiling以下のより小さい値を設定してよい。変数名と形式は `SPEC-180` が定義する。
+
+### 67.2 Shared enforcement semantics
+
+**SEC-ABU-011:** 全API replicaは同一環境内で共有される1つのstoreのcounterを参照する。環境間でstore / counterを共有しない。
+
+**SEC-ABU-012:** 各ruleは**sliding window log**として評価する。すなわち、任意の `window_seconds` 区間において、admitされたrequest数がlimitを超えてはならない。固定窓counter（窓境界で最大2倍のrequestを通す方式）および近似sliding windowは、§68の上限を満たさないため使用しない。
+
+**SEC-ABU-013:** rate limitの**1回の評価**に含まれる全ruleは、storeに対する**単一のatomic操作**で評価する。その評価で1つでも超過したruleがあれば、**その評価のいずれのcounterにも記録せず**拒否する。全ruleに余裕がある場合だけ、その評価の全ruleへ同時に記録してadmitする。1回の評価の内部でruleごとに別々にread / writeしてはならない。
+
+評価は§67.3の位置ごとに独立して行う。1 requestでは、段階1、段階2、段階3（`SEC-ABU-017`）の順に、それぞれ別の評価として最大3回行う。評価と評価の間にはtoken検証、Webhook署名検証、認可確認等のstore外の処理が入るため、複数の評価を1つのatomic操作にまとめることはできない。したがって、前の評価でadmitされて記録済みのcounterは、後の評価での拒否によって取り消さない。**後の評価で拒否されたrequestは、前の評価に含まれるruleのcounterを消費する**（そのrequestがそれらのruleの対象に到達した事実として残る）。一方、拒否された評価自身は、その評価のcounterを消費しない。§68.1のAuthentication-failure guardは、token検証に失敗したrequestだけが評価する通常の1回の評価であり、他のruleと同じくatomicである（`SEC-ABU-021`）。`auth_form_proxy` のidentifier ruleは、bodyの読取り後に別の評価（段階1b）として行う（`SEC-ABU-024`）。
+
+**SEC-ABU-014:** 時刻はstore側の単一の時計から取得する。API process-localの時計をwindow判定に使用しない。
+
+**SEC-ABU-015:** counter keyに使うIP、Auth Subject、正規化済みlogin identifier、resource reference、QR lookup digestは、環境専用のSecret keyによる**HMAC-SHA256**でhash化した値だけを使用する。無keyのhash（plain SHA-256等）は使用しない。keyにraw IP、Email、Auth Subject、QR、tokenを含めない。logとmetric labelにもcounter keyを出さない。UUID形式のresource reference（`offering_ref`、`goods_ref`、`slot_ref`、`order_ref`、`ticket_ref`、`reservation_ref`、`goods_item_ref`、`target_profile_ref` 等。`SPEC-110` `API-RLC-007` の表の参照）は、入力の検証後に**lowercase canonical形式（8-4-4-4-12）へ正規化してから**、重複判定とHMAC導出を行う。requestのUUIDは大文字・小文字の表記を受け付けるため、正規化しないと、DBでは同一のresourceが異なるcounter keyになり、共有上限が分裂する。
+
+**SEC-ABU-016:** HMAC keyのversionをcounter keyに含める。routine rotationは `SEC-KEY-006` / §46の180日以内とし、rotation直後に既存counterが無効（実質reset）になることを許容する。dual-key同時評価は行わない。rotationはEvent当日等のpeak運用を避けて実施する。全counter keyには、そのruleの最長windowに等しい以上のTTLを設定し、TTLのないkeyを作らない。
+
+### 67.3 Evaluation order
+
+**SEC-ABU-017:** rate limitは3つの段階で評価する（`auth_form_proxy` だけは、段階1の後にbody読取りを挟む段階1bを持つ）。Authentication-failure guard（§68.1）は、この段階の外で、token検証に失敗した場合だけ評価する（`SEC-ABU-021`）。段階1と段階2は、DB accessおよびRole / Capability評価の**前**に行う。段階3は、対象の**認可確認が成功した後**、Domain preconditionとmutationの前に行う（`SEC-ABU-029`）。
+
+| 段階 | 位置 | 評価するkey |
+|---|---|---|
+| 1 | routeのclassが確定した直後、認証（token検証またはWebhook署名検証）の前。`auth_form_proxy` ではbody読取りの前 | per-IP、webhook source IP、`public_read` のglobal。Webhookのglobal rule（`SEC-ABU-030`）、`auth_form_proxy` のidentifier rule（`SEC-ABU-024`）は含まない。guard対象class（§68.1）は、そのIPの同時検証slotを取得したうえで、guard counterを読み取るだけで、記録も拒否もしない（`SEC-ABU-021`、`SEC-ABU-033`）。この読取りは判定として数えない（`SPEC-160` §24.1） |
+| 1b | `auth_form_proxy` のみ。段階1がadmitし、bodyを読み取った後、Providerへの中継の前 | (source IP, 正規化済みlogin identifier) の組のhash（`SEC-ABU-024`） |
+| 2 | 認証の成功後、DB accessの前 | token検証成功後: per-auth-subject、per-staff-subject、per-admin-subject。Webhook署名検証成功後: webhook classのglobal rule（`SEC-ABU-030`） |
+| 3 | 対象の認可確認の成功後（owner relationを持つself operationのowner-safeな対象の取得、購入開始operationの `purchase.start` の確認、Staff / Admin operationのRole + Capability）、Domain preconditionの前 | resource、QR digest、target resource / target profile（`SEC-ABU-029`）。そのkeyを導出するために必要な入力を構文検証した後に評価する |
+
+段階1で拒否されたrequestは、認証へ進まない。段階1で拒否された `auth_form_proxy` のrequestはbodyを読まない（`SEC-ABU-031`）。段階1bで拒否された `auth_form_proxy` のrequestは、Providerへ中継しない。段階2で拒否されたrequestは、DB accessへ進まない。段階3は認可確認の後に評価するため、認可されない主体のrequestは段階3のcounterに到達しない。段階3のresource keyは、Public Reference等の存在確認なしに評価する（`§37` のenumeration resistanceを維持する。段階3に到達するのは、そのresourceへ認可された主体だけである）。ただし、購入開始operation（owner relationを持たず、認可確認は `purchase.start` の確認）は、`purchase.start` の確認の後、購入可否の事前確認を挟んで評価する（`SEC-ABU-029`）。owner relationを持つself operationは、owner-safeな対象の取得（存在確認を兼ねる）の後に評価する。operationごとの参照は `SPEC-110` `API-RLC-006` / `API-RLC-007` が定める。
+
+**SEC-ABU-018:** 次はrate limitの対象外とし、storeへ問い合わせない。`/internal/health/live`、`/internal/health/ready`、およびCORS preflight（`OPTIONS`。Business actionを実行しない）。どのrouteにも一致しないpathと、既知pathに対する未対応methodは `405 / 404` の判定前に、`public_read` classのper-IPのburst / sustained ruleだけで評価する（global ruleは適用しない）。
+
+health endpointをrate limitの対象外にする条件として、これらがrate limitを迂回してDB / Redisへ負荷をかける経路にならないよう、次を満たす。(1) `/internal/health/live` はprocess内の状態だけを返す。(2) `/internal/health/ready` は、API process内のreadiness snapshotを返すだけで、requestの処理の中でDB・Redis・外部serviceを呼ばない。snapshotは、requestとは独立した背景のprobeが最大30秒間隔で、同時に1件だけ更新する（`SPEC-180` `INF-HLT-004` / `INF-HLT-005`）。外部から連打されても、増えるのはprocess内のsnapshot読取りだけで、DB / Redisへの検査は増えない。(3) responseはgenericで、Secret・schema・provider status・内部状態を含まない（`SPEC-180` §38）。この条件を満たせないendpointは対象外にせず、`public_read` のper-IP ruleで評価する。
+
+### 67.4 Store failure
+
+**SEC-ABU-019:** rate limit storeに到達できない、応答がtimeoutする、実行エラーになる、メモリ上限で書き込めない、またはscriptを実行できない場合は、requestを `503 TEMPORARY_UNAVAILABLE`（`SPEC-110` §21）で拒否する。「許可して続行」「rule skip」「unlimited」「process-local counterだけで継続」へ切り替えない。結果が不明（timeout後にstoreでは実行済みの可能性がある）な呼び出しは失敗として扱い、同じrequestで再実行して二重記録しない。timeout値と短絡（circuit open）の扱いは `SPEC-150` に従う。store failureで `AUTHORIZATION_DENIED` やresource existence responseを返さない。process-local counterによる縮退運用は本書の契約に含めない。
+
 ## 68. Canonical Rate Limit Matrix
 
-| Class | Keys | Burst / 10s | Sustained / 60s | Additional resource/global rule |
-|---|---|---:|---:|---|
-| Public read | per-IP | 20 | 120 | global 10,000/min |
-| Auth form/proxy | per-IP | 5 | 20 | per normalized identifier hash 5/10min |
-| Self read | per-auth-subject + per-IP | 30 | 120 | IP 240/min |
-| Purchase / checkout | per-auth-subject | 3 | 12 | per offering/resource 60/min |
-| QR display | per-auth-subject | 6 | 30 | per Ticket 12/min |
-| Staff Check-in | per-staff-subject + per-IP | 40 | 180 | per QR digest 30/min; IP 300/min |
-| Goods Handoff | per-staff-subject | 10 | 60 | per Goods Item 10/min |
-| Admin mutation | per-admin-subject | 10 | 30 | per target resource 15/min |
-| Role Assignment | per-admin-subject | 3 | 10 | per target profile 5/10min |
-| Refund / QR rotation / Notification recovery | per-admin-subject | 2 | 6 | per target resource 2/min and 10/hour |
-| Stripe webhook | per trusted-derived source IP | 100 | 300 | global 3,000/min |
-| Resend webhook | per trusted-derived source IP | 100 | 300 | global 3,000/min |
+| Class | Class ID | Keys | Burst / 10s | Sustained / 60s | Additional resource/global rule |
+|---|---|---|---:|---:|---|
+| Public read | `public_read` | per-IP | 20 | 120 | global 10,000/min |
+| Auth form/proxy | `auth_form_proxy` | per-IP | 10 | 40 | per (IP, normalized identifier) pair 5/10min |
+| Auth session | `auth_session` | per-IP | 100 | 600 | なし |
+| Auth callback | `auth_callback` | per-IP | 30 | 120 | なし |
+| Self read | `self_read` | per-auth-subject + per-IP | 30 | 120 | IP 240/min |
+| Purchase / checkout | `purchase_checkout` | per-auth-subject | 3 | 12 | per offering/resource 60/min（複数Itemのrequestは全distinct resource。`SEC-ABU-029`） |
+| QR display | `qr_display` | per-auth-subject | 6 | 30 | per Ticket 12/min |
+| Profile mutation | `profile_mutation` | per-auth-subject | 3 | 10 | なし |
+| Staff Check-in | `staff_checkin` | per-staff-subject + per-IP | 40 | 180 | per QR digest 30/min; IP 300/min |
+| Goods Handoff | `goods_handoff` | per-staff-subject | 10 | 60 | per Goods Item 10/min |
+| Admin mutation | `admin_mutation` | per-admin-subject | 10 | 30 | per target resource 15/min |
+| Role Assignment | `role_assignment` | per-admin-subject | 3 | 10 | per target profile 5/10min |
+| Refund / QR rotation / Notification recovery | `high_risk_recovery` | per-admin-subject | 2 | 6 | per target resource 2/min and 10/hour |
+| Stripe webhook | `stripe_webhook` | per trusted-derived source IP | 100 | 300 | global 3,000/min |
+| Resend webhook | `resend_webhook` | per trusted-derived source IP | 100 | 300 | global 3,000/min |
+| Authentication-failure guard（来場者向け） | `auth_failure_guard_attendee` | per-IP、token検証失敗のみ | 20 | 50 | なし（§68.1） |
+| Authentication-failure guard（運営向け） | `auth_failure_guard_operator` | per-IP、token検証失敗のみ | 20 | 50 | なし（§68.1） |
+
+Self readのclassは、本人のread operationに加え、Administrator / Staffが行うread operation（`SPEC-110` のAdministrator read catalog等）にも適用する。各operationが属するclassは `SPEC-110` の「Rate limit class assignment」が定義する。
+
+Class IDは `SPEC-110` のassignment、runtime configuration、metric label、testで同一の綴りを使う。
+
+**SEC-ABU-026:** §68の各classで、burst / sustainedは「Keys」列の**先頭のkey**にだけ適用する。「Keys」列に `+ per-IP` を持つclass（`self_read`、`staff_checkin`）では、2つ目のIP keyにburst / sustainedを適用せず、「Additional」列の `IP N/min` だけを適用する。評価されるruleは次のとおりである。
+
+| class | 段階1（token検証前） | 段階2（token検証後） | 段階3（認可確認後） |
+|---|---|---|---|
+| `self_read` | IP 240/60秒 | auth subjectのburst 30/10秒、sustained 120/60秒 | なし |
+| `staff_checkin` | IP 300/60秒 | staff subjectのburst 40/10秒、sustained 180/60秒 | QR digest 30/60秒 |
+
+共有IPの来場者・Staffは、IP単位のburstではなく、IP単位の上限（`self_read` は240/分、`staff_checkin` は300/分）で制限される。Additional列のwindowは、`/min` が60秒、`/10min` が600秒、`/hour` が3600秒であり、いずれも固定である（`SEC-ABU-010`）。Keysがper-IPだけのclassでは、IP keyにburst / sustainedを適用する。
+
+**SEC-ABU-027:** `/auth/*` 中継のうち、セッションの参照と終了（`GET /auth/get-session`、`GET /auth/token`、`POST /auth/sign-out`）は `auth_session` class、メールのリンクから開かれる認証完了のGET（`SEC-ABU-028`）は `auth_callback` class、それ以外の許可されたrouteは `auth_form_proxy` classとする（`SPEC-110` §56.1）。分離する理由は、会場Wi-Fi・キャリアNAT等で多数の正規利用者が同一IPを共有しても、通常のセッション参照が、認証試行向けの低いIP上限（`auth_form_proxy`）を消費しないためである。`auth_session`、`auth_callback`、`auth_form_proxy` のcounterは互いに独立し、一つの消費は他に影響しない。`auth_session` のIP上限は認証基盤への中継負荷を抑える粗い上限であり、認証試行の抑止は `auth_form_proxy` が担う。`auth_session` はtoken検証前のIP keyだけで評価され（段階1）、identifier ruleとAuthentication-failure guardを持たない。どのrouteにも一致しない `/auth/*` のpathは、`SEC-ABU-018` に従い `public_read` で評価する。
+
+**SEC-ABU-028:** `/auth/*` 中継のうち、メールのリンクから開かれる認証完了のGET（`GET /auth/verify-email`、`GET /auth/magic-link/verify`）は `auth_callback` classとする（`SPEC-110` §56.1）。これらはログインフォームの送信ではなく、利用者がメール内の確認リンクを開く操作であり、会場Wi-Fi・キャリアNAT等で同一IPの多数の利用者が、ログイン試行・メール確認・Magic Link完了を続けても、認証試行向けの低いIP上限（`auth_form_proxy`、10回/10秒）に阻まれて認証を完了できなくなることを避ける。`auth_callback` のcounterは `auth_form_proxy` と `auth_session` のcounterと独立し、互いに消費しない。`auth_callback` はtoken検証前のIP keyだけで評価され（段階1）、identifier ruleとAuthentication-failure guardを持たない。リンクのtokenは、Providerが発行する推測困難な値であることを前提とする（Providerの仕様は外部事実であり、本書は断定しない）。総当たりの抑止は、Providerのtoken検証とProvider側のrate / bot protection（`SEC-ABU-005`）が担う。本classのIP上限は中継負荷を抑える粗い上限である。メールに含まれるOTPを送信してVerifyするPOST（`POST /auth/email-otp/verify-email`）は、利用者が入力する短いコードの総当たりが想定されるため `auth_callback` に含めず、`auth_form_proxy` に残す。
+
+**SEC-ABU-029:** 複数の主体が共有する**resource単位のcounter**（§68の「Additional」列の `per offering/resource`、`per Ticket`、`per QR digest`、`per Goods Item`、`per target resource`、`per target profile`）は、対象に対する**認可確認が成功した後**にだけ評価・記録する（段階3）。認可確認とは、owner relationを持つself operationではowner relation（`SPEC-110` §24の手順6。owner-safeな対象の取得）、購入開始operationでは `purchase.start` の確認（`SPEC-060`。owner relationを持たない。下記「購入開始の事前確認」）、Staff / Admin operationではRole Assignment + Capability（手順7）である。段階3は手順8（Domain precondition）とmutationの前に行う。理由は、未認可の主体（有効なJWTを持つ一般利用者、他人のTicketを指定した利用者など）がBodyやpathで他者のresourceを指定し、正規の管理者・Staff・所有者のresource枠を消費して `429` にすることを防ぐためである。たとえば、一般の有効JWT所持者が `API-ADM-ROL-002` の `target_profile_ref` に対象profileを指定しても、Role / Capabilityの確認で `403` となり、`role_assignment` の対象profile枠（5回/10分）と `high_risk_recovery` のtarget枠は消費されない。認可確認（手順6 / 7）が `403` / `404` で終わったrequestは、段階3のcounterを変化させない。一方、認可確認を通過した後に手順8以降（Domain precondition）で `404` / `409` 等になったrequestは、段階3のcounterを消費したままになる（`SEC-ABU-013`）。たとえば `goods_handoff.execute` を持つStaffが未知の `goods_item_ref` を指定した場合、段階3を記録した後でresource照会が `404` になりうる。認可確認のためのDB accessは、段階1・段階2のIP / subject ruleの範囲に収まる（認証済みであっても、subjectごとのburst / sustained上限を超えて認可確認に到達できない）。QR digestは、Staff Capabilityの確認後に導出して評価し、QRの照会（手順8以降）の前に行う。段階3の評価位置は、認可確認の種類で決まる。(1) **Role + Capabilityが認可確認のStaff / Admin operation**（`staff_checkin`、`goods_handoff`、`admin_mutation`、`role_assignment`、`high_risk_recovery`）は、resourceの存在確認（業務DBの照会）の前に評価する。同じcounter履歴のkeyであれば、存在するresourceと存在しないresourceで評価結果は同一である（異なる履歴のkeyは比較できない）。唯一の例外は `API-ADM-ROL-003` で、`role_assignment` のruleが対象profile単位であり、pathの `role_assignment_ref` から対象profileを得るには業務DBの読取りが必要なため、Role + Capabilityの確認の後に、読取り専用の照会（DB writeもlockもなし）で対象profileを解決し、解決できた場合だけ段階3を評価する（**設計判断**。profileでなくassignmentをkeyにすると、同じprofileへの `API-ADM-ROL-002` と `API-ADM-ROL-003` が別のcounterになり、§68の「per target profile」を満たさない。この照会は `role_assignment.manage` を持つAdministratorに限られ、段階2のsubject rule（3回/10秒、10回/分）の範囲に収まる。assignmentが存在しなければ `404` で、段階3は記録しない）。(2) **owner relationを持つself operation**（`qr_display` の `API-TKT-003` / `API-KRK-SELF-003`、`purchase_checkout` の `API-CHK-001` / `API-ORD-002`）は、owner-safeな対象の取得（手順6）が存在確認を兼ねる。段階3は、この取得に成功した後に評価する。存在しない対象と他人の対象は、取得の時点で同じ `404` となり、段階3のcounterに到達しない。(3) **購入開始operation**（`API-PUR-CART-001`、`API-PUR-ENTRY-001`、`API-PUR-GDS-001`、`API-PUR-KRK-001`）は、下記の購入可否の事前確認の後に評価する。operationごとのresource参照（参照を持たないoperationの扱いを含む）は `SPEC-110` `API-RLC-006` / `API-RLC-007` が定める。
+
+**複数のresourceを持つoperation:** `API-PUR-CART-001` は最大50件のItemを含む。段階3は、bodyの検証（件数、重複、Karaoke混入、型。これらの違反は `400` で、段階3へ到達しない）の後、全Itemのdistinctな参照（ENTRYは `offering_ref`、GOODSは `goods_ref`）を抽出し、`purchase_checkout` のresource ruleを**全てのresourceを含む1回のatomic評価**で行う（`SEC-ABU-013`）。1 requestは、各distinct resourceのcounterに1件ずつ記録する（quantityには依存しない）。どれか1つのresourceでも上限に達していれば、全resourceのcounterを記録せず `429` で拒否する。`Retry-After` は超過した全resourceの中で最長のものとする（`SEC-ABU-007`）。先頭のItemだけを評価して残りを評価しない構成、およびItemごとに別々の評価で記録する構成は、後方のItemのresource上限を回避したり、一部のresourceだけが記録された状態を残したりするため認めない。1回の評価に含めるresource数は、Cartの件数上限と同じ最大50である。実装のportは、1つのruleに複数のresource referenceを渡せなければならない。operationごとのresource referenceは `SPEC-110` `API-RLC-006` が定める。
+
+**購入開始の事前確認:** 購入開始operationは、対象が公開商品で、owner relationを持たず、認可確認が `purchase.start` の確認（認証済み利用者に許可されるCapability。`SPEC-060`）だけである。事前確認と段階3は、`purchase.start` の確認が成功した後に行う（`purchase.start` の確認より前の手順（認証、メール確認、Business Profile解決。`SPEC-110` §24の手順2〜5）または `purchase.start` の確認で拒否されたrequestは、事前確認にも段階3にも到達しない。`SPEC-060` で `purchase.start` がDenyなのはGuestだけである）。段階3を `purchase.start` の確認の直後に評価すると、認証済みの少数の主体が、購入できない数量や未知の参照を指定するだけで、正規の購入者の共有商品枠（60件/分）を使い切り、未知のUUIDで大量のcounter keyも作れる。そこで、段階3の前に、DBを更新もlockもしない読取り専用の購入可否の事前確認（`API-PUR-ELG-001` と同じ判定。Order、Allocation、Hold、counter等を書かない）を全対象に行う。(1) **全対象が購入可能**と判定された場合だけ、その対象の参照について段階3を評価する。(2) 1つでも存在しない、または購入条件を満たさない対象（`purchasable=false`）がある場合は、段階3を評価も記録もせず、そのまま手順8の業務Transactionへ進む。Transactionが権威的な `409 STATE_CONFLICT`（`item_failures`）を返す。(3) 事前確認は非公開と不存在を区別しない（`NOT_PUBLIC_OR_NOT_FOUND`）。段階3のkeyは存在する公開商品だけから作られ、keyの数はカタログの商品数で抑えられる。(4) 事前確認とTransactionの間に状態が変わりうる。事前確認が購入可能でもTransactionが失敗した場合、段階3は記録されたままである（`SEC-ABU-013`）。事前確認が購入不可でもTransactionが成功した場合、その1件は段階3を通らない。Transactionが権威であり、事前確認は段階3の対象を絞るための補助である。(5) 事前確認のDB readは、段階2のsubject rule（3回/10秒、12回/分）で抑えられる。残る影響: 購入可能な商品を指定する認証済みの複数主体は、共有商品枠を消費できる。これは実際の在庫確保を伴う操作であり、枠の公平性ではなく在庫確保の悪用として別の対策が必要である（`SEC-ABU-032`）。
+
+**SEC-ABU-030:** Webhook classのglobal rule（`stripe_webhook`、`resend_webhook` の3,000/分）は、**署名検証が成功した後**にだけ評価・記録する（段階2）。署名検証前（段階1）はwebhook source IPごとのburst / sustained ruleだけを評価する。無効な署名のrequestは、global counterを消費しない。理由は、署名を持たない第三者が複数のsource IPから無効署名のrequestを送ってglobal枠に達し、正規のStripe / Resendイベント（決済確定、Email配信結果）を検証前に `429` で拒否することを防ぐためである。署名検証成功後のglobal上限超過は `429 RATE_LIMIT_EXCEEDED`（`Retry-After`付き）とし、DB accessとReceipt作成の前に返す。Providerのretryを許可する（Receiptを正規Eventとして作らない）。署名検証はDB accessを伴わないため、無効署名のrequestは段階1のsource IP ruleで抑止され、DBへ到達しない。なお `public_read` のglobal rule（10,000/分）は認証のない公開routeのためのものであり、本規則の対象外である。
 
 **SEC-ABU-003:** Staff Check-inは当日burstを許容するためPublic mutationより高いlimitを持つが、Staff Role / Capability検証をskipしない。
 
 **SEC-ABU-004:** 256-bit QR tokenはbrute-force resistantであるが、unknown QR大量scanを無制限にDBへ到達させない。
+
+### 68.1 Authentication-failure guard
+
+token検証が成功して初めて得られるkey（Auth Subject）だけを持つclassは、無効tokenを大量に送るrequestに対してrate limitが働かない。次のguardをこれらのclassへ追加する。
+
+| guard Class ID | 対象となるrouteのclass |
+|---|---|
+| `auth_failure_guard_attendee` | `purchase_checkout`、`qr_display`、`profile_mutation` |
+| `auth_failure_guard_operator` | `goods_handoff`、`admin_mutation`、`role_assignment`、`high_risk_recovery` |
+
+**SEC-ABU-020:** guardは**token検証に失敗したrequestだけ**をIPごとに数える。token検証に成功したrequestはguardのcounterに記録せず、guardの状態（そのIPの失敗数）を理由に拒否もしない。ただし、失敗数が上限に達したIP、または同時検証slotを超えて並行するIPのtokenは、署名検証の負荷を抑えるため制限枠で検証され、枠が尽きている間は検証されず `429` になりうる（`SEC-ABU-033`）。Email未検証（`EMAIL_VERIFICATION_REQUIRED`）、Authorization denial、Business Rule失敗はguardに記録しない。会場の共有Wi-Fi・キャリアNAT等で多数の正規利用者が同一IPを共有しても、正規利用者の通常requestがguardを消費しないためである。
+
+数える「token検証の失敗」は、`Authorization` headerの欠落または形式不正、およびtokenの署名・期限・issuer等の検証で無効と判定された場合である。認証基盤に到達できないなど、tokenの有効性を判定できなかった場合は、利用者の落ち度ではないため数えない（`503 AUTH_SERVICE_TEMPORARY_FAILURE` として扱い、guardに記録しない。`SPEC-110` §21）。JWKSのrefreshが実行中または間隔内で開始できず、cacheのkeyでtokenを検証できなかった場合（`SPEC-150` `REL-AUTH-002`）も、判定できなかった場合として数えず、同じ `503 AUTH_SERVICE_TEMPORARY_FAILURE` とする。
+
+**SEC-ABU-021:** guardは次の順で動作する。(1) 段階1（`SEC-ABU-017`）で、そのIPの同時検証slotを取得し、取得できた場合だけ、そのIPのguard counterの現在値を**読み取るだけ**で、記録も拒否もしない。読み取った結果（失敗数がlimitに達しているか）とslotの取得結果は、(3)の署名検証枠の選択にだけ使う（`SEC-ABU-033`）。(2) tokenを構造検査する（暗号処理なし。`SEC-ABU-033`）。(3) 構造検査を通ったtokenを、署名検証枠（通常枠または制限枠）で検証する（`SEC-ABU-033`）。検証はrequestごとのネットワーク通信を行わず、cacheしたtrusted keyで行う。JWKSのrefreshとcacheの期限は `SPEC-150` `REL-AUTH-002` に従い、cacheのkeyで検証できずrefreshも開始できない場合は `503 AUTH_SERVICE_TEMPORARY_FAILURE` とする（(5)の評価へ進まない）。(4) 検証に成功した場合は、guardに記録せず段階2へ進む。(5) 構造検査または署名検証に失敗した場合（`SEC-ABU-020`）だけ、そのIPのguard ruleを1回の通常の評価（`SEC-ABU-013`）として評価する。burst / sustainedのどちらにも余裕があれば、1件を記録して `401` を返す。どちらかがlimitに達していれば、記録せず `429 RATE_LIMIT_EXCEEDED`（`Retry-After`付き）を返す。すなわち、limit+1回目の失敗が `429` になる。評価は他のruleと同じくatomicで、並行する失敗requestでもlimitを超えて記録しない。(6) 同時検証slotは、(4)の場合は署名検証の完了時、(5)の場合はguardの評価（記録または `429`）の完了時に解放する。
+
+この順序にする理由は、guardをtoken検証の前に確認して拒否すると、会場Wi-Fi・キャリアNATなど共有IPの第三者が無効tokenをlimitまで送るだけで、同じIPの正規のStaff / Administratorが有効なJWTで `goods_handoff` / `admin_mutation` 等を呼んでもtoken検証の前に `429` にされ、運営操作が止まるためである。本順序では、有効tokenのrequestは、guardの失敗数そのものを理由には拒否されない（失敗数は署名検証枠の選択にだけ使う）。ただし、失敗数がlimitに達したIP、または同時検証slotを超えて並行するIPのtokenは制限枠で検証され、制限枠が尽きている間は `429` になりうる（`SEC-ABU-033`）。無効tokenの大量送信による負荷は、構造検査と署名検証枠・同時検証slot（`SEC-ABU-033`）、失敗がlimit以降 `429` になり記録されないこと、`SPEC-150` `REL-AUTH-002` のJWKS refresh上限で抑える。残る影響として、同じIPで失敗枠が使い切られている間に**無効または期限切れのtokenを送った**正規利用者は、`401` ではなく `429` になる。有効なtokenを持つ利用者は、通常枠で検証される間（そのIPの失敗数がlimit未満で、同時検証slotに余裕がある間）と、制限枠に余裕がある間は影響を受けない（Browserはtokenの期限前に更新する。`SPEC-060` `AR-SES-006`）。
+
+**SEC-ABU-022:** guardの2つのClass IDは、会場運用に合わせて別々の値を設定できる。各値は§68の上限を超えない。guardのlimitは「token検証失敗の回数」であり、通常requestの上限ではない。
+
+**SEC-ABU-033:** guard対象class（§68.1）のtoken検証の負荷を、次のとおり抑える。これらのclassは段階1にIP ruleを持たず、共有IPの正規利用者を巻き込まないためにIP単位の入場制限も置かないので、検証処理そのものに上限を置く。(a) **構造検査（暗号処理なし）:** `Authorization: Bearer` の形式、tokenの長さ（最大4,096 byte）、3区間のbase64url、headerの `alg`（Security Configurationで許可されたものだけ）と `kid`、payloadの `iss` の完全一致と `exp` が未来であることを、署名検証の前に確認する。違反は無効tokenとして扱い、署名検証を行わず、guardに数える。(b) **署名検証の2つの枠と同時検証slot:** 署名検証は、通常枠または制限枠のどちらかの中でだけ実行する。**通常枠**は、段階1で読み取ったguard counterがlimitに達しておらず、かつそのIPの**同時検証slot**を取得できたrequestが使う。同時検証slotは、IPごとに最大8件のprocess-localの資源で、段階1でguard counterを読み取る前に取得し、検証が成功した場合は署名検証の完了時に、失敗した場合はguardの評価（記録または `429`）の完了時に解放する（応答の完了・打切り・接続切断のどれでも必ず解放する）。slotを設ける理由は、guard counterの読取り（段階1）と失敗の記録（検証の失敗後）が別の操作であり、同一IPの並行requestが全て、記録前の同じ失敗数（limit未満）を読んで通常枠に入り、guardのlimitを超える数の署名検証を実行できるためである。**制限枠**は、guard counterがlimitに達しているIP、または同時検証slotを取得できなかったIPのtokenが使う（slotを取得できなかったrequestは、guard counterを読み取らず、storeも呼ばない）。制限枠は、process全体で毎秒50回、かつIPごとに毎秒10回のtoken bucketである。IPごとのbucketはprocess内のメモリだけに置き、同時に最大1,024 IP分を保持し、最後の使用から60秒で破棄する。保持数が上限のときは、新しいIPのrequestを制限枠に入れず拒否する。どちらかのbucketが空の間のrequestは、署名検証を行わず `429 RATE_LIMIT_EXCEEDED`（`Retry-After: 1`）とし、guardに数えない（tokenの有効性を判定していないため）。**実際に成立する上限（設計上の上限）:** 1つのIPが同時に実行させられる通常枠の署名検証は8件以下である。並行requestが記録前の同じ失敗数を読んでも、通常枠に入れるのは8件までで、残りは制限枠に回る。1つのIPが通常枠で実行させられる無効tokenの署名検証は、guardのsustained limitの記録1件ごとに、その記録の完了前に同時に実行中だった高々7件が加わるため、1つの60秒windowで「sustained limit × 8」（canonical ceilingでは50 × 8 = 400回）を超えない。これを超える分は制限枠に回り、IPごとに毎秒10回、process全体で毎秒50回までである。**範囲（API processごとの上限）:** 同時検証slot、制限枠、bucketの保持数は、いずれもAPI processごとのprocess-localの資源であり、上記の上限は**1つのAPI processあたり**である。環境全体では、API replica数（Productionは2。`SPEC-180`）の分だけ重なり、replicaが2つなら、1つのIPの通常枠の同時実行は最大16件、1つの60秒windowで最大800回（50 × 8 × 2）、制限枠はIPごとに毎秒20回・全体で毎秒100回まで実行されうる（loadの分散比は保証しない）。一方、guard counter（失敗の記録とlimit）は共有storeにあり、環境全体で1つである（`SEC-ABU-001`）。この区別を崩さない: counterによるlimitは環境全体、署名検証の同時数と制限枠はprocessごとである。「そのIPはguardのlimitまでしか署名検証を実行させられない」とは扱わない（guardの記録は検証の失敗後であり、並行requestには効かないため）。(c) これらはprocess-localの資源上限であり、rateを数えるcounterではない（`SEC-ABU-031` と同じ位置づけで、`SEC-ABU-001` の対象外）。同時検証slot（8件）、制限枠（process全体で毎秒50回、IPごとに毎秒10回、保持1,024 IP、破棄60秒）、4,096 byteは運用判断値の固定定数で、runtime configurationの対象ではない（上流に根拠のある値ではなく、**設計判断**である）。制限枠による拒否は `rule_category=concurrency` の `rejected` として観測する（`SPEC-160` §24.1）。負荷test（`TST-RLM-004`）で、正規のNAT共有利用（同一IPの多数のStaffが同時に操作する）が制限枠へ回らないことを確認し、値を運用で見直す（変更は `SPEC-140` の変更である）。(d) 残る影響として、失敗数がlimitに達したIP、または8件を超えて並行するIPのtokenは制限枠で検証され、そのIPの枠（IPごとに毎秒10回）またはprocess全体の枠が尽きている間は、同じIPを共有する正規利用者の有効tokenも検証されず `429` になりうる。limitに達しておらず、並行も8件以下のIPの有効tokenは通常枠で検証され、影響を受けない。多数のIPに分散した無効JWTの大量送信は、IPごとのlimitの合計まで受け付けるため、application層では抑えられず、edge側の防御に委ねる（`SEC-ABU-032`）。
+
+**SEC-ABU-023:** `SEC-ABU-020` は、Auth Subjectを持たないclass（`public_read`、`auth_form_proxy`、`auth_session`、`auth_callback`、webhook）、およびIPのkeyを既に持つclass（`self_read`、`staff_checkin`）には適用しない。これらは§68の既存IP ruleで評価される。
+
+**SEC-ABU-024:** `auth_form_proxy` の「正規化済みlogin identifier」は、POST requestのJSON bodyの `email` fieldを正規化したものとする。bodyの読取りは、per-IP ruleの評価（段階1）がadmitしたrequestだけが行い（`SEC-ABU-031`）、先頭から最大64 KiB、読み取りは最大3秒までとする。上限超過、JSON不正、`email` の欠落、または読み取りのtimeoutによりidentifierを取り出せない場合は、**identifier ruleだけを省略**する。per-IPのburst / sustained ruleは、identifierの取り出しの成否にかかわらず常に評価する。この省略により、identifier単位のruleを巨大なbody等で回避できるが、IP単位のruleは回避できない。
+
+identifier ruleは、**source IPと正規化済みlogin identifierの組**を1つのkeyとし、body読取り後の段階1bで評価する。HMAC-SHA256（`SEC-ABU-015`）の入力は、IPとidentifierを、境界が曖昧にならない形（長さ接頭辞付き等）で連結した値とする。identifier単独のkeyにしない。理由は、identifier単独の共有counterでは、未認証の第三者が他人のemailを指定してPOSTを繰り返すだけで、別のIPにいる本人のログイン・OTP・password resetを、`auth_form_proxy` の10経路全体で10分間 `429` にできるためである。組のkeyでは、攻撃者が消費するのは攻撃者のIPの枠だけで、別のIPにいる本人の枠には影響しない。同じIPを共有する第三者（同一NAT内）は同じ枠を共有するが、影響は同じIPの利用者に限られ、別のIPにいる本人には及ばない。
+
+組のkeyでは、多数のIPから同一アカウントへ試行を重ねる攻撃の総量は抑えられない。application側は、1つのIPあたりの同一アカウントへの試行を5回/10分に抑え、IP全体を10回/10秒・40回/分に抑える。多数のIPに分散した試行の抑止は、Provider側のrate / bot protection（`SEC-ABU-005`）が担う。その有無と強度は外部事実であり、`SPEC-180` §17.2 #6 で確認する。本書はその強度を捏造しない。
+
+`SEC-ABU-024` のlogin identifierの正規化は次の手順で行い、手順の結果を `SEC-ABU-015` のHMAC-SHA256の入力とする。(1) `email` が文字列でない場合（欠落、`null`、数値、配列、object）は、identifierを取り出せなかったものとして扱い、`SEC-ABU-024` に従いidentifier ruleを省略する。(2) 前後の空白（Unicodeの空白文字）を除去する。(3) Unicode NFKCへ正規化する。(4) ロケールに依存しない小文字化を行う。(5) 結果が空、または320文字を超える場合は、取り出せなかったものとして扱う。これにより、大文字小文字、前後の空白、全角半角などの表記揺れは同一のcounter keyに集約される。
+
+この手順は、認証Providerが同一のidentifierとして扱う範囲を保証しない。Providerがこの手順より広い同値性を持つ場合（例: Provider独自のcanonicalization）、その差分の入力はidentifier ruleを回避できる。ただしper-IPのruleは回避できない。Providerの同値性は外部事実であり、本書は捏造しない。`SPEC-180` §17.2 #5 の確認結果に基づき、必要ならば正規化手順を拡張する。
+
+**SEC-ABU-031:** `auth_form_proxy` のbody読取りは、per-IP ruleの評価（段階1）がadmitしたrequestだけに対して行う。段階1が `429` / `503` のrequestはbodyを読まず、直ちに応答して接続を閉じる（`Connection: close`）。Client IPを導出できない場合の `503`（`SEC-API-031`）や、rate limitの構成が欠けている場合の `503` を含め、bodyを読む前に返す `auth_form_proxy` の全ての拒否応答が対象である。これにより、IP上限を超えているクライアントは、本文を送信し切らないPOSTを並行させて接続・stream・memoryを占有できない。body読取りは、API process内で次の2つの上限により保護する。(1) 同時にbodyを読み取り中のrequestは、IPごとに最大3件、process全体で最大256件とする。どちらの上限を超えたrequestも、bodyを読まず `429 RATE_LIMIT_EXCEEDED`（`Retry-After: 1`）で拒否する。(2) 1 requestのbody読取りは、合計3秒・64 KiBで打ち切る（`SEC-ABU-024`）。読取りのslotは、応答の完了・打切り・接続切断のどれでも必ず解放する。これらはrateを数えるcounterではなく、接続とmemoryを守るprocess-localの資源上限であり、`SEC-ABU-001` が禁じる「process-local counterだけのProduction control」ではない（rateの制御は共有storeのIP ruleが担う）。この2つの上限による拒否はrate limit storeを呼ばず、`rejected`（`rule_category=concurrency`。`SPEC-160` §24.1）として観測する。数値（3件・256件）は運用判断値の固定定数であり、runtime configurationの対象ではない（変更は `SPEC-140` の変更である）。負荷test（`TST-RLM-004`）で、正規のNAT共有利用（同一IPの同時ログイン）が拒否されないことを確認する。
+
+**SEC-ABU-032:** 本Part XIIIのcontrolで抑えられない既知の残余リスクを明示する。いずれも設計上の判断であり、解消には別の対策を `SPEC-140` のUCRとして定める。(1) `public_read` のglobal rule（10,000/分）は、多数のIPに分散した未認証の読取りで使い切られうる。その間、公開APIの読取りは `429` になる。DBを守るための意図した縮退であり、静的なWeb shellはCloudflare Pagesから配信され、本controlの対象外である。(2) 多数のIPに分散した同一アカウントへの認証試行の総量は、application側では抑えられず、Provider側の保護に依存する（`SEC-ABU-024`、`SPEC-180` §17.2 #6）。(3) IP単位のruleは、同じIP（同一NAT、同一IPv6 /64）を共有する利用者全員に及ぶ。共有IPの第三者は、そのIPの枠を使い切って、同じIPの他の利用者を拒否できる。会場Wi-Fiではこの範囲が広いため、共有IPで想定する人数に対する上限は運用判断で見直す（`SEC-ABU-010`）。(4) 多数の異なるIPからadmitされるrequestは、counter keyの数とRedisのmemory使用量を増やす。memory満杯は `503` でFail Closedとなり（`SEC-ABU-019`）、unlimitedにはならないが、全requestが拒否される。`maxmemory` は余裕をもって決める（`SPEC-180` `INF-RLS-004`）。(5) 購入可能な商品を指定する認証済みの複数主体は、共有商品枠（60件/分）を消費して、他の購入者を `429` にできる。これは実際の在庫確保を伴う操作であり、在庫確保（Hold / Allocation）の悪用に対する別の対策（アカウントごとの購入上限、メール確認済みの要件等）に依存する。(6) 多数のIPに分散した無効JWTの大量送信は、IPごとの通常枠（sustained limit × 同時検証slot）の合計までの署名検証を実行させる。application層の上限は `SEC-ABU-033` の制限枠までで、これを超える量はedge側の防御に委ねる。(7) 以下の「API process」は、制限枠がprocessごとであることを指す（`SEC-ABU-033`）。同じIPを共有する1台が、構造の正しい無効JWT（署名だけが無効）を送り続けると、そのIPのguardがlimitに達し、そのIPのtokenは全て制限枠（IPごとに毎秒10回）で検証される。その1台が枠を使い切る間は、同じIPの正規利用者の有効tokenも `429` になる（(3)の共有IPの残余である）。API process全体の制限枠（毎秒50回）は、IPごとの枠（毎秒10回）により、1つのIPでは使い切れない。1つのAPI processの枠を使い切るには、そのprocessへ届くlimitに達した異なるIPが5つ以上で同時に送り続ける必要があり（replicaへ分散される場合は、その分多く必要）、その間は、limitに達している他のIPの有効tokenも `429` になりうる。IPごとのbucketの保持数（1つのAPI processあたり1,024 IP）が、制限枠を使う多数のIP（IPv6は/64単位）で埋まっている間は、新たにlimitに達したIPのtokenは、有効でも制限枠に入れず `429` になる（保持は最後の使用から60秒で破棄されるまで続く）。limitに達しておらず、並行も8件以下のIPの有効tokenは通常枠で検証され、影響を受けない。5つ以上のIPの協調と、多数のIPに分散した送信は、application層では抑えられず、edge側の防御に委ねる。
+
+**SEC-ABU-025:** 段階1（`SEC-ABU-017`）、段階1b、および `auth_form_proxy` のbody読取り上限（`SEC-ABU-031`）の `429` / `503` はCORS処理より前に返りうる。この応答では、requestの `Origin` がexactなWeb originと完全一致する場合に限り、その値を `Access-Control-Allow-Origin` に返し、`Vary: Origin` と `Access-Control-Expose-Headers: X-Request-Id, Retry-After` を付ける。これによりBrowserが `Retry-After` を読める。一致しない場合、またはOriginがない場合はCORS headerを付けない。`*` は返さない（`SEC-API-006`）。`/api/v1/*` では `Access-Control-Allow-Credentials` を付けない（`SEC-API-007`）。認証中継 `/auth/*` では、exactなWeb originに対してだけ `Access-Control-Allow-Credentials: true` を付ける（§30。`/auth/*` のcredentialed CORS）。
 
 ## 69. Auth provider abuse boundary
 
@@ -1153,11 +1270,11 @@ Neon Authへのdirect provider trafficはHono rate limiterで完全には制御�
 
 ## 70. 429 behavior
 
-**SEC-ABU-007:** Rate limit超過は`429`とし、可能なら整数秒`Retry-After`を返す。responseにcounter key、Email、Auth Subject、raw IP historyを含めない。
+**SEC-ABU-007:** Rate limit超過は`429 RATE_LIMIT_EXCEEDED`（`SPEC-110` §21）とし、整数秒の`Retry-After`を必ず返す。値は、超過した全ruleの中で「再びadmitされるまでの秒数」が最長のものを1秒単位に切り上げた値（最小1）とする。responseにcounter key、どのruleに該当したか、Email、Auth Subject、raw IP historyを含めない。
 
 **SEC-ABU-008:** 429を返したrequestから新しいOrder、Allocation、Hold、Refund、Token、Check-in、Handoff、Role Assignment、Notification mutationを成立させない。
 
-**SEC-ABU-009:** Rate limit failureを`AUTHORIZATION_DENIED`やresource existence responseへ変換せず、security control failureとして一貫して扱う。
+**SEC-ABU-009:** Rate limit failureを`AUTHORIZATION_DENIED`やresource existence responseへ変換せず、security control failureとして一貫して扱う。「上限超過」（`429 RATE_LIMIT_EXCEEDED`）と「判定不能」（`SEC-ABU-019` の `503 TEMPORARY_UNAVAILABLE`）を別の結果として区別し、互いに読み替えない。
 
 ---
 
@@ -1369,7 +1486,8 @@ Client response / operational logへ次を含めてはならない。
 | QR key unavailable | QR display / scan fail closed | plaintext DB fallback / new token自動発行 |
 | Webhook signature invalid | `400` | receipt / Business state mutation |
 | CORS / CSRF failure | `403` | Hono mutation forward |
-| rate limit exceeded | `429` | Domain state mutation |
+| rate limit exceeded | `429 RATE_LIMIT_EXCEEDED` + `Retry-After` | Domain state mutation |
+| rate limit store unavailable / timeout / 実行不能 | `503 TEMPORARY_UNAVAILABLE` | unlimited / rule skip / process-local counterだけでの継続 / Domain state mutation |
 | Security Configuration invalid | service not Ready | insecure defaultで起動 |
 | required Secret missing | service not Ready | featureだけverification bypass |
 | key rotation incomplete | affected operation fail closed / review | unknown keyをcurrentで復号試行 |
@@ -1390,7 +1508,9 @@ Production startup / readinessで最低限次を検証する。
 - Resend API / webhook secret存在
 - current QR key versionとHMAC / AEAD key両方存在
 - duplicate QR key versionなし
-- rate limitがpositiveかつ§68上限以下
+- rate limitがpositiveかつ§68上限以下（`SEC-ABU-010`。全Class IDの値が揃っていること）
+- rate limit store connection credentialとcounter HMAC key（current versionを含む）が存在し、storeへ接続でき、必要なscriptを実行できること
+- Client IP導出のtrusted proxy設定が明示されていること（`SEC-API-030`）
 - Productionでdebug / public source map無効
 
 **SEC-ERR-005:** validation failureはwarningだけで起動継続しない。
@@ -1570,6 +1690,16 @@ Production startup / readinessで最低限次を検証する。
 6. Client errorへstack / SQL / Internal ID / Secret / raw QR / full Emailを返さない。
 7. rate limit 429でDomain stateを変更しない。
 8. Security control評価不能時に権限を推測せずFail Closedとする。
+9. rate limitが任意のwindowで上限を超えてadmitしない（sliding window log）。1つでも超過したruleがあれば、その評価のcounterを記録せず拒否する。
+10. rate limit storeの障害時に `503 TEMPORARY_UNAVAILABLE` でFail Closedとし、unlimited / rule skipをしない。
+11. counter keyにraw IP / Email / Auth Subject / QR / tokenを含めず、HMAC-SHA256 hashだけを使う。
+12. Authentication-failure guardはtoken検証失敗だけを数え、有効tokenのrequestを消費せず、guardの失敗数そのものを理由に有効tokenのrequestを拒否しない（失敗数がlimitに達したIPの有効tokenは制限枠で検証され、制限枠が尽きている間は `429` になりうる。`SEC-ABU-033`）。
+13. 未認証の第三者が、他人のemailを指定するだけで、別のIPにいる本人の認証操作を `429` にできない（identifier ruleは (IP, identifier) の組）。
+14. 複数Itemのrequestは、全Itemのdistinct resourceの上限を1回のatomic評価で確認する。
+15. IP上限を超えているクライアントは、body読取りの接続・memoryを占有できない。公開readiness endpointはDB / Redisへの検査を増やさない。
+16. IPv6はaddressを変えてper-IP ruleを回避できない（/64に集約する）。残余リスクは `SEC-ABU-032` に明示する。
+17. 無効JWTの署名検証の負荷は、構造検査、IPごとの同時検証slot（8件）、署名検証の2つの枠（通常枠、制限枠）で抑える。並行requestがguard counterの記録前の失敗数を読んでも、1つのIPが1つのAPI processの通常枠で同時に実行できる署名検証は8件までである（API processごとの上限で、環境全体ではreplica数倍。guard counterは共有storeで環境全体で1つ。`SEC-ABU-033`）。guardの上限に達したIPでも、有効tokenは制限枠（IPごと、process全体）が尽きていない限り検証される。
+18. 購入不成立の要求は共有商品枠を消費せず、未知のUUIDでcounter keyを増やせない。UUIDの表記揺れは同じcounter keyに集約される。
 
 ---
 
@@ -1656,6 +1786,68 @@ Production startup / readinessで最低限次を検証する。
 - **本書側反映:** `SEC-API-022`、§102 項目29。
 - **残作業:** なし。`SPEC-110` §21、`SPEC-170` §26 の共通API contract matrixへ反映済み。
 
+### 101.4 UCR-140-003 — INCORPORATED
+
+本改訂（v2.4.0）と `SPEC-110 v2.3.0`、`SPEC-150`、`SPEC-160`、`SPEC-170`、`SPEC-180`、`SPEC-190` の同時改訂で次の要求を本文へ取り込んだ。現在の契約は本文を正とし、以下の記録を別の契約として実装しない。
+
+- **Status:** `INCORPORATED`（`SPEC-140 v2.4.0` Part XIII）
+- 対象: SPEC-140 Part XIII、SPEC-110 §21 / §24、SPEC-180 のInfrastructure、SPEC-150 / 160 / 170 / 190 の関連規則
+- 改訂前の仕様: `SEC-ABU-001` はProductionで共有enforcement layerを要求するが、その契約（counting方式、key、評価順、失敗時の動作、設定、store）が存在しなかった。`429` に対応する公開エラーコードがなかった。SPEC-110の各API operationがどのclassに属するかの定義がなかった。
+- 決定:
+  1. 共有storeは、各環境のRailway projectに置く単一ノードのRedis（`SPEC-180`）。
+  2. counting方式はsliding window log。1回の評価に含まれる複数ruleを単一のatomic操作で評価し、その評価で拒否された場合はその評価のcounterを記録しない。評価は段階ごとに独立し、後段で拒否されても前段の記録は取り消さない（`SEC-ABU-012` / `SEC-ABU-013`）。
+  3. counter keyはenvironment専用keyによるHMAC-SHA256（`SEC-ABU-015` / `SEC-ABU-016`）。
+  4. store障害は `503 TEMPORARY_UNAVAILABLE` でFail Closed。process-localの縮退運用は含めない（`SEC-ABU-019`）。
+  5. 設定はcanonical ceilingと環境変数で持ち、staging / productionで欠落・ceiling超過をReady=falseとする（`SEC-ABU-010`）。
+  6. 評価は3段階（認証前、認証後でDB accessの前、認可確認後）。共有resourceのcounterは認可確認後にだけ記録し、Webhookのglobal ruleは署名検証後にだけ記録する。Authentication-failure guardはtoken検証に失敗したrequestだけが評価する（`SEC-ABU-017` / `SEC-ABU-020`〜`023` / `SEC-ABU-029` / `SEC-ABU-030`）。
+  7. 公開エラーコードは `429 RATE_LIMIT_EXCEEDED`（`SPEC-110` §21）。
+  8. operationごとのclass割当は `SPEC-110` に置く。
+  9. Client IP導出のtrusted proxy設定をstaging / productionで必須とする（`SEC-API-030`）。
+- 影響を受ける可能性がある仕様書: SPEC-110, SPEC-150, SPEC-160, SPEC-170, SPEC-180, SPEC-190
+- **本書側反映:** §36 `SEC-API-030`、§44 / §45 のSecret分類、Part XIII（`SEC-ABU-010`〜`033`、§68 Class ID、§68.1）、§84、§85、§99、§102。
+- **残作業（未確認事項。仕様は外部事実を捏造しない）:** `SPEC-180` §17.2 の#1〜#7（Railway ingressのforwarded headerと信頼段数、Railway RedisのTLS提供の有無と実バージョン、`maxmemory-policy` と `maxmemory` の設定可否、認証Providerのemailの同一性、Providerのrate / bot protection、Google OAuth callbackの経路）。これらは検証gateとして管理し、Production promotionをblockする項目は `INF-RLS-008` が定める。
+- **別途検討（本UCRの契約に含めない）:** store障害時のprocess-localの縮退運用、store側の高可用化。採用する場合は新たなUCRを発行する。
+- **参考（SPEC-140 §68 の追加）:** `profile_mutation` class と2つの `auth_failure_guard_*` class は本UCRで追加した。値は上流仕様に根拠がなく本UCRでの運用判断であり、運用では天井以下（より厳しい方向）にのみ設定を変更できる（`SEC-ABU-010`）。
+
+### 101.5 UCR-RLM-IMPL-003 / 004 / 005 / 006 — INCORPORATED
+
+`UCR-140-003` の実装（`packages/security`、`apps/api`）で、仕様が定めていない判断が必要になった。実装が採用した振る舞いを、本改訂（v2.4.0。`UCR-140-003` と同じ未リリース改訂）で本文へ取り込んだ。
+
+- **UCR-RLM-IMPL-003:** 対象 `SEC-ABU-020` / `SEC-ABU-021`。現在の仕様は「token検証に失敗したrequestだけ」を数えるとするだけで、`Authorization` header欠落・形式不正と、認証基盤への到達不能を含むかが未定義だった。決定: 欠落・形式不正・署名／期限／issuer等の無効判定を数え、tokenの有効性を判定できなかった場合は数えない。理由: 認証基盤の障害で正規利用者がguardに入る事態を避けるため。**本書側反映:** `SEC-ABU-020`。
+- **UCR-RLM-IMPL-004:** 対象 `SEC-API-024` / `SEC-API-025` / `SEC-API-030`、`SPEC-180` §17.2 #1。参照するforwarded header名と、Client IPを得られない場合の扱いが未定義だった。決定: `X-Forwarded-For` の右から `N` 番目を使い、`N=0`・header欠落・段数不足・解釈不能ならdirect peer、direct peerも無ければ `503`。header名と段数は外部事実であり、`SPEC-180` のgateで確認する。**本書側反映:** `SEC-API-031`。
+- **UCR-RLM-IMPL-005:** 対象 §68 の `auth_form_proxy`、`SEC-ABU-015`。login identifierの抽出元と、取り出せない場合の扱いが未定義だった。決定: POST JSON bodyの `email`（最大64 KiB・3秒）、取り出せなければidentifier ruleだけ省略しper-IP ruleは常に評価する。残るリスク: bodyを巨大にしてidentifier ruleを回避できる。IP ruleは回避できない。**本書側反映:** `SEC-ABU-024`。
+- **UCR-RLM-IMPL-006:** 対象 `SPEC-110` §21 の `429` / `503` とCORS。段階1の応答はCORS処理より前に返るため、Browserが `Retry-After` を読めるかが未定義だった。決定: exactなWeb originだけを返し、`Retry-After` をexposeする。CORSの最終値の所有者は本書であるため本書に規則を置く。**本書側反映:** `SEC-ABU-025`。`SPEC-110` §21 から参照する。
+- **利用者決定による上限変更（`auth_form_proxy`）:** 会場Wi-Fi等の共有IPでは、入場時に多数の来場者が同時にログインするため、`auth_form_proxy` のper-IP上限（5回/10秒、20回/分）が厳しすぎる懸念が出た。per-IP上限を **10回/10秒、40回/分** へ変更した。(IP, 正規化identifier) の組ごとの上限（5回/10分）は変更しない。これにより、同一アカウントへの試行の抑止は維持しつつ、共有IP全体の試行は2倍まで許容される。**本書側反映:** §68。値は運用判断であり、運用では天井以下にのみ変更できる（`SEC-ABU-010`）。
+- **PR #41 第5回レビューによる追加（`/auth/*` の許可route）:** `/auth/*` の許可method / pathの一覧が仕様になく、実装の許可リストが唯一の一覧だったため、Operation IDのない経路を実装側だけで追加して `auth_form_proxy` として通せた。`SPEC-110` §23.1に許可表（15経路。method、path、Class）を本文として定義し、実装との完全一致をtestで検証する（`API-RLC-004`、`TST-RLM-007`）。Google OAuth callbackは外部確認（`UCR-110-002`）に依存するため表に含めない。**本書側反映:** なし（本書の `SEC-ABU-027` / `SEC-ABU-028` のClass割当と整合）。
+- **PR #41 第5回レビューによる追加（store障害のアラート）:** `OBS-ALT-041` の条件が「1分に5件以上」だったため、毎分1〜4件の重要な管理requestが全件 `503` でも発火しなかった。`SPEC-160` で、最初の `store_unavailable` で通知する（最低件数なし。dedupe / cooldownは §46.1）ように変更し、request量に依存しない独立probe（`r39x_rate_limit_store_ready`）に基づく `OBS-ALT-042` を追加した。`SPEC-180` `INF-HLT-004` で、probeをrequest処理と独立して最大30秒間隔で実行することを定めた。**本書側反映:** なし（`SEC-ABU-019` のFail Closedの観測性を `SPEC-160` / `SPEC-180` が補う）。
+- **PR #41 第5回レビューによる追加（共有resourceの記録位置）:** resource / QR digest ruleをtoken検証後・認可確認前（最初のDB accessの前）に記録すると、有効なJWTを持つ一般利用者が `API-ADM-ROL-002` の `target_profile_ref` や `high_risk_recovery` のtarget、他人のTicketを指定して、正規の管理者・Staff・所有者の共有枠を消費し `429` にできる。resource単位のcounterを認可確認後（`SPEC-110` §24の手順6 / 7の後、手順8の前）の**段階3**に移し、未認可のrequestは段階3のcounterに到達しないようにした。DB保護のためのIP / subject ruleは、従来どおり段階1・段階2でDB accessの前に評価する。**本書側反映:** `SEC-ABU-017`、`SEC-ABU-013`、`SEC-ABU-026`、`SEC-ABU-029`。
+- **PR #41 第5回レビューによる追加（Webhookのglobal rule）:** Webhookのglobal rule（3,000/分）を署名検証前の段階1で記録すると、署名を持たない第三者が複数のsource IPから無効署名のrequestを送るだけでglobal枠に達し、正規のStripe / Resendイベントを検証前に `429` にできる。global ruleを署名検証成功後の段階2に移し、署名検証前はsource IP ruleだけとした。**本書側反映:** `SEC-ABU-017`、`SEC-ABU-030`。
+- **PR #41 第4回レビューによる追加（`auth_callback`）:** `GET /auth/verify-email` と `GET /auth/magic-link/verify` が `auth_form_proxy`（当時の案はIP 5回/10秒、20回/分。下の上限変更を参照）に残ると、共有IPでログイン試行・メール確認・Magic Link完了が上限の件数続くだけで、次の有効な確認リンクが429になる。この2つの認証完了GETを新しいClass `auth_callback`（IP 30回/10秒、120回/分）に分け、認証試行用のcounterから独立させた。OTPのVerify（POST）は総当たり対象となるため `auth_form_proxy` に残した。**本書側反映:** §68、`SEC-ABU-023`、`SEC-ABU-028`。値は運用判断であり、運用では天井以下にのみ変更できる（`SEC-ABU-010`）。
+- **PR #41 レビューによる追加（`auth_session`）:** `/auth/*` 全体を `auth_form_proxy`（当時の案はIP 5回/10秒、20回/分）に割り当てると、`GET /auth/get-session` 等の正規のセッション参照が、共有NATの数人分で429になる。セッション参照・終了を新しいClass `auth_session`（IP 100回/10秒、600回/分）に分け、認証試行は `auth_form_proxy` に残した。**本書側反映:** §68、`SEC-ABU-023`、`SEC-ABU-027`。値は運用判断であり、運用では天井以下にのみ変更できる（`SEC-ABU-010`）。
+- **PR #41 第6回レビューによる追加（複数Itemのcart）:** `API-PUR-CART-001` は最大50件のItemを含むが、`purchase_checkout` のresource ruleは1つの参照しか評価できる契約がなく、1 Itemだけを評価すると残りの商品の上限を回避できた。段階3で、全Itemのdistinctな参照を1回のatomic評価に含め、1つでも超過すれば全counterを記録せず `429` とした。**本書側反映:** `SEC-ABU-029`、§68。
+- **PR #41 第6回レビューによる追加（identifier ruleのDoS）:** identifier単独の共有counter（5回/10分）では、未認証の第三者が他人のemailを指定して5回POSTするだけで、別のIPにいる本人の認証操作を10分間 `429` にできた。identifier ruleを (IP, identifier) の組のkeyへ変更し、攻撃者のIPの枠だけを消費させる。多数IPに分散した試行の抑止はProvider側の保護に委ね、確認項目として `SPEC-180` §17.2 #6 を追加した。**本書側反映:** `SEC-ABU-024`、§68。
+- **PR #41 第6回レビューによる追加（guardの順序）:** guardをtoken検証の前に確認すると、共有IPの第三者が無効tokenをlimitまで送るだけで、同じIPの正規のStaff / Administratorの有効なJWTの運営操作まで `429` になった。guardはtoken検証に失敗したrequestだけが評価する通常の1回の評価に変更した（確認と記録の分離とoverrunの許容を廃止）。JWKS refreshはprocess単位のsingle-flightと30秒間隔で上限を設けた（`SPEC-150` `REL-AUTH-002`）。**本書側反映:** `SEC-ABU-013`、`SEC-ABU-017`、`SEC-ABU-020`、`SEC-ABU-021`。
+- **PR #41 第6回レビューによる追加（Goods Handoffのpreview）:** `API-STF-GDS-002`（read-only）が `goods_handoff` classにあり、Goods Itemごと10回/分の枠を共有していたため、同じ商品を10回previewすると直後の正規の完了が `429` になった。previewを `self_read` へ移した（`SPEC-110` `API-RLC-005`）。**本書側反映:** なし（§68の `self_read` の説明が既にStaffのread operationを含む）。
+- **PR #41 第6回レビューによる追加（body読取り）:** 段階1でidentifierとIPをまとめて評価するためbodyを先に読んでいた構成は、IP上限判定より前に、本文を送信し切らないPOSTで接続・memoryを占有できた。IP ruleをbody読取りの前に評価し、identifier ruleをbody読取り後の段階1bへ分け、読取りの同時数をprocess内で制限した。**本書側反映:** `SEC-ABU-017`、`SEC-ABU-024`、`SEC-ABU-031`。
+- **PR #41 第6回レビューによる追加（readiness）:** `/internal/health/ready` はrate limit対象外だが、requestごとにDBとRedisを検査すると、外部からの連打で負荷をかけられた。readinessは背景probeが更新するprocess内snapshotを返すだけとした。**本書側反映:** `SEC-ABU-018`。`SPEC-180` `INF-HLT-005`。
+- **PR #41 第6回レビューへの対応時の全体確認による追加（IPv6と残余リスク）:** counter keyに使うClient IPの正規化がなく、IPv6ではaddressを変えるだけでper-IP ruleを回避でき、counter keyの数も増やせた。IPv6を/64に集約した（`SEC-API-032`）。本Partの設計で抑えられない既知のリスク（`public_read` のglobal枯渇、分散した認証試行、共有IP、Redisのkey数）を `SEC-ABU-032` に集約した。**本書側反映:** `SEC-API-032`、`SEC-ABU-032`。
+- **PR #41 第7回レビューによる追加（署名検証の負荷）:** guardの上限を超えた後も、無効JWTは全件で署名検証を実行してから `429` になり、CPU負荷が無制限だった。署名検証の前に構造検査（暗号処理なし）を置き、署名検証をguardの状態に応じた検証枠（通常枠、またはprocess全体で毎秒50回の制限枠）の中でだけ実行するようにした。**本書側反映:** `SEC-ABU-020`、`SEC-ABU-021`、`SEC-ABU-033`、`SEC-ABU-032`。
+- **PR #41 第7回レビューによる追加（購入不成立の共有枠消費）:** 購入開始は段階3が存在確認の前にあるため、購入できない数量や未知のUUIDを指定するだけで、共有商品枠を使い切り、counter keyを大量に作れた。段階3の前に、読取り専用の購入可否の事前確認を置き、全対象が購入可能な場合だけ段階3を評価する。**本書側反映:** `SEC-ABU-029`、`SEC-ABU-017`。
+- **PR #41 第7回レビューによる追加（UUIDの表記揺れ）:** requestのUUIDは大文字・小文字を受け付けるが、counter keyの入力が正規化されておらず、同じresourceが複数のcounterに分裂した。UUID形式の参照は、検証後にlowercase canonical形式へ正規化してから重複判定とHMAC導出を行う。**本書側反映:** `SEC-ABU-015`。
+- **PR #41 第7回レビューによる追加（Redis versionのgate、replicaごとのGauge）:** `SPEC-180` §17.2 #3（Redisの実version）をProduction promotionのblockに変更した（`INF-RLS-006`、`INF-RLS-008`）。`r39x_rate_limit_store_ready` に低カーディナリティの `instance` labelを付け、replicaごとのseriesとして、いずれか1 replicaが0なら `OBS-ALT-042` が発火するようにした（`SPEC-160` §42）。**本書側反映:** なし。
+- **PR #41 第8回レビューによる修正（Actorの段階別の記録）:** 直前の補足が、段階2とguardの判定にも解決済みのActor（Role、Business Profile Public Reference）を要求しており、段階2はDB解決の前、guardは認証失敗の後にあるため、評価順に違反するか、Actorを推測することになった。Actorは評価の段階が持つ情報だけで決める。段階1・guard・Webhook classは `GUEST`（`actor_ref=null`）、段階2は `AUTHENTICATED_USER` と検証済みAuth Subjectのfingerprint、段階3だけが解決済みのActor TypeとBusiness Profile Public Referenceである。**本書側反映:** なし（`SPEC-160` §24.1、`SPEC-170` `TST-RLM-005`）。
+- **PR #41 第9回レビューによる追加（署名検証枠が並行requestで成立しない）:** `SEC-ABU-021` は段階1でguard counterを読み取り、失敗の記録は検証失敗後の別の操作であるため、同一IPの並行requestは全件が記録前のlimit未満の失敗数を読んで通常枠で署名検証でき、「そのIPはguardのlimitまでしか署名検証を実行させられない」という断定が成立しなかった。通常枠に、IPごとの同時検証slot（8件。process-local。設計判断）を加え、slotを取得できないrequestは制限枠へ回すようにした。制限枠にはIPごとの毎秒10回の上限（process全体の毎秒50回の内数。設計判断）を加え、1つのIPがprocess全体の枠を使い切れないようにした。断定は、実際に成立する上限（同時8件、1つの60秒windowでsustained limit × 8）に直した。**本書側反映:** `SEC-ABU-017`、`SEC-ABU-021`、`SEC-ABU-033`、`SEC-ABU-032` (6)(7)、Acceptance 17。`SPEC-170` `TST-RLM-004`、`SPEC-110` §24.1。
+- **PR #41 第9回レビューによる追加（`purchase_checkout` 以外のresource参照）:** `API-RLC-006` は `purchase_checkout` のresourceだけを定め、`API-KRK-SELF-003`（pathは `reservation_ref`）、`API-ADM-CNT-002`（参照なし）、`API-ADM-ROL-003`（pathは `role_assignment_ref`で、ruleは対象profile単位）等の参照が決まらなかった。`SPEC-110` `API-RLC-007` に、resource ruleを持つ全classの全Operationの参照を表で定めた（参照を持たないOperationは、resource ruleを評価せずsubject ruleだけで抑える）。`API-ADM-ROL-003` は、Role + Capabilityの確認後に対象profileを読取り専用の照会で解決してから評価する（設計判断）。owner relationを持つself operation（`API-CHK-001`、`API-ORD-002`、`API-TKT-003`、`API-KRK-SELF-003`）の段階3は、存在確認を兼ねるowner-safeな取得の後とし、「存在確認の前に評価」の適用範囲をStaff / Admin operationに限った。**本書側反映:** `SEC-ABU-015`、`SEC-ABU-017`、`SEC-ABU-029`。
+- **PR #41 第9回レビューによる追加（購入開始のCapability）:** `SEC-ABU-017` / `SEC-ABU-029` が購入開始を「owner relationもCapabilityも持たない」としたが、`SPEC-060` は `purchase.start` をCapabilityと定め、`API-PUR-CART-001` 等も要求している。記述を「owner relationを持たず、認可確認は `purchase.start` の確認」に直し、事前確認と段階3を `purchase.start` の確認の後に置いた（`SPEC-110` §24.1）。**本書側反映:** `SEC-ABU-017`、`SEC-ABU-029`。
+- **PR #41 第9回レビューによる追加（有効tokenとguardの記述の矛盾）:** `SEC-ABU-021`、Acceptance 12、`TST-RLM-005` が「有効tokenはguardの状態で拒否されない」と無条件に断定する一方、`SEC-ABU-020` と `SEC-ABU-033` (d) は制限枠の枯渇中の `429` を認めていた。「guardの失敗数そのものを理由には拒否されない。ただし制限枠が尽きている間は `429` になりうる」に統一した。同じIPの1台が構造の正しい無効JWTを送り続ける場合の残余リスクを `SEC-ABU-032` (7) に加えた（IPごとの枠により、1つのIPではprocess全体の枠を使い切れない。5つ以上のIPの協調は残る）。制限枠が尽きた場合の期待値を `TST-RLM-004` / `TST-RLM-005` に加えた。**本書側反映:** `SEC-ABU-021`、`SEC-ABU-032`、`SEC-ABU-033`、Acceptance 12。
+- **PR #41 第9回レビューによる追加（JWKSを再取得できない場合のコード）:** `SPEC-150` `REL-AUTH-002` の追記が `503 TEMPORARY_UNAVAILABLE` とする一方、`SPEC-110` §21 は「identityを安全に検証不能」を `AUTH_SERVICE_TEMPORARY_FAILURE` と定めていた。`503 AUTH_SERVICE_TEMPORARY_FAILURE` に統一した。**本書側反映:** `SEC-ABU-020`、`SEC-ABU-021`。
+- **PR #41 第9回レビューによる追加（Google OAuth callbackと外部事実）:** `UCR-110-002` の要求1（`SPEC-180` §17.2への確認項目の追加）が未反映だった。§17.2 に #7 を追加し、Googleログインを本番で提供する場合のProduction promotion gateとして `INF-RLS-008` と整合させた。確認結果は未取得であり、本書は捏造しない。**本書側反映:** なし（`SPEC-180` §17.2 #7、`SPEC-110` §23.1）。
+- **PR #41 第9回レビューの再レビューによる追加（4件）:** (1) 同時検証slot・制限枠・bucket保持数はAPI processごとの資源であり、導出した上限（同時8件、400回/60秒）は1 processあたりで、環境全体ではreplica数倍であること、guard counterは共有storeで環境全体で1つであることを明記した（`SEC-ABU-033`、`SEC-ABU-032` (7)、Acceptance 17）。(2) Client IPを導出できない `503` の記録を、storeの判定ではないためeventだけで記録し、metric `r39x_rate_limit_decisions_total` に数えない（`OBS-ALT-041` を誤発火させない）形に定めた（設計判断。`SPEC-160` §24.1）。(3) IPごとのbucketの保持上限に達している間、新たにlimitに達したIPの有効tokenが `429` になる残余リスクを `SEC-ABU-032` (7) に加えた。(4) 購入開始の認可確認の位置の記述を、メール未確認・Business Profile未解決は手順3・5での拒否であり、`purchase.start` がDenyなのはGuestだけであることに合わせて直した（`SEC-ABU-029`、`SPEC-110` §24.1、`SPEC-170` `TST-RLM-004`）。
+- **PR #41 第9回レビューによる追加（観測定義、テストgroup、古い記述）:** 制限枠の拒否の `class_id` とActor、(IP, identifier) ruleと `IP N/min` ruleの `rule_category`、段階1のguard読取りを判定として数えないこと、store障害時の `class_id` を `SPEC-160` §24.1 に定めた。`TST-RLM-*` のgroup割当（G1 / G4 / G5 / G7。新しいgroupは定義しない）を `SPEC-170` `TST-RLM-010` と `SPEC-180` `INF-TST-004` に定めた。Acceptance 9、§101.4、§101.5、`SPEC-110` / `SPEC-160` / `SPEC-170` / `SPEC-180` の記録とAcceptance、probeの記述（接続とscript実行）、`TST-RLM-004` の句点の古い記述を修正した。**本書側反映:** Acceptance 9、§101.4、§101.5。
+- **PR #46 のレビューを受けた仕様の補足:** 既知のkeyのcache期限（10分）と単調時計（`SPEC-150` `REL-AUTH-002`、`SPEC-180` `INF-HLT-005`）、guard判定のClass ID（`SPEC-160` §24.1。Actorの記録は第8回レビューで修正）、`auth_form_proxy` の全ての早期拒否での接続切断（`SEC-ABU-031`）を明確にした。**本書側反映:** `SEC-ABU-031`。
+- **PR #41 第6回レビューによる追加（テストの期待値）:** 「存在する/しないresourceで同一結果」は、counter履歴が異なる場合に成り立たず、また段階3の後に `404` になる場合を扱えなかった。認可失敗は未記録、段階3の後の `404` / `409` は記録済み、同一履歴のkey間の比較を、別々に検証する（`SPEC-170` `TST-RLM-004`）。**本書側反映:** `SEC-ABU-029`。
+- 影響を受ける可能性がある仕様書: SPEC-110, SPEC-150, SPEC-170, SPEC-180
+
 ---
 
 # Part XXII — Final Invariants
@@ -1692,5 +1884,5 @@ Production startup / readinessで最低限次を検証する。
 26. rate limit failureでDomain stateを変更しない。
 27. Security controlを安全に評価できない場合はFail Closedとする。
 28. Security failureで確定済みBusiness Dataを削除しない。
-29. `UCR-130-001〜004/006`、`UCR-150-001〜002`（SPEC-130該当範囲）、および `UCR-170-001` はCanonical化済みとして扱う。`UCR-140-002` もCanonical化済みである。`UCR-130-005` のみ未反映として扱う。
+29. `UCR-130-001〜004/006`、`UCR-150-001〜002`（SPEC-130該当範囲）、および `UCR-170-001` はCanonical化済みとして扱う。`UCR-140-002` および `UCR-140-003` もCanonical化済みである。`UCR-130-005` のみ未反映として扱う。
 30. `INV-010-01〜10` を維持する。

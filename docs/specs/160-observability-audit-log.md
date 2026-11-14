@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-160
 title: Observability and Audit Log
-version: 2.1.0
+version: 2.2.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -728,6 +728,34 @@ Rules:
 
 **OBS-AUTH-005:** Emergency Administrator recovery MUST use `INFRASTRUCTURE_OPERATOR`, `RECOVERY.ADMIN_BOOTSTRAP`, a Recovery Execution ID, and a required Audit Event; it MUST NOT masquerade as a normal Administrator UI request.
 
+### 24.1 Rate limit observability
+
+rate limitのcontrol semanticsは `SPEC-140` Part XIII、store障害時のReliability behaviorは `SPEC-150` §58.1 が定義する。本節は観測だけを定義する。
+
+Canonical event:
+
+```text
+ratelimit.decision.completed
+```
+
+| Field | 内容 |
+|---|---|
+| `class_id` | 実際に判定したClass ID（`SPEC-140` §68。有限集合）。Authentication-failure guardの判定では、routeのclassではなくguardのClass ID（`auth_failure_guard_attendee` / `auth_failure_guard_operator`）。署名検証の制限枠による拒否（`SPEC-140` `SEC-ABU-033`）と、段階1のguard counter読取りでstoreに到達できない `store_unavailable` も、guardのClass IDで記録する。`store_unavailable` の `class_id` は、評価しようとしたruleを持つclassである（段階1・段階2・段階3の評価はrouteのclass、guardの評価と読取りはguardのClass ID）。Client IPを導出できない `503`（`SPEC-140` `SEC-API-031`）は、routeのclass（未一致pathと未対応methodは `public_read`）で記録する。この `503` はstoreの判定ではなく、storeが正常でも起きるため、`ratelimit.decision.completed`（`result=FAILED`、`error_code=TEMPORARY_UNAVAILABLE`、`rule_category` なし）だけを出力し、metric `r39x_rate_limit_decisions_total` には数えない（`store_unavailable` として数えると `OBS-ALT-041` が誤発火するため。設計判断。`OBS-SEC-009` の例外）。新しいlabel値は追加しない。metricの `class_id` と同じ値とする |
+| `result` | 共通の `result` enum（§15。`SUCCESS\|REJECTED\|FAILED\|PENDING\|NOOP`）。`rejected` → `REJECTED`、`store_unavailable` → `FAILED`。`allowed` は本eventを出力しない |
+| `error_code` | `rejected` → `RATE_LIMIT_EXCEEDED`、`store_unavailable` → `TEMPORARY_UNAVAILABLE` |
+| `rule_category` | `burst` / `sustained` / `resource` / `global` / `guard` / `concurrency`（`rejected`時の該当categoryのうち最初のもの）。対応: `burst` は10秒windowのburst rule、`sustained` は60秒windowのsustained ruleと、§68「Additional」列の `IP N/min`（`self_read`、`staff_checkin` のIP上限。windowが60秒）、`resource` は段階3のresource / QR digest / target rule（`per offering/resource`、`per Ticket` 等）と、`auth_form_proxy` の (IP, 正規化identifier) の組のrule（段階1b。`SEC-ABU-024`）、`global` は `public_read` とWebhook classのglobal rule、`guard` はAuthentication-failure guardのlimit到達による `429`（`SEC-ABU-021`）、`concurrency` はprocess-localの資源上限による拒否で、`auth_form_proxy` のbody読取りslot（`SEC-ABU-031`）と、署名検証の制限枠（process全体またはIPごとのbucketが空の場合と、IPごとのbucketの保持数が上限の場合。`SEC-ABU-033`）である。`concurrency` はstoreを呼ばない |
+| `operation_id` | `SPEC-110` のOperation ID（Operation IDを持たないrouteは省略） |
+| `actor_type` / `actor_ref` | §19。評価の段階が持つ情報だけで決める（`SPEC-110` §24.1。rate limitのためにDBを参照して決めてはならない）。**段階1、Authentication-failure guardの判定（署名検証の制限枠による拒否を含む）、およびWebhook classの判定（署名検証の前後とも）:** `GUEST`（`actor_ref=null`）。guardは検証に失敗したrequestに対する判定であり、認証済みのPrincipalが存在しない。**段階2（token検証の成功後、Principal / Business Profileの解決の前）:** `AUTHENTICATED_USER` と、検証済みAuth Subjectの§11 `r39x/obs/v1/auth-subject` fingerprint（§19.1）。Roleは未解決なので、`STAFF` / `ADMINISTRATOR` やBusiness Profile Public Referenceを推測して設定しない（`OBS-COR-010`）。**段階3（認可確認の成功後）:** 解決済みのActor Typeと許可されたBusiness Profile Public Reference |
+| `retry_after_seconds` | `rejected`時のみ |
+
+段階1のguard counter読取り（`SEC-ABU-021`）は判定ではなく、`ratelimit.decision.completed` も `r39x_rate_limit_decisions_total` も出さない（`allowed` にも数えない）。ただし、読取りでstoreに到達できない場合は `store_unavailable` として数える（requestは `503`）。guardの判定は、構造検査または署名検証に失敗したrequestについて、guardの評価1回につき1件を数える（limit内で記録した場合は `allowed`、limitに達していて `429` の場合は `rejected`）。同時検証slotを取得できず制限枠へ回ること自体は判定ではない（制限枠が尽きて拒否した場合だけ、`concurrency` の `rejected` として数える）。
+
+`ratelimit.decision.completed` は `rejected` と `store_unavailable` のときに出力する。`allowed` はmetricだけで観測し、request単位のlogを出さない。`store_unavailable` の場合は `security.fail_closed.triggered`（control category `rate_limit`）も出力する。
+
+**OBS-SEC-007:** counter key、IP、Auth Subject、Email、QR digest、resource referenceをlog field、metric label、trace attributeに出さない。
+**OBS-SEC-008:** `store_unavailable`（`FAILED` / `TEMPORARY_UNAVAILABLE`）は `rejected`（`REJECTED` / `RATE_LIMIT_EXCEEDED`）と別の結果として観測し、sampling dropしない。metric `r39x_rate_limit_decisions_total` の `result` label（`allowed` / `rejected` / `store_unavailable`）は本eventの共通 `result` とは別の有限集合である。
+**OBS-SEC-009:** 判定は `r39x_rate_limit_decisions_total` で全件数える（storeを評価していない、Client IPを導出できない `503` を除く。§24.1）。log出力を省略した `allowed` もmetricには含める。
+
 ## 25. Stripe / Payment / Refund observability
 
 Canonical events:
@@ -1308,6 +1336,8 @@ query_name
 status_class
 control
 recovery_kind
+class_id       # SPEC-140 §68 Class ID registry
+instance       # process-local instance id (bounded by live replicas; used only by r39x_rate_limit_store_ready)
 ```
 
 Forbidden metric labels:
@@ -1355,6 +1385,9 @@ Provider call seconds:
 
 Webhook handler seconds:
 0.05, 0.1, 0.25, 0.5, 1, 2, 4, 6, 8
+
+Rate limit store operation seconds:
+0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25
 ```
 
 ## 42. Canonical metric catalog
@@ -1368,6 +1401,9 @@ For **every** metric below, forbidden labels are exactly the high-cardinality/se
 | `r39x_api_failures_total` | Counter | failures | API operation ends non-success excluding normal 4xx validation unless security/domain tracked elsewhere | `environment,operation,domain,failure_class` | bounded operation registry |
 | `r39x_authentication_failures_total` | Counter | failures | auth required/invalid/expired/unavailable | `environment,result,reason_category` | <= 16 reason categories |
 | `r39x_authorization_denials_total` | Counter | denials | capability/ownership/last-admin denial | `environment,operation,reason_category` | bounded |
+| `r39x_rate_limit_decisions_total` | Counter | decisions | every rate limit evaluation outcome | `environment,class_id,result` where `result=allowed|rejected|store_unavailable` | <= 17 classes x 3 results |
+| `r39x_rate_limit_store_duration_seconds` | Histogram | seconds | each rate limit store operation | `environment,result` where `result=ok|timeout|error` | exactly 3 results |
+| `r39x_rate_limit_store_ready` | Gauge | 0 or 1 | rate limit storeへの接続とscript実行のprobe結果（requestの有無に依存しない。`SPEC-180` `INF-HLT-004` / `INF-HLT-005`）。export時にsnapshotから算出し、最後に成功したprobeから90秒を超えた場合は0 | `environment,instance` | 1 series per live API replica |
 | `r39x_db_pool_acquire_duration_seconds` | Histogram | seconds | every pool checkout | `environment,service,result` | low |
 | `r39x_db_pool_acquire_failures_total` | Counter | failures | acquire timeout/error | `environment,service,reason_category` | low |
 | `r39x_db_pool_connections` | Gauge | connections | current pool aggregate | `environment,service,state` where `state=active|idle|waiting` | exactly 3 states/service |
@@ -1534,6 +1570,8 @@ For rate-based alerts, a window MUST meet both rate/threshold and minimum-event-
 | `OBS-ALT-035` Audit persistence failure | any required Audit Event insert failure for high-risk operation | 1 event | CRITICAL |
 | `OBS-ALT-036` Observability export degraded | log/metric export failures >=10 | 10m | MEDIUM |
 | `OBS-ALT-037` Alert delivery failure | configured alert delivery failure >=1 | 1 event | HIGH; delivery via independent infrastructure signal per SPEC-180 |
+| `OBS-ALT-041` Rate-limit store unavailable | `store_unavailable` decisions >=1 | 1m, minimum request count なし | HIGH Security |
+| `OBS-ALT-042` Rate-limit store readiness failure | `r39x_rate_limit_store_ready` が、**いずれか1つのinstanceで** 0（request量に依存しない独立probe）。直近90秒のsampleを持つinstanceだけを対象とし、APIの全instanceからsampleが欠測した場合も0として扱う | 2 consecutive 1m evaluations | CRITICAL Security |
 
 ### 47.1 Alert payload
 
@@ -1706,6 +1744,8 @@ Product-specific buffering is delegated to `SPEC-180`, but the logical boundary 
 Because an alert cannot reliably report failure of its own only delivery path, `SPEC-180` MUST wire alert-pipeline health to an infrastructure-level independent health signal or destination. SPEC-160 defines the event/metric semantics but not the product.
 
 **OBS-ALT-040:** Alert delivery failure MUST NOT disable alert rule evaluation or Security Control to reduce noise.
+
+**OBS-ALT-043:** `OBS-ALT-041` は、rate limit storeが利用できないとSecurity Controlが全面的にFail Closed（`503`）になるため、最初の `store_unavailable` で通知する。低トラフィック時（例: 毎分1〜4件の重要な管理requestが全件 `503`）でも発火し、requestの最低件数を要求しない。繰り返し通知は§46.1のdedupe / cooldownに従い、requestごとには通知しない。`OBS-ALT-042` は、requestが来ていない時間帯のstore到達不能も検知する独立したreadiness probeに基づく。`OBS-ALT-014`（security config / Secret / key不備によるreadiness失敗）はstoreへの実行時の到達不能を対象としないため、両者を読み替えない。
 
 ---
 
@@ -1995,6 +2035,13 @@ Implementation MUST satisfy all of the following.
 - `UCR-130-001〜004/006`、`UCR-150-001〜002` はCanonical化済みであり、`UCR-130-005` のみ未反映として存在しないoperationを発明していない。
 
 Canonical化済みのRecovery command（`API-ADM-REC-003〜007`）は、本書の `OBS-AUD-011`、`OBS-AUD-012`、`OBS-REC-*`、Correlation、Metric、Alert contractをそのexact Operation IDへ適用する。SPEC-160側でgeneric Recovery APIを追加しない。
+
+`UCR-140-003`（共有rate limit）に伴い、本改訂（v2.2.0）で §24.1（event `ratelimit.decision.completed`）、§40（allowed label `class_id`）、§42（`r39x_rate_limit_decisions_total` / `r39x_rate_limit_store_duration_seconds`）、§47（`OBS-ALT-041`、`OBS-ALT-042`。PR #41 第5回・第7回レビューで追加）と §42 の `r39x_rate_limit_store_ready`（`instance` label付き）を追加した。`SPEC-140` Part XIII と `SPEC-150` §58.1 の意味を観測する追加であり、rate limitのstate / API / Capabilityを追加・変更しない。
+
+`UCR-140-003` の実装で見つかった次の2点を、同じ改訂（v2.2.0）で反映した。
+
+- **UCR-RLM-IMPL-001:** `r39x_rate_limit_store_duration_seconds` のbucket境界が §41 に未定義だった。store deadline（250 ms、`SPEC-150` §9）以内に収まる境界として、§41 に `0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25` 秒を追加した。
+- **UCR-RLM-IMPL-002:** §24.1 の `result` が共通 `result` enum と対応していなかった。`rejected` を `REJECTED`、`store_unavailable` を `FAILED` に対応させ、区別を `error_code` で行うと定めた。
 
 ---
 
