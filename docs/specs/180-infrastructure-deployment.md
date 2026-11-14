@@ -472,8 +472,9 @@ Railwayから`SIGTERM`を受けたprocessは次を実行する。
 | 4 | `maxmemory-policy noeviction` と `maxmemory` をRailway Redisで設定できること | staging | Yes |
 | 5 | 認証Provider（Neon Auth）がemailを同一と扱う範囲（大文字小文字、空白、Unicode正規化等）が、`SPEC-140` `SEC-ABU-024` の正規化と整合すること | staging | No（差分があれば正規化手順を拡張する） |
 | 6 | 認証Provider（Neon Auth）のprovider-side rate / bot protection（`SPEC-140` `SEC-ABU-005`）がProductionで有効化でき、同一アカウント（email）への多数のIPに分散した試行を抑止する強度を持つこと。application側はIPごとの同一identifierへの試行（5回/10分）とIP全体の試行を抑えるが、多数のIPに分散した試行の総量は抑えない（`SEC-ABU-024`） | staging | Yes（`SEC-ABU-005` の要件。有効化できない、または強度が不足する場合は、Production promotionの前に別の対策を `SPEC-140` のUCRとして定める） |
+| 7 | 認証Provider（Neon Auth）のGoogle OAuth callbackが、Honoの `/auth/*` を経由するか。経由する場合は、そのmethod・path（`SPEC-110` §23.1の許可表への追加）と、割り当てるrate limit class（`UCR-110-002` の案は `auth_callback`）。経由しない場合は、Hono経由ではなく本書のrate limitの対象外であることの確認 | staging | Googleログインを本番で提供する場合のみYes（確認前はGoogleログインをProductionで提供しない。提供しない場合はNo） |
 
-**INF-RLS-008:** #1、#3、#4、#6が未確認のままProduction promotionしない。`TRUSTED_PROXY_HOPS` の誤設定は、全利用者のClient IPを1つに集約し、IP単位のruleで全員が拒否される（`SEC-API-030`）。
+**INF-RLS-008:** #1、#3、#4、#6が未確認のままProduction promotionしない。Googleログインをproductionで提供する場合は、#7も同じである。#7が未確認の間は、Googleログイン（`POST /auth/sign-in/social` が使うGoogle provider）をProductionで有効にしない（callbackが許可表にない経路となり、`404` または `public_read` の低いIP上限で評価されて、共有IPの会場Wi-Fiで来場者がログインを完了できなくなるおそれがあるため。`SPEC-110` `UCR-110-002`）。#2と#5は、Production promotionをblockしない。`TRUSTED_PROXY_HOPS` の誤設定は、全利用者のClient IPを1つに集約し、IP単位のruleで全員が拒否される（`SEC-API-030`）。
 
 ---
 
@@ -1661,6 +1662,8 @@ G2は少なくとも次をProduction deploy前に成功させる。
 
 rate limit storeのTestは実Redisで実行する。CIはRedisをservice containerとして起動し、`TEST_REDIS_URL` を渡す。`TEST_REDIS_URL` が未設定または到達不能の場合、Testはskipではなくfailする。ローカルでは開発者が接続先を用意する。Redis major versionは `INF-RLS-006` に従う。fake storeは `SPEC-170` が許す範囲でAPI層のTestにだけ使い、Lua等のatomic操作・TTL・memory満杯・時刻の証明には使わない。
 
+**INF-TST-004:** rate limitのTestのgroup割当は `SPEC-170` `TST-RLM-010` に従う（新しいgroupを定義しない）。実Redisを使うTest（`TST-RLM-001〜003`）は **G5 security** に属し、G5はPull Requestとmerge commitの必須gate（G1..G8。§72）に含まれるため、CIはG5を実行するjobでRedisのservice containerを起動する。G10は、rate limitのTestの必須gateではない（実Redisの並行Testは、G5でbarrier付きの決定的なCaseとして実行する）。
+
 ## 75. Production Provider Contract Smoke
 
 G9はstaging / test Provider accountで実行する。
@@ -1813,7 +1816,8 @@ SPEC-180は次をすべて満たしたとき受入可能とする。
 50. `rate-limit-redis` は永続化なし、`noeviction`、固定 `maxmemory` で、Railway replicasが1である。
 51. `RATE_LIMIT_REDIS_URL` と `RATE_LIMIT_HMAC_KEY` がAPI serviceだけに配置され、他serviceやClientへ出ない。
 52. rate limit configuration不正、store接続不能、`TRUSTED_PROXY_HOPS` 未設定でAPI readinessがfalseになる。
-53. Production promotion前に `INF-RLS-008`（`TRUSTED_PROXY_HOPS` 検証とRedis設定の確認）が完了している。
+53. Production promotion前に `INF-RLS-008`（#1 `TRUSTED_PROXY_HOPS` の検証、#3 Redisの実versionとCIのRedis majorの一致、#4 Redisの `maxmemory-policy` / `maxmemory` の設定、#6 Providerのrate / bot protection。Googleログインを提供する場合は#7のGoogle OAuth callbackの経路）が完了している。
+54. rate limitの実Redis Testは、`SPEC-170` `TST-RLM-010` のgroup（G5）で、Pull Requestとmerge commitのgateとして実行される（`INF-TST-004`）。
 
 ---
 

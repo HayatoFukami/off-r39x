@@ -740,13 +740,15 @@ ratelimit.decision.completed
 
 | Field | 内容 |
 |---|---|
-| `class_id` | 実際に判定したClass ID（`SPEC-140` §68。有限集合）。Authentication-failure guardの判定では、routeのclassではなくguardのClass ID（`auth_failure_guard_attendee` / `auth_failure_guard_operator`）。metricの `class_id` と同じ値とする |
+| `class_id` | 実際に判定したClass ID（`SPEC-140` §68。有限集合）。Authentication-failure guardの判定では、routeのclassではなくguardのClass ID（`auth_failure_guard_attendee` / `auth_failure_guard_operator`）。署名検証の制限枠による拒否（`SPEC-140` `SEC-ABU-033`）と、段階1のguard counter読取りでstoreに到達できない `store_unavailable` も、guardのClass IDで記録する。`store_unavailable` の `class_id` は、評価しようとしたruleを持つclassである（段階1・段階2・段階3の評価はrouteのclass、guardの評価と読取りはguardのClass ID）。Client IPを導出できない `503`（`SPEC-140` `SEC-API-031`）は、routeのclass（未一致pathと未対応methodは `public_read`）で記録する。metricの `class_id` と同じ値とする |
 | `result` | 共通の `result` enum（§15。`SUCCESS\|REJECTED\|FAILED\|PENDING\|NOOP`）。`rejected` → `REJECTED`、`store_unavailable` → `FAILED`。`allowed` は本eventを出力しない |
 | `error_code` | `rejected` → `RATE_LIMIT_EXCEEDED`、`store_unavailable` → `TEMPORARY_UNAVAILABLE` |
-| `rule_category` | `burst` / `sustained` / `resource` / `global` / `guard` / `concurrency`（`rejected`時の該当categoryのうち最初のもの。`concurrency` は `auth_form_proxy` のbody読取りslot上限による拒否で、`SPEC-140` `SEC-ABU-031`。storeを呼ばない） |
+| `rule_category` | `burst` / `sustained` / `resource` / `global` / `guard` / `concurrency`（`rejected`時の該当categoryのうち最初のもの）。対応: `burst` は10秒windowのburst rule、`sustained` は60秒windowのsustained ruleと、§68「Additional」列の `IP N/min`（`self_read`、`staff_checkin` のIP上限。windowが60秒）、`resource` は段階3のresource / QR digest / target rule（`per offering/resource`、`per Ticket` 等）と、`auth_form_proxy` の (IP, 正規化identifier) の組のrule（段階1b。`SEC-ABU-024`）、`global` は `public_read` とWebhook classのglobal rule、`guard` はAuthentication-failure guardのlimit到達による `429`（`SEC-ABU-021`）、`concurrency` はprocess-localの資源上限による拒否で、`auth_form_proxy` のbody読取りslot（`SEC-ABU-031`）と、署名検証の制限枠（process全体またはIPごとのbucketが空の場合と、IPごとのbucketの保持数が上限の場合。`SEC-ABU-033`）である。`concurrency` はstoreを呼ばない |
 | `operation_id` | `SPEC-110` のOperation ID（Operation IDを持たないrouteは省略） |
-| `actor_type` / `actor_ref` | §19。評価の段階が持つ情報だけで決める（`SPEC-110` §24.1。rate limitのためにDBを参照して決めてはならない）。**段階1、Authentication-failure guardの判定、およびWebhook classの判定（署名検証の前後とも）:** `GUEST`（`actor_ref=null`）。guardは検証に失敗したrequestに対する判定であり、認証済みのPrincipalが存在しない。**段階2（token検証の成功後、Principal / Business Profileの解決の前）:** `AUTHENTICATED_USER` と、検証済みAuth Subjectの§11 `r39x/obs/v1/auth-subject` fingerprint（§19.1）。Roleは未解決なので、`STAFF` / `ADMINISTRATOR` やBusiness Profile Public Referenceを推測して設定しない（`OBS-COR-010`）。**段階3（認可確認の成功後）:** 解決済みのActor Typeと許可されたBusiness Profile Public Reference |
+| `actor_type` / `actor_ref` | §19。評価の段階が持つ情報だけで決める（`SPEC-110` §24.1。rate limitのためにDBを参照して決めてはならない）。**段階1、Authentication-failure guardの判定（署名検証の制限枠による拒否を含む）、およびWebhook classの判定（署名検証の前後とも）:** `GUEST`（`actor_ref=null`）。guardは検証に失敗したrequestに対する判定であり、認証済みのPrincipalが存在しない。**段階2（token検証の成功後、Principal / Business Profileの解決の前）:** `AUTHENTICATED_USER` と、検証済みAuth Subjectの§11 `r39x/obs/v1/auth-subject` fingerprint（§19.1）。Roleは未解決なので、`STAFF` / `ADMINISTRATOR` やBusiness Profile Public Referenceを推測して設定しない（`OBS-COR-010`）。**段階3（認可確認の成功後）:** 解決済みのActor Typeと許可されたBusiness Profile Public Reference |
 | `retry_after_seconds` | `rejected`時のみ |
+
+段階1のguard counter読取り（`SEC-ABU-021`）は判定ではなく、`ratelimit.decision.completed` も `r39x_rate_limit_decisions_total` も出さない（`allowed` にも数えない）。ただし、読取りでstoreに到達できない場合は `store_unavailable` として数える（requestは `503`）。guardの判定は、構造検査または署名検証に失敗したrequestについて、guardの評価1回につき1件を数える（limit内で記録した場合は `allowed`、limitに達していて `429` の場合は `rejected`）。同時検証slotを取得できず制限枠へ回ること自体は判定ではない（制限枠が尽きて拒否した場合だけ、`concurrency` の `rejected` として数える）。
 
 `ratelimit.decision.completed` は `rejected` と `store_unavailable` のときに出力する。`allowed` はmetricだけで観測し、request単位のlogを出さない。`store_unavailable` の場合は `security.fail_closed.triggered`（control category `rate_limit`）も出力する。
 
@@ -1401,7 +1403,7 @@ For **every** metric below, forbidden labels are exactly the high-cardinality/se
 | `r39x_authorization_denials_total` | Counter | denials | capability/ownership/last-admin denial | `environment,operation,reason_category` | bounded |
 | `r39x_rate_limit_decisions_total` | Counter | decisions | every rate limit evaluation outcome | `environment,class_id,result` where `result=allowed|rejected|store_unavailable` | <= 17 classes x 3 results |
 | `r39x_rate_limit_store_duration_seconds` | Histogram | seconds | each rate limit store operation | `environment,result` where `result=ok|timeout|error` | exactly 3 results |
-| `r39x_rate_limit_store_ready` | Gauge | 0 or 1 | rate limit storeへの接続と書込みのprobe結果（requestの有無に依存しない。`SPEC-180` `INF-HLT-004` / `INF-HLT-005`）。export時にsnapshotから算出し、最後に成功したprobeから90秒を超えた場合は0 | `environment,instance` | 1 series per live API replica |
+| `r39x_rate_limit_store_ready` | Gauge | 0 or 1 | rate limit storeへの接続とscript実行のprobe結果（requestの有無に依存しない。`SPEC-180` `INF-HLT-004` / `INF-HLT-005`）。export時にsnapshotから算出し、最後に成功したprobeから90秒を超えた場合は0 | `environment,instance` | 1 series per live API replica |
 | `r39x_db_pool_acquire_duration_seconds` | Histogram | seconds | every pool checkout | `environment,service,result` | low |
 | `r39x_db_pool_acquire_failures_total` | Counter | failures | acquire timeout/error | `environment,service,reason_category` | low |
 | `r39x_db_pool_connections` | Gauge | connections | current pool aggregate | `environment,service,state` where `state=active|idle|waiting` | exactly 3 states/service |
@@ -2034,7 +2036,7 @@ Implementation MUST satisfy all of the following.
 
 Canonical化済みのRecovery command（`API-ADM-REC-003〜007`）は、本書の `OBS-AUD-011`、`OBS-AUD-012`、`OBS-REC-*`、Correlation、Metric、Alert contractをそのexact Operation IDへ適用する。SPEC-160側でgeneric Recovery APIを追加しない。
 
-`UCR-140-003`（共有rate limit）に伴い、本改訂（v2.2.0）で §24.1（event `ratelimit.decision.completed`）、§40（allowed label `class_id`）、§42（`r39x_rate_limit_decisions_total` / `r39x_rate_limit_store_duration_seconds`）、§47（`OBS-ALT-041`）を追加した。`SPEC-140` Part XIII と `SPEC-150` §58.1 の意味を観測する追加であり、rate limitのstate / API / Capabilityを追加・変更しない。
+`UCR-140-003`（共有rate limit）に伴い、本改訂（v2.2.0）で §24.1（event `ratelimit.decision.completed`）、§40（allowed label `class_id`）、§42（`r39x_rate_limit_decisions_total` / `r39x_rate_limit_store_duration_seconds`）、§47（`OBS-ALT-041`、`OBS-ALT-042`。PR #41 第5回・第7回レビューで追加）と §42 の `r39x_rate_limit_store_ready`（`instance` label付き）を追加した。`SPEC-140` Part XIII と `SPEC-150` §58.1 の意味を観測する追加であり、rate limitのstate / API / Capabilityを追加・変更しない。
 
 `UCR-140-003` の実装で見つかった次の2点を、同じ改訂（v2.2.0）で反映した。
 
