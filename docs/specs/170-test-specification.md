@@ -1173,7 +1173,7 @@ Test:
 - **共有IPの有効tokenがguardに巻き込まれない**（`SEC-ABU-021`）: 同一IPから無効tokenを `auth_failure_guard_operator` のlimitまで送ってguardを使い切った後でも、同じIPの正規のStaff / Administratorの有効なJWTによる `goods_handoff` / `admin_mutation` 等のrequestは `429` にならず、段階2へ進んで処理される。そのrequestはguardのcounterを変化させない。attendee向けguardでも同様である
 - guardは段階1で読み取られるだけで、記録も拒否もされない（読取り結果は署名検証枠の選択にだけ使われる）。構造検査または署名検証に失敗したrequestだけが、guardを1回の評価として評価する: limit内なら記録して `401`、limit+1回目の失敗は記録せず `429` になる。guardの状態に関係なく、有効tokenのrequestは検証の結果で処理される
 - guardの評価でstoreに到達できない場合は、失敗requestが `503` になる（`SEC-ABU-019`）
-- guard対象classの判定は、`ratelimit.decision.completed` と `r39x_rate_limit_decisions_total` の両方で、routeのclassではなくguardのClass IDを `class_id` として記録する。段階2・段階3・guardの拒否のeventは、解決済みのActor TypeとProfile Public Referenceを持ち、認証前の拒否だけが `GUEST` になる（`SPEC-160` §24.1）
+- guard対象classの判定は、`ratelimit.decision.completed` と `r39x_rate_limit_decisions_total` の両方で、routeのclassではなくguardのClass IDを `class_id` として記録する。`ratelimit.decision.completed` のActorは、評価の段階が持つ情報だけで決まり、rate limitのためのDB参照は行われない（`SPEC-160` §24.1）。段階1・guard・Webhook classの拒否は `GUEST`（`actor_ref=null`）、段階2の拒否は `AUTHENTICATED_USER` と検証済みAuth Subjectの§11 fingerprint（Roleと、Business Profile Public Referenceを持たない。`STAFF` / `ADMINISTRATOR` と表示しない）、段階3の拒否だけが解決済みのActor TypeとBusiness Profile Public Referenceを持つ。Staff / Administratorの段階2の拒否と段階3の拒否で、`actor_type` が異なることを確認する。raw Auth Subjectがlogに出ないことも確認する（`OBS-SEC-007`）
 - JWKSのcacheしたkeyは、600秒（単調時計）で再検証され、JWKSから削除・差し替えられたkeyで署名されたtokenは、期限後に受け付けられない。再検証できない場合は、期限切れのkeyを使わず `503` になり、guardに数えない。時計が前後に補正されても、30秒の間隔と600秒の期限の判定が変わらない
 - `auth_failure_guard_attendee` と `auth_failure_guard_operator` が独立して設定・評価される
 - 並行する失敗requestでも、guardは他のruleと同じくatomicで、limitを超えて記録しない（overrunを許容しない）

@@ -745,7 +745,7 @@ ratelimit.decision.completed
 | `error_code` | `rejected` → `RATE_LIMIT_EXCEEDED`、`store_unavailable` → `TEMPORARY_UNAVAILABLE` |
 | `rule_category` | `burst` / `sustained` / `resource` / `global` / `guard` / `concurrency`（`rejected`時の該当categoryのうち最初のもの。`concurrency` は `auth_form_proxy` のbody読取りslot上限による拒否で、`SPEC-140` `SEC-ABU-031`。storeを呼ばない） |
 | `operation_id` | `SPEC-110` のOperation ID（Operation IDを持たないrouteは省略） |
-| `actor_type` / `actor_ref` | §19。認証前は `GUEST`（`actor_ref=null`）。token検証とPrincipal解決の後（段階2・段階3、およびguardの評価）は、解決済みのActor Typeと許可されたBusiness Profile Public Reference |
+| `actor_type` / `actor_ref` | §19。評価の段階が持つ情報だけで決める（`SPEC-110` §24.1。rate limitのためにDBを参照して決めてはならない）。**段階1、Authentication-failure guardの判定、およびWebhook classの判定（署名検証の前後とも）:** `GUEST`（`actor_ref=null`）。guardは検証に失敗したrequestに対する判定であり、認証済みのPrincipalが存在しない。**段階2（token検証の成功後、Principal / Business Profileの解決の前）:** `AUTHENTICATED_USER` と、検証済みAuth Subjectの§11 `r39x/obs/v1/auth-subject` fingerprint（§19.1）。Roleは未解決なので、`STAFF` / `ADMINISTRATOR` やBusiness Profile Public Referenceを推測して設定しない（`OBS-COR-010`）。**段階3（認可確認の成功後）:** 解決済みのActor Typeと許可されたBusiness Profile Public Reference |
 | `retry_after_seconds` | `rejected`時のみ |
 
 `ratelimit.decision.completed` は `rejected` と `store_unavailable` のときに出力する。`allowed` はmetricだけで観測し、request単位のlogを出さない。`store_unavailable` の場合は `security.fail_closed.triggered`（control category `rate_limit`）も出力する。

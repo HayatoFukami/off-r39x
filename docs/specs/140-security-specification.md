@@ -1835,7 +1835,8 @@ Production startup / readinessで最低限次を検証する。
 - **PR #41 第7回レビューによる追加（購入不成立の共有枠消費）:** 購入開始は段階3が存在確認の前にあるため、購入できない数量や未知のUUIDを指定するだけで、共有商品枠を使い切り、counter keyを大量に作れた。段階3の前に、読取り専用の購入可否の事前確認を置き、全対象が購入可能な場合だけ段階3を評価する。**本書側反映:** `SEC-ABU-029`、`SEC-ABU-017`。
 - **PR #41 第7回レビューによる追加（UUIDの表記揺れ）:** requestのUUIDは大文字・小文字を受け付けるが、counter keyの入力が正規化されておらず、同じresourceが複数のcounterに分裂した。UUID形式の参照は、検証後にlowercase canonical形式へ正規化してから重複判定とHMAC導出を行う。**本書側反映:** `SEC-ABU-015`。
 - **PR #41 第7回レビューによる追加（Redis versionのgate、replicaごとのGauge）:** `SPEC-180` §17.2 #3（Redisの実version）をProduction promotionのblockに変更した（`INF-RLS-006`、`INF-RLS-008`）。`r39x_rate_limit_store_ready` に低カーディナリティの `instance` labelを付け、replicaごとのseriesとして、いずれか1 replicaが0なら `OBS-ALT-042` が発火するようにした（`SPEC-160` §42）。**本書側反映:** なし。
-- **PR #46 のレビューを受けた仕様の補足:** 既知のkeyのcache期限（10分）と単調時計（`SPEC-150` `REL-AUTH-002`、`SPEC-180` `INF-HLT-005`）、guard判定のClass IDとActor Typeの記録（`SPEC-160` §24.1）、`auth_form_proxy` の全ての早期拒否での接続切断（`SEC-ABU-031`）を明確にした。**本書側反映:** `SEC-ABU-031`。
+- **PR #41 第8回レビューによる修正（Actorの段階別の記録）:** 直前の補足が、段階2とguardの判定にも解決済みのActor（Role、Business Profile Public Reference）を要求しており、段階2はDB解決の前、guardは認証失敗の後にあるため、評価順に違反するか、Actorを推測することになった。Actorは評価の段階が持つ情報だけで決める。段階1・guard・Webhook classは `GUEST`（`actor_ref=null`）、段階2は `AUTHENTICATED_USER` と検証済みAuth Subjectのfingerprint、段階3だけが解決済みのActor TypeとBusiness Profile Public Referenceである。**本書側反映:** なし（`SPEC-160` §24.1、`SPEC-170` `TST-RLM-005`）。
+- **PR #46 のレビューを受けた仕様の補足:** 既知のkeyのcache期限（10分）と単調時計（`SPEC-150` `REL-AUTH-002`、`SPEC-180` `INF-HLT-005`）、guard判定のClass ID（`SPEC-160` §24.1。Actorの記録は第8回レビューで修正）、`auth_form_proxy` の全ての早期拒否での接続切断（`SEC-ABU-031`）を明確にした。**本書側反映:** `SEC-ABU-031`。
 - **PR #41 第6回レビューによる追加（テストの期待値）:** 「存在する/しないresourceで同一結果」は、counter履歴が異なる場合に成り立たず、また段階3の後に `404` になる場合を扱えなかった。認可失敗は未記録、段階3の後の `404` / `409` は記録済み、同一履歴のkey間の比較を、別々に検証する（`SPEC-170` `TST-RLM-004`）。**本書側反映:** `SEC-ABU-029`。
 - 影響を受ける可能性がある仕様書: SPEC-110, SPEC-150, SPEC-170, SPEC-180
 
