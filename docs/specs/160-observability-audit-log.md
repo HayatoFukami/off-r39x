@@ -740,7 +740,7 @@ ratelimit.decision.completed
 
 | Field | 内容 |
 |---|---|
-| `class_id` | 実際に判定したClass ID（`SPEC-140` §68。有限集合）。Authentication-failure guardの判定では、routeのclassではなくguardのClass ID（`auth_failure_guard_attendee` / `auth_failure_guard_operator`）。署名検証の制限枠による拒否（`SPEC-140` `SEC-ABU-033`）と、段階1のguard counter読取りでstoreに到達できない `store_unavailable` も、guardのClass IDで記録する。`store_unavailable` の `class_id` は、評価しようとしたruleを持つclassである（段階1・段階2・段階3の評価はrouteのclass、guardの評価と読取りはguardのClass ID）。Client IPを導出できない `503`（`SPEC-140` `SEC-API-031`）は、routeのclass（未一致pathと未対応methodは `public_read`）で記録する。metricの `class_id` と同じ値とする |
+| `class_id` | 実際に判定したClass ID（`SPEC-140` §68。有限集合）。Authentication-failure guardの判定では、routeのclassではなくguardのClass ID（`auth_failure_guard_attendee` / `auth_failure_guard_operator`）。署名検証の制限枠による拒否（`SPEC-140` `SEC-ABU-033`）と、段階1のguard counter読取りでstoreに到達できない `store_unavailable` も、guardのClass IDで記録する。`store_unavailable` の `class_id` は、評価しようとしたruleを持つclassである（段階1・段階2・段階3の評価はrouteのclass、guardの評価と読取りはguardのClass ID）。Client IPを導出できない `503`（`SPEC-140` `SEC-API-031`）は、routeのclass（未一致pathと未対応methodは `public_read`）で記録する。この `503` はstoreの判定ではなく、storeが正常でも起きるため、`ratelimit.decision.completed`（`result=FAILED`、`error_code=TEMPORARY_UNAVAILABLE`、`rule_category` なし）だけを出力し、metric `r39x_rate_limit_decisions_total` には数えない（`store_unavailable` として数えると `OBS-ALT-041` が誤発火するため。設計判断。`OBS-SEC-009` の例外）。新しいlabel値は追加しない。metricの `class_id` と同じ値とする |
 | `result` | 共通の `result` enum（§15。`SUCCESS\|REJECTED\|FAILED\|PENDING\|NOOP`）。`rejected` → `REJECTED`、`store_unavailable` → `FAILED`。`allowed` は本eventを出力しない |
 | `error_code` | `rejected` → `RATE_LIMIT_EXCEEDED`、`store_unavailable` → `TEMPORARY_UNAVAILABLE` |
 | `rule_category` | `burst` / `sustained` / `resource` / `global` / `guard` / `concurrency`（`rejected`時の該当categoryのうち最初のもの）。対応: `burst` は10秒windowのburst rule、`sustained` は60秒windowのsustained ruleと、§68「Additional」列の `IP N/min`（`self_read`、`staff_checkin` のIP上限。windowが60秒）、`resource` は段階3のresource / QR digest / target rule（`per offering/resource`、`per Ticket` 等）と、`auth_form_proxy` の (IP, 正規化identifier) の組のrule（段階1b。`SEC-ABU-024`）、`global` は `public_read` とWebhook classのglobal rule、`guard` はAuthentication-failure guardのlimit到達による `429`（`SEC-ABU-021`）、`concurrency` はprocess-localの資源上限による拒否で、`auth_form_proxy` のbody読取りslot（`SEC-ABU-031`）と、署名検証の制限枠（process全体またはIPごとのbucketが空の場合と、IPごとのbucketの保持数が上限の場合。`SEC-ABU-033`）である。`concurrency` はstoreを呼ばない |
@@ -754,7 +754,7 @@ ratelimit.decision.completed
 
 **OBS-SEC-007:** counter key、IP、Auth Subject、Email、QR digest、resource referenceをlog field、metric label、trace attributeに出さない。
 **OBS-SEC-008:** `store_unavailable`（`FAILED` / `TEMPORARY_UNAVAILABLE`）は `rejected`（`REJECTED` / `RATE_LIMIT_EXCEEDED`）と別の結果として観測し、sampling dropしない。metric `r39x_rate_limit_decisions_total` の `result` label（`allowed` / `rejected` / `store_unavailable`）は本eventの共通 `result` とは別の有限集合である。
-**OBS-SEC-009:** 判定は `r39x_rate_limit_decisions_total` で全件数える。log出力を省略した `allowed` もmetricには含める。
+**OBS-SEC-009:** 判定は `r39x_rate_limit_decisions_total` で全件数える（storeを評価していない、Client IPを導出できない `503` を除く。§24.1）。log出力を省略した `allowed` もmetricには含める。
 
 ## 25. Stripe / Payment / Refund observability
 
