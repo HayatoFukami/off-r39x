@@ -9,6 +9,7 @@ import {
   withDeadline,
 } from "../../packages/reliability/src/index.ts";
 import { fingerprint, parseQrKeyring } from "../../packages/security/src/index.ts";
+import { rateLimitEnv } from "../harness/rate-limit/api.ts";
 
 describe("common foundation contracts", () => {
   it("TC-COMMON-001 OBS-COR-005 fingerprint domain separation and bounded output", () => {
@@ -366,6 +367,7 @@ function serviceEnvironment(
       PUBLIC_AUTH_ORIGIN: "https://api.example.test",
       ALLOWED_HOSTS: "api.example.test",
       ALLOWED_ORIGINS: "https://web.example.test",
+      ...rateLimitEnv(),
     });
   return env;
 }

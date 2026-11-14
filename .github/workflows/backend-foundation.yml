@@ -28,6 +28,16 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 12
+      # TST-RLM-001 / INF-RLS-006 / SPEC-180 §74.1: a real Redis, disposable and unauthenticated.
+      # Major version 7 is provisional until the Railway Redis version is confirmed (INF-RLS-001).
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -62,6 +72,7 @@ jobs:
         env:
           TEST_DATABASE_URL: postgresql://postgres@localhost:5432/r39x_test
           TEST_DATABASE_CA: ${{ runner.temp }}/pg-test.crt
+          TEST_REDIS_URL: redis://localhost:6379
       - run: pnpm build:backend
       - run: pnpm secret-scan --build-dir dist --require-build
       # Deliberately no deployment: this slice is not the completed G1–G10 system gate.

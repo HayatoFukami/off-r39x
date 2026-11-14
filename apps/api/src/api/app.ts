@@ -5,9 +5,9 @@ import {
   type Capability,
   capabilities,
   hasCapability,
-  type Principal,
   type PrincipalStore,
   resolvePrincipal,
+  type TokenInspection,
   type TokenVerifier,
 } from "@off-r39x/auth";
 import type { createLogger, LogEvent } from "@off-r39x/observability";
@@ -15,26 +15,22 @@ import { Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { TrieRouter } from "hono/router/trie-router";
 import { secureHeaders } from "hono/secure-headers";
+import { actorContext } from "./actor-context.ts";
 import { AUTH_ROUTES, type AuthProxy } from "./auth-proxy.ts";
+import { type ApiEnvironment, ApiFailure } from "./failure.ts";
+import {
+  type AppRateLimit,
+  createPrincipalRateLimitHooks,
+  createRateLimitStageOne,
+  markAuthorizationConfirmed,
+  type PrincipalRateLimitHooks,
+} from "./rate-limit.ts";
+import { assertMountedAuthRoutes, assertMountedRoutesClassified } from "./routes.ts";
 import { type ErrorCode, errorSchema, errorStatuses } from "./schemas/common.ts";
 
-export type ApiEnvironment = {
-  Variables: {
-    requestId: string;
-    principal: Principal;
-    validatedJson: unknown;
-    logger: ReturnType<typeof createLogger> | undefined;
-    operationExecutionId: string | undefined;
-  };
-};
-export class ApiFailure extends Error {
-  constructor(
-    readonly code: ErrorCode,
-    readonly statusOverride?: 400 | 405 | 413 | 415,
-  ) {
-    super(code);
-  }
-}
+export { type ApiEnvironment, ApiFailure } from "./failure.ts";
+export type { AppRateLimit } from "./rate-limit.ts";
+
 const authErrorCodes = {
   unauthenticated: "AUTHENTICATION_REQUIRED",
   unavailable: "AUTH_SERVICE_TEMPORARY_FAILURE",
@@ -46,20 +42,30 @@ const authErrorCodes = {
 export interface AppDependencies {
   webOrigin: string;
   allowedHosts?: readonly string[];
-  ready: () => Promise<boolean>;
+  /**
+   * INF-HLT-005: reads the readiness snapshot only. It must not run a check per request (the
+   * background probe does that), so health requests cost no database or store call.
+   */
+  ready: () => boolean | Promise<boolean>;
   logger?: ReturnType<typeof createLogger>;
   draining?: () => boolean;
   auth?: { verifier: TokenVerifier; store: PrincipalStore };
-  enforcement?: SharedRateLimitGuard;
+  /** Shared rate limit (UCR-140-003). Absent => every registered route fails closed (503). */
+  rateLimit?: AppRateLimit;
   authProxy?: AuthProxy;
 }
+const EXPOSED_HEADERS = "X-Request-Id, Retry-After";
 function failure(
   c: import("hono").Context<ApiEnvironment>,
   code: ErrorCode,
   statusOverride?: 400 | 405 | 413 | 415,
+  retryAfterSeconds?: number,
 ) {
   c.header("Cache-Control", "no-store");
   const status = statusOverride ?? errorStatuses[code];
+  // SEC-ABU-007: a 429 always carries an integer-second Retry-After (min 1).
+  if (code === "RATE_LIMIT_EXCEEDED")
+    c.header("Retry-After", String(Math.max(1, retryAfterSeconds ?? 1)));
   return c.json(
     errorSchema.parse({
       error: {
@@ -69,7 +75,7 @@ function failure(
             ? "Requested resource was not found."
             : "Request could not be completed.",
         request_id: c.get("requestId"),
-        retryable: status === 503 || status === 424,
+        retryable: status === 503 || status === 424 || status === 429,
         details: null,
       },
     }),
@@ -85,6 +91,11 @@ export function createApp(dependencies: AppDependencies) {
     c.set("requestId", randomUUID());
     c.set("logger", dependencies.logger);
     c.set("operationExecutionId", undefined);
+    c.set("operationId", undefined);
+    c.set("rateLimitClass", undefined);
+    c.set("clientIp", undefined);
+    c.set("guardSaturated", undefined);
+    c.set("authorizationConfirmed", false);
     c.header("X-Request-Id", c.get("requestId"));
     c.header("Cache-Control", "no-store");
     await next();
@@ -125,6 +136,29 @@ export function createApp(dependencies: AppDependencies) {
     await next();
     return;
   });
+  // A 429 / 503 produced by Stage 1 precedes the CORS middleware below, but the Web origin must
+  // still be able to read it (including Retry-After). Only the exact Web origin is ever echoed.
+  // SEC-ABU-025. `/api/v1/*` never gets Access-Control-Allow-Credentials (SEC-API-007); the auth
+  // proxy already answers its own credentialed CORS on `/auth/*`, so a Stage 1 answer there matches it.
+  app.use("/api/v1/*", async (c, next) => {
+    if (c.req.header("Origin") === origin) {
+      c.header("Vary", "Origin");
+      c.header("Access-Control-Allow-Origin", origin);
+      c.header("Access-Control-Expose-Headers", EXPOSED_HEADERS);
+    }
+    await next();
+  });
+  app.use("/auth/*", async (c, next) => {
+    if (c.req.header("Origin") === origin) {
+      c.header("Vary", "Origin");
+      c.header("Access-Control-Allow-Origin", origin);
+      c.header("Access-Control-Allow-Credentials", "true");
+      c.header("Access-Control-Expose-Headers", EXPOSED_HEADERS);
+    }
+    await next();
+  });
+  // Stage 1 (SEC-ABU-017): after the drain check, before any origin/CORS/body/auth/DB work.
+  app.use("*", createRateLimitStageOne({ rateLimit: dependencies.rateLimit }));
   app.onError((error, c) => {
     if (error instanceof AuthFailure)
       dependencies.logger?.log({
@@ -143,7 +177,8 @@ export function createApp(dependencies: AppDependencies) {
               ? "CONSISTENCY_FAILURE"
               : "SECURITY_FAILURE",
       });
-    if (error instanceof ApiFailure) return failure(c, error.code, error.statusOverride);
+    if (error instanceof ApiFailure)
+      return failure(c, error.code, error.statusOverride, error.retryAfterSeconds);
     if (error instanceof AuthFailure) return failure(c, authErrorCodes[error.kind]);
     return failure(c, "INTERNAL_ERROR");
   });
@@ -153,7 +188,7 @@ export function createApp(dependencies: AppDependencies) {
     if (requestOrigin && requestOrigin !== origin) throw new ApiFailure("AUTHORIZATION_DENIED");
     if (requestOrigin === origin) {
       c.header("Access-Control-Allow-Origin", origin);
-      c.header("Access-Control-Expose-Headers", "X-Request-Id");
+      c.header("Access-Control-Expose-Headers", EXPOSED_HEADERS);
     }
     if (c.req.method === "OPTIONS") {
       const method = c.req.header("Access-Control-Request-Method") ?? "";
@@ -192,22 +227,20 @@ export function createApp(dependencies: AppDependencies) {
     "/api/v1/*",
     bodyLimit({ maxSize: 65536, onError: (c) => failure(c, "PAYLOAD_TOO_LARGE") }),
   );
+  const principalHooks = dependencies.rateLimit
+    ? createPrincipalRateLimitHooks(dependencies.rateLimit.limiter)
+    : undefined;
   app.route(
     "/",
     createPublicRpc<ApiEnvironment>({
       guard: async (c, next) => {
-        c.set("operationExecutionId", randomUUID());
-        if (!dependencies.auth || !dependencies.enforcement)
-          throw new ApiFailure("TEMPORARY_UNAVAILABLE");
-        try {
-          await dependencies.enforcement.assertAvailable();
-        } catch {
-          throw new ApiFailure("TEMPORARY_UNAVAILABLE");
-        }
-        await requirePrincipal(dependencies.auth.verifier, dependencies.auth.store)(c, async () => {
-          await requireVerifiedEmail()(c, async () => {
-            await dependencies.enforcement?.middleware(c, next);
-          });
+        if (!dependencies.auth || !principalHooks) throw new ApiFailure("TEMPORARY_UNAVAILABLE");
+        await requirePrincipal(
+          dependencies.auth.verifier,
+          dependencies.auth.store,
+          principalHooks,
+        )(c, async () => {
+          await requireVerifiedEmail()(c, next);
         });
       },
       principal: (c) => {
@@ -232,17 +265,8 @@ export function createApp(dependencies: AppDependencies) {
           return failure(c, "MALFORMED_REQUEST");
         const proxy = dependencies.authProxy;
         if (!proxy) throw new ApiFailure("TEMPORARY_UNAVAILABLE");
-        if (c.req.method === "OPTIONS") return proxy.handle(c.req.raw);
-        if (!dependencies.enforcement) throw new ApiFailure("TEMPORARY_UNAVAILABLE");
-        try {
-          await dependencies.enforcement.assertAvailable();
-        } catch {
-          throw new ApiFailure("TEMPORARY_UNAVAILABLE");
-        }
-        await dependencies.enforcement.middleware(c, async () => {
-          c.res = await proxy.handle(c.req.raw);
-        });
-        return c.res;
+        // Stage 1 already ran (and failed closed without a limiter) before this handler.
+        return proxy.handle(c.req.raw);
       });
     }
   }
@@ -269,20 +293,29 @@ export function createApp(dependencies: AppDependencies) {
     }
     return failure(c, "RESOURCE_NOT_FOUND");
   });
+  // DEV-RLM-005: every mounted route must be in the rate limit registry (startup failure otherwise).
+  assertMountedRoutesClassified(app.routes);
+  // API-RLC-004: the mounted `/auth/*` routes equal the SPEC-110 §23.1 allowlist (method, path, class).
+  assertMountedAuthRoutes(app.routes, Boolean(dependencies.authProxy));
   return app;
 }
 export function requirePrincipal(
   verifier: TokenVerifier,
   store: PrincipalStore,
+  hooks?: PrincipalRateLimitHooks,
 ): MiddlewareHandler<ApiEnvironment> {
   return async (c, next) => {
     let identity: Awaited<ReturnType<TokenVerifier["verify"]>>;
+    // SEC-ABU-033 (a): the structure is checked first and does no cryptographic work.
+    const inspected = verifier.inspect
+      ? verifier.inspect(c.req.header("Authorization"))
+      : inspectBearerFormat(c.req.header("Authorization"));
+    // SEC-ABU-033 (b): a signature is verified only inside its budget; an exhausted one is a 429 that
+    // is not an authentication failure (the token was not judged).
+    if (inspected.ok) await hooks?.beforeVerification(c);
     try {
-      const match = /^Bearer ([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/.exec(
-        c.req.header("Authorization") ?? "",
-      );
-      if (!match?.[1]) throw new AuthFailure("unauthenticated");
-      identity = await verifier.verify(match[1]);
+      if (!inspected.ok) throw new AuthFailure("unauthenticated");
+      identity = await verifier.verify(inspected.token);
       securityEvent(c, "auth.verification.completed");
     } catch (error) {
       securityEvent(
@@ -292,8 +325,12 @@ export function requirePrincipal(
           ? "AUTH_SERVICE_UNAVAILABLE"
           : "AUTHENTICATION_REQUIRED",
       );
+      // SEC-ABU-021 (5): record the failed structure check / verification for the guard.
+      await hooks?.verificationFailed(c, error);
       throw error;
     }
+    // Stage 2 (SEC-ABU-017): per-subject rules, before the DB-backed Principal resolution.
+    await hooks?.verified(c, identity);
     try {
       c.set("principal", await resolvePrincipal(identity, store));
       securityEvent(c, "auth.business_profile_resolution.completed");
@@ -314,6 +351,13 @@ export function requirePrincipal(
     await next();
   };
 }
+/** Plain Bearer format check, for a verifier without its own structure check. */
+function inspectBearerFormat(authorization: string | undefined): TokenInspection {
+  const match = /^Bearer ([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/.exec(
+    authorization ?? "",
+  );
+  return match?.[1] ? { ok: true, token: match[1] } : { ok: false };
+}
 export function requireCapability(capability: Capability): MiddlewareHandler<ApiEnvironment> {
   return async (c, next) => {
     if (!c.get("principal") || !hasCapability(c.get("principal"), capability)) {
@@ -321,12 +365,10 @@ export function requireCapability(capability: Capability): MiddlewareHandler<Api
       throw new AuthFailure("denied");
     }
     securityEvent(c, "authorization.decision.completed");
+    // SEC-ABU-029: Role + Capability passed (step 7); Stage 3 resource rules may now be evaluated.
+    markAuthorizationConfirmed(c);
     await next();
   };
-}
-export interface SharedRateLimitGuard {
-  assertAvailable(): Promise<void>;
-  middleware: MiddlewareHandler<ApiEnvironment>;
 }
 export function requireVerifiedEmail(): MiddlewareHandler<ApiEnvironment> {
   return async (c, next) => {
@@ -338,13 +380,6 @@ export function requireVerifiedEmail(): MiddlewareHandler<ApiEnvironment> {
     securityEvent(c, "auth.email_verified_resolution.completed");
     await next();
   };
-}
-export async function protectedMountGuard(
-  guard: SharedRateLimitGuard | undefined,
-): Promise<MiddlewareHandler<ApiEnvironment>> {
-  if (!guard) throw new Error("Shared multi-instance rate limiter contract is required");
-  await guard.assertAvailable();
-  return guard.middleware;
 }
 
 function securityEvent(
@@ -373,22 +408,8 @@ function securityEvent(
 
 function operationContext(c: import("hono").Context<ApiEnvironment>) {
   const execution = c.get("operationExecutionId");
-  return execution ? { operation_id: "API-AUTH-001", operation_execution_id: execution } : {};
-}
-
-function actorContext(c: import("hono").Context<ApiEnvironment>): {
-  actor_type: NonNullable<LogEvent["actor_type"]>;
-  actor_ref?: string;
-} {
-  const principal = c.get("principal");
-  return principal
-    ? {
-        actor_type: principal.roles.includes("ADMINISTRATOR")
-          ? "ADMINISTRATOR"
-          : principal.roles.includes("STAFF")
-            ? "STAFF"
-            : "AUTHENTICATED_USER",
-        actor_ref: principal.profileRef,
-      }
-    : { actor_type: "GUEST" };
+  const operation = c.get("operationId");
+  return execution && operation
+    ? { operation_id: operation, operation_execution_id: execution }
+    : {};
 }

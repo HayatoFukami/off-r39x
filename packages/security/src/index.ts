@@ -74,3 +74,5 @@ export function parseQrKeyring(raw: string, current: string, allowed: string): Q
     throw new Error("Invalid QR keyring");
   }
 }
+
+export * from "./rate-limit/index.ts";
