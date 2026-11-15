@@ -94,10 +94,13 @@ export interface SubjectInput {
 export interface ResourceInput {
   readonly classId: RouteClassId;
   /**
-   * Values keyed by additional rule ID of the `resource` phase. A rule may name several resources
-   * (a cart); they are one atomic evaluation, at most MAX_RESOURCES_PER_EVALUATION distinct ones.
+   * The Stage 3 references by kind (SPEC-110 API-RLC-006 / API-RLC-007), e.g. `{ ticket_ref }` or a
+   * cart's `{ offering_ref, goods_ref }`. Every `resource`-phase rule of the class is counted for each
+   * of them. The key derives from the class, the kind and the canonical reference, never from the
+   * Operation ID, so Operations of one class naming the same kind and reference share a counter.
+   * All values are one atomic evaluation, at most MAX_RESOURCES_PER_EVALUATION distinct ones.
    */
-  readonly values: Readonly<Record<string, string | readonly string[]>>;
+  readonly references: Readonly<Record<string, string | readonly string[]>>;
   readonly operationId?: string | undefined;
 }
 /** SPEC-140 SEC-ABU-029: the largest cart, so the largest number of resources in one evaluation. */
@@ -146,7 +149,7 @@ export interface RateLimiter {
    */
   recordAuthFailure(classId: RouteClassId, ip: string): Promise<RateLimitDecision>;
   /** OBS-SEC-009: a process-local resource refusal is a decision too; no store operation. */
-  rejectConcurrency(classId: RouteClassId, operationId?: string): RateLimitDecision;
+  rejectConcurrency(classId: RateLimitClassId, operationId?: string): RateLimitDecision;
   /** INF-HLT-004. Throws unless the store is usable. */
   assertReady(): Promise<void>;
   close(): Promise<void>;
@@ -395,17 +398,23 @@ export function createRateLimiter(options: RateLimiterOptions): RateLimiter {
       );
     },
     async resource(input: ResourceInput): Promise<RateLimitDecision> {
-      const required = Object.entries(classDefinition(input.classId).additional).filter(
-        ([, rule]) => rule.phase === "resource",
+      const hasResourceRule = Object.values(classDefinition(input.classId).additional).some(
+        (rule) => rule.phase === "resource",
       );
-      for (const [ruleId] of required)
-        if (input.values[ruleId] === undefined)
-          throw new Error("Rate limit resource key is required");
+      if (!hasResourceRule) return ALLOWED;
+      // Reference kind first, then the canonical reference: `(kind NUL canonical value)` is the key input.
+      const references = Object.entries(input.references).flatMap(([kind, value]) =>
+        (typeof value === "string" ? [value] : value).map(
+          (item) => `${kind}\0${canonicalReference(item)}`,
+        ),
+      );
+      if (references.length === 0 || references.some((item) => item.endsWith(" ")))
+        throw new Error("Rate limit resource key is required");
       return evaluate(
         input.classId,
         input.operationId,
         "admit",
-        additionalRules(input.classId, "resource", (ruleId) => input.values[ruleId]),
+        additionalRules(input.classId, "resource", () => references),
       );
     },
     async recordAuthFailure(classId: RouteClassId, ip: string): Promise<RateLimitDecision> {
@@ -427,7 +436,7 @@ export function createRateLimiter(options: RateLimiterOptions): RateLimiter {
       }
       return { result: "ok", saturated: !outcome.allowed };
     },
-    rejectConcurrency(classId: RouteClassId, operationId?: string): RateLimitDecision {
+    rejectConcurrency(classId: RateLimitClassId, operationId?: string): RateLimitDecision {
       const decision: RateLimitDecision = {
         result: "rejected",
         ruleCategory: "concurrency",

@@ -766,6 +766,8 @@ function miniApp(
     verify?: (token: string) => Promise<{ subject: string }>;
     /** Per-subject roles (default: the shared `setRoles` value). */
     rolesFor?: (subject: string) => ("STAFF" | "ADMINISTRATOR")[];
+    /** The Operation ID of the synthetic routes (Stage 3 needs it: SPEC-110 API-RLC-007). */
+    operationId?: string;
   } = {},
 ) {
   const order: string[] = [];
@@ -780,7 +782,7 @@ function miniApp(
       rateLimit: trs.rateLimit,
       classify: (_method, path) => {
         const classId = routes[path.split("/").slice(0, 2).join("/")];
-        return classId ? { classId, operationId: null } : undefined;
+        return classId ? { classId, operationId: options.operationId ?? null } : undefined;
       },
     }),
   );
@@ -794,7 +796,10 @@ function miniApp(
       return c.json({ code: error.kind }, error.kind === "unauthenticated" ? 401 : 403);
     return c.json({ code: "INTERNAL_ERROR" }, 500);
   });
-  const hooks = createPrincipalRateLimitHooks(trs.rateLimit.limiter);
+  const hooks = createPrincipalRateLimitHooks(trs.rateLimit.limiter, {
+    ...(trs.rateLimit.gate ? { gate: trs.rateLimit.gate } : {}),
+    authSubjectRef: trs.rateLimit.authSubjectRef,
+  });
   let verified = true;
   let roles: ("STAFF" | "ADMINISTRATOR")[] = [];
   const principal = requirePrincipal(
@@ -975,8 +980,13 @@ const subjectOf = (token: string) =>
 /** Roles by subject: the administrator has them, the ordinary valid-JWT holder has none. */
 const rolesBySubject = (subject: string): ("STAFF" | "ADMINISTRATOR")[] =>
   subject === ADMIN_SUBJECT ? ["ADMINISTRATOR", "STAFF"] : [];
-const authedApp = (trs: TestRateLimit, routes: Record<string, RouteClassId>) =>
+const authedApp = (
+  trs: TestRateLimit,
+  routes: Record<string, RouteClassId>,
+  operationId?: string,
+) =>
   miniApp(trs, routes, {
+    ...(operationId ? { operationId } : {}),
     verify: async (token) => {
       if (token.endsWith("YmFk")) throw new AuthFailure("unauthenticated");
       return { subject: subjectOf(token) };
@@ -1018,7 +1028,7 @@ describe("resource rule evaluation (TST-RLM-004)", () => {
           },
         },
       });
-      const m = miniApp(trs, { "/qr": "qr_display" });
+      const m = miniApp(trs, { "/qr": "qr_display" }, { operationId: "API-TKT-003" });
       let lookups = 0;
       m.app.get(
         "/qr/:id",
@@ -1029,7 +1039,7 @@ describe("resource rule evaluation (TST-RLM-004)", () => {
           await next();
         },
         requireResourceRateLimit(trs.rateLimit.limiter, (c) => ({
-          "qr_display.ticket": c.req.param("id") ?? "",
+          ticket_ref: c.req.param("id") ?? "",
         })),
         (c) => {
           lookups += 1;
@@ -1054,7 +1064,7 @@ describe("resource rule evaluation (TST-RLM-004)", () => {
 
   it("TC-RLM-004-212 a Stage 3 store failure is a 503 before the handler runs", async () => {
     const trs = createTestRateLimit();
-    const m = miniApp(trs, { "/qr": "qr_display" });
+    const m = miniApp(trs, { "/qr": "qr_display" }, { operationId: "API-TKT-003" });
     let handled = 0;
     let resourceValues = 0;
     m.app.get(
@@ -1066,7 +1076,7 @@ describe("resource rule evaluation (TST-RLM-004)", () => {
       },
       requireResourceRateLimit(trs.rateLimit.limiter, (c) => {
         resourceValues += 1;
-        return { "qr_display.ticket": c.req.param("id") ?? "" };
+        return { ticket_ref: c.req.param("id") ?? "" };
       }),
       (c) => {
         handled += 1;
@@ -1096,7 +1106,7 @@ describe("resource rule evaluation (TST-RLM-004)", () => {
 describe("Stage 3 shared resource counters after authorization (SEC-ABU-029, TST-RLM-004)", () => {
   it("TC-RLM-004-239 Stage 3 runs after Role + Capability and before the Domain precondition: guard read, verify, stage 2 store, db, Stage 3 store, then the domain", async () => {
     const trs = createTestRateLimit();
-    const m = authedApp(trs, { "/adm": "role_assignment" });
+    const m = authedApp(trs, { "/adm": "role_assignment" }, "API-ADM-ROL-002");
     const order = m.order;
     const evaluate = trs.store.evaluate.bind(trs.store);
     trs.store.evaluate = async (mode, rules, id) => {
@@ -1108,7 +1118,7 @@ describe("Stage 3 shared resource counters after authorization (SEC-ABU-029, TST
       m.principal,
       requireCapability("role_assignment.manage"),
       requireResourceRateLimit(trs.rateLimit.limiter, (c) => ({
-        "role_assignment.profile": c.req.param("target") ?? "",
+        target_profile_ref: c.req.param("target") ?? "",
       })),
       (c) => {
         order.push("domain");
@@ -1117,30 +1127,22 @@ describe("Stage 3 shared resource counters after authorization (SEC-ABU-029, TST
     );
     const res = await call(m.app, "/adm/roles/P1", ADMIN_TOKEN);
     expect(res.status).toBe(200);
-    // SEC-ABU-021 / 033: Stage 1 reads the guard; the occupied normal lane rechecks before verification.
-    expect(order).toEqual([
-      "store:check",
-      "store:check",
-      "verify",
-      "store:admit",
-      "db",
-      "store:admit",
-      "domain",
-    ]);
+    // SEC-ABU-021 / 033: Stage 1 takes the slot and reads the guard once; there is no recheck before the verification.
+    expect(order).toEqual(["store:check", "verify", "store:admit", "db", "store:admit", "domain"]);
   });
 
   it("TC-RLM-004-240 a valid-JWT holder without Administrator cannot consume the target-profile slot of API-ADM-ROL-002: the 403s leave the counter untouched and the real administrator can still grant", async () => {
     const trs = createTestRateLimit({
       overrides: stage3Override("role_assignment", { "role_assignment.profile": [5, 600] }, 3, 10),
     });
-    const m = authedApp(trs, { "/adm": "role_assignment" });
+    const m = authedApp(trs, { "/adm": "role_assignment" }, "API-ADM-ROL-002");
     let granted = 0;
     m.app.get(
       "/adm/roles/:target",
       m.principal,
       requireCapability("role_assignment.manage"),
       requireResourceRateLimit(trs.rateLimit.limiter, (c) => ({
-        "role_assignment.profile": c.req.param("target") ?? "",
+        target_profile_ref: c.req.param("target") ?? "",
       })),
       (c) => {
         granted += 1;
@@ -1182,6 +1184,9 @@ describe("Stage 3 shared resource counters after authorization (SEC-ABU-029, TST
     capability?: Parameters<typeof requireCapability>[0];
     /** Owner-relation (step 6) route: the Ticket belongs to SUBJECT only. */
     ownerOnly?: boolean;
+    /** The Operation and its Stage 3 reference kind (SPEC-110 API-RLC-007). */
+    operationId: string;
+    kind: string;
   }[] = [
     {
       name: "high_risk_recovery target resource (per minute)",
@@ -1197,6 +1202,8 @@ describe("Stage 3 shared resource counters after authorization (SEC-ABU-029, TST
       burst: 2,
       sustained: 6,
       capability: "recovery.exception.execute",
+      operationId: "API-ADM-PAY-001",
+      kind: "order_ref",
     },
     {
       name: "high_risk_recovery target resource (per hour)",
@@ -1212,6 +1219,8 @@ describe("Stage 3 shared resource counters after authorization (SEC-ABU-029, TST
       burst: 2,
       sustained: 6,
       capability: "recovery.exception.execute",
+      operationId: "API-ADM-PAY-001",
+      kind: "order_ref",
     },
     {
       name: "admin_mutation target resource",
@@ -1224,6 +1233,8 @@ describe("Stage 3 shared resource counters after authorization (SEC-ABU-029, TST
       burst: 10,
       sustained: 30,
       capability: "public_content.manage",
+      operationId: "API-ADM-CNT-006",
+      kind: "faq_ref",
     },
     {
       name: "goods_handoff Goods Item",
@@ -1236,6 +1247,8 @@ describe("Stage 3 shared resource counters after authorization (SEC-ABU-029, TST
       burst: 10,
       sustained: 60,
       capability: "goods_handoff.execute",
+      operationId: "API-STF-GDS-001",
+      kind: "goods_item_ref",
     },
     {
       name: "staff_checkin QR digest",
@@ -1248,6 +1261,8 @@ describe("Stage 3 shared resource counters after authorization (SEC-ABU-029, TST
       burst: 40,
       sustained: 180,
       capability: "entry_checkin.execute",
+      operationId: "API-STF-CHK-001",
+      kind: "qr_digest",
     },
     {
       name: "qr_display Ticket (another principal's Ticket is a 404)",
@@ -1260,6 +1275,8 @@ describe("Stage 3 shared resource counters after authorization (SEC-ABU-029, TST
       burst: 6,
       sustained: 30,
       ownerOnly: true,
+      operationId: "API-TKT-003",
+      kind: "ticket_ref",
     },
   ];
   for (const scenario of cases)
@@ -1273,7 +1290,7 @@ describe("Stage 3 shared resource counters after authorization (SEC-ABU-029, TST
         ),
       });
       const prefix = `/${scenario.classId}`;
-      const m = authedApp(trs, { [prefix]: scenario.classId });
+      const m = authedApp(trs, { [prefix]: scenario.classId }, scenario.operationId);
       let digestDerivations = 0;
       let domain = 0;
       const owner: import("hono").MiddlewareHandler<ApiEnvironment> = async (c, next) => {
@@ -1290,12 +1307,8 @@ describe("Stage 3 shared resource counters after authorization (SEC-ABU-029, TST
         scenario.ownerOnly ? owner : requireCapability(scenario.capability as never),
         requireResourceRateLimit(trs.rateLimit.limiter, (c) => {
           digestDerivations += 1; // the QR digest is derived only after authorization
-          // Every resource-phase rule of the class needs its key (the `.ip` rule is Stage 1).
-          return Object.fromEntries(
-            Object.keys(scenario.rules)
-              .filter((rule) => !rule.endsWith(".ip"))
-              .map((rule) => [rule, `digest-of-${c.req.param("resource")}`]),
-          );
+          // The Operation's one reference kind; every resource-phase rule of the class counts it.
+          return { [scenario.kind]: `digest-of-${c.req.param("resource")}` };
         }),
         (c) => {
           domain += 1;
@@ -1332,13 +1345,13 @@ describe("Stage 3 shared resource counters after authorization (SEC-ABU-029, TST
     const trs = createTestRateLimit({
       overrides: stage3Override("admin_mutation", { "admin_mutation.resource": [2, 60] }, 10, 30),
     });
-    const m = authedApp(trs, { "/adm": "admin_mutation" });
+    const m = authedApp(trs, { "/adm": "admin_mutation" }, "API-ADM-CNT-006");
     m.app.get(
       "/adm/:id",
       m.principal,
       requireCapability("public_content.manage"),
       requireResourceRateLimit(trs.rateLimit.limiter, (c) => ({
-        "admin_mutation.resource": c.req.param("id") ?? "",
+        faq_ref: c.req.param("id") ?? "",
       })),
       (c) => c.json({ ok: true }),
     );
@@ -1353,12 +1366,12 @@ describe("Stage 3 shared resource counters after authorization (SEC-ABU-029, TST
 
   it("TC-RLM-004-243 a route that evaluates Stage 3 without an authorization check is refused (500) and never touches the shared counters", async () => {
     const trs = createTestRateLimit();
-    const m = authedApp(trs, { "/qr": "qr_display" });
+    const m = authedApp(trs, { "/qr": "qr_display" }, "API-TKT-003");
     m.app.get(
       "/qr/:id",
       m.principal,
       requireResourceRateLimit(trs.rateLimit.limiter, (c) => ({
-        "qr_display.ticket": c.req.param("id") ?? "",
+        ticket_ref: c.req.param("id") ?? "",
       })),
       (c) => c.json({ ok: true }),
     );

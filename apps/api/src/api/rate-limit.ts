@@ -17,6 +17,7 @@ import {
   type RateLimitObserver,
   type ResourceInput,
   type RouteClassId,
+  resourceReferencesOf,
 } from "@off-r39x/security";
 import type { Context, MiddlewareHandler } from "hono";
 import { actorContext } from "./actor-context.ts";
@@ -27,6 +28,16 @@ export interface AppRateLimit {
   readonly limiter: RateLimiter;
   /** TRUSTED_PROXY_HOPS (SEC-API-030). 0 = the direct peer is the client. */
   readonly trustedProxyHops: number;
+  /**
+   * SPEC-160 §24.1 / §11: the `r39x/obs/v1/auth-subject` fingerprint of a verified Auth Subject. It is
+   * the `actor_ref` of a Stage 2 decision, made before the Principal (Role, Profile) is resolved.
+   */
+  readonly authSubjectRef: (subject: string) => string;
+  /**
+   * SEC-ABU-033: the process-local signature verification gate (slots and restricted lane). One gate
+   * serves both Stage 1 and the Stage 2 hooks; `createApp` creates it when absent.
+   */
+  readonly gate?: VerificationGate;
 }
 
 /** Name of the forwarded header read when trusted proxies exist. External fact (SPEC-180 §17.2 #1). */
@@ -98,6 +109,25 @@ function logDecision(
   });
   failClosed(c, classId);
 }
+/**
+ * SPEC-160 §24.1: no Client IP could be derived (SEC-API-031). It is not a store decision, so it is
+ * logged as a decision event under the route's class (`public_read` for an unmatched path / method)
+ * and is not counted in `r39x_rate_limit_decisions_total` (it must not look like `store_unavailable`
+ * and raise OBS-ALT-041 while the store is healthy). No `rule_category`.
+ */
+function logClientIpUnavailable(c: AppContext, classId: RateLimitClassId): void {
+  c.get("logger")?.log({
+    event_name: "ratelimit.decision.completed",
+    level: "ERROR",
+    result: "FAILED",
+    is_retry: false,
+    ...requestContext(c),
+    ...actorContext(c),
+    class_id: classId,
+    error_code: "TEMPORARY_UNAVAILABLE",
+    failure_class: "SECURITY_FAILURE",
+  });
+}
 function failClosed(c: AppContext, classId?: RateLimitClassId): void {
   c.get("logger")?.log({
     event_name: "security.fail_closed.triggered",
@@ -168,6 +198,8 @@ export interface StageOneOptions {
   readonly rateLimit: AppRateLimit | undefined;
   readonly classify?: RouteClassifier;
   readonly peerOf?: (c: AppContext) => string | undefined;
+  /** SEC-ABU-033: must be the gate the Stage 2 hooks use. Defaults to a private one (stage-1-only use). */
+  readonly gate?: VerificationGate;
 }
 
 /**
@@ -182,6 +214,7 @@ export function createRateLimitStageOne(
   const classify = options.classify ?? classifyRequest;
   const peerOf = options.peerOf ?? peerAddress;
   const bodySlots = createBodyReadSlots();
+  const gate = options.gate ?? options.rateLimit?.gate ?? createVerificationGate();
   return async (c, next) => {
     const method = c.req.method;
     const path = c.req.path;
@@ -215,7 +248,7 @@ export function createRateLimitStageOne(
     if (!ip) {
       // No Client IP can be derived: the per-IP rules cannot be evaluated (fail closed).
       if (closesConnection) c.header("Connection", "close");
-      failClosed(c);
+      logClientIpUnavailable(c, route?.classId ?? "public_read");
       throw new ApiFailure("TEMPORARY_UNAVAILABLE");
     }
     c.set("clientIp", ip);
@@ -226,52 +259,67 @@ export function createRateLimitStageOne(
     }
     const operationId = route.operationId ?? undefined;
     const formProxy = closesConnection;
-    // SEC-ABU-031: the per-IP rule is evaluated before the body is read. A refusal answers without
-    // reading the body and closes the connection.
-    const stageOne = await rateLimit.limiter.preAuth({ classId: route.classId, ip, operationId });
-    if (formProxy && stageOne.result !== "allowed") c.header("Connection", "close");
-    enforceDecision(c, route.classId, stageOne);
-    // SEC-ABU-021 (1): the guard counter is only read here. Whether this IP's failures reached the
-    // limit selects the signature verification budget (SEC-ABU-033); it never refuses a request.
-    const guardClass = guardFor(route.classId);
-    if (guardClass) {
-      const guardState = await rateLimit.limiter.guardState(route.classId, ip);
-      if (guardState.result === "store_unavailable")
-        enforceDecision(c, guardClass, { result: "store_unavailable" });
-      else c.set("guardSaturated", guardState.saturated);
-    }
-    if (formProxy) {
-      // SEC-ABU-031: at most 3 concurrent body reads per IP and 256 per process; over that the request
-      // is refused without reading and without a store call (rule_category=concurrency).
-      const release = bodySlots.acquire(ip);
-      if (!release) {
-        c.header("Connection", "close");
+    try {
+      // SEC-ABU-031: the per-IP rule is evaluated before the body is read. A refusal answers without
+      // reading the body and closes the connection.
+      const stageOne = await rateLimit.limiter.preAuth({ classId: route.classId, ip, operationId });
+      if (formProxy && stageOne.result !== "allowed") c.header("Connection", "close");
+      enforceDecision(c, route.classId, stageOne);
+      // SEC-ABU-033 (b) / SEC-ABU-021 (1): the IP's concurrent verification slot is taken before the
+      // guard counter is read, and the counter is read once. An IP without a free slot does not read
+      // the counter and does not call the store: it uses the restricted lane. A saturated IP (its
+      // failures reached the limit) needs no slot either. The slot is released at the end of the
+      // verification or the guard evaluation, and in any case when the request ends (finally below).
+      const guardClass = guardFor(route.classId);
+      if (guardClass) {
+        const slot = gate.acquireSlot(ip);
+        if (slot) {
+          c.set("verificationSlot", slot);
+          const guardState = await rateLimit.limiter.guardState(route.classId, ip);
+          if (guardState.result === "store_unavailable")
+            enforceDecision(c, guardClass, { result: "store_unavailable" });
+          else {
+            c.set("guardSaturated", guardState.saturated);
+            if (guardState.saturated) slot.release();
+          }
+        }
+      }
+      if (formProxy) {
+        // SEC-ABU-031: at most 3 concurrent body reads per IP and 256 per process; over that the request
+        // is refused without reading and without a store call (rule_category=concurrency).
+        const release = bodySlots.acquire(ip);
+        if (!release) {
+          c.header("Connection", "close");
+          enforceDecision(
+            c,
+            route.classId,
+            rateLimit.limiter.rejectConcurrency(route.classId, operationId),
+          );
+          return;
+        }
+        let loginIdentifier: string | undefined;
+        try {
+          loginIdentifier = await readLoginIdentifier(c.req.raw);
+        } finally {
+          release();
+        }
+        // SEC-ABU-024 stage 1b: the (source IP, identifier) pair, after the body and before the relay.
         enforceDecision(
           c,
           route.classId,
-          rateLimit.limiter.rejectConcurrency(route.classId, operationId),
+          await rateLimit.limiter.loginIdentifier({
+            classId: "auth_form_proxy",
+            ip,
+            loginIdentifier,
+            operationId,
+          }),
         );
-        return;
       }
-      let loginIdentifier: string | undefined;
-      try {
-        loginIdentifier = await readLoginIdentifier(c.req.raw);
-      } finally {
-        release();
-      }
-      // SEC-ABU-024 stage 1b: the (source IP, identifier) pair, after the body and before the relay.
-      enforceDecision(
-        c,
-        route.classId,
-        await rateLimit.limiter.loginIdentifier({
-          classId: "auth_form_proxy",
-          ip,
-          loginIdentifier,
-          operationId,
-        }),
-      );
+      await next();
+    } finally {
+      // Whatever ended the request (a refusal, an error, a disconnect), a slot is never left behind.
+      c.get("verificationSlot")?.release();
     }
-    await next();
   };
 }
 
@@ -308,27 +356,93 @@ export function createBodyReadSlots(
   };
 }
 
-/** SEC-ABU-033 (b): the process-wide signature verification budget for guard-saturated IPs. */
-export const VERIFICATION_BUDGET_PER_SECOND = 50;
-export interface VerificationBudget {
-  /** Takes one verification from the process-local token bucket; false when it is empty. */
-  tryTake(): boolean;
+/**
+ * SEC-ABU-033 / SEC-ABU-021: process-local bounds of signature verification. These are constants of
+ * the contract, not runtime configuration. Each API process holds its own (per process, so the
+ * environment-wide figure is the replica count times these).
+ */
+export const VERIFICATION_SLOTS_PER_IP = 8;
+export const RESTRICTED_LANE_PER_PROCESS_PER_SECOND = 50;
+export const RESTRICTED_LANE_PER_IP_PER_SECOND = 10;
+export const RESTRICTED_LANE_MAX_IPS = 1024;
+export const RESTRICTED_LANE_IDLE_MS = 60_000;
+
+export interface VerificationSlot {
+  /** Idempotent. */
+  release(): void;
 }
-export function createVerificationBudget(
-  options: { readonly perSecond?: number; readonly now?: () => number } = {},
-): VerificationBudget {
-  const perSecond = options.perSecond ?? VERIFICATION_BUDGET_PER_SECOND;
+export interface VerificationGate {
+  /** Normal lane: takes a concurrent verification slot of the IP; undefined at the limit. No wait. */
+  acquireSlot(ip: string): VerificationSlot | undefined;
+  /**
+   * Restricted lane: takes one from the per-IP bucket and the process-wide bucket. Both must have a
+   * token; an IP not yet tracked is refused when the table is full. Nothing is taken on a refusal.
+   */
+  takeRestricted(ip: string): boolean;
+}
+interface Bucket {
+  tokens: number;
+  last: number;
+}
+export function createVerificationGate(
+  options: {
+    readonly slotsPerIp?: number;
+    readonly perProcessPerSecond?: number;
+    readonly perIpPerSecond?: number;
+    readonly maxIps?: number;
+    readonly idleMs?: number;
+    readonly now?: () => number;
+  } = {},
+): VerificationGate {
+  const slotsPerIp = options.slotsPerIp ?? VERIFICATION_SLOTS_PER_IP;
+  const processRate = options.perProcessPerSecond ?? RESTRICTED_LANE_PER_PROCESS_PER_SECOND;
+  const ipRate = options.perIpPerSecond ?? RESTRICTED_LANE_PER_IP_PER_SECOND;
+  const maxIps = options.maxIps ?? RESTRICTED_LANE_MAX_IPS;
+  const idleMs = options.idleMs ?? RESTRICTED_LANE_IDLE_MS;
   const now = options.now ?? (() => performance.now());
-  let tokens = perSecond;
-  let last = now();
+  const slots = new Map<string, number>();
+  const buckets = new Map<string, Bucket>();
+  const processBucket: Bucket = { tokens: processRate, last: now() };
+  const refill = (bucket: Bucket, rate: number, at: number): void => {
+    if (at > bucket.last)
+      bucket.tokens = Math.min(rate, bucket.tokens + ((at - bucket.last) * rate) / 1000);
+    bucket.last = at;
+  };
   return {
-    tryTake() {
-      const current = now();
-      if (current > last)
-        tokens = Math.min(perSecond, tokens + ((current - last) * perSecond) / 1000);
-      last = current;
-      if (tokens < 1) return false;
-      tokens -= 1;
+    acquireSlot(ip) {
+      const current = slots.get(ip) ?? 0;
+      if (current >= slotsPerIp) return undefined;
+      slots.set(ip, current + 1);
+      let released = false;
+      return {
+        release() {
+          if (released) return;
+          released = true;
+          const remaining = (slots.get(ip) ?? 1) - 1;
+          if (remaining > 0) slots.set(ip, remaining);
+          else slots.delete(ip);
+        },
+      };
+    },
+    takeRestricted(ip) {
+      const at = now();
+      let bucket = buckets.get(ip);
+      if (!bucket) {
+        if (buckets.size >= maxIps) {
+          // Discard the buckets idle for 60 s; if the table is still full the new IP is refused.
+          for (const [key, value] of buckets) if (at - value.last >= idleMs) buckets.delete(key);
+          if (buckets.size >= maxIps) return false;
+        }
+        bucket = { tokens: ipRate, last: at };
+        buckets.set(ip, bucket);
+      } else if (at - bucket.last >= idleMs) {
+        bucket.tokens = ipRate;
+        bucket.last = at;
+      } else refill(bucket, ipRate, at);
+      refill(processBucket, processRate, at);
+      if (bucket.tokens < 1 || processBucket.tokens < 1) return false;
+      bucket.tokens -= 1;
+      processBucket.tokens -= 1;
       return true;
     },
   };
@@ -336,18 +450,22 @@ export function createVerificationBudget(
 
 /** Stage 2 hooks run inside `requirePrincipal` (SEC-ABU-021, SEC-ABU-033 and the per-subject rules). */
 export interface PrincipalRateLimitHooks {
-  /** SEC-ABU-033 (b): called after the structure check, before the signature is verified. */
+  /**
+   * SEC-ABU-033: called after the structure check, before the signature is verified. Returns the
+   * release function of the normal-lane slot, or undefined on the restricted lane (a refusal throws).
+   */
   beforeVerification(c: AppContext): Promise<(() => void) | undefined>;
   verificationFailed(c: AppContext, error: unknown): Promise<void>;
   verified(c: AppContext, identity: { readonly subject: string }): Promise<void>;
 }
 export function createPrincipalRateLimitHooks(
   limiter: RateLimiter,
-  options: { readonly verificationBudget?: VerificationBudget } = {},
+  options: {
+    readonly gate?: VerificationGate;
+    readonly authSubjectRef?: (subject: string) => string;
+  } = {},
 ): PrincipalRateLimitHooks {
-  const budget = options.verificationBudget ?? createVerificationBudget();
-  // Only active normal-lane verifications are retained, across both guard classes. No wait queue.
-  const normalInFlight = new Set<string>();
+  const gate = options.gate ?? createVerificationGate();
   const classOf = (c: AppContext): RouteClassId => {
     const classId = c.get("rateLimitClass");
     if (!classId) throw new ApiFailure("TEMPORARY_UNAVAILABLE");
@@ -360,31 +478,16 @@ export function createPrincipalRateLimitHooks(
       if (!guard) return undefined;
       const ip = c.get("clientIp");
       if (!ip) throw new ApiFailure("TEMPORARY_UNAVAILABLE");
-      const restricted = (): undefined => {
-        if (!budget.tryTake())
-          enforceDecision(c, classId, limiter.rejectConcurrency(classId, c.get("operationId")));
-        return undefined;
-      };
-      if (c.get("guardSaturated") === true || normalInFlight.has(ip)) return restricted();
-      normalInFlight.add(ip);
-      const release = () => {
-        normalInFlight.delete(ip);
-      };
-      try {
-        // A request may have read Stage 1 before a preceding failure finished. Recheck after
-        // taking the slot, and hold it through verification AND failure recording.
-        const state = await limiter.guardState(classId, ip);
-        if (state.result === "store_unavailable")
-          enforceDecision(c, guard, { result: "store_unavailable" });
-        if (state.result === "ok" && state.saturated) {
-          release();
-          return restricted();
-        }
-        return release;
-      } catch (error) {
-        release();
-        throw error;
-      }
+      // Stage 1 took the slot before the single guard read. The normal lane is: a slot is held and the
+      // guard was read and was below the limit. There is no second read here (SEC-ABU-033).
+      const slot = c.get("verificationSlot");
+      if (slot && c.get("guardSaturated") === false) return () => slot.release();
+      slot?.release();
+      if (!gate.takeRestricted(ip))
+        // SPEC-160 §24.1: recorded under the guard's Class ID, 429 with Retry-After 1, not counted
+        // in the guard and without any signature verification.
+        enforceDecision(c, guard, limiter.rejectConcurrency(guard, c.get("operationId")));
+      return undefined;
     },
     async verificationFailed(c, error) {
       // SEC-ABU-020: only a token that failed the structure check or verification counts. An
@@ -400,6 +503,9 @@ export function createPrincipalRateLimitHooks(
     async verified(c, identity) {
       const classId = classOf(c);
       const operationId = c.get("operationId");
+      // SPEC-160 §24.1: a Stage 2 decision is made before the Principal is resolved; the actor is
+      // AUTHENTICATED_USER with the auth-subject fingerprint, never a guessed Role or Profile ref.
+      if (options.authSubjectRef) c.set("authSubjectRef", options.authSubjectRef(identity.subject));
       enforceDecision(
         c,
         classId,
@@ -426,27 +532,30 @@ export function markAuthorizationConfirmed(c: AppContext): void {
 /**
  * Stage 3 (SEC-ABU-017 / SEC-ABU-029): resource / QR digest / target resource / target profile
  * rules. Mount it after the authorization check and before the Domain precondition and the
- * mutation. `valuesOf` runs only after authorization (the QR digest is derived from the QR token
- * only then); the key input must already be syntactically validated. A 403 / 404 ending the
- * request earlier therefore never changes a Stage 3 counter, and a 429 / 503 here stops the
- * request before the Domain precondition.
+ * mutation. `referencesOf` runs only after authorization (the QR digest is derived from the QR token
+ * only then) and returns exactly the reference kinds that SPEC-110 API-RLC-006 / API-RLC-007 list for
+ * the Operation. An Operation with no reference evaluates no resource rule (it does not even call
+ * `referencesOf`). A 403 / 404 ending the request earlier never changes a Stage 3 counter, and a 429 /
+ * 503 here stops the request before the Domain precondition.
  */
 export function requireResourceRateLimit(
   limiter: RateLimiter,
-  valuesOf: ResourceValues,
+  referencesOf: ResourceReferences,
 ): MiddlewareHandler<ApiEnvironment> {
   return async (c, next) => {
     assertAuthorized(c);
     // A purchase start Operation must run its eligibility pre-check first (requirePurchaseStartRateLimit).
     if (isPurchaseStartOperation(c.get("operationId")))
       throw new Error("Purchase start Stage 3 evaluated without the eligibility pre-check");
-    await evaluateResources(c, limiter, valuesOf);
+    await evaluateResources(c, limiter, referencesOf);
     await next();
   };
 }
 
-/** Key input of Stage 3 rules; a rule may name several resources (a cart, at most 50 distinct). */
-type ResourceValues = (c: AppContext) => ResourceInput["values"] | Promise<ResourceInput["values"]>;
+/** Stage 3 references by kind; a kind may name several resources (a cart, at most 50 distinct). */
+type ResourceReferences = (
+  c: AppContext,
+) => ResourceInput["references"] | Promise<ResourceInput["references"]>;
 
 function assertAuthorized(c: AppContext): void {
   // A route that reaches Stage 3 without an authorization check is an implementation defect;
@@ -457,17 +566,27 @@ function assertAuthorized(c: AppContext): void {
 async function evaluateResources(
   c: AppContext,
   limiter: RateLimiter,
-  valuesOf: ResourceValues,
+  referencesOf: ResourceReferences,
 ): Promise<void> {
   const classId = c.get("rateLimitClass");
   if (!classId) throw new ApiFailure("TEMPORARY_UNAVAILABLE");
   const operationId = c.get("operationId");
+  const kinds = resourceReferencesOf(operationId);
+  // API-RLC-007: an Operation absent from the tables is an implementation defect, never a silent pass.
+  if (!kinds) throw new Error("Operation has no Stage 3 reference definition");
+  // No reference (API-ADM-CNT-005 / 011 / 019, API-ADM-KRK-003): no resource rule is evaluated.
+  if (kinds.length === 0) return;
+  const references = await referencesOf(c);
+  // A cart (API-PUR-CART-001) names `offering_ref` and / or `goods_ref` by the kinds of its Items: the
+  // kinds given must be listed for the Operation, and at least one reference must exist.
+  if (Object.keys(references).some((kind) => !kinds.includes(kind as (typeof kinds)[number])))
+    throw new Error("Stage 3 references differ from the SPEC-110 API-RLC-006 / API-RLC-007 tables");
   enforceDecision(
     c,
     classId,
     await limiter.resource({
       classId,
-      values: await valuesOf(c),
+      references,
       ...(operationId ? { operationId } : {}),
     }),
   );
@@ -485,14 +604,14 @@ export function requirePurchaseStartRateLimit(
   limiter: RateLimiter,
   options: {
     readonly eligibility: (c: AppContext) => boolean | Promise<boolean>;
-    readonly valuesOf: ResourceValues;
+    readonly referencesOf: ResourceReferences;
   },
 ): MiddlewareHandler<ApiEnvironment> {
   return async (c, next) => {
     assertAuthorized(c);
     if (!isPurchaseStartOperation(c.get("operationId")))
       throw new Error("The purchase pre-check applies to the purchase start Operations only");
-    if (await options.eligibility(c)) await evaluateResources(c, limiter, options.valuesOf);
+    if (await options.eligibility(c)) await evaluateResources(c, limiter, options.referencesOf);
     await next();
   };
 }

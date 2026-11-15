@@ -4,7 +4,12 @@ import { getBuildMigrationSetHash, parseServerConfig } from "@off-r39x/config";
 import { checkReadiness, createDatabase, createPrincipalRepository } from "@off-r39x/db";
 import { createLogger, createRateLimitMetrics } from "@off-r39x/observability";
 import { createRedisRateLimitStore } from "@off-r39x/rate-limit-redis";
-import { createRateLimiter, RATE_LIMIT_CLASS_IDS, type RateLimitStore } from "@off-r39x/security";
+import {
+  createRateLimiter,
+  fingerprint,
+  RATE_LIMIT_CLASS_IDS,
+  type RateLimitStore,
+} from "@off-r39x/security";
 import { createApp } from "../api/app.ts";
 import { createAuthProxy } from "../api/auth-proxy.ts";
 import { createRateLimitMetricsObserver } from "../api/rate-limit.ts";
@@ -75,7 +80,13 @@ export function bootstrap(
     logger,
     auth: { verifier, store: principals },
     ...(authProxy ? { authProxy } : {}),
-    rateLimit: { limiter, trustedProxyHops: config.rateLimit.trustedProxyHops },
+    rateLimit: {
+      limiter,
+      trustedProxyHops: config.rateLimit.trustedProxyHops,
+      // SPEC-160 §24.1: the Stage 2 decision actor is the auth-subject fingerprint (OBS key).
+      authSubjectRef: (subject) =>
+        fingerprint("auth-subject", subject, config.observability.correlationKey()),
+    },
     draining: () => draining,
     // INF-HLT-005: the readiness answer is the snapshot of the background probe; it runs no check.
     ready: () => !draining && readinessProbe.isReady(),

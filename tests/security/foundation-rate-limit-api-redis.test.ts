@@ -2,7 +2,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../../apps/api/src/api/app.ts";
 import { createRedisRateLimitStore } from "../../packages/rate-limit-redis/src/index.ts";
 import { createRateLimiter, parseRateLimitConfig } from "../../packages/security/src/index.ts";
-import { ceilingConfigText, peer, TEST_HMAC_KEY } from "../harness/rate-limit/api.ts";
+import {
+  ceilingConfigText,
+  peer,
+  TEST_HMAC_KEY,
+  testAuthSubjectRef,
+} from "../harness/rate-limit/api.ts";
 import { openRedisTestSession, type RedisTestSession } from "../harness/rate-limit/redis.ts";
 
 const SUBJECT = "aef69f82-c9b7-4fd1-9a6f-126f5748e9ae";
@@ -52,7 +57,7 @@ function buildApp(url: string, ipLimit: number, burst = 30, subject = SUBJECT) {
         }),
       },
     },
-    rateLimit: { limiter, trustedProxyHops: 0 },
+    rateLimit: { limiter, trustedProxyHops: 0, authSubjectRef: testAuthSubjectRef },
   });
   return { app, limiter, verifiedCount: () => verified };
 }

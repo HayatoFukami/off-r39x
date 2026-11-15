@@ -18,7 +18,9 @@ const IP = "203.0.113.5";
 const SUBJECT = "aef69f82-c9b7-4fd1-9a6f-126f5748e9ae";
 const keyFactory = createCounterKeyFactory(hmacKey, 1);
 const ipKey = (ruleId: string, ip: string) => keyFactory.key(ruleId, "ip", ip);
-const resourceKey = (ruleId: string, value: string) => keyFactory.key(ruleId, "resource", value);
+// API-RLC-007: the key input is (reference kind NUL canonical reference) under the class rule; no Operation ID.
+const resourceKey = (ruleId: string, kind: string, value: string) =>
+  keyFactory.key(ruleId, "resource", `${kind}\0${value}`);
 
 function build(extra: Partial<RateLimiterOptions> = {}, overrides: Record<string, unknown> = {}) {
   const store = createMemoryStore();
@@ -45,7 +47,7 @@ describe("rule planning per stage (SEC-ABU-017, §68)", () => {
       webhook?: number[][];
       guard?: boolean;
       subject?: number[][];
-      resource?: { values: Record<string, string>; rules: number[][] };
+      resource?: { references: Record<string, string>; rules: number[][] };
     };
     const burstSustained = (id: RouteClassId) => [
       [RATE_LIMIT_REGISTRY[id].burst, 10],
@@ -61,42 +63,39 @@ describe("rule planning per stage (SEC-ABU-017, §68)", () => {
       purchase_checkout: {
         guard: true,
         subject: burstSustained("purchase_checkout"),
-        resource: { values: { "purchase_checkout.resource": "offering" }, rules: [[60, 60]] },
+        resource: { references: { offering_ref: "offering" }, rules: [[60, 60]] },
       },
       qr_display: {
         guard: true,
         subject: burstSustained("qr_display"),
-        resource: { values: { "qr_display.ticket": "ticket" }, rules: [[12, 60]] },
+        resource: { references: { ticket_ref: "ticket" }, rules: [[12, 60]] },
       },
       profile_mutation: { guard: true, subject: burstSustained("profile_mutation") },
       staff_checkin: {
         pre: [[300, 60]],
         subject: burstSustained("staff_checkin"),
-        resource: { values: { "staff_checkin.qr_digest": "digest" }, rules: [[30, 60]] },
+        resource: { references: { qr_digest: "digest" }, rules: [[30, 60]] },
       },
       goods_handoff: {
         guard: true,
         subject: burstSustained("goods_handoff"),
-        resource: { values: { "goods_handoff.item": "item" }, rules: [[10, 60]] },
+        resource: { references: { goods_item_ref: "item" }, rules: [[10, 60]] },
       },
       admin_mutation: {
         guard: true,
         subject: burstSustained("admin_mutation"),
-        resource: { values: { "admin_mutation.resource": "target" }, rules: [[15, 60]] },
+        resource: { references: { faq_ref: "target" }, rules: [[15, 60]] },
       },
       role_assignment: {
         guard: true,
         subject: burstSustained("role_assignment"),
-        resource: { values: { "role_assignment.profile": "profile" }, rules: [[5, 600]] },
+        resource: { references: { target_profile_ref: "profile" }, rules: [[5, 600]] },
       },
       high_risk_recovery: {
         guard: true,
         subject: burstSustained("high_risk_recovery"),
         resource: {
-          values: {
-            "high_risk_recovery.resource_minute": "target",
-            "high_risk_recovery.resource_hour": "target",
-          },
+          references: { order_ref: "target" },
           rules: [
             [2, 60],
             [10, 3600],
@@ -124,7 +123,7 @@ describe("rule planning per stage (SEC-ABU-017, §68)", () => {
       );
       store.calls.length = 0;
       if (plan.resource) {
-        await limiter.resource({ classId, values: plan.resource.values });
+        await limiter.resource({ classId, references: plan.resource.references });
         expect(rulesOf(store.calls), `${classId} stage 3`).toEqual([
           { mode: "admit", rules: plan.resource.rules },
         ]);
@@ -148,7 +147,7 @@ describe("rule planning per stage (SEC-ABU-017, §68)", () => {
 
   it("TC-RLM-004-104 a missing resource key is a programming error and never skips the rule", async () => {
     const { store, limiter } = build();
-    await expect(limiter.resource({ classId: "qr_display", values: {} })).rejects.toThrow();
+    await expect(limiter.resource({ classId: "qr_display", references: {} })).rejects.toThrow();
     expect(store.calls).toHaveLength(0);
   });
 
@@ -338,13 +337,14 @@ describe("multi-resource evaluation in one atomic call (SEC-ABU-029, API-RLC-006
     const cart = (values: string[]) =>
       limiter.resource({
         classId: "purchase_checkout",
-        values: { "purchase_checkout.resource": values },
+        references: { offering_ref: values },
       });
     expect((await cart(["a", "b"])).result).toBe("allowed");
     expect((await cart(["b", "c"])).result).toBe("allowed");
     // "b" is at its limit of 2: the evaluation is refused and "a" (which had room) is not recorded.
     expect(await cart(["a", "b"])).toMatchObject({ result: "rejected", ruleCategory: "resource" });
-    const count = (value: string) => store.count(resourceKey("purchase_checkout.resource", value));
+    const count = (value: string) =>
+      store.count(resourceKey("purchase_checkout.resource", "offering_ref", value));
     expect([count("a"), count("b"), count("c")]).toEqual([1, 2, 1]);
     // Duplicates in the cart are one resource each.
     expect((await cart(["c", "c", "d"])).result).toBe("allowed");
@@ -361,7 +361,7 @@ describe("multi-resource evaluation in one atomic call (SEC-ABU-029, API-RLC-006
       (
         await limiter.resource({
           classId: "purchase_checkout",
-          values: { "purchase_checkout.resource": fifty },
+          references: { offering_ref: fifty },
         })
       ).result,
     ).toBe("allowed");
@@ -371,7 +371,7 @@ describe("multi-resource evaluation in one atomic call (SEC-ABU-029, API-RLC-006
     await expect(
       limiter.resource({
         classId: "purchase_checkout",
-        values: { "purchase_checkout.resource": tooMany },
+        references: { offering_ref: tooMany },
       }),
     ).rejects.toThrow();
     expect(store.calls.length - before).toBe(1);

@@ -19069,9 +19069,15 @@
     },
     {
       "test_case_id": "TC-RLM-001-001",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-001", "DEV-RLM-008", "INF-RLS-006"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": [
+        "TST-RLM-001",
+        "DEV-RLM-008",
+        "INF-RLS-006",
+        "TST-RLM-010",
+        "INF-TST-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -19092,9 +19098,15 @@
     },
     {
       "test_case_id": "TC-RLM-001-002",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-001", "INF-HLT-004", "SEC-ABU-019"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": [
+        "TST-RLM-001",
+        "INF-HLT-004",
+        "SEC-ABU-019",
+        "TST-RLM-010",
+        "INF-TST-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -19115,9 +19127,15 @@
     },
     {
       "test_case_id": "TC-RLM-001-003",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-001", "INF-HLT-004", "SEC-ABU-019"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": [
+        "TST-RLM-001",
+        "INF-HLT-004",
+        "SEC-ABU-019",
+        "TST-RLM-010",
+        "INF-TST-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -19138,9 +19156,15 @@
     },
     {
       "test_case_id": "TC-RLM-002-001",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-002", "SEC-ABU-011", "SEC-ABU-012"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": [
+        "TST-RLM-002",
+        "SEC-ABU-011",
+        "SEC-ABU-012",
+        "TST-RLM-010",
+        "INF-TST-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -19161,9 +19185,9 @@
     },
     {
       "test_case_id": "TC-RLM-002-002",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-002", "SEC-ABU-012"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": ["TST-RLM-002", "SEC-ABU-012", "TST-RLM-010", "INF-TST-004"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -19184,9 +19208,15 @@
     },
     {
       "test_case_id": "TC-RLM-002-003",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-002", "SEC-ABU-012", "SEC-ABU-013"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": [
+        "TST-RLM-002",
+        "SEC-ABU-012",
+        "SEC-ABU-013",
+        "TST-RLM-010",
+        "INF-TST-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -19207,9 +19237,9 @@
     },
     {
       "test_case_id": "TC-RLM-002-004",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-002", "SEC-ABU-013"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": ["TST-RLM-002", "SEC-ABU-013", "TST-RLM-010", "INF-TST-004"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -19230,9 +19260,15 @@
     },
     {
       "test_case_id": "TC-RLM-002-005",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-002", "SEC-ABU-011", "SEC-ABU-013"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": [
+        "TST-RLM-002",
+        "SEC-ABU-011",
+        "SEC-ABU-013",
+        "TST-RLM-010",
+        "INF-TST-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -19253,9 +19289,9 @@
     },
     {
       "test_case_id": "TC-RLM-002-006",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-002", "SEC-ABU-014"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": ["TST-RLM-002", "SEC-ABU-014", "TST-RLM-010", "INF-TST-004"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -19276,9 +19312,9 @@
     },
     {
       "test_case_id": "TC-RLM-002-007",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-002", "SEC-ABU-007"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": ["TST-RLM-002", "SEC-ABU-007", "TST-RLM-010", "INF-TST-004"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -19299,9 +19335,9 @@
     },
     {
       "test_case_id": "TC-RLM-002-008",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-002", "SEC-ABU-016"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": ["TST-RLM-002", "SEC-ABU-016", "TST-RLM-010", "INF-TST-004"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -19322,9 +19358,16 @@
     },
     {
       "test_case_id": "TC-RLM-002-009",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-002", "SEC-ABU-015", "SEC-ABU-016", "OBS-SEC-007"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": [
+        "TST-RLM-002",
+        "SEC-ABU-015",
+        "SEC-ABU-016",
+        "OBS-SEC-007",
+        "TST-RLM-010",
+        "INF-TST-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -19433,9 +19476,15 @@
     },
     {
       "test_case_id": "TC-RLM-002-301",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-002", "SEC-ABU-026", "SEC-ABU-012"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": [
+        "TST-RLM-002",
+        "SEC-ABU-026",
+        "SEC-ABU-012",
+        "TST-RLM-010",
+        "INF-TST-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -19456,9 +19505,15 @@
     },
     {
       "test_case_id": "TC-RLM-002-302",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-002", "SEC-ABU-026", "SEC-ABU-012"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": [
+        "TST-RLM-002",
+        "SEC-ABU-026",
+        "SEC-ABU-012",
+        "TST-RLM-010",
+        "INF-TST-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -19479,14 +19534,16 @@
     },
     {
       "test_case_id": "TC-RLM-003-001",
-      "level": "Integration",
-      "suite": "integration",
+      "level": "Security",
+      "suite": "security",
       "upstream_rule_ids": [
         "TST-RLM-003",
         "SEC-ABU-019",
         "REL-SEC-003",
         "REL-SEC-005",
-        "DEV-RLM-006"
+        "DEV-RLM-006",
+        "TST-RLM-010",
+        "INF-TST-004"
       ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
@@ -19508,9 +19565,16 @@
     },
     {
       "test_case_id": "TC-RLM-003-002",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-003", "SEC-ABU-019", "REL-SEC-003", "REL-SEC-004"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": [
+        "TST-RLM-003",
+        "SEC-ABU-019",
+        "REL-SEC-003",
+        "REL-SEC-004",
+        "TST-RLM-010",
+        "INF-TST-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -19531,9 +19595,16 @@
     },
     {
       "test_case_id": "TC-RLM-003-003",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-003", "SEC-ABU-019", "INF-RLS-004", "REL-SEC-003"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": [
+        "TST-RLM-003",
+        "SEC-ABU-019",
+        "INF-RLS-004",
+        "REL-SEC-003",
+        "TST-RLM-010",
+        "INF-TST-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -19554,9 +19625,15 @@
     },
     {
       "test_case_id": "TC-RLM-003-004",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-003", "SEC-ABU-019", "REL-SEC-003"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": [
+        "TST-RLM-003",
+        "SEC-ABU-019",
+        "REL-SEC-003",
+        "TST-RLM-010",
+        "INF-TST-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -19577,9 +19654,15 @@
     },
     {
       "test_case_id": "TC-RLM-003-005",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-003", "REL-SEC-004", "DEV-RLM-003"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": [
+        "TST-RLM-003",
+        "REL-SEC-004",
+        "DEV-RLM-003",
+        "TST-RLM-010",
+        "INF-TST-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -19600,9 +19683,9 @@
     },
     {
       "test_case_id": "TC-RLM-003-006",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-003", "REL-SEC-004"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": ["TST-RLM-003", "REL-SEC-004", "TST-RLM-010", "INF-TST-004"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -19623,14 +19706,16 @@
     },
     {
       "test_case_id": "TC-RLM-003-007",
-      "level": "Integration",
-      "suite": "integration",
+      "level": "Security",
+      "suite": "security",
       "upstream_rule_ids": [
         "TST-RLM-003",
         "SEC-ABU-019",
         "SEC-ABU-009",
         "INF-HLT-004",
-        "DEV-RLM-006"
+        "DEV-RLM-006",
+        "TST-RLM-010",
+        "INF-TST-004"
       ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
@@ -19652,9 +19737,16 @@
     },
     {
       "test_case_id": "TC-RLM-003-008",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-003", "SEC-ABU-019", "SEC-ABU-013", "INF-RLS-004"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": [
+        "TST-RLM-003",
+        "SEC-ABU-019",
+        "SEC-ABU-013",
+        "INF-RLS-004",
+        "TST-RLM-010",
+        "INF-TST-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -20169,9 +20261,16 @@
     },
     {
       "test_case_id": "TC-RLM-004-213",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-004", "SEC-ABU-007", "SEC-ABU-011", "TST-RLM-001"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": [
+        "TST-RLM-004",
+        "SEC-ABU-007",
+        "SEC-ABU-011",
+        "TST-RLM-001",
+        "TST-RLM-010",
+        "INF-TST-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": ["API-AUTH-001"],
       "db_constraint_names": [],
@@ -20330,9 +20429,15 @@
     },
     {
       "test_case_id": "TC-RLM-004-220",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-004", "SEC-ABU-013", "SEC-ABU-017"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": [
+        "TST-RLM-004",
+        "SEC-ABU-013",
+        "SEC-ABU-017",
+        "TST-RLM-010",
+        "INF-TST-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": ["API-AUTH-001"],
       "db_constraint_names": [],
@@ -20353,9 +20458,16 @@
     },
     {
       "test_case_id": "TC-RLM-004-221",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-004", "SEC-ABU-026", "SEC-ABU-017", "SEC-ABU-013"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": [
+        "TST-RLM-004",
+        "SEC-ABU-026",
+        "SEC-ABU-017",
+        "SEC-ABU-013",
+        "TST-RLM-010",
+        "INF-TST-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -20376,9 +20488,15 @@
     },
     {
       "test_case_id": "TC-RLM-004-222",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-004", "SEC-ABU-026", "SEC-ABU-013"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": [
+        "TST-RLM-004",
+        "SEC-ABU-026",
+        "SEC-ABU-013",
+        "TST-RLM-010",
+        "INF-TST-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -20560,9 +20678,15 @@
     },
     {
       "test_case_id": "TC-RLM-004-233",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-004", "SEC-ABU-027", "SEC-ABU-023"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": [
+        "TST-RLM-004",
+        "SEC-ABU-027",
+        "SEC-ABU-023",
+        "TST-RLM-010",
+        "INF-TST-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -20583,9 +20707,16 @@
     },
     {
       "test_case_id": "TC-RLM-004-234",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-004", "SEC-ABU-027", "SEC-ABU-023", "SEC-ABU-026"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": [
+        "TST-RLM-004",
+        "SEC-ABU-027",
+        "SEC-ABU-023",
+        "SEC-ABU-026",
+        "TST-RLM-010",
+        "INF-TST-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -20635,9 +20766,16 @@
     },
     {
       "test_case_id": "TC-RLM-004-236",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-004", "SEC-ABU-028", "SEC-ABU-027", "SEC-ABU-023"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": [
+        "TST-RLM-004",
+        "SEC-ABU-028",
+        "SEC-ABU-027",
+        "SEC-ABU-023",
+        "TST-RLM-010",
+        "INF-TST-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -20658,14 +20796,16 @@
     },
     {
       "test_case_id": "TC-RLM-004-237",
-      "level": "Integration",
-      "suite": "integration",
+      "level": "Security",
+      "suite": "security",
       "upstream_rule_ids": [
         "TST-RLM-004",
         "SEC-ABU-028",
         "SEC-ABU-027",
         "SEC-ABU-023",
-        "SEC-ABU-026"
+        "SEC-ABU-026",
+        "TST-RLM-010",
+        "INF-TST-004"
       ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
@@ -20900,9 +21040,16 @@
     },
     {
       "test_case_id": "TC-RLM-004-254",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-004", "TST-RLM-002", "SEC-ABU-029", "SEC-ABU-012"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": [
+        "TST-RLM-004",
+        "TST-RLM-002",
+        "SEC-ABU-029",
+        "SEC-ABU-012",
+        "TST-RLM-010",
+        "INF-TST-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -20923,9 +21070,16 @@
     },
     {
       "test_case_id": "TC-RLM-004-255",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-004", "TST-RLM-002", "SEC-ABU-029", "SEC-ABU-012"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": [
+        "TST-RLM-004",
+        "TST-RLM-002",
+        "SEC-ABU-029",
+        "SEC-ABU-012",
+        "TST-RLM-010",
+        "INF-TST-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -20946,9 +21100,16 @@
     },
     {
       "test_case_id": "TC-RLM-004-256",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-004", "TST-RLM-002", "SEC-ABU-030", "SEC-ABU-012"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": [
+        "TST-RLM-004",
+        "TST-RLM-002",
+        "SEC-ABU-030",
+        "SEC-ABU-012",
+        "TST-RLM-010",
+        "INF-TST-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -21258,7 +21419,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "a cart of 50 items is one atomic evaluation through the middleware, and a full counter refuses the whole cart without recording any item"
+        "a cart of 50 items is one atomic evaluation through the purchase start Stage 3 middleware, and a full counter refuses the whole cart without recording any item"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -21406,9 +21567,15 @@
     },
     {
       "test_case_id": "TC-RLM-004-282",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-004", "SEC-ABU-015", "SEC-ABU-029"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": [
+        "TST-RLM-004",
+        "SEC-ABU-015",
+        "SEC-ABU-029",
+        "TST-RLM-010",
+        "INF-TST-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -21429,9 +21596,16 @@
     },
     {
       "test_case_id": "TC-RLM-004-283",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-004", "SEC-ABU-029", "API-RLC-006", "SEC-ABU-013"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": [
+        "TST-RLM-004",
+        "SEC-ABU-029",
+        "API-RLC-006",
+        "SEC-ABU-013",
+        "TST-RLM-010",
+        "INF-TST-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -22056,9 +22230,16 @@
     },
     {
       "test_case_id": "TC-RLM-005-225",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-005", "SEC-ABU-021", "SEC-ABU-033", "SEC-ABU-013"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": [
+        "TST-RLM-005",
+        "SEC-ABU-021",
+        "SEC-ABU-033",
+        "SEC-ABU-013",
+        "TST-RLM-010",
+        "INF-TST-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -22707,9 +22888,9 @@
     },
     {
       "test_case_id": "TC-RLM-009-101",
-      "level": "Unit",
-      "suite": "unit",
-      "upstream_rule_ids": ["TST-RLM-009", "OBS-SEC-007", "OBS-SEC-009"],
+      "level": "Observability",
+      "suite": "observability",
+      "upstream_rule_ids": ["TST-RLM-009", "OBS-SEC-007", "OBS-SEC-009", "TST-RLM-010"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -22774,9 +22955,9 @@
     },
     {
       "test_case_id": "TC-RLM-009-104",
-      "level": "Unit",
-      "suite": "unit",
-      "upstream_rule_ids": ["TST-RLM-009", "OBS-SEC-007"],
+      "level": "Observability",
+      "suite": "observability",
+      "upstream_rule_ids": ["TST-RLM-009", "OBS-SEC-007", "TST-RLM-010"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -22797,9 +22978,9 @@
     },
     {
       "test_case_id": "TC-RLM-009-105",
-      "level": "Unit",
-      "suite": "unit",
-      "upstream_rule_ids": ["TST-RLM-009", "OBS-ALT-041", "OBS-ALT-043"],
+      "level": "Observability",
+      "suite": "observability",
+      "upstream_rule_ids": ["TST-RLM-009", "OBS-ALT-041", "OBS-ALT-043", "TST-RLM-010"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -22820,9 +23001,9 @@
     },
     {
       "test_case_id": "TC-RLM-009-106",
-      "level": "Unit",
-      "suite": "unit",
-      "upstream_rule_ids": ["TST-RLM-009", "OBS-ALT-041", "OBS-ALT-043"],
+      "level": "Observability",
+      "suite": "observability",
+      "upstream_rule_ids": ["TST-RLM-009", "OBS-ALT-041", "OBS-ALT-043", "TST-RLM-010"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -22841,9 +23022,9 @@
     },
     {
       "test_case_id": "TC-RLM-009-107",
-      "level": "Unit",
-      "suite": "unit",
-      "upstream_rule_ids": ["TST-RLM-009", "OBS-ALT-041", "OBS-ALT-043"],
+      "level": "Observability",
+      "suite": "observability",
+      "upstream_rule_ids": ["TST-RLM-009", "OBS-ALT-041", "OBS-ALT-043", "TST-RLM-010"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -22864,9 +23045,9 @@
     },
     {
       "test_case_id": "TC-RLM-009-108",
-      "level": "Unit",
-      "suite": "unit",
-      "upstream_rule_ids": ["TST-RLM-009", "OBS-ALT-041", "OBS-ALT-043"],
+      "level": "Observability",
+      "suite": "observability",
+      "upstream_rule_ids": ["TST-RLM-009", "OBS-ALT-041", "OBS-ALT-043", "TST-RLM-010"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -22887,9 +23068,9 @@
     },
     {
       "test_case_id": "TC-RLM-009-109",
-      "level": "Unit",
-      "suite": "unit",
-      "upstream_rule_ids": ["TST-RLM-009", "OBS-SEC-007"],
+      "level": "Observability",
+      "suite": "observability",
+      "upstream_rule_ids": ["TST-RLM-009", "OBS-SEC-007", "TST-RLM-010"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -22910,9 +23091,9 @@
     },
     {
       "test_case_id": "TC-RLM-009-110",
-      "level": "Unit",
-      "suite": "unit",
-      "upstream_rule_ids": ["TST-RLM-009", "OBS-SEC-009"],
+      "level": "Observability",
+      "suite": "observability",
+      "upstream_rule_ids": ["TST-RLM-009", "OBS-SEC-009", "TST-RLM-010"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -22933,9 +23114,9 @@
     },
     {
       "test_case_id": "TC-RLM-009-111",
-      "level": "Unit",
-      "suite": "unit",
-      "upstream_rule_ids": ["TST-RLM-009", "OBS-ALT-041", "OBS-ALT-043"],
+      "level": "Observability",
+      "suite": "observability",
+      "upstream_rule_ids": ["TST-RLM-009", "OBS-ALT-041", "OBS-ALT-043", "TST-RLM-010"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -22956,9 +23137,9 @@
     },
     {
       "test_case_id": "TC-RLM-009-112",
-      "level": "Unit",
-      "suite": "unit",
-      "upstream_rule_ids": ["TST-RLM-009", "OBS-ALT-042"],
+      "level": "Observability",
+      "suite": "observability",
+      "upstream_rule_ids": ["TST-RLM-009", "OBS-ALT-042", "TST-RLM-010"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -22979,9 +23160,9 @@
     },
     {
       "test_case_id": "TC-RLM-009-113",
-      "level": "Unit",
-      "suite": "unit",
-      "upstream_rule_ids": ["TST-RLM-009", "OBS-ALT-042", "OBS-ALT-043"],
+      "level": "Observability",
+      "suite": "observability",
+      "upstream_rule_ids": ["TST-RLM-009", "OBS-ALT-042", "OBS-ALT-043", "TST-RLM-010"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -23002,9 +23183,9 @@
     },
     {
       "test_case_id": "TC-RLM-009-114",
-      "level": "Unit",
-      "suite": "unit",
-      "upstream_rule_ids": ["TST-RLM-009", "OBS-ALT-042"],
+      "level": "Observability",
+      "suite": "observability",
+      "upstream_rule_ids": ["TST-RLM-009", "OBS-ALT-042", "TST-RLM-010"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -23025,9 +23206,9 @@
     },
     {
       "test_case_id": "TC-RLM-009-115",
-      "level": "Unit",
-      "suite": "unit",
-      "upstream_rule_ids": ["TST-RLM-009", "OBS-ALT-014", "OBS-ALT-043"],
+      "level": "Observability",
+      "suite": "observability",
+      "upstream_rule_ids": ["TST-RLM-009", "OBS-ALT-014", "OBS-ALT-043", "TST-RLM-010"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -23048,9 +23229,9 @@
     },
     {
       "test_case_id": "TC-RLM-009-116",
-      "level": "Unit",
-      "suite": "unit",
-      "upstream_rule_ids": ["TST-RLM-009", "OBS-ALT-042", "INF-HLT-004"],
+      "level": "Observability",
+      "suite": "observability",
+      "upstream_rule_ids": ["TST-RLM-009", "OBS-ALT-042", "INF-HLT-004", "TST-RLM-010"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -23140,9 +23321,15 @@
     },
     {
       "test_case_id": "TC-RLM-009-120",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-009", "INF-HLT-004", "OBS-ALT-042"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": [
+        "TST-RLM-009",
+        "INF-HLT-004",
+        "OBS-ALT-042",
+        "TST-RLM-010",
+        "INF-TST-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -23474,7 +23661,13 @@
       "test_case_id": "TC-RLM-005-226",
       "level": "API",
       "suite": "api",
-      "upstream_rule_ids": ["TST-RLM-005", "SEC-ABU-033", "SEC-ABU-021", "SEC-ABU-020"],
+      "upstream_rule_ids": [
+        "TST-RLM-005",
+        "TST-RLM-010",
+        "SEC-ABU-033",
+        "SEC-ABU-021",
+        "SEC-ABU-020"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -23485,7 +23678,7 @@
       "fault_points": [],
       "expected_http": [401, 429],
       "expected_domain_postconditions": [
-        "concurrent invalid tokens from an empty guard use the bounded lane before signature work"
+        "the 9th concurrent verification of one IP takes no slot, reads no guard counter and calls no store; it uses the restricted lane (per-IP bucket) and is refused with Retry-After 1 when the bucket is empty"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -23508,7 +23701,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "a normal verification slot remains held until its failure has been recorded, then is released"
+        "a normal verification slot (8 per IP in production, 1 in this test) remains held until its failure has been recorded, then is released"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -23552,7 +23745,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "one IP shares its normal slot across guard classes while another IP can verify"
+        "one IP shares its normal-lane slots across guard classes while another IP can verify"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -23575,7 +23768,7 @@
       "fault_points": ["FP.RATELIMIT.STORE_UNAVAILABLE"],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "the normal lane rechecks the guard and releases its slot after %s"
+        "the guard counter is read once in Stage 1 after the slot is taken and is not read again before verification; a saturated IP's valid token is verified in the restricted lane, a store failure at the read is a 503, and the slot is released"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -23585,20 +23778,27 @@
     },
     {
       "test_case_id": "TC-RLM-005-231",
-      "level": "Integration",
-      "suite": "integration",
-      "upstream_rule_ids": ["TST-RLM-005", "SEC-ABU-021", "SEC-ABU-033", "SEC-ABU-013"],
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": [
+        "TST-RLM-005",
+        "SEC-ABU-021",
+        "SEC-ABU-033",
+        "SEC-ABU-013",
+        "TST-RLM-010",
+        "INF-TST-004"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "Disposable real Redis and real Ed25519 verification with synthetic signing keys; process budget clock fixed; empty per-session guard",
+      "preconditions": "Disposable real Redis and real Ed25519 verification with synthetic signing keys; restricted-lane clock fixed; empty per-session guard",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": [401, 429],
       "expected_domain_postconditions": [
-        "real Redis and Ed25519 verification bound a concurrent burst from an empty guard"
+        "real Redis and Ed25519 verification bound a concurrent burst from an empty guard: at most the guard limit plus the 8 in-flight normal-lane verifications plus the IP's restricted bucket"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -23621,7 +23821,7 @@
       "fault_points": [],
       "expected_http": [429],
       "expected_domain_postconditions": [
-        "every verification-budget refusal is included in the rejected counter"
+        "every restricted-lane refusal is counted as rejected and logged under the guard Class ID, with a GUEST actor"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -23649,6 +23849,383 @@
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
       "expected_observability": ["ratelimit.decision.completed", "r39x_rate_limit_decisions_total"],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-004-290",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": [
+        "TST-RLM-004",
+        "TST-RLM-010",
+        "API-RLC-006",
+        "API-RLC-007",
+        "DEV-RLM-005",
+        "SEC-ABU-029"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "the route registry's Stage 3 references equal the API-RLC-006 / API-RLC-007 tables and every Operation of a resource-rule class is in them"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-004-291",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": [
+        "TST-RLM-004",
+        "TST-RLM-010",
+        "API-RLC-006",
+        "API-RLC-007",
+        "SEC-ABU-029",
+        "SEC-ABU-015"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [200],
+      "expected_domain_postconditions": [
+        "each Operation records exactly its table references in Stage 3 (kind and canonical reference in the key, no Operation ID); an Operation without a reference evaluates no resource rule"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-004-292",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["TST-RLM-004", "TST-RLM-010", "API-RLC-007", "SEC-ABU-029"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [200, 429],
+      "expected_domain_postconditions": [
+        "one class and one reference kind share a counter across Operations; a different class never shares it and a different kind is a different counter"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-004-293",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": [
+        "TST-RLM-004",
+        "TST-RLM-010",
+        "API-RLC-007",
+        "DEV-RLM-005",
+        "SEC-ABU-029"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [500],
+      "expected_domain_postconditions": [
+        "a Stage 3 reference that is not listed for the Operation, or an Operation outside the tables, is an implementation defect (500) and never a silent pass"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-004-294",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["TST-RLM-004", "TST-RLM-010", "SEC-ABU-029"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [200, 403, 429],
+      "expected_domain_postconditions": [
+        "an unauthorized principal cannot consume the role_assignment target counter (403 leaves it unchanged) and the Administrator is not 429"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-004-295",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": [
+        "TST-RLM-004",
+        "TST-RLM-010",
+        "SEC-ABU-029",
+        "SEC-ABU-017",
+        "API-RLC-006"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [200, 401, 403],
+      "expected_domain_postconditions": [
+        "a purchase start request refused before the purchase.start check reaches neither the pre-check nor Stage 3; after it the order is pre-check, Stage 3, Transaction"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-005-232",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": [
+        "TST-RLM-005",
+        "TST-RLM-010",
+        "SEC-ABU-033",
+        "SEC-ABU-032",
+        "SEC-ABU-021"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [200, 401, 429],
+      "expected_domain_postconditions": [
+        "slots, buckets and the retention cap are per API process while the guard counter is shared; with the cap reached a valid token gets 429 without verification"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-005-233",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["TST-RLM-005", "TST-RLM-010", "SEC-ABU-033"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "per-IP buckets live in process memory for at most 1,024 IPs, are discarded 60 s after last use, and a new IP is refused at the cap"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-005-234",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["TST-RLM-005", "TST-RLM-010", "SEC-ABU-033"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "a normal-lane slot is one of 8 concurrent verifications per IP; the 9th gets none, another IP is independent, a release is idempotent"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-005-235",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["TST-RLM-005", "TST-RLM-010", "SEC-ABU-033"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [500, 503],
+      "expected_domain_postconditions": [
+        "the normal slot is released when the handler fails after verification and when the guard read fails"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-005-236",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["TST-RLM-005", "TST-RLM-010", "SEC-ABU-033"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [401, 429],
+      "expected_domain_postconditions": [
+        "200 concurrent badly signed tokens from one IP run at most 8 normal-lane verifications plus the IP's restricted bucket; the rest are 429"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-005-237",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["TST-RLM-005", "TST-RLM-010", "SEC-ABU-033"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [200],
+      "expected_domain_postconditions": [
+        "one saturated IP cannot use up the process-wide bucket; another saturated IP's valid token is still verified"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-005-238",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["TST-RLM-005", "TST-RLM-010", "SEC-ABU-033"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [200],
+      "expected_domain_postconditions": [
+        "up to 8 concurrent valid tokens from one IP are all verified in the normal lane, never the restricted lane"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-009-216",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["TST-RLM-009", "TST-RLM-010", "OBS-SEC-007", "OBS-SEC-009"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [200, 429],
+      "expected_domain_postconditions": [
+        "a Stage 2 refusal is attributed to AUTHENTICATED_USER with the auth-subject fingerprint, never a guessed Role or Profile reference"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": ["ratelimit.decision.completed"],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-009-217",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["TST-RLM-009", "TST-RLM-010", "OBS-ALT-041", "SEC-API-031"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [503],
+      "expected_domain_postconditions": [
+        "an undeterminable Client IP (503) is one decision event under the route class and is not counted in the decision metric"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": ["ratelimit.decision.completed"],
       "sensitivity_class": "synthetic",
       "critical": true
     }

@@ -6,20 +6,45 @@ import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { generateKeyPair, SignJWT } from "jose";
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { type ApiEnvironment, ApiFailure, requirePrincipal } from "../../apps/api/src/api/app.ts";
+import {
+  type ApiEnvironment,
+  ApiFailure,
+  requireCapability,
+  requirePrincipal,
+  requireVerifiedEmail,
+} from "../../apps/api/src/api/app.ts";
 import {
   createPrincipalRateLimitHooks,
   createRateLimitMetricsObserver,
   createRateLimitStageOne,
-  createVerificationBudget,
+  createVerificationGate,
   markAuthorizationConfirmed,
   requirePurchaseStartRateLimit,
   requireResourceRateLimit,
 } from "../../apps/api/src/api/rate-limit.ts";
 import { AuthFailure, createTokenVerifier } from "../../packages/auth/src/index.ts";
 import { createLogger, createRateLimitMetrics } from "../../packages/observability/src/index.ts";
-import { RATE_LIMIT_CLASS_IDS, type RouteClassId } from "../../packages/security/src/index.ts";
-import { createTestRateLimit, peer, type TestRateLimit } from "../harness/rate-limit/api.ts";
+import {
+  assertResourceReferenceTable,
+  assertRouteRegistry,
+  createCounterKeyFactory,
+  isPurchaseStartOperation,
+  OPERATION_CLASS_ASSIGNMENT,
+  RATE_LIMIT_CLASS_IDS,
+  RATE_LIMIT_REGISTRY,
+  type RouteClassId,
+  type RouteRegistration,
+  rateLimitClassOf,
+  resourceReferencesOf,
+} from "../../packages/security/src/index.ts";
+import {
+  createTestRateLimit,
+  peer,
+  TEST_HMAC_KEY,
+  type TestRateLimit,
+  testAuthSubjectRef,
+} from "../harness/rate-limit/api.ts";
+import { createMemoryStore } from "../harness/rate-limit/memory-store.ts";
 
 const ISSUER = "https://issuer.example.com";
 const AUDIENCE = "api";
@@ -78,10 +103,12 @@ function countingVerifier(counter: Counting) {
 
 interface MiniOptions {
   readonly verifier?: Parameters<typeof requirePrincipal>[0];
-  readonly budget?: ReturnType<typeof createVerificationBudget>;
   readonly roles?: ("STAFF" | "ADMINISTRATOR")[];
   readonly operationId?: string;
   readonly noLimiter?: boolean;
+  readonly emailVerified?: boolean;
+  /** The Auth directory row exists but no Business Profile (SPEC-110 §24 step 4). */
+  readonly noProfile?: boolean;
 }
 function mini(trs: TestRateLimit, routes: Record<string, RouteClassId>, options: MiniOptions = {}) {
   const lines: string[] = [];
@@ -119,10 +146,10 @@ function mini(trs: TestRateLimit, routes: Record<string, RouteClassId>, options:
       return c.json({ code: error.kind }, error.kind === "unauthenticated" ? 401 : 403);
     return c.json({ code: "INTERNAL_ERROR" }, 500);
   });
-  const hooks = createPrincipalRateLimitHooks(
-    trs.rateLimit.limiter,
-    options.budget ? { verificationBudget: options.budget } : {},
-  );
+  const hooks = createPrincipalRateLimitHooks(trs.rateLimit.limiter, {
+    ...(trs.rateLimit.gate ? { gate: trs.rateLimit.gate } : {}),
+    authSubjectRef: trs.rateLimit.authSubjectRef,
+  });
   const principal = requirePrincipal(
     options.verifier ?? {
       verify: async (token) => {
@@ -132,8 +159,10 @@ function mini(trs: TestRateLimit, routes: Record<string, RouteClassId>, options:
     },
     {
       findByAuthSubject: async (subject: string) => ({
-        directory: { authSubject: subject, emailVerified: true },
-        profile: { id: "1", publicRef: PROFILE_REF, authSubject: subject },
+        directory: { authSubject: subject, emailVerified: options.emailVerified ?? true },
+        profile: options.noProfile
+          ? null
+          : { id: "1", publicRef: PROFILE_REF, authSubject: subject },
         roles: options.roles ?? [],
       }),
     },
@@ -172,7 +201,7 @@ const guardOverride = (burst: number) => ({
   auth_failure_guard_attendee: { burst_limit: burst, sustained_limit: 50 },
 });
 
-describe("signature verification budget (SEC-ABU-033)", () => {
+describe("signature verification gate (SEC-ABU-033, SEC-ABU-021, SPEC-110 §24.1)", () => {
   it("TC-RLM-005-220 a token that fails the structure check never reaches signature verification, and counts as a guard failure", async () => {
     const trs = createTestRateLimit();
     const counter: Counting = { verifications: 0 };
@@ -192,16 +221,11 @@ describe("signature verification budget (SEC-ABU-033)", () => {
     expect(guardRecords(trs)).toBe(bad.length);
   });
 
-  it("TC-RLM-005-221 a flood of well-formed, badly signed tokens from one IP runs at most the guard limit plus the process budget of signature verifications; the rest are 429 with Retry-After: 1 and are not counted", async () => {
-    const trs = createTestRateLimit({ overrides: guardOverride(3) });
-    const counter: Counting = { verifications: 0 };
+  it("TC-RLM-005-221 a flood of well-formed, badly signed tokens from one IP runs at most the guard limit plus the per-IP restricted bucket (10/s) of signature verifications; the rest are 429 with Retry-After: 1 under the guard Class ID and are not counted", async () => {
     let clock = 1_000;
-    const budget = createVerificationBudget({ perSecond: 50, now: () => clock });
-    const m = mini(
-      trs,
-      { "/buy": "purchase_checkout" },
-      { verifier: countingVerifier(counter), budget },
-    );
+    const trs = createTestRateLimit({ overrides: guardOverride(3), gate: { now: () => clock } });
+    const counter: Counting = { verifications: 0 };
+    const m = mini(trs, { "/buy": "purchase_checkout" }, { verifier: countingVerifier(counter) });
     m.app.get("/buy/ok", m.principal, (c) => c.json({ ok: true }));
     const forged = await mint({ key: "foreign" });
     const statuses: number[] = [];
@@ -213,74 +237,126 @@ describe("signature verification budget (SEC-ABU-033)", () => {
     }
     expect(statuses.slice(0, 3)).toEqual([401, 401, 401]);
     expect(statuses.slice(3).every((status) => status === 429)).toBe(true);
-    // Guard limit (3, normal budget) + the process budget (50 in this second).
-    expect(counter.verifications).toBe(3 + 50);
+    // Guard limit (3, normal lane) + the IP's restricted bucket (10 in this second). The process-wide
+    // bucket (50) is not what binds one IP.
+    expect(counter.verifications).toBe(3 + 10);
     expect(guardRecords(trs)).toBe(3);
-    // Guard refusals carry the window's Retry-After; budget refusals carry exactly 1 (SEC-ABU-033 (b)).
+    // Guard refusals carry the window's Retry-After; restricted-lane refusals carry exactly 1.
     expect(retryAfters.has("1")).toBe(true);
     for (const value of retryAfters) expect(value).toMatch(/^[1-9]\d*$/);
-    // The budget refused requests are logged as rule_category=concurrency; guard refusals as guard.
-    const rejected = m.events().filter((e) => e.event_name === "ratelimit.decision.completed");
-    expect(rejected.filter((e) => e.rule_category === "concurrency")).toHaveLength(200 - 3 - 50);
-    expect(rejected.filter((e) => e.rule_category === "guard")).toHaveLength(50);
-    // A second later the budget is back.
+    // Restricted-lane refusals are rule_category=concurrency under the guard's Class ID (SPEC-160 §24.1).
+    const decisions = m.events().filter((e) => e.event_name === "ratelimit.decision.completed");
+    const concurrency = decisions.filter((e) => e.rule_category === "concurrency");
+    expect(concurrency).toHaveLength(200 - 3 - 10);
+    expect(concurrency.every((e) => e.class_id === "auth_failure_guard_attendee")).toBe(true);
+    expect(decisions.filter((e) => e.rule_category === "guard")).toHaveLength(10);
+    // A second later the IP's bucket is back (10 tokens).
     clock += 1_000;
     const before = counter.verifications;
     expect((await send(m.app, "/buy/ok", forged)).status).toBe(429);
     expect(counter.verifications).toBe(before + 1);
   });
 
-  it("TC-RLM-005-222 valid tokens are verified on the normal budget while the IP's guard is below its limit, however many other IPs have drained the process budget", async () => {
-    const trs = createTestRateLimit({ overrides: guardOverride(1) });
+  it("TC-RLM-005-222 valid tokens are verified in the normal lane while the IP's guard is below its limit, however many other IPs have drained the process-wide bucket", async () => {
+    const trs = createTestRateLimit({ overrides: guardOverride(1), gate: { now: () => 1_000 } });
     const counter: Counting = { verifications: 0 };
-    const budget = createVerificationBudget({ perSecond: 50, now: () => 1_000 });
-    const m = mini(
-      trs,
-      { "/buy": "purchase_checkout" },
-      { verifier: countingVerifier(counter), budget },
-    );
+    const m = mini(trs, { "/buy": "purchase_checkout" }, { verifier: countingVerifier(counter) });
     m.app.get("/buy/ok", m.principal, (c) => c.json({ ok: true }));
     const forged = await mint({ key: "foreign" });
-    // Saturate one IP's guard and drain the process budget from several saturated IPs.
-    for (let ip = 1; ip <= 3; ip += 1) {
+    // Saturate six IPs' guards, then let each use its restricted bucket: IP 1..5 take 10 each and the
+    // process-wide bucket (50) is empty for IP 6.
+    for (let ip = 1; ip <= 6; ip += 1) {
       await send(m.app, "/buy/ok", forged, `198.51.100.${ip}`);
-      for (let i = 0; i < 30; i += 1) await send(m.app, "/buy/ok", forged, `198.51.100.${ip}`);
+      for (let i = 0; i < 12; i += 1) await send(m.app, "/buy/ok", forged, `198.51.100.${ip}`);
     }
     const before = counter.verifications;
-    // An IP with no failures: its valid tokens are never limited by the budget.
+    // An IP with no failures: its valid tokens are never limited by the restricted lane.
     for (let i = 0; i < 5; i += 1) {
       const valid = await mint({ subject: subjectN(i + 2) });
       expect((await send(m.app, "/buy/ok", valid, "192.0.2.77")).status).toBe(200);
     }
     expect(counter.verifications).toBe(before + 5);
-    // A saturated IP's valid token is refused without verification while the budget is empty (the
-    // residual effect of SEC-ABU-033 (d)); the refusal is not a guard failure.
+    // A saturated IP's valid token is refused without verification while its restricted bucket (IP 1)
+    // or the process-wide bucket (IP 6) is empty (the residual effect of SEC-ABU-032 (7)); the refusal
+    // is not a guard failure.
     const recordsBefore = guardRecords(trs);
     const verifiedBefore = counter.verifications;
-    const refused = await send(m.app, "/buy/ok", await mint(), "198.51.100.1");
-    expect(refused.status).toBe(429);
-    expect(refused.headers.get("Retry-After")).toBe("1");
+    for (const ip of [1, 6]) {
+      const refused = await send(m.app, "/buy/ok", await mint(), `198.51.100.${ip}`);
+      expect(refused.status).toBe(429);
+      expect(refused.headers.get("Retry-After")).toBe("1");
+    }
     expect(counter.verifications).toBe(verifiedBefore);
     expect(guardRecords(trs)).toBe(recordsBefore);
   });
 
-  it("TC-RLM-005-223 the budget is one bucket per process: a refill after 1 s admits 50 more verifications across all saturated IPs", async () => {
+  it("TC-RLM-005-223 the restricted lane is a per-IP bucket of 10/s and a process-wide bucket of 50/s; a refusal takes nothing from the other bucket", () => {
     let clock = 5_000;
-    const budget = createVerificationBudget({ perSecond: 50, now: () => clock });
-    const taken = () => {
+    const gate = createVerificationGate({ now: () => clock });
+    const taken = (ip: string) => {
       let n = 0;
-      while (budget.tryTake()) n += 1;
+      while (gate.takeRestricted(ip)) n += 1;
       return n;
     };
-    expect(taken()).toBe(50);
-    expect(budget.tryTake()).toBe(false);
+    expect(taken("198.51.100.1")).toBe(10);
+    // 500 ms refills half of the IP's bucket; a clock that goes back creates nothing.
     clock += 500;
-    expect(taken()).toBe(25);
-    clock += 10_000;
-    expect(taken()).toBe(50);
-    // A clock that does not advance, or goes back, never creates tokens.
+    expect(taken("198.51.100.1")).toBe(5);
     clock -= 5_000;
-    expect(taken()).toBe(0);
+    expect(taken("198.51.100.1")).toBe(0);
+    clock += 5_000 + 10_000;
+    // The process-wide bucket (50) is shared by every IP: five full IPs drain it, a sixth gets nothing,
+    // and the refused IP's own bucket was not charged for it.
+    for (let ip = 2; ip <= 6; ip += 1) expect(taken(`198.51.100.${ip}`)).toBe(10);
+    expect(taken("198.51.100.7")).toBe(0);
+    clock += 1_000;
+    expect(taken("198.51.100.7")).toBe(10);
+    // A refusal by the IP's own bucket does not consume a process-wide token.
+    const small = createVerificationGate({
+      perProcessPerSecond: 5,
+      perIpPerSecond: 2,
+      now: () => clock,
+    });
+    expect([
+      small.takeRestricted("a"),
+      small.takeRestricted("a"),
+      small.takeRestricted("a"),
+    ]).toEqual([true, true, false]);
+    expect([
+      small.takeRestricted("b"),
+      small.takeRestricted("b"),
+      small.takeRestricted("c"),
+    ]).toEqual([true, true, true]);
+    expect(small.takeRestricted("d")).toBe(false);
+  });
+
+  it("TC-RLM-005-233 per-IP buckets live in process memory for at most 1,024 IPs and are discarded 60 s after last use; at the cap a new IP is not admitted to the restricted lane", () => {
+    let clock = 10_000;
+    const gate = createVerificationGate({ perProcessPerSecond: 1_000_000, now: () => clock });
+    for (let i = 0; i < 1_024; i += 1) expect(gate.takeRestricted(`ip-${i}`)).toBe(true);
+    // The table is full: a new IP is refused, an IP already in the table is not.
+    expect(gate.takeRestricted("ip-new")).toBe(false);
+    expect(gate.takeRestricted("ip-0")).toBe(true);
+    // 59.999 s after the last use of the other buckets they are still retained ...
+    clock += 59_999;
+    expect(gate.takeRestricted("ip-new")).toBe(false);
+    // ... and 60 s after, they are discarded and the new IP is admitted again.
+    clock += 1;
+    expect(gate.takeRestricted("ip-new")).toBe(true);
+    // An IP idle for 60 s starts with a full bucket again.
+    expect(gate.takeRestricted("ip-1")).toBe(true);
+  });
+
+  it("TC-RLM-005-234 a normal-lane slot is one of 8 concurrent verifications per IP; the 9th gets none, another IP is independent, and a release is idempotent", () => {
+    const gate = createVerificationGate();
+    const slots = Array.from({ length: 8 }, () => gate.acquireSlot("198.51.100.1"));
+    expect(slots.every((slot) => slot !== undefined)).toBe(true);
+    expect(gate.acquireSlot("198.51.100.1")).toBeUndefined();
+    expect(gate.acquireSlot("198.51.100.2")).toBeDefined();
+    slots[0]?.release();
+    slots[0]?.release();
+    expect(gate.acquireSlot("198.51.100.1")).toBeDefined();
+    expect(gate.acquireSlot("198.51.100.1")).toBeUndefined();
   });
 
   it("TC-RLM-005-224 stage 1 reads the guard counter in check mode: after the per-IP rule, read only, and a store failure there is a 503", async () => {
@@ -288,7 +364,7 @@ describe("signature verification budget (SEC-ABU-033)", () => {
     const m = mini(trs, { "/buy": "purchase_checkout" });
     m.app.get("/buy/ok", m.principal, (c) => c.json({ ok: true }));
     expect((await send(m.app, "/buy/ok", "e30.e30.c2ln")).status).toBe(200);
-    expect(trs.store.calls.map((call) => call.mode)).toEqual(["check", "check", "admit"]);
+    expect(trs.store.calls.map((call) => call.mode)).toEqual(["check", "admit"]);
     expect(guardRecords(trs)).toBe(0);
     trs.faults.inject("FP.RATELIMIT.STORE_UNAVAILABLE");
     const res = await send(m.app, "/buy/ok", "e30.e30.c2ln");
@@ -368,7 +444,7 @@ describe("decision log fields (SPEC-160 §24.1)", () => {
         },
       },
     });
-    const m = mini(trs, { "/qr": "qr_display" }, { roles: ["STAFF"] });
+    const m = mini(trs, { "/qr": "qr_display" }, { roles: ["STAFF"], operationId: "API-TKT-003" });
     m.app.get(
       "/qr/:id",
       m.principal,
@@ -377,7 +453,7 @@ describe("decision log fields (SPEC-160 §24.1)", () => {
         await next();
       },
       requireResourceRateLimit(trs.rateLimit.limiter, (c) => ({
-        "qr_display.ticket": c.req.param("id") ?? "",
+        ticket_ref: c.req.param("id") ?? "",
       })),
       (c) => c.json({ ok: true }),
     );
@@ -420,7 +496,7 @@ describe("Stage 3 through the middleware (SEC-ABU-029, API-RLC-006)", () => {
   const uuids = (n: number) =>
     Array.from({ length: n }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`);
   const cartApp = (trs: TestRateLimit) => {
-    const m = mini(trs, { "/cart": "purchase_checkout" });
+    const m = mini(trs, { "/cart": "purchase_checkout" }, { operationId: "API-PUR-CART-001" });
     m.app.post(
       "/cart",
       m.principal,
@@ -428,9 +504,12 @@ describe("Stage 3 through the middleware (SEC-ABU-029, API-RLC-006)", () => {
         markAuthorizationConfirmed(c);
         await next();
       },
-      requireResourceRateLimit(trs.rateLimit.limiter, async (c) => ({
-        "purchase_checkout.resource": ((await c.req.json()) as { items: string[] }).items,
-      })),
+      requirePurchaseStartRateLimit(trs.rateLimit.limiter, {
+        eligibility: () => true,
+        referencesOf: async (c) => ({
+          offering_ref: ((await c.req.json()) as { items: string[] }).items,
+        }),
+      }),
       (c) => c.json({ ok: true }),
     );
     const post = (items: string[]) =>
@@ -512,8 +591,8 @@ describe("purchase start pre-check (SEC-ABU-029 pre-check)", () => {
           order.push("precheck");
           return eligibility(((await c.req.json()) as { items: string[] }).items);
         },
-        valuesOf: async (c) => ({
-          "purchase_checkout.resource": ((await c.req.json()) as { items: string[] }).items,
+        referencesOf: async (c) => ({
+          offering_ref: ((await c.req.json()) as { items: string[] }).items,
         }),
       }),
       async (c) => {
@@ -586,9 +665,7 @@ describe("purchase start pre-check (SEC-ABU-029 pre-check)", () => {
         markAuthorizationConfirmed(c);
         await next();
       },
-      requireResourceRateLimit(trs.rateLimit.limiter, () => ({
-        "purchase_checkout.resource": REAL,
-      })),
+      requireResourceRateLimit(trs.rateLimit.limiter, () => ({ offering_ref: REAL })),
       (c) => c.json({ ok: true }),
     );
     expect((await send(m.app, "/buy", "e30.e30.1", IP, { method: "POST" })).status).toBe(500);
@@ -608,7 +685,7 @@ describe("purchase start pre-check (SEC-ABU-029 pre-check)", () => {
           reached = true;
           return true;
         },
-        valuesOf: () => ({ "purchase_checkout.resource": REAL }),
+        referencesOf: () => ({ offering_ref: REAL }),
       }),
       (c) => c.json({ ok: true }),
     );
@@ -628,9 +705,7 @@ describe("purchase start pre-check (SEC-ABU-029 pre-check)", () => {
         markAuthorizationConfirmed(c);
         await next();
       },
-      requireResourceRateLimit(trs.rateLimit.limiter, () => ({
-        "purchase_checkout.resource": REAL,
-      })),
+      requireResourceRateLimit(trs.rateLimit.limiter, () => ({ order_ref: REAL })),
       (c) => c.json({ ok: true }),
     );
     expect((await send(m.app, "/chk", "e30.e30.1", IP, { method: "POST" })).status).toBe(200);
@@ -676,30 +751,73 @@ describe("auth_form_proxy early refusals close the connection (SEC-ABU-031)", ()
 });
 
 describe("PR #46 concurrent verification and observation regressions", () => {
-  it("TC-RLM-005-226 concurrent invalid tokens from an empty guard use the bounded lane before signature work", async () => {
-    const trs = createTestRateLimit();
-    const counter = { verifications: 0 };
+  it("TC-RLM-005-226 the 9th concurrent verification of one IP takes no slot: it reads no guard counter and calls no store, and goes to the restricted lane (per-IP bucket)", async () => {
+    // One restricted token per IP: the 9th verifies in the restricted lane, the 10th is refused.
+    const trs = createTestRateLimit({ gate: { perIpPerSecond: 1, now: () => 1_000 } });
+    const base = trs.rateLimit.limiter;
+    let guardReads = 0;
+    const spied: TestRateLimit = {
+      ...trs,
+      rateLimit: {
+        ...trs.rateLimit,
+        limiter: {
+          ...base,
+          guardState: async (classId, ip) => {
+            guardReads += 1;
+            return base.guardState(classId, ip);
+          },
+        },
+      },
+    };
+    let attempts = 0;
+    const holders: (() => void)[] = [];
     const m = mini(
-      trs,
+      spied,
       { "/buy": "purchase_checkout" },
       {
-        verifier: countingVerifier(counter),
-        budget: createVerificationBudget({ now: () => 1000 }),
+        verifier: {
+          verify: async () => {
+            attempts += 1;
+            if (attempts <= 8)
+              await new Promise<void>((resolve) => {
+                holders.push(resolve);
+              });
+            return { subject: subjectN(1) };
+          },
+        },
       },
     );
     m.app.get("/buy/ok", m.principal, (c) => c.json({ ok: true }));
-    const forged = await mint({ key: "foreign" });
-    const responses = await Promise.all(
-      Array.from({ length: 200 }, () => send(m.app, "/buy/ok", forged)),
-    );
-    expect(counter.verifications).toBeLessThanOrEqual(20 + 50);
-    expect(counter.verifications).toBeGreaterThan(0);
-    expect(responses.every((res) => res.status === 401 || res.status === 429)).toBe(true);
-    expect(guardRecords(trs)).toBeLessThanOrEqual(20);
+    const held = Array.from({ length: 8 }, () => send(m.app, "/buy/ok", "e30.e30.c2ln"));
+    try {
+      await vi.waitFor(() => expect(attempts).toBe(8));
+      // Stage 1 read the guard counter once per request that took a slot.
+      expect(guardReads).toBe(8);
+      const callsBefore = trs.store.calls.length;
+      const ninth = await send(m.app, "/buy/ok", "e30.e30.c2ln");
+      expect(ninth.status).toBe(200);
+      expect(attempts).toBe(9);
+      expect(guardReads).toBe(8);
+      // The 9th request called the store only for its own Stage 2 subject rule: no guard read.
+      expect(trs.store.calls.slice(callsBefore).every((call) => call.mode === "admit")).toBe(true);
+      // The per-IP bucket is now empty: the 10th request is refused before verification and before any
+      // store call, and it is not counted in the guard.
+      const callsAfterNinth = trs.store.calls.length;
+      const tenth = await send(m.app, "/buy/ok", "e30.e30.c2ln");
+      expect(tenth.status).toBe(429);
+      expect(tenth.headers.get("Retry-After")).toBe("1");
+      expect(attempts).toBe(9);
+      expect(guardReads).toBe(8);
+      expect(trs.store.calls.length).toBe(callsAfterNinth);
+      expect(guardRecords(trs)).toBe(0);
+    } finally {
+      for (const release of holders) release();
+      await Promise.allSettled(held);
+    }
   });
 
   it("TC-RLM-005-227 a normal verification slot remains held until its failure has been recorded, then is released", async () => {
-    const trs = createTestRateLimit();
+    const trs = createTestRateLimit({ gate: { slotsPerIp: 1, perIpPerSecond: 0 } });
     const original = trs.store.evaluate.bind(trs.store);
     let release: (() => void) | undefined;
     let recording = false;
@@ -723,13 +841,13 @@ describe("PR #46 concurrent verification and observation regressions", () => {
             throw new AuthFailure("unauthenticated");
           },
         },
-        budget: { tryTake: () => false },
       },
     );
     m.app.get("/buy/ok", m.principal, (c) => c.json({ ok: true }));
     const first = send(m.app, "/buy/ok", "e30.e30.c2ln");
     try {
       await vi.waitFor(() => expect(recording).toBe(true));
+      // The only slot is held and the restricted lane has no token: refused without verification.
       expect((await send(m.app, "/buy/ok", "e30.e30.c2ln")).status).toBe(429);
       expect(attempts).toBe(1);
     } finally {
@@ -743,7 +861,7 @@ describe("PR #46 concurrent verification and observation regressions", () => {
 
   for (const result of ["success", "unavailable", "record_failure"] as const)
     it(`TC-RLM-005-228 the normal slot is released after ${result}`, async () => {
-      const trs = createTestRateLimit();
+      const trs = createTestRateLimit({ gate: { slotsPerIp: 1, perIpPerSecond: 0 } });
       let attempts = 0;
       const m = mini(
         trs,
@@ -760,7 +878,6 @@ describe("PR #46 concurrent verification and observation regressions", () => {
               return { subject: subjectN(1) };
             },
           },
-          budget: { tryTake: () => false },
         },
       );
       m.app.get("/buy/ok", m.principal, (c) => c.json({ ok: true }));
@@ -770,8 +887,35 @@ describe("PR #46 concurrent verification and observation regressions", () => {
       expect(attempts).toBe(2);
     });
 
-  it("TC-RLM-005-229 one IP shares its normal slot across guard classes while another IP can verify", async () => {
-    const trs = createTestRateLimit();
+  it("TC-RLM-005-235 the normal slot is released when the handler fails after verification, and when the guard read fails (503)", async () => {
+    const trs = createTestRateLimit({ gate: { slotsPerIp: 1, perIpPerSecond: 0 } });
+    let attempts = 0;
+    const m = mini(
+      trs,
+      { "/buy": "purchase_checkout" },
+      {
+        verifier: {
+          verify: async () => {
+            attempts += 1;
+            return { subject: subjectN(1) };
+          },
+        },
+      },
+    );
+    m.app.get("/buy/boom", m.principal, () => {
+      throw new Error("handler failure after verification");
+    });
+    m.app.get("/buy/ok", m.principal, (c) => c.json({ ok: true }));
+    expect((await send(m.app, "/buy/boom", "e30.e30.c2ln")).status).toBe(500);
+    // Guard read failure (Stage 1, slot already taken): 503, and the slot is not left behind.
+    trs.faults.inject("FP.RATELIMIT.STORE_UNAVAILABLE");
+    expect((await send(m.app, "/buy/ok", "e30.e30.c2ln")).status).toBe(503);
+    trs.faults.inject(undefined);
+    expect(attempts).toBe(1);
+  });
+
+  it("TC-RLM-005-229 one IP shares its normal slots across guard classes while another IP can verify", async () => {
+    const trs = createTestRateLimit({ gate: { slotsPerIp: 1, perIpPerSecond: 0 } });
     let release: (() => void) | undefined;
     let attempts = 0;
     const m = mini(
@@ -788,7 +932,6 @@ describe("PR #46 concurrent verification and observation regressions", () => {
             return { subject: subjectN(attempts) };
           },
         },
-        budget: { tryTake: () => false },
       },
     );
     m.app.get("/buy/ok", m.principal, (c) => c.json({ ok: true }));
@@ -805,30 +948,102 @@ describe("PR #46 concurrent verification and observation regressions", () => {
     expect((await send(m.app, "/buy/ok", "e30.e30.c2ln")).status).toBe(200);
   });
 
-  it("TC-RLM-009-214 every verification-budget refusal is included in the rejected counter", async () => {
+  it("TC-RLM-005-232 slots, buckets and the retention cap are per API process while the guard counter is shared: with the cap reached a valid token gets 429 without verification", async () => {
+    const shared = createMemoryStore();
+    const common = { overrides: guardOverride(1), store: shared };
+    // Two API processes: separate gates, one store.
+    const a = createTestRateLimit({ ...common, gate: { maxIps: 2, now: () => 1_000 } });
+    const b = createTestRateLimit({ ...common, gate: { maxIps: 2, now: () => 1_000 } });
+    const counterA: Counting = { verifications: 0 };
+    const counterB: Counting = { verifications: 0 };
+    const routes = { "/buy": "purchase_checkout" } as const;
+    const ma = mini(a, routes, { verifier: countingVerifier(counterA) });
+    const mb = mini(b, routes, { verifier: countingVerifier(counterB) });
+    ma.app.get("/buy/ok", ma.principal, (c) => c.json({ ok: true }));
+    mb.app.get("/buy/ok", mb.principal, (c) => c.json({ ok: true }));
+    const forged = await mint({ key: "foreign" });
+    // The guard counter is shared: a failure through process A saturates the IP for process B too.
+    expect((await send(ma.app, "/buy/ok", forged, "198.51.100.1")).status).toBe(401);
+    expect(counterB.verifications).toBe(0);
+    // Process B puts IP 1 into its restricted lane (its own bucket) ...
+    expect((await send(mb.app, "/buy/ok", forged, "198.51.100.1")).status).toBe(429);
+    expect(counterB.verifications).toBe(1);
+    // ... and IP 2 (saturated through process A) fills B's retention table (cap 2 in this test).
+    await send(ma.app, "/buy/ok", forged, "198.51.100.2");
+    expect((await send(mb.app, "/buy/ok", forged, "198.51.100.2")).status).toBe(429);
+    expect(counterB.verifications).toBe(2);
+    // Process A has not retained any bucket: the same IP 1 is a new entry there.
+    expect((await send(ma.app, "/buy/ok", forged, "198.51.100.1")).status).toBe(429);
+    expect(counterA.verifications).toBe(3);
+    // IP 3 is saturated, and B's table is full: a valid token is refused with Retry-After: 1, with no
+    // signature verification and without being counted in the guard (SEC-ABU-032 (7)).
+    await send(ma.app, "/buy/ok", forged, "198.51.100.3");
+    const recordsBefore = guardRecords({
+      ...a,
+      store: shared as unknown as TestRateLimit["store"],
+    });
+    const verifiedBefore = counterB.verifications;
+    const refused = await send(mb.app, "/buy/ok", await mint(), "198.51.100.3");
+    expect(refused.status).toBe(429);
+    expect(refused.headers.get("Retry-After")).toBe("1");
+    expect(counterB.verifications).toBe(verifiedBefore);
+    expect(guardRecords({ ...a, store: shared as unknown as TestRateLimit["store"] })).toBe(
+      recordsBefore,
+    );
+    // An IP that holds a slot in process A still has all of its slots in process B.
+    const hold = createTestRateLimit({ store: shared, gate: { slotsPerIp: 1, perIpPerSecond: 0 } });
+    const other = createTestRateLimit({
+      store: shared,
+      gate: { slotsPerIp: 1, perIpPerSecond: 0 },
+    });
+    let unblock: (() => void) | undefined;
+    let held = 0;
+    const mh = mini(hold, routes, {
+      verifier: {
+        verify: async () => {
+          held += 1;
+          await new Promise<void>((resolve) => {
+            unblock = resolve;
+          });
+          return { subject: subjectN(1) };
+        },
+      },
+    });
+    mh.app.get("/buy/ok", mh.principal, (c) => c.json({ ok: true }));
+    const mo = mini(other, routes);
+    mo.app.get("/buy/ok", mo.principal, (c) => c.json({ ok: true }));
+    const pending = send(mh.app, "/buy/ok", "e30.e30.c2ln", "192.0.2.50");
+    try {
+      await vi.waitFor(() => expect(held).toBe(1));
+      expect((await send(mo.app, "/buy/ok", "e30.e30.c2ln", "192.0.2.50")).status).toBe(200);
+    } finally {
+      unblock?.();
+    }
+    expect((await pending).status).toBe(200);
+  });
+
+  it("TC-RLM-009-214 every restricted-lane refusal is included in the rejected counter under the guard Class ID", async () => {
     const metrics = createRateLimitMetrics({ environment: "test", classIds: RATE_LIMIT_CLASS_IDS });
     const trs = createTestRateLimit({
       overrides: guardOverride(1),
       limiter: { observer: createRateLimitMetricsObserver(metrics) },
+      gate: { perIpPerSecond: 0, now: () => 1000 },
     });
-    const m = mini(
-      trs,
-      { "/buy": "purchase_checkout" },
-      { budget: createVerificationBudget({ now: () => 1000 }) },
-    );
+    const m = mini(trs, { "/buy": "purchase_checkout" });
     m.app.get("/buy/ok", m.principal, (c) => c.json({ ok: true }));
     await send(m.app, "/buy/ok", "e30.e30.YmFk");
     for (let i = 0; i < 100; i++)
       expect((await send(m.app, "/buy/ok", "e30.e30.YmFk")).status).toBe(429);
-    expect(
-      metrics
-        .snapshot()
-        .decisions.filter((d) => d.result === "rejected")
-        .reduce((n, d) => n + d.value, 0),
-    ).toBe(100);
-    expect(m.events().filter((e) => e.event_name === "ratelimit.decision.completed")).toHaveLength(
-      100,
+    const rejected = metrics.snapshot().decisions.filter((d) => d.result === "rejected");
+    expect(rejected.reduce((n, d) => n + d.value, 0)).toBe(100);
+    // SPEC-160 §24.1: the event and the metric both use the guard's Class ID, not the route class.
+    expect(new Set(rejected.map((d) => d.class_id))).toEqual(
+      new Set(["auth_failure_guard_attendee"]),
     );
+    const events = m.events().filter((e) => e.event_name === "ratelimit.decision.completed");
+    expect(events).toHaveLength(100);
+    expect(events.every((e) => e.class_id === "auth_failure_guard_attendee")).toBe(true);
+    expect(events.every((e) => e.actor_type === "GUEST")).toBe(true);
   });
 
   it("TC-RLM-009-215 a body-slot refusal records both its event and rejected counter without an extra store call", async () => {
@@ -867,17 +1082,70 @@ describe("PR #46 concurrent verification and observation regressions", () => {
           .decisions.find((d) => d.class_id === "auth_form_proxy" && d.result === "rejected")
           ?.value,
       ).toBe(1);
-      expect(m.events().filter((e) => e.rule_category === "concurrency")).toHaveLength(1);
+      // A body-read slot refusal keeps the route class (SPEC-160 §24.1).
+      const concurrency = m.events().filter((e) => e.rule_category === "concurrency");
+      expect(concurrency).toHaveLength(1);
+      expect(concurrency[0]?.class_id).toBe("auth_form_proxy");
     } finally {
       for (const controller of controllers) controller.error(new Error("synthetic disconnect"));
       await Promise.allSettled(held);
     }
   });
+
+  it("TC-RLM-009-216 a Stage 2 refusal is attributed to AUTHENTICATED_USER with the auth-subject fingerprint, never a guessed Role or Profile reference", async () => {
+    const trs = createTestRateLimit({
+      overrides: {
+        self_read: {
+          burst_limit: 1,
+          sustained_limit: 120,
+          additional: { "self_read.ip": { limit: 240, window_seconds: 60 } },
+        },
+      },
+    });
+    const m = mini(trs, { "/self": "self_read" }, { roles: ["STAFF"] });
+    m.app.get("/self/x", m.principal, (c) => c.json({ ok: true }));
+    expect((await send(m.app, "/self/x", "e30.e30.c2ln")).status).toBe(200);
+    expect((await send(m.app, "/self/x", "e30.e30.c2ln")).status).toBe(429);
+    const refused = m.events().find((e) => e.event_name === "ratelimit.decision.completed");
+    expect(refused).toMatchObject({
+      actor_type: "AUTHENTICATED_USER",
+      actor_ref: testAuthSubjectRef(subjectN(1)),
+      rule_category: "burst",
+    });
+    expect(refused?.actor_ref).not.toBe(PROFILE_REF);
+  });
+
+  it("TC-RLM-009-217 an undeterminable Client IP (503) is one decision event under the route class and is not counted in the decision metric", async () => {
+    const metrics = createRateLimitMetrics({ environment: "test", classIds: RATE_LIMIT_CLASS_IDS });
+    const trs = createTestRateLimit({
+      limiter: { observer: createRateLimitMetricsObserver(metrics) },
+    });
+    const m = mini(trs, { "/buy": "purchase_checkout" });
+    m.app.get("/buy/ok", (c) => c.json({ ok: true }));
+    // No socket peer: the Client IP cannot be derived (SEC-API-031).
+    expect((await m.app.request("/buy/ok")).status).toBe(503);
+    expect((await m.app.request("/unknown/path")).status).toBe(503);
+    const events = m.events();
+    const decisions = events.filter((e) => e.event_name === "ratelimit.decision.completed");
+    expect(decisions.map((e) => e.class_id)).toEqual(["purchase_checkout", "public_read"]);
+    for (const event of decisions) {
+      expect(event).toMatchObject({
+        result: "FAILED",
+        error_code: "TEMPORARY_UNAVAILABLE",
+        actor_type: "GUEST",
+      });
+      expect(event).not.toHaveProperty("rule_category");
+    }
+    // It is not a store decision: no fail-closed event, no counter (OBS-ALT-041 must not fire).
+    expect(events.some((e) => e.event_name === "security.fail_closed.triggered")).toBe(false);
+    expect(metrics.snapshot().decisions.reduce((n, d) => n + d.value, 0)).toBe(0);
+    expect(trs.store.calls).toHaveLength(0);
+  });
 });
 
 for (const outcome of ["saturated", "store_unavailable"] as const)
-  it(`TC-RLM-005-230 the normal lane rechecks the guard and releases its slot after ${outcome}`, async () => {
-    const trs = createTestRateLimit();
+  it(`TC-RLM-005-230 the guard is read once in Stage 1 after the slot, not again before verification: ${outcome}`, async () => {
+    const trs = createTestRateLimit({ gate: { slotsPerIp: 1 } });
     const base = trs.rateLimit.limiter;
     let reads = 0;
     let verifications = 0;
@@ -889,7 +1157,7 @@ for (const outcome of ["saturated", "store_unavailable"] as const)
           ...base,
           guardState: async (classId, ip) => {
             reads += 1;
-            if (reads === 2)
+            if (reads === 1)
               return outcome === "saturated"
                 ? { result: "ok", saturated: true }
                 : { result: "store_unavailable" };
@@ -902,7 +1170,6 @@ for (const outcome of ["saturated", "store_unavailable"] as const)
       wrapped,
       { "/buy": "purchase_checkout" },
       {
-        budget: { tryTake: () => false },
         verifier: {
           verify: async () => {
             verifications += 1;
@@ -912,10 +1179,471 @@ for (const outcome of ["saturated", "store_unavailable"] as const)
       },
     );
     m.app.get("/buy/ok", m.principal, (c) => c.json({ ok: true }));
+    // A saturated IP's valid token is still verified, in the restricted lane (no re-read of the
+    // counter); a store failure at the single read is a 503 with no verification.
     expect((await send(m.app, "/buy/ok", "e30.e30.c2ln")).status).toBe(
-      outcome === "saturated" ? 429 : 503,
+      outcome === "saturated" ? 200 : 503,
     );
-    expect(verifications).toBe(0);
+    expect(reads).toBe(1);
+    expect(verifications).toBe(outcome === "saturated" ? 1 : 0);
+    // The slot (slotsPerIp 1) was released in both cases.
     expect((await send(m.app, "/buy/ok", "e30.e30.c2ln")).status).toBe(200);
-    expect(verifications).toBe(1);
+    expect(reads).toBe(2);
   });
+
+describe("Stage 3 resource references per Operation (SPEC-110 API-RLC-006 / API-RLC-007, SPEC-190 DEV-RLM-005)", () => {
+  // The SPEC-110 API-RLC-006 / API-RLC-007 tables, written out independently of the implementation.
+  const SPEC_REFERENCES: Record<string, readonly string[]> = {
+    "API-PUR-CART-001": ["offering_ref", "goods_ref"],
+    "API-PUR-ENTRY-001": ["offering_ref"],
+    "API-PUR-GDS-001": ["goods_ref"],
+    "API-PUR-KRK-001": ["slot_ref"],
+    "API-CHK-001": ["order_ref"],
+    "API-ORD-002": ["order_ref"],
+    "API-TKT-003": ["ticket_ref"],
+    "API-KRK-SELF-003": ["reservation_ref"],
+    "API-STF-CHK-001": ["qr_digest"],
+    "API-STF-CHK-002": ["qr_digest"],
+    "API-STF-GDS-001": ["goods_item_ref"],
+    "API-ADM-CNT-002": ["event"],
+    "API-ADM-CNT-005": [],
+    "API-ADM-CNT-011": [],
+    "API-ADM-CNT-019": [],
+    "API-ADM-CNT-006": ["faq_ref"],
+    "API-ADM-CNT-007": ["faq_ref"],
+    "API-ADM-CNT-008": ["faq_ref"],
+    "API-ADM-CNT-015": ["faq_ref"],
+    "API-ADM-CNT-012": ["announcement_ref"],
+    "API-ADM-CNT-013": ["announcement_ref"],
+    "API-ADM-CNT-014": ["announcement_ref"],
+    "API-ADM-CNT-016": ["announcement_ref"],
+    "API-ADM-CNT-020": ["logo_ref"],
+    "API-ADM-CNT-021": ["logo_ref"],
+    "API-ADM-KRK-003": [],
+    "API-ADM-KRK-004": ["slot_ref"],
+    "API-ADM-KRK-005": ["slot_ref"],
+    "API-ADM-KRK-006": ["slot_ref"],
+    "API-ADM-KRK-007": ["reservation_ref"],
+    "API-ADM-ENT-SALES-003": ["offering_ref"],
+    "API-ADM-KRK-SALES-003": ["sales_configuration_ref"],
+    "API-ADM-GDS-004": ["goods_ref"],
+    "API-ADM-GDS-005": ["goods_ref"],
+    "API-ADM-HOF-003": ["handoff_ref"],
+    "API-ADM-ROL-002": ["target_profile_ref"],
+    "API-ADM-ROL-003": ["target_profile_ref"],
+    "API-ADM-PAY-001": ["order_ref"],
+    "API-ADM-REC-004": ["order_ref"],
+    "API-ADM-REC-005": ["order_ref"],
+    "API-ADM-TQR-001": ["ticket_ref"],
+    "API-ADM-EML-004": ["notification_ref"],
+    "API-ADM-EML-005": ["notification_ref"],
+    "API-ADM-REC-006": ["notification_ref"],
+    "API-ADM-REC-003": ["checkout_attempt_ref"],
+    "API-ADM-REC-007": ["case_ref"],
+  };
+  const RESOURCE_CLASSES = [
+    "purchase_checkout",
+    "qr_display",
+    "staff_checkin",
+    "goods_handoff",
+    "admin_mutation",
+    "role_assignment",
+    "high_risk_recovery",
+  ] as const;
+  const resourceRuleIds = (classId: RouteClassId) =>
+    Object.entries(RATE_LIMIT_REGISTRY[classId].additional as Record<string, { phase: string }>)
+      .filter(([, rule]) => rule.phase === "resource")
+      .map(([id]) => id);
+  const keyFactory = createCounterKeyFactory(TEST_HMAC_KEY, 1);
+  const authorize = async (
+    c: Parameters<typeof markAuthorizationConfirmed>[0],
+    next: () => Promise<void>,
+  ) => {
+    markAuthorizationConfirmed(c);
+    await next();
+  };
+
+  it("TC-RLM-004-290 the route registry's Stage 3 references equal the API-RLC-006 / 007 tables, and every Operation of a resource-rule class is in them", () => {
+    const inClasses = [...OPERATION_CLASS_ASSIGNMENT]
+      .filter(([, classId]) => (RESOURCE_CLASSES as readonly string[]).includes(classId))
+      .map(([id]) => id)
+      .sort();
+    expect(Object.keys(SPEC_REFERENCES).sort()).toEqual(inClasses);
+    for (const [operationId, kinds] of Object.entries(SPEC_REFERENCES))
+      expect([...(resourceReferencesOf(operationId) ?? ["<none>"])].sort(), operationId).toEqual(
+        [...kinds].sort(),
+      );
+    expect(() => assertResourceReferenceTable()).not.toThrow();
+    // A matching registration passes; a different, a missing or an unexpected declaration is refused.
+    const ok = {
+      method: "GET",
+      path: "/t",
+      operationId: "API-TKT-003",
+      rateLimitClass: "qr_display",
+    };
+    expect(() =>
+      assertRouteRegistry([{ ...ok, resourceReferences: ["ticket_ref"] } as RouteRegistration]),
+    ).not.toThrow();
+    expect(() =>
+      assertRouteRegistry([{ ...ok, resourceReferences: ["order_ref"] } as RouteRegistration]),
+    ).toThrow(/API-RLC-007/);
+    expect(() => assertRouteRegistry([ok as unknown as RouteRegistration])).toThrow(/API-RLC-007/);
+    expect(() =>
+      assertRouteRegistry([
+        {
+          method: "GET",
+          path: "/s",
+          operationId: "API-ADM-CNT-005",
+          rateLimitClass: "admin_mutation",
+          resourceReferences: ["faq_ref"],
+        } as RouteRegistration,
+      ]),
+    ).toThrow(/API-RLC-007/);
+    // An Operation without a reference declares an empty list (it is not missing).
+    expect(() =>
+      assertRouteRegistry([
+        {
+          method: "POST",
+          path: "/n",
+          operationId: "API-ADM-CNT-005",
+          rateLimitClass: "admin_mutation",
+          resourceReferences: [],
+        } as RouteRegistration,
+      ]),
+    ).not.toThrow();
+  });
+
+  it("TC-RLM-004-291 each Operation records exactly its table references in Stage 3 (kind and canonical reference in the key, no Operation ID), and an Operation without a reference evaluates no resource rule", async () => {
+    for (const [operationId, kinds] of Object.entries(SPEC_REFERENCES)) {
+      const classId = rateLimitClassOf(operationId) as RouteClassId;
+      const trs = createTestRateLimit();
+      const m = mini(trs, { "/x": classId }, { operationId });
+      let evaluated = 0;
+      const referencesOf = () => {
+        evaluated += 1;
+        return Object.fromEntries(kinds.map((kind) => [kind, `${kind}-value`]));
+      };
+      const stage3 = isPurchaseStartOperation(operationId)
+        ? requirePurchaseStartRateLimit(trs.rateLimit.limiter, {
+            eligibility: () => true,
+            referencesOf,
+          })
+        : requireResourceRateLimit(trs.rateLimit.limiter, referencesOf);
+      m.app.post("/x", m.principal, authorize, stage3, (c) => c.json({ ok: true }));
+      expect(
+        (await send(m.app, "/x", "e30.e30.c2ln", IP, { method: "POST" })).status,
+        operationId,
+      ).toBe(200);
+      const resourceKeys = trs.store
+        .keys()
+        .filter((key) => resourceRuleIds(classId).some((id) => key.includes(id)));
+      if (kinds.length === 0) {
+        expect(evaluated, operationId).toBe(0);
+        expect(resourceKeys, operationId).toHaveLength(0);
+        continue;
+      }
+      expect(evaluated, operationId).toBe(1);
+      for (const kind of kinds)
+        for (const ruleId of resourceRuleIds(classId))
+          expect(
+            trs.store.count(keyFactory.key(ruleId, "resource", `${kind}\0${kind}-value`)),
+            `${operationId} ${ruleId} ${kind}`,
+          ).toBe(1);
+      expect(resourceKeys, operationId).toHaveLength(
+        kinds.length * resourceRuleIds(classId).length,
+      );
+    }
+  });
+
+  it("TC-RLM-004-292 one class and one reference kind share a counter across Operations; a different class never shares it, and a different kind is a different counter", async () => {
+    const overrides = {
+      high_risk_recovery: {
+        burst_limit: 2,
+        sustained_limit: 6,
+        additional: {
+          "high_risk_recovery.resource_minute": { limit: 2, window_seconds: 60 },
+          "high_risk_recovery.resource_hour": { limit: 10, window_seconds: 3600 },
+        },
+      },
+      admin_mutation: {
+        burst_limit: 3,
+        sustained_limit: 12,
+        additional: { "admin_mutation.resource": { limit: 2, window_seconds: 60 } },
+      },
+      qr_display: {
+        burst_limit: 3,
+        sustained_limit: 12,
+        additional: { "qr_display.ticket": { limit: 2, window_seconds: 60 } },
+      },
+    };
+    const trs = createTestRateLimit({ overrides });
+    const call = async (operationId: string, ref: Record<string, string>, ip: string) => {
+      trs.store.advance(11_000);
+      const classId = rateLimitClassOf(operationId) as RouteClassId;
+      const m = mini(trs, { "/x": classId }, { operationId });
+      m.app.post(
+        "/x",
+        m.principal,
+        authorize,
+        requireResourceRateLimit(trs.rateLimit.limiter, () => ref),
+        (c) => c.json({ ok: true }),
+      );
+      return (await send(m.app, "/x", "e30.e30.c2ln", ip, { method: "POST" })).status;
+    };
+    const order = "00000000-0000-4000-8000-0000000000aa";
+    // API-ADM-PAY-001 / REC-004 / REC-005 share the per-Order counter (2 per minute).
+    expect(await call("API-ADM-PAY-001", { order_ref: order }, "198.51.100.1")).toBe(200);
+    expect(await call("API-ADM-REC-004", { order_ref: order.toUpperCase() }, "198.51.100.2")).toBe(
+      200,
+    );
+    expect(await call("API-ADM-REC-005", { order_ref: order }, "198.51.100.3")).toBe(429);
+    // A different reference kind of the same class (notification_ref) is a different counter.
+    expect(await call("API-ADM-EML-004", { notification_ref: order }, "198.51.100.4")).toBe(200);
+    expect(await call("API-ADM-REC-006", { notification_ref: order }, "198.51.100.5")).toBe(200);
+    expect(await call("API-ADM-EML-005", { notification_ref: order }, "198.51.100.6")).toBe(429);
+    // The same reservation_ref in two classes is two counters (admin_mutation vs qr_display).
+    const reservation = "00000000-0000-4000-8000-0000000000bb";
+    expect(await call("API-ADM-KRK-007", { reservation_ref: reservation }, "198.51.100.7")).toBe(
+      200,
+    );
+    expect(await call("API-ADM-KRK-007", { reservation_ref: reservation }, "198.51.100.8")).toBe(
+      200,
+    );
+    expect(await call("API-KRK-SELF-003", { reservation_ref: reservation }, "198.51.100.9")).toBe(
+      200,
+    );
+    expect(await call("API-KRK-SELF-003", { reservation_ref: reservation }, "198.51.100.10")).toBe(
+      200,
+    );
+    expect(await call("API-ADM-KRK-007", { reservation_ref: reservation }, "198.51.100.11")).toBe(
+      429,
+    );
+    expect(await call("API-KRK-SELF-003", { reservation_ref: reservation }, "198.51.100.12")).toBe(
+      429,
+    );
+  });
+
+  it("TC-RLM-004-293 a Stage 3 reference that is not listed for the Operation, or an Operation outside the tables, is an implementation defect (500), never a silent pass", async () => {
+    const trs = createTestRateLimit();
+    const wrongKind = mini(trs, { "/x": "qr_display" }, { operationId: "API-TKT-003" });
+    wrongKind.app.post(
+      "/x",
+      wrongKind.principal,
+      authorize,
+      requireResourceRateLimit(trs.rateLimit.limiter, () => ({ order_ref: "o" })),
+      (c) => c.json({ ok: true }),
+    );
+    expect((await send(wrongKind.app, "/x", "e30.e30.c2ln", IP, { method: "POST" })).status).toBe(
+      500,
+    );
+    const unknown = mini(trs, { "/y": "qr_display" }, { operationId: "API-NOT-LISTED-001" });
+    unknown.app.post(
+      "/y",
+      unknown.principal,
+      authorize,
+      requireResourceRateLimit(trs.rateLimit.limiter, () => ({ ticket_ref: "t" })),
+      (c) => c.json({ ok: true }),
+    );
+    expect((await send(unknown.app, "/y", "e30.e30.c2ln", IP, { method: "POST" })).status).toBe(
+      500,
+    );
+    expect(trs.store.keys().filter((key) => key.includes("qr_display.ticket"))).toHaveLength(0);
+  });
+
+  it("TC-RLM-004-294 an unauthorized principal cannot consume a shared resource counter: a 403 leaves the role_assignment target counter unchanged and the Administrator is not 429", async () => {
+    const overrides = {
+      role_assignment: {
+        burst_limit: 3,
+        sustained_limit: 10,
+        additional: { "role_assignment.profile": { limit: 5, window_seconds: 600 } },
+      },
+    };
+    const trs = createTestRateLimit({ overrides });
+    const target = "00000000-0000-4000-8000-0000000000cc";
+    const build = (roles: ("STAFF" | "ADMINISTRATOR")[]) => {
+      const m = mini(trs, { "/x": "role_assignment" }, { operationId: "API-ADM-ROL-002", roles });
+      m.app.post(
+        "/x",
+        m.principal,
+        requireCapability("role_assignment.manage"),
+        requireResourceRateLimit(trs.rateLimit.limiter, () => ({ target_profile_ref: target })),
+        (c) => c.json({ ok: true }),
+      );
+      return m;
+    };
+    const attendee = build([]);
+    for (let i = 0; i < 12; i += 1) {
+      trs.store.advance(11_000);
+      expect(
+        (await send(attendee.app, "/x", "e30.e30.c2ln", `198.51.100.${i + 1}`, { method: "POST" }))
+          .status,
+      ).toBe(403);
+    }
+    expect(trs.store.keys().filter((key) => key.includes("role_assignment.profile"))).toHaveLength(
+      0,
+    );
+    const admin = build(["ADMINISTRATOR"]);
+    for (let i = 0; i < 5; i += 1) {
+      trs.store.advance(11_000);
+      expect(
+        (await send(admin.app, "/x", "e30.e30.c2ln", "203.0.113.200", { method: "POST" })).status,
+      ).toBe(200);
+    }
+    trs.store.advance(11_000);
+    expect(
+      (await send(admin.app, "/x", "e30.e30.c2ln", "203.0.113.200", { method: "POST" })).status,
+    ).toBe(429);
+  });
+
+  it("TC-RLM-004-295 purchase start: a request refused before the purchase.start check (no token, email not verified, Business Profile unresolved) reaches neither the pre-check nor Stage 3; after it the order is pre-check, Stage 3, Transaction", async () => {
+    const trs = createTestRateLimit();
+    const steps: string[] = [];
+    const build = (options: Omit<MiniOptions, "operationId"> = {}) => {
+      const m = mini(
+        trs,
+        { "/buy": "purchase_checkout" },
+        { ...options, operationId: "API-PUR-ENTRY-001" },
+      );
+      m.app.post(
+        "/buy",
+        m.principal,
+        requireVerifiedEmail(),
+        requireCapability("purchase.start"),
+        requirePurchaseStartRateLimit(trs.rateLimit.limiter, {
+          eligibility: () => {
+            steps.push("precheck");
+            return true;
+          },
+          referencesOf: () => ({ offering_ref: "11111111-1111-4111-8111-111111111111" }),
+        }),
+        (c) => {
+          steps.push("transaction");
+          return c.json({ ok: true });
+        },
+      );
+      return m;
+    };
+    const post = (m: ReturnType<typeof build>, token: string | undefined) =>
+      send(m.app, "/buy", token, IP, { method: "POST" });
+    const stage3Keys = () =>
+      trs.store.keys().filter((key) => key.includes("purchase_checkout.resource"));
+    expect((await post(build(), undefined)).status).toBe(401);
+    expect((await post(build({ emailVerified: false }), "e30.e30.c2ln")).status).toBe(403);
+    expect((await post(build({ noProfile: true }), "e30.e30.c2ln")).status).toBe(403);
+    expect(steps).toEqual([]);
+    expect(stage3Keys()).toHaveLength(0);
+    expect((await post(build(), "e30.e30.c2ln")).status).toBe(200);
+    expect(steps).toEqual(["precheck", "transaction"]);
+    expect(stage3Keys()).toHaveLength(1);
+  });
+});
+
+describe("signature verification under concurrency (SEC-ABU-033 (a), (c), (f))", () => {
+  it("TC-RLM-005-236 200 concurrent badly signed tokens from one IP, every request reading the same guard count, run at most 8 verifications in the normal lane and at most the IP's bucket in the restricted lane", async () => {
+    const trs = createTestRateLimit({ gate: { now: () => 1_000 } });
+    // A store that answers slowly: every request reads the guard count before any failure is recorded.
+    const original = trs.store.evaluate.bind(trs.store);
+    trs.store.evaluate = async (mode, rules, id) => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return original(mode, rules, id);
+    };
+    const base = trs.rateLimit.limiter;
+    let guardReads = 0;
+    const spied: TestRateLimit = {
+      ...trs,
+      rateLimit: {
+        ...trs.rateLimit,
+        limiter: {
+          ...base,
+          guardState: async (classId, ip) => {
+            guardReads += 1;
+            return base.guardState(classId, ip);
+          },
+        },
+      },
+    };
+    const counter: Counting = { verifications: 0 };
+    let inFlight = 0;
+    let peak = 0;
+    const real = countingVerifier(counter);
+    const m = mini(
+      spied,
+      { "/buy": "purchase_checkout" },
+      {
+        verifier: {
+          ...(real.inspect ? { inspect: real.inspect } : {}),
+          verify: async (token) => {
+            inFlight += 1;
+            peak = Math.max(peak, inFlight);
+            try {
+              await new Promise((resolve) => setTimeout(resolve, 2));
+              return await real.verify(token);
+            } finally {
+              inFlight -= 1;
+            }
+          },
+        },
+      },
+    );
+    m.app.get("/buy/ok", m.principal, (c) => c.json({ ok: true }));
+    const forged = await mint({ key: "foreign" });
+    const responses = await Promise.all(
+      Array.from({ length: 200 }, () => send(m.app, "/buy/ok", forged)),
+    );
+    // 8 slots in the normal lane (each read the guard once) and the IP's 10 restricted tokens.
+    expect(guardReads).toBeLessThanOrEqual(8);
+    expect(counter.verifications).toBeLessThanOrEqual(8 + 10);
+    expect(counter.verifications).toBeGreaterThan(0);
+    expect(peak).toBeLessThanOrEqual(8 + 10);
+    expect(responses.every((res) => res.status === 401 || res.status === 429)).toBe(true);
+    expect(responses.filter((res) => res.status === 429).length).toBeGreaterThanOrEqual(200 - 18);
+    // Failures are recorded in either lane; the guard limit of 20 is never exceeded.
+    expect(guardRecords(trs)).toBeLessThanOrEqual(8 + 10);
+  });
+
+  it("TC-RLM-005-237 one saturated IP cannot use up the process-wide bucket: another saturated IP's valid token is still verified", async () => {
+    const trs = createTestRateLimit({ overrides: guardOverride(1), gate: { now: () => 1_000 } });
+    const counter: Counting = { verifications: 0 };
+    const m = mini(trs, { "/buy": "purchase_checkout" }, { verifier: countingVerifier(counter) });
+    m.app.get("/buy/ok", m.principal, (c) => c.json({ ok: true }));
+    const forged = await mint({ key: "foreign" });
+    for (const ip of ["198.51.100.1", "198.51.100.2"]) await send(m.app, "/buy/ok", forged, ip);
+    for (let i = 0; i < 300; i += 1) await send(m.app, "/buy/ok", forged, "198.51.100.1");
+    // 1 (normal lane) + 10 (IP 1's bucket); the process-wide 50 is far from used up.
+    expect(counter.verifications).toBe(1 + 1 + 10);
+    const valid = await send(
+      m.app,
+      "/buy/ok",
+      await mint({ subject: subjectN(2) }),
+      "198.51.100.2",
+    );
+    expect(valid.status).toBe(200);
+  });
+
+  it("TC-RLM-005-238 up to 8 concurrent valid tokens from one IP (NAT-shared staff) are all verified in the normal lane, never the restricted lane", async () => {
+    // The restricted lane has no tokens at all: any request that fell into it would be a 429.
+    const trs = createTestRateLimit({ gate: { perIpPerSecond: 0, now: () => 1_000 } });
+    let inside = 0;
+    const holders: (() => void)[] = [];
+    const m = mini(
+      trs,
+      { "/handoff": "goods_handoff" },
+      {
+        verifier: {
+          verify: async () => {
+            inside += 1;
+            await new Promise<void>((resolve) => {
+              holders.push(resolve);
+            });
+            return { subject: subjectN(inside) };
+          },
+        },
+      },
+    );
+    m.app.get("/handoff/ok", m.principal, (c) => c.json({ ok: true }));
+    const requests = Array.from({ length: 8 }, () => send(m.app, "/handoff/ok", "e30.e30.c2ln"));
+    await vi.waitFor(() => expect(inside).toBe(8));
+    for (const release of holders) release();
+    expect((await Promise.all(requests)).map((res) => res.status)).toEqual(Array(8).fill(200));
+  });
+});

@@ -1,6 +1,8 @@
 import type { AppRateLimit } from "../../../apps/api/src/api/app.ts";
+import { createVerificationGate } from "../../../apps/api/src/api/rate-limit.ts";
 import {
   createRateLimiter,
+  fingerprint,
   parseRateLimitConfig,
   RATE_LIMIT_CLASS_IDS,
   RATE_LIMIT_REGISTRY,
@@ -59,6 +61,10 @@ export function rateLimitEnv(
 /** Node-server style bindings so `app.request(..., env)` carries a socket peer address. */
 export const peer = (ip = "203.0.113.9") => ({ incoming: { socket: { remoteAddress: ip } } });
 
+/** SPEC-160 §11: the auth-subject fingerprint of the tests (a synthetic correlation key). */
+export const testAuthSubjectRef = (subject: string): string =>
+  fingerprint("auth-subject", subject, new Uint8Array(32).fill(9));
+
 export interface TestRateLimit {
   readonly rateLimit: AppRateLimit;
   readonly store: MemoryStore;
@@ -70,6 +76,8 @@ export function createTestRateLimit(
     readonly overrides?: Record<string, unknown>;
     readonly trustedProxyHops?: number;
     readonly limiter?: Partial<RateLimiterOptions>;
+    /** Test-only knobs of the process-local verification gate (the contract constants are fixed). */
+    readonly gate?: Parameters<typeof createVerificationGate>[0];
   } = {},
 ): TestRateLimit {
   const store = createMemoryStore();
@@ -81,5 +89,14 @@ export function createTestRateLimit(
     hmacKeyVersion: 1,
     ...options.limiter,
   });
-  return { rateLimit: { limiter, trustedProxyHops: options.trustedProxyHops ?? 0 }, store, faults };
+  return {
+    rateLimit: {
+      limiter,
+      trustedProxyHops: options.trustedProxyHops ?? 0,
+      authSubjectRef: testAuthSubjectRef,
+      gate: createVerificationGate(options.gate),
+    },
+    store,
+    faults,
+  };
 }

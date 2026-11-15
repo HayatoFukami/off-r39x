@@ -14,7 +14,7 @@ import { createAuthProxy } from "../../apps/api/src/api/auth-proxy.ts";
 import {
   createPrincipalRateLimitHooks,
   createRateLimitStageOne,
-  createVerificationBudget,
+  createVerificationGate,
   requireResourceRateLimit,
 } from "../../apps/api/src/api/rate-limit.ts";
 import { AuthFailure, createTokenVerifier } from "../../packages/auth/src/index.ts";
@@ -26,7 +26,12 @@ import {
   type RateLimitStore,
   type StoreRule,
 } from "../../packages/security/src/index.ts";
-import { ceilingConfigText, peer, TEST_HMAC_KEY } from "../harness/rate-limit/api.ts";
+import {
+  ceilingConfigText,
+  peer,
+  TEST_HMAC_KEY,
+  testAuthSubjectRef,
+} from "../harness/rate-limit/api.ts";
 import { openRedisTestSession, type RedisTestSession } from "../harness/rate-limit/redis.ts";
 
 const WEB = "https://web.example.test";
@@ -91,7 +96,7 @@ describe("which rules each stage evaluates (SEC-ABU-026)", () => {
     await limiter.subject({ classId: "staff_checkin", subject: unique("staff") });
     await limiter.resource({
       classId: "staff_checkin",
-      values: { "staff_checkin.qr_digest": unique("digest") },
+      references: { qr_digest: unique("digest") },
     });
     expect(evaluations.map(shape)).toEqual([
       [[300, 60_000]],
@@ -162,7 +167,7 @@ function authApp() {
     webOrigin: WEB,
     ready: async () => true,
     authProxy: proxy,
-    rateLimit: { limiter, trustedProxyHops: 0 },
+    rateLimit: { limiter, trustedProxyHops: 0, authSubjectRef: testAuthSubjectRef },
   });
   const call = (method: string, path: string, address: string) =>
     app.request(
@@ -302,7 +307,7 @@ function authorizedApp(classId: "role_assignment" | "staff_checkin") {
   app.use(
     "*",
     createRateLimitStageOne({
-      rateLimit: { limiter, trustedProxyHops: 0 },
+      rateLimit: { limiter, trustedProxyHops: 0, authSubjectRef: testAuthSubjectRef },
       classify: () => ({ classId, operationId: null }),
     }),
   );
@@ -448,11 +453,12 @@ it("TC-RLM-005-231 real Redis and Ed25519 verification bound a concurrent burst 
     .sign(foreign.privateKey);
   let verifications = 0;
   let lookups = 0;
+  const gate = createVerificationGate({ now: () => 1000 });
   const app = new Hono<ApiEnvironment>();
   app.use(
     "*",
     createRateLimitStageOne({
-      rateLimit: { limiter, trustedProxyHops: 0 },
+      rateLimit: { limiter, trustedProxyHops: 0, authSubjectRef: testAuthSubjectRef, gate },
       classify: () => ({ classId: "purchase_checkout", operationId: null }),
     }),
   );
@@ -477,9 +483,7 @@ it("TC-RLM-005-231 real Redis and Ed25519 verification bound a concurrent burst 
           throw new Error("must not reach DB");
         },
       },
-      createPrincipalRateLimitHooks(limiter, {
-        verificationBudget: createVerificationBudget({ now: () => 1000 }),
-      }),
+      createPrincipalRateLimitHooks(limiter, { gate, authSubjectRef: testAuthSubjectRef }),
     ),
     (c) => c.json({ ok: true }),
   );
@@ -493,7 +497,9 @@ it("TC-RLM-005-231 real Redis and Ed25519 verification bound a concurrent burst 
     ),
   );
   expect(verifications).toBeGreaterThan(0);
-  expect(verifications).toBeLessThanOrEqual(20 + 50);
+  // SEC-ABU-033: the normal lane is bounded by the guard limit plus the 8 verifications in flight at
+  // the moment it saturated; the restricted lane by the per-IP bucket (10/s, fixed clock).
+  expect(verifications).toBeLessThanOrEqual(20 + 8 + 10);
   expect(responses.every((res) => res.status === 401 || res.status === 429)).toBe(true);
   expect(lookups).toBe(0);
   const key = createCounterKeyFactory(TEST_HMAC_KEY, session.keyVersion).key(

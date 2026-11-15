@@ -28,7 +28,8 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 12
-      # TST-RLM-001 / INF-RLS-006 / SPEC-180 §74.1: a real Redis, disposable and unauthenticated.
+      # TST-RLM-001..003 (G5 security, TST-RLM-010) / INF-TST-004 / INF-RLS-006 / SPEC-180 §74.1: a real
+      # Redis, disposable and unauthenticated. The job below runs G5, so it starts this service container.
       # Major version 7 is provisional until the Railway Redis version is confirmed (INF-RLS-001).
       redis:
         image: redis:7

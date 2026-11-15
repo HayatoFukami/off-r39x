@@ -16,6 +16,13 @@ export type ApiEnvironment = {
     clientIp: string | undefined;
     /** SEC-ABU-021 (1): stage 1 read the IP's guard counter at its limit (selects the signature budget). */
     guardSaturated: boolean | undefined;
+    /**
+     * SEC-ABU-033 (b): the IP's concurrent verification slot taken in Stage 1 (released at the end of
+     * the verification or the guard evaluation, and at the latest when the request ends).
+     */
+    verificationSlot: { release(): void } | undefined;
+    /** SPEC-160 §24.1: fingerprint of the verified Auth Subject (before the Principal is resolved). */
+    authSubjectRef: string | undefined;
     /** SEC-ABU-029: set once the target's authorization check (owner relation / Capability) passed. */
     authorizationConfirmed: boolean | undefined;
   };

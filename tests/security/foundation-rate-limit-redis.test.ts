@@ -303,10 +303,7 @@ describe("sliding window log on Redis (TST-RLM-002)", () => {
     await limiter.subject({ classId: "high_risk_recovery", subject: "subject-ttl" });
     await limiter.resource({
       classId: "high_risk_recovery",
-      values: {
-        "high_risk_recovery.resource_minute": "target-ttl",
-        "high_risk_recovery.resource_hour": "target-ttl",
-      },
+      references: { order_ref: "target-ttl" },
     });
     await limiter.recordAuthFailure("admin_mutation", "198.51.100.2");
     const keys = await session.keys();
@@ -343,11 +340,11 @@ describe("sliding window log on Redis (TST-RLM-002)", () => {
     await limiter.subject({ classId: "qr_display", subject: raw.subject });
     await limiter.resource({
       classId: "qr_display",
-      values: { "qr_display.ticket": raw.resource },
+      references: { ticket_ref: raw.resource },
     });
     await limiter.resource({
       classId: "staff_checkin",
-      values: { "staff_checkin.qr_digest": raw.qr },
+      references: { qr_digest: raw.qr },
     });
     const keys = await session.keys();
     expect(keys.length).toBeGreaterThanOrEqual(8);
@@ -577,7 +574,7 @@ describe("guard read, UUID canonical form and multi-resource evaluation on real 
     });
     const id = "0d6a2a35-1a52-4d3a-8f55-42b5d4ad06a1";
     const use = (value: string) =>
-      limiter.resource({ classId: "qr_display", values: { "qr_display.ticket": value } });
+      limiter.resource({ classId: "qr_display", references: { ticket_ref: value } });
     const ticketKeys = async () =>
       (await session.keys()).filter((key) => key.includes("qr_display.ticket"));
     // Earlier tests of this session may have used other tickets: only the delta is this test's.
@@ -606,7 +603,7 @@ describe("guard read, UUID canonical form and multi-resource evaluation on real 
     const cart = (items: readonly string[]) =>
       limiter.resource({
         classId: "purchase_checkout",
-        values: { "purchase_checkout.resource": items },
+        references: { offering_ref: items },
       });
     const resourceKeys = async () =>
       (await session.keys()).filter((key) => key.includes("purchase_checkout.resource"));

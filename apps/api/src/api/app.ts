@@ -22,6 +22,7 @@ import {
   type AppRateLimit,
   createPrincipalRateLimitHooks,
   createRateLimitStageOne,
+  createVerificationGate,
   markAuthorizationConfirmed,
   type PrincipalRateLimitHooks,
 } from "./rate-limit.ts";
@@ -95,6 +96,8 @@ export function createApp(dependencies: AppDependencies) {
     c.set("rateLimitClass", undefined);
     c.set("clientIp", undefined);
     c.set("guardSaturated", undefined);
+    c.set("verificationSlot", undefined);
+    c.set("authSubjectRef", undefined);
     c.set("authorizationConfirmed", false);
     c.header("X-Request-Id", c.get("requestId"));
     c.header("Cache-Control", "no-store");
@@ -158,7 +161,12 @@ export function createApp(dependencies: AppDependencies) {
     await next();
   });
   // Stage 1 (SEC-ABU-017): after the drain check, before any origin/CORS/body/auth/DB work.
-  app.use("*", createRateLimitStageOne({ rateLimit: dependencies.rateLimit }));
+  // SEC-ABU-033: one process-local gate serves Stage 1 (slot before the guard read) and the Stage 2 hooks.
+  const verificationGate = dependencies.rateLimit?.gate ?? createVerificationGate();
+  app.use(
+    "*",
+    createRateLimitStageOne({ rateLimit: dependencies.rateLimit, gate: verificationGate }),
+  );
   app.onError((error, c) => {
     if (error instanceof AuthFailure)
       dependencies.logger?.log({
@@ -228,7 +236,10 @@ export function createApp(dependencies: AppDependencies) {
     bodyLimit({ maxSize: 65536, onError: (c) => failure(c, "PAYLOAD_TOO_LARGE") }),
   );
   const principalHooks = dependencies.rateLimit
-    ? createPrincipalRateLimitHooks(dependencies.rateLimit.limiter)
+    ? createPrincipalRateLimitHooks(dependencies.rateLimit.limiter, {
+        gate: verificationGate,
+        authSubjectRef: dependencies.rateLimit.authSubjectRef,
+      })
     : undefined;
   app.route(
     "/",

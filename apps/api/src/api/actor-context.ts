@@ -19,5 +19,9 @@ export function actorContext(c: Context<ApiEnvironment>): {
             : "AUTHENTICATED_USER",
         actor_ref: principal.profileRef,
       }
-    : { actor_type: "GUEST" };
+    : c.get("authSubjectRef")
+      ? // After token verification and before the Principal is resolved (SPEC-160 §24.1 stage 2): the
+        // Role and the Profile reference are unknown and are not guessed.
+        { actor_type: "AUTHENTICATED_USER", actor_ref: c.get("authSubjectRef") as string }
+      : { actor_type: "GUEST" };
 }

@@ -376,7 +376,7 @@ describe("UUID canonical form for resource counters (SEC-ABU-015, SEC-ABU-029)",
       },
     });
     const use = (value: string) =>
-      limiter.resource({ classId: "qr_display", values: { "qr_display.ticket": value } });
+      limiter.resource({ classId: "qr_display", references: { ticket_ref: value } });
     expect((await use(UPPER)).result).toBe("allowed");
     expect((await use(LOWER)).result).toBe("allowed");
     expect((await use(MIXED)).result).toBe("allowed");
@@ -388,7 +388,7 @@ describe("UUID canonical form for resource counters (SEC-ABU-015, SEC-ABU-029)",
     const { limiter, store } = limiterOver();
     const decision = await limiter.resource({
       classId: "purchase_checkout",
-      values: { "purchase_checkout.resource": [UPPER, LOWER, MIXED] },
+      references: { offering_ref: [UPPER, LOWER, MIXED] },
     });
     expect(decision.result).toBe("allowed");
     expect(store.keys().filter((key) => key.includes("purchase_checkout.resource")).length).toBe(1);
