@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-170
 title: Test Specification
-version: 2.3.0
+version: 2.4.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -1155,6 +1155,7 @@ Test:
 - **購入不成立の要求が共有商品枠を消費しない**（`SEC-ABU-029`）: 認証済みの5主体が、購入不成立になる数量や未知のUUID（1 requestで50件）を指定したcartを連投しても、実在する商品の段階3counterは変化せず、その後の正規購入は `429` にならない。未知のUUIDでRedisのcounter keyは増えない。全対象が購入可能と判定された場合だけ段階3が記録される。事前確認が購入可能でTransactionが失敗した場合は、段階3が記録されたままである。事前確認が購入不可の場合、Transactionが権威的な `409`（`item_failures`）を返す。事前確認はOrder / Allocation / Hold / counterを書かず、lockも取らない
 - **UUIDの表記揺れ**（`SEC-ABU-015`）: 同じUUIDの大文字・小文字・混在の `offering_ref` / `goods_ref` / `slot_ref` / `order_ref` / `goods_item_ref` が、同じcounter keyを消費し、共有上限が分裂しない。cartでも、大文字小文字だけが異なる同一kind＋参照の重複は `400 VALIDATION_FAILED` になる
 - **無効JWTの署名検証の負荷**（`SEC-ABU-033`）: 構造が不正なtoken（長さ超過、区間数不正、許可されない `alg`、`kid` 欠落、`iss` 不一致、期限切れ）は、署名検証を1回も実行せずguardに数えられる。構造が正しく署名が無効なtokenを大量に送ると、そのIPの署名検証の実行数は、guardのlimitと、process全体で毎秒50回の制限枠までに収まり、枠が尽きている間は署名検証を行わず `429`（`Retry-After: 1`）となり、guardに数えない。失敗数がlimitに達していないIPの有効tokenは通常枠で検証され、影響を受けない。署名検証の実行回数を計測して検証する
+- **並行する署名検証**（`SEC-ABU-033`）: guardが空の同一IPから構造が正しく署名が無効なtokenを200件並行送信しても、通常枠の進行中検証は最大1件/IP/processで、残りは毎秒50回の共有制限枠を消費する。通常枠を占有した後のguard再読取りが飽和を返す場合は制限枠へ移り、判定不能なら503となる。通常枠の占有は成功・無効tokenのguard評価完了・認証基盤障害・store障害で解放される。guard対象classを横断して同じIPの通常枠を共有し、別IPの通常枠を妨げない。API層と実Redisで検証する。
 - **identifier ruleが他IPの本人を妨害しない**（`SEC-ABU-024`）: 攻撃者のIP Aが、被害者のemailを指定した `auth_form_proxy` のPOSTを5回送って `429` になった後も、別のIP Bからの被害者本人の同じemailのPOST（ログイン、OTP、password reset）は `429` にならずProviderへ中継される。IP Aは同じemailでは `429` のままで、IP Aから別のemailを指定したPOSTはidentifier ruleでは拒否されない（per-IP ruleは別に評価される）。同一IP内の同じemailは同じ枠を共有する。identifierを取り出せないrequestはidentifier ruleだけが省略される
 - **IP上限超過中のslow bodyが読取りを占有しない**（`SEC-ABU-031`）: IPのper-IP ruleが超過している間、そのIPから本文を送信し切らないPOSTを並行に大量に送っても、bodyは読み取られず、body読取りのslotは消費されず、即座に `429` が返り接続が閉じる。IP上限内のIPでは、同時読取りがIPごとに3件、またはprocess全体で256件を超えるrequestは `429`（`Retry-After: 1`）になり、bodyを読まない。この拒否はrate limit storeを呼ばず、`rule_category=concurrency` の `rejected` として観測される。slotは応答完了・打切り・接続切断で必ず解放される。同一IPからの正規の同時ログイン（上限内）は拒否されない
 - **`auth_form_proxy` の早期拒否は接続を閉じる**（`SEC-ABU-031`）: Client IPを導出できない `503`、rate limitの構成が欠けている `503`、段階1の `429` / `503` のいずれも、bodyを読まず `Connection: close` で応答する

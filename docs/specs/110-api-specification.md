@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-110
 title: API Specification
-version: 2.3.0
+version: 2.4.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -546,7 +546,7 @@ rate limit（`SPEC-140` Part XIII）は上記の番号付き手順に次の位�
 |---|---|
 | 手順1の直後、手順2の前（段階1） | route / methodからclassを確定し、per-IP、webhook source IP、`public_read` のglobalを評価する（`SEC-ABU-017`）。Webhook classのglobal rule、`auth_form_proxy` のidentifier ruleは含まない。guard対象classはguard counterを読み取るだけで、記録も拒否もしない（`SEC-ABU-021`）。`auth_form_proxy` のbody読取りは、この評価がadmitしたrequestだけが行う（`SEC-ABU-031`） |
 | `auth_form_proxy` のbody読取り後、Providerへの中継の前（段階1b） | (source IP, 正規化済みlogin identifier) の組を評価する（`SEC-ABU-024`） |
-| 手順2でtokenの構造検査または署名検証に失敗した直後 | 該当するAuthentication-failure guardを1回の評価として評価する。上限内なら1件を記録して `401`、上限に達していれば記録せず `429` を返す（`SEC-ABU-020` / `SEC-ABU-021`）。token検証に成功したrequestは、guardへ記録せず、guardの状態を理由に拒否されない。署名検証は検証枠の中で行い、失敗数が上限に達したIPのtokenは制限枠で検証される（`SEC-ABU-033`） |
+| 手順2でtokenの構造検査または署名検証に失敗した直後 | 該当するAuthentication-failure guardを1回の評価として評価する。上限内なら1件を記録して `401`、上限に達していれば記録せず `429` を返す（`SEC-ABU-020` / `SEC-ABU-021`）。token検証に成功したrequestは、guardへ記録せず、guardの状態を理由に拒否されない。署名検証は検証枠の中で行い、失敗数が上限に達したIP、または同じIPの通常枠検証が進行中のtokenは制限枠で検証される。通常枠の占有とguard再読取り・解放は `SEC-ABU-033` に従う |
 | 手順2の成功後、手順3の前（段階2） | per-auth-subject / per-staff-subject / per-admin-subjectを評価する |
 | Webhookの署名検証の成功後、DB accessとReceipt作成の前（段階2） | webhook classのglobal ruleを評価する（`SEC-ABU-030`）。無効署名のrequestはglobal counterを消費しない |
 | 購入開始（`API-PUR-CART-001`、`API-PUR-ENTRY-001`、`API-PUR-GDS-001`、`API-PUR-KRK-001`）のみ。手順5の後、段階3の前 | 読取り専用の購入可否の事前確認（`API-PUR-ELG-001` と同じ判定。書込み・lockなし）。全対象が購入可能な場合だけ段階3を評価し、1つでも不可なら段階3を評価せず手順8のTransactionへ進む（`SEC-ABU-029`） |
