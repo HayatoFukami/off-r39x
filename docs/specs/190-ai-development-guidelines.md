@@ -399,13 +399,13 @@ rate limitのControlは `SPEC-140` Part XIII、評価位置と割当は `SPEC-11
 
 **DEV-RLM-004:** Class IDは単一のregistry（コード内のconst）を正とし、canonical ceiling、`RATE_LIMIT_CONFIG` のZod schema、Operation→class割当、metric label値が同じregistryから導出される。registryの内容が `SPEC-140` §68・`SPEC-110` §56.1と一致することはtestで検証する（`TST-RLM-006〜007`）。
 
-**DEV-RLM-005:** route / Operationの登録型はrate limit classを必須とし、classのないOperationを型レベルで登録できないようにする（`API-RLC-001`）。
+**DEV-RLM-005:** route / Operationの登録型はrate limit classを必須とし、classのないOperationを型レベルで登録できないようにする（`API-RLC-001`）。resource ruleを持つclassのOperationは、`API-RLC-006` / `API-RLC-007` の段階3のresource参照（参照を持たない場合はその旨）も登録型の必須項目とする。
 
 **DEV-RLM-006:** rate limit portが例外を投げた場合、またはstoreが応答しない場合は、catchして処理を続行せず、`SPEC-110` §21の `503 TEMPORARY_UNAVAILABLE` へmapする。rate limitを無効化するenvironment flag、bypass header、debug用skipを追加しない。fault injectionはTestのDI経由だけで行い、Productionのenvironmentやrouteから設定できない（`TST-FLT-002`）。
 
 **DEV-RLM-007:** counter key、IP、Auth Subject、Email、QR digest、resource referenceをlog、metric label、trace attribute、error responseへ出さない（`OBS-SEC-007`）。
 
-**DEV-RLM-008:** 実Redisを使うTestは `TEST_REDIS_URL` を必須とし、未設定ならskipではなくfailする（`TST-RLM-001`）。
+**DEV-RLM-008:** 実Redisを使うTestは `TEST_REDIS_URL` を必須とし、未設定ならskipではなくfailする（`TST-RLM-001`）。groupの割当は `TST-RLM-010` に従う（新しいgroupを定義しない）。
 
 ## 16. Correlation / idempotency / webhook
 
