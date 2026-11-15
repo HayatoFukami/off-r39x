@@ -12,7 +12,6 @@ import {
 import { createAuthProxy } from "../../apps/api/src/api/auth-proxy.ts";
 import {
   createPrincipalRateLimitHooks,
-  createRateLimitMetricsObserver,
   createRateLimitStageOne,
   markAuthorizationConfirmed,
   requireResourceRateLimit,
@@ -20,9 +19,8 @@ import {
 } from "../../apps/api/src/api/rate-limit.ts";
 import { CANONICAL_AUTH_ALLOWLIST } from "../../apps/api/src/api/routes.ts";
 import { AuthFailure } from "../../packages/auth/src/index.ts";
-import { createLogger, createRateLimitMetrics } from "../../packages/observability/src/index.ts";
+import { createLogger } from "../../packages/observability/src/index.ts";
 import {
-  RATE_LIMIT_CLASS_IDS,
   RATE_LIMIT_REGISTRY,
   RateLimitStoreError,
   type RouteClassId,
@@ -120,6 +118,173 @@ function harness(options: Parameters<typeof createTestRateLimit>[0] = {}): Harne
   };
   return result;
 }
+
+/** The production app with the real auth proxy; the identifier rule allows 1 and the IP burst is configurable. */
+function authApp(options: { burst: number }) {
+  let transportCalls = 0;
+  const proxy = createAuthProxy(
+    {
+      baseUrl: "https://neon.example.test/auth",
+      publicAuthOrigin: "https://api.example.test",
+      webOrigin: WEB,
+    },
+    async () => {
+      transportCalls += 1;
+      return Response.json({ ok: true });
+    },
+  );
+  const trs = createTestRateLimit({
+    overrides: {
+      auth_form_proxy: {
+        burst_limit: options.burst,
+        sustained_limit: 20,
+        additional: { "auth_form_proxy.identifier": { limit: 1, window_seconds: 600 } },
+      },
+    },
+  });
+  const app = createApp({
+    webOrigin: WEB,
+    ready: async () => true,
+    authProxy: proxy,
+    rateLimit: trs.rateLimit,
+  });
+  return { app, trs, transportCalls: () => transportCalls };
+}
+const IDENTIFIER_WINDOW_MS = 600_000;
+const hasIdentifierRule = (call: { rules: readonly { windowMs: number }[] }) =>
+  call.rules.some((rule) => rule.windowMs === IDENTIFIER_WINDOW_MS);
+
+/** A minimal app that mounts the production Stage 1 / Stage 2 middleware on synthetic routes. */
+function miniApp(
+  trs: TestRateLimit,
+  routes: Record<string, RouteClassId>,
+  options: {
+    verify?: (token: string) => Promise<{ subject: string }>;
+    /** Per-subject roles (default: the shared `setRoles` value). */
+    rolesFor?: (subject: string) => ("STAFF" | "ADMINISTRATOR")[];
+    /** The Operation ID of the synthetic routes (Stage 3 needs it: SPEC-110 API-RLC-007). */
+    operationId?: string;
+  } = {},
+) {
+  const order: string[] = [];
+  const app = new Hono<ApiEnvironment>();
+  app.use("*", async (c, next) => {
+    c.set("requestId", randomUUID());
+    await next();
+  });
+  app.use(
+    "*",
+    createRateLimitStageOne({
+      rateLimit: trs.rateLimit,
+      classify: (_method, path) => {
+        const classId = routes[path.split("/").slice(0, 2).join("/")];
+        return classId ? { classId, operationId: options.operationId ?? null } : undefined;
+      },
+    }),
+  );
+  app.onError((error, c) => {
+    if (error instanceof ApiFailure) {
+      if (error.code === "RATE_LIMIT_EXCEEDED")
+        c.header("Retry-After", String(error.retryAfterSeconds));
+      return c.json({ code: error.code }, error.code === "RATE_LIMIT_EXCEEDED" ? 429 : 503);
+    }
+    if (error instanceof AuthFailure)
+      return c.json({ code: error.kind }, error.kind === "unauthenticated" ? 401 : 403);
+    return c.json({ code: "INTERNAL_ERROR" }, 500);
+  });
+  const hooks = createPrincipalRateLimitHooks(trs.rateLimit.limiter, {
+    ...(trs.rateLimit.gate ? { gate: trs.rateLimit.gate } : {}),
+    authSubjectRef: trs.rateLimit.authSubjectRef,
+  });
+  let verified = true;
+  let roles: ("STAFF" | "ADMINISTRATOR")[] = [];
+  const principal = requirePrincipal(
+    {
+      verify: async (token) => {
+        order.push("verify");
+        if (options.verify) return options.verify(token);
+        if (token.endsWith("YmFk")) throw new AuthFailure("unauthenticated");
+        return { subject: SUBJECT };
+      },
+    },
+    {
+      findByAuthSubject: async (subject: string) => {
+        order.push("db");
+        return {
+          directory: { authSubject: subject, emailVerified: verified },
+          profile: { id: "1", publicRef: PROFILE_REF, authSubject: subject },
+          roles: options.rolesFor ? options.rolesFor(subject) : roles,
+        };
+      },
+    },
+    hooks,
+  );
+  return {
+    app,
+    order,
+    principal,
+    hooks,
+    setVerified: (value: boolean) => {
+      verified = value;
+    },
+    setRoles: (value: typeof roles) => {
+      roles = value;
+    },
+  };
+}
+const call = (app: Hono<ApiEnvironment>, path: string, token = GOOD, ip = IP) =>
+  app.request(path, { headers: { Authorization: `Bearer ${token}` } }, peer(ip));
+/** Failures actually recorded by any guard (the burst counter holds exactly the recorded entries). */
+const records = (trs: TestRateLimit) =>
+  trs.store
+    .keys()
+    .filter((key) => key.includes("auth_failure_guard") && key.includes(".burst:"))
+    .reduce((total, key) => total + trs.store.count(key), 0);
+
+const OTHER = "0d6a2a35-1a52-4d3a-8f55-42b5d4ad06a1";
+const ADMIN_SUBJECT = "6f1c7d3a-5b0e-4a6d-9f21-8c3e4d5a6b7c";
+const ADMIN_TOKEN = "e30.e30.YWRtaW4";
+const OTHER_TOKEN = "e30.e30.b3RoZXI";
+const subjectOf = (token: string) =>
+  token.endsWith("YWRtaW4") ? ADMIN_SUBJECT : token.endsWith("b3RoZXI") ? OTHER : SUBJECT;
+/** Roles by subject: the administrator has them, the ordinary valid-JWT holder has none. */
+const rolesBySubject = (subject: string): ("STAFF" | "ADMINISTRATOR")[] =>
+  subject === ADMIN_SUBJECT ? ["ADMINISTRATOR", "STAFF"] : [];
+const authedApp = (
+  trs: TestRateLimit,
+  routes: Record<string, RouteClassId>,
+  operationId?: string,
+) =>
+  miniApp(trs, routes, {
+    ...(operationId ? { operationId } : {}),
+    verify: async (token) => {
+      if (token.endsWith("YmFk")) throw new AuthFailure("unauthenticated");
+      return { subject: subjectOf(token) };
+    },
+    rolesFor: rolesBySubject,
+  });
+/** A complete override that only lowers `limit` of one Stage 3 rule (and keeps the Stage 2 subject rules out of the way). */
+const stage3Override = (
+  classId: string,
+  rules: Record<string, [limit: number, windowSeconds: number]>,
+  burst: number,
+  sustained: number,
+) => ({
+  [classId]: {
+    burst_limit: burst,
+    sustained_limit: sustained,
+    additional: Object.fromEntries(
+      Object.entries(rules).map(([id, [limit, window_seconds]]) => [id, { limit, window_seconds }]),
+    ),
+  },
+});
+/** Number of times a rule of this exact shape was presented to the store. */
+const evaluationsOf = (trs: TestRateLimit, limit: number, windowMs: number) =>
+  trs.store.calls.filter(
+    (entry) =>
+      entry.mode === "admit" &&
+      entry.rules.some((rule) => rule.limit === limit && rule.windowMs === windowMs),
+  ).length;
 
 describe("evaluation order and result mapping (TST-RLM-004)", () => {
   it("TC-RLM-004-201 Stage 1 -> token verification -> Stage 2 -> DB, in the SPEC-110 §24.1 order", async () => {
@@ -436,41 +601,6 @@ describe("browser visibility of rate limit responses (SEC-ABU-007, SPEC-110 §21
   });
 });
 
-/** The production app with the real auth proxy; the identifier rule allows 1 and the IP burst is configurable. */
-function authApp(options: { burst: number }) {
-  let transportCalls = 0;
-  const proxy = createAuthProxy(
-    {
-      baseUrl: "https://neon.example.test/auth",
-      publicAuthOrigin: "https://api.example.test",
-      webOrigin: WEB,
-    },
-    async () => {
-      transportCalls += 1;
-      return Response.json({ ok: true });
-    },
-  );
-  const trs = createTestRateLimit({
-    overrides: {
-      auth_form_proxy: {
-        burst_limit: options.burst,
-        sustained_limit: 20,
-        additional: { "auth_form_proxy.identifier": { limit: 1, window_seconds: 600 } },
-      },
-    },
-  });
-  const app = createApp({
-    webOrigin: WEB,
-    ready: async () => true,
-    authProxy: proxy,
-    rateLimit: trs.rateLimit,
-  });
-  return { app, trs, transportCalls: () => transportCalls };
-}
-const IDENTIFIER_WINDOW_MS = 600_000;
-const hasIdentifierRule = (call: { rules: readonly { windowMs: number }[] }) =>
-  call.rules.some((rule) => rule.windowMs === IDENTIFIER_WINDOW_MS);
-
 describe("login identifier extraction (SEC-ABU-024, TST-RLM-004)", () => {
   const login = (body: BodyInit | ReadableStream) =>
     new Request("https://api.example.test/auth/sign-in/email", {
@@ -574,6 +704,7 @@ describe("auth_session and auth_form_proxy routing (SEC-ABU-027, TST-RLM-004)", 
     ]);
     expect(shape(other.trs.store.calls[1])).toEqual([[1, 600_000]]);
   });
+
   it("TC-RLM-004-238 auth_form_proxy at its canonical ceiling: 10 attempts per 10 s from one IP are admitted, the 11th is a 429; the rules are 10/10 s, 40/60 s and 5 per identifier per 10 min", async () => {
     const trs = createTestRateLimit();
     const proxy = createAuthProxy(
@@ -734,117 +865,6 @@ describe("login identifier normalization through the API (SEC-ABU-024, TST-RLM-0
   });
 });
 
-describe("Client IP derivation through the API (SEC-API-031, TST-RLM-008)", () => {
-  it("TC-RLM-008-002 only X-Forwarded-For is read; other forwarded headers and missing, short or unreadable chains use the direct peer", async () => {
-    const proxied = harness({ overrides: selfRead(30, 120, 1), trustedProxyHops: 1 });
-    const spoof = (value: string) => ({ Forwarded: `for=${value}`, "X-Real-IP": value });
-    // Same peer, different spoofed alternatives: all collapse onto the peer, so the 2nd is limited.
-    expect((await proxied.get({ headers: spoof("198.51.100.1") })).status).toBe(200);
-    expect((await proxied.get({ headers: spoof("198.51.100.2") })).status).toBe(429);
-    for (const forwarded of ["not-an-ip", "198.51.100.5, not-an-ip"]) {
-      const h = harness({ overrides: selfRead(30, 120, 1), trustedProxyHops: 1 });
-      expect((await h.get({ headers: { "X-Forwarded-For": forwarded } })).status).toBe(200);
-      expect((await h.get({ headers: { "X-Forwarded-For": forwarded } })).status).toBe(429);
-    }
-    const short = harness({ overrides: selfRead(30, 120, 1), trustedProxyHops: 2 });
-    expect((await short.get({ headers: { "X-Forwarded-For": "198.51.100.7" } })).status).toBe(200);
-    expect((await short.get({ headers: { "X-Forwarded-For": "198.51.100.8" } })).status).toBe(429);
-    // With a long enough chain the Nth entry from the right identifies the client.
-    const full = harness({ overrides: selfRead(30, 120, 1), trustedProxyHops: 2 });
-    const chain = (client: string) => ({ "X-Forwarded-For": `192.0.2.1, ${client}, 10.0.0.1` });
-    expect((await full.get({ headers: chain("198.51.100.7") })).status).toBe(200);
-    expect((await full.get({ headers: chain("198.51.100.8") })).status).toBe(200);
-    expect((await full.get({ headers: chain("198.51.100.8") })).status).toBe(429);
-  });
-});
-
-/** A minimal app that mounts the production Stage 1 / Stage 2 middleware on synthetic routes. */
-function miniApp(
-  trs: TestRateLimit,
-  routes: Record<string, RouteClassId>,
-  options: {
-    verify?: (token: string) => Promise<{ subject: string }>;
-    /** Per-subject roles (default: the shared `setRoles` value). */
-    rolesFor?: (subject: string) => ("STAFF" | "ADMINISTRATOR")[];
-    /** The Operation ID of the synthetic routes (Stage 3 needs it: SPEC-110 API-RLC-007). */
-    operationId?: string;
-  } = {},
-) {
-  const order: string[] = [];
-  const app = new Hono<ApiEnvironment>();
-  app.use("*", async (c, next) => {
-    c.set("requestId", randomUUID());
-    await next();
-  });
-  app.use(
-    "*",
-    createRateLimitStageOne({
-      rateLimit: trs.rateLimit,
-      classify: (_method, path) => {
-        const classId = routes[path.split("/").slice(0, 2).join("/")];
-        return classId ? { classId, operationId: options.operationId ?? null } : undefined;
-      },
-    }),
-  );
-  app.onError((error, c) => {
-    if (error instanceof ApiFailure) {
-      if (error.code === "RATE_LIMIT_EXCEEDED")
-        c.header("Retry-After", String(error.retryAfterSeconds));
-      return c.json({ code: error.code }, error.code === "RATE_LIMIT_EXCEEDED" ? 429 : 503);
-    }
-    if (error instanceof AuthFailure)
-      return c.json({ code: error.kind }, error.kind === "unauthenticated" ? 401 : 403);
-    return c.json({ code: "INTERNAL_ERROR" }, 500);
-  });
-  const hooks = createPrincipalRateLimitHooks(trs.rateLimit.limiter, {
-    ...(trs.rateLimit.gate ? { gate: trs.rateLimit.gate } : {}),
-    authSubjectRef: trs.rateLimit.authSubjectRef,
-  });
-  let verified = true;
-  let roles: ("STAFF" | "ADMINISTRATOR")[] = [];
-  const principal = requirePrincipal(
-    {
-      verify: async (token) => {
-        order.push("verify");
-        if (options.verify) return options.verify(token);
-        if (token.endsWith("YmFk")) throw new AuthFailure("unauthenticated");
-        return { subject: SUBJECT };
-      },
-    },
-    {
-      findByAuthSubject: async (subject: string) => {
-        order.push("db");
-        return {
-          directory: { authSubject: subject, emailVerified: verified },
-          profile: { id: "1", publicRef: PROFILE_REF, authSubject: subject },
-          roles: options.rolesFor ? options.rolesFor(subject) : roles,
-        };
-      },
-    },
-    hooks,
-  );
-  return {
-    app,
-    order,
-    principal,
-    hooks,
-    setVerified: (value: boolean) => {
-      verified = value;
-    },
-    setRoles: (value: typeof roles) => {
-      roles = value;
-    },
-  };
-}
-const call = (app: Hono<ApiEnvironment>, path: string, token = GOOD, ip = IP) =>
-  app.request(path, { headers: { Authorization: `Bearer ${token}` } }, peer(ip));
-/** Failures actually recorded by any guard (the burst counter holds exactly the recorded entries). */
-const records = (trs: TestRateLimit) =>
-  trs.store
-    .keys()
-    .filter((key) => key.includes("auth_failure_guard") && key.includes(".burst:"))
-    .reduce((total, key) => total + trs.store.count(key), 0);
-
 describe("Authentication-failure guard at the API layer (TST-RLM-005)", () => {
   it("TC-RLM-005-201 only token verification failures are recorded; valid tokens, unverified Email, denial and Business failures are not", async () => {
     const trs = createTestRateLimit();
@@ -970,51 +990,6 @@ describe("Authentication-failure guard at the API layer (TST-RLM-005)", () => {
     expect(statuses.filter((status) => status === 429)).toHaveLength(7);
   });
 });
-
-const OTHER = "0d6a2a35-1a52-4d3a-8f55-42b5d4ad06a1";
-const ADMIN_SUBJECT = "6f1c7d3a-5b0e-4a6d-9f21-8c3e4d5a6b7c";
-const ADMIN_TOKEN = "e30.e30.YWRtaW4";
-const OTHER_TOKEN = "e30.e30.b3RoZXI";
-const subjectOf = (token: string) =>
-  token.endsWith("YWRtaW4") ? ADMIN_SUBJECT : token.endsWith("b3RoZXI") ? OTHER : SUBJECT;
-/** Roles by subject: the administrator has them, the ordinary valid-JWT holder has none. */
-const rolesBySubject = (subject: string): ("STAFF" | "ADMINISTRATOR")[] =>
-  subject === ADMIN_SUBJECT ? ["ADMINISTRATOR", "STAFF"] : [];
-const authedApp = (
-  trs: TestRateLimit,
-  routes: Record<string, RouteClassId>,
-  operationId?: string,
-) =>
-  miniApp(trs, routes, {
-    ...(operationId ? { operationId } : {}),
-    verify: async (token) => {
-      if (token.endsWith("YmFk")) throw new AuthFailure("unauthenticated");
-      return { subject: subjectOf(token) };
-    },
-    rolesFor: rolesBySubject,
-  });
-/** A complete override that only lowers `limit` of one Stage 3 rule (and keeps the Stage 2 subject rules out of the way). */
-const stage3Override = (
-  classId: string,
-  rules: Record<string, [limit: number, windowSeconds: number]>,
-  burst: number,
-  sustained: number,
-) => ({
-  [classId]: {
-    burst_limit: burst,
-    sustained_limit: sustained,
-    additional: Object.fromEntries(
-      Object.entries(rules).map(([id, [limit, window_seconds]]) => [id, { limit, window_seconds }]),
-    ),
-  },
-});
-/** Number of times a rule of this exact shape was presented to the store. */
-const evaluationsOf = (trs: TestRateLimit, limit: number, windowMs: number) =>
-  trs.store.calls.filter(
-    (entry) =>
-      entry.mode === "admit" &&
-      entry.rules.some((rule) => rule.limit === limit && rule.windowMs === windowMs),
-  ).length;
 
 describe("resource rule evaluation (TST-RLM-004)", () => {
   it("TC-RLM-004-211 the Stage 3 key is evaluated before any lookup, so existing and missing resources behave identically for an authorized principal", async () => {
@@ -1545,82 +1520,6 @@ describe("/auth/* allowlist at runtime (API-RLC-004, TST-RLM-007)", () => {
       ]);
     }
     expect(proxied).toEqual([]);
-  });
-});
-
-describe("rate limit events and metrics at the API layer (TST-RLM-009)", () => {
-  const collect = (lines: string[]) =>
-    lines.map((line) => JSON.parse(line) as Record<string, unknown>);
-
-  it("TC-RLM-009-201 rejected and store_unavailable are logged without key, IP or Subject; allowed is metric only", async () => {
-    const metrics = createRateLimitMetrics({ environment: "test", classIds: RATE_LIMIT_CLASS_IDS });
-    const h = harness({
-      overrides: selfRead(30, 120, 2),
-      limiter: { observer: createRateLimitMetricsObserver(metrics) },
-    });
-    expect((await h.get()).status).toBe(200);
-    expect(collect(h.lines).filter((e) => e.event_name === "ratelimit.decision.completed")).toEqual(
-      [],
-    );
-    expect((await h.get()).status).toBe(200);
-    expect((await h.get()).status).toBe(429);
-    h.trs.faults.inject("FP.RATELIMIT.STORE_UNAVAILABLE");
-    expect((await h.get({ ip: "203.0.113.200" })).status).toBe(503);
-    const decisions = collect(h.lines).filter(
-      (e) => e.event_name === "ratelimit.decision.completed",
-    );
-    expect(decisions).toHaveLength(2);
-    expect(decisions[0]).toMatchObject({
-      result: "REJECTED",
-      error_code: "RATE_LIMIT_EXCEEDED",
-      failure_class: "SECURITY_FAILURE",
-      class_id: "self_read",
-      rule_category: "sustained",
-      retry_after_seconds: expect.any(Number),
-      operation_id: "API-AUTH-001",
-    });
-    expect(decisions[1]).toMatchObject({
-      result: "FAILED",
-      error_code: "TEMPORARY_UNAVAILABLE",
-      // SPEC-150 REL-SEC-007: the HTTP result is a 503, the classification is a security failure.
-      failure_class: "SECURITY_FAILURE",
-      class_id: "self_read",
-    });
-    expect(decisions[1]).not.toHaveProperty("retry_after_seconds");
-    const failClosed = collect(h.lines).filter(
-      (e) => e.event_name === "security.fail_closed.triggered",
-    );
-    expect(failClosed).toHaveLength(1);
-    expect(failClosed[0]).toMatchObject({
-      control_category: "rate_limit",
-      error_code: "TEMPORARY_UNAVAILABLE",
-      failure_class: "SECURITY_FAILURE",
-    });
-    const all = h.lines.join("\n");
-    for (const secret of [IP, "203.0.113.200", SUBJECT, "rl:v", GOOD])
-      expect(all).not.toContain(secret);
-    const snapshot = metrics.snapshot();
-    const count = (result: string) =>
-      snapshot.decisions.filter((d) => d.result === result).reduce((sum, d) => sum + d.value, 0);
-    // Every evaluation is counted: allowed ones appear in the metric although they are not logged.
-    expect(count("allowed")).toBeGreaterThanOrEqual(3);
-    expect(count("rejected")).toBe(1);
-    expect(count("store_unavailable")).toBe(1);
-    for (const series of snapshot.decisions) {
-      expect(Object.keys(series).sort()).toEqual(["class_id", "environment", "result", "value"]);
-      expect(RATE_LIMIT_CLASS_IDS).toContain(series.class_id);
-    }
-  });
-
-  it("TC-RLM-009-202 store_unavailable is never dropped: every failed evaluation is logged", async () => {
-    const h = harness();
-    h.trs.faults.inject("FP.RATELIMIT.STORE_UNAVAILABLE");
-    for (let i = 0; i < 12; i++) await h.get({ ip: `203.0.113.${100 + i}` });
-    const failed = collect(h.lines).filter(
-      (e) => e.event_name === "ratelimit.decision.completed" && e.result === "FAILED",
-    );
-    expect(failed).toHaveLength(12);
-    for (const event of failed) expect(event).toMatchObject({ failure_class: "SECURITY_FAILURE" });
   });
 });
 

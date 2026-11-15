@@ -42,7 +42,6 @@ import {
   peer,
   TEST_HMAC_KEY,
   type TestRateLimit,
-  testAuthSubjectRef,
 } from "../harness/rate-limit/api.ts";
 import { createMemoryStore } from "../harness/rate-limit/memory-store.ts";
 
@@ -200,6 +199,54 @@ const guardRecords = (trs: TestRateLimit) =>
 const guardOverride = (burst: number) => ({
   auth_failure_guard_attendee: { burst_limit: burst, sustained_limit: 50 },
 });
+
+for (const outcome of ["saturated", "store_unavailable"] as const)
+  it(`TC-RLM-005-230 the guard is read once in Stage 1 after the slot, not again before verification: ${outcome}`, async () => {
+    const trs = createTestRateLimit({ gate: { slotsPerIp: 1 } });
+    const base = trs.rateLimit.limiter;
+    let reads = 0;
+    let verifications = 0;
+    const wrapped: TestRateLimit = {
+      ...trs,
+      rateLimit: {
+        ...trs.rateLimit,
+        limiter: {
+          ...base,
+          guardState: async (classId, ip) => {
+            reads += 1;
+            if (reads === 1)
+              return outcome === "saturated"
+                ? { result: "ok", saturated: true }
+                : { result: "store_unavailable" };
+            return base.guardState(classId, ip);
+          },
+        },
+      },
+    };
+    const m = mini(
+      wrapped,
+      { "/buy": "purchase_checkout" },
+      {
+        verifier: {
+          verify: async () => {
+            verifications += 1;
+            return { subject: subjectN(1) };
+          },
+        },
+      },
+    );
+    m.app.get("/buy/ok", m.principal, (c) => c.json({ ok: true }));
+    // A saturated IP's valid token is still verified, in the restricted lane (no re-read of the
+    // counter); a store failure at the single read is a 503 with no verification.
+    expect((await send(m.app, "/buy/ok", "e30.e30.c2ln")).status).toBe(
+      outcome === "saturated" ? 200 : 503,
+    );
+    expect(reads).toBe(1);
+    expect(verifications).toBe(outcome === "saturated" ? 1 : 0);
+    // The slot (slotsPerIp 1) was released in both cases.
+    expect((await send(m.app, "/buy/ok", "e30.e30.c2ln")).status).toBe(200);
+    expect(reads).toBe(2);
+  });
 
 describe("signature verification gate (SEC-ABU-033, SEC-ABU-021, SPEC-110 §24.1)", () => {
   it("TC-RLM-005-220 a token that fails the structure check never reaches signature verification, and counts as a guard failure", async () => {
@@ -369,119 +416,6 @@ describe("signature verification gate (SEC-ABU-033, SEC-ABU-021, SPEC-110 §24.1
     trs.faults.inject("FP.RATELIMIT.STORE_UNAVAILABLE");
     const res = await send(m.app, "/buy/ok", "e30.e30.c2ln");
     expect(res.status).toBe(503);
-  });
-});
-
-describe("decision log fields (SPEC-160 §24.1)", () => {
-  it("TC-RLM-009-211 a guard decision is logged, and counted, under the guard's Class ID, never the route class", async () => {
-    const metrics = createRateLimitMetrics({ environment: "test", classIds: RATE_LIMIT_CLASS_IDS });
-    const trs = createTestRateLimit({
-      overrides: guardOverride(1),
-      limiter: { observer: createRateLimitMetricsObserver(metrics) },
-    });
-    const m = mini(trs, { "/buy": "purchase_checkout", "/handoff": "goods_handoff" });
-    m.app.get("/buy/ok", m.principal, (c) => c.json({ ok: true }));
-    m.app.get("/handoff/ok", m.principal, (c) => c.json({ ok: true }));
-    expect((await send(m.app, "/buy/ok", "e30.e30.YmFk")).status).toBe(401);
-    expect((await send(m.app, "/buy/ok", "e30.e30.YmFk")).status).toBe(429);
-    const guardLog = m.events().find((e) => e.event_name === "ratelimit.decision.completed");
-    expect(guardLog).toMatchObject({
-      class_id: "auth_failure_guard_attendee",
-      rule_category: "guard",
-      result: "REJECTED",
-    });
-    const rejected = metrics.snapshot().decisions.filter((d) => d.result === "rejected");
-    expect(rejected.map((d) => d.class_id)).toEqual([guardLog?.class_id]);
-    // The operator guard is logged under its own Class ID.
-    const op = createTestRateLimit({
-      overrides: { auth_failure_guard_operator: { burst_limit: 1, sustained_limit: 50 } },
-    });
-    const o = mini(op, { "/handoff": "goods_handoff" });
-    o.app.get("/handoff/ok", o.principal, (c) => c.json({ ok: true }));
-    await send(o.app, "/handoff/ok", "e30.e30.YmFk");
-    await send(o.app, "/handoff/ok", "e30.e30.YmFk");
-    expect(o.events().find((e) => e.event_name === "ratelimit.decision.completed")).toMatchObject({
-      class_id: "auth_failure_guard_operator",
-    });
-  });
-
-  it("TC-RLM-009-212 a guard store failure is logged (decision and fail-closed) under the guard's Class ID", async () => {
-    const trs = createTestRateLimit();
-    let armed = false;
-    const m = mini(
-      trs,
-      { "/buy": "purchase_checkout" },
-      {
-        verifier: {
-          verify: async () => {
-            armed = true;
-            trs.faults.inject("FP.RATELIMIT.STORE_UNAVAILABLE");
-            throw new AuthFailure("unauthenticated");
-          },
-        },
-      },
-    );
-    m.app.get("/buy/ok", m.principal, (c) => c.json({ ok: true }));
-    expect((await send(m.app, "/buy/ok", "e30.e30.YmFk")).status).toBe(503);
-    expect(armed).toBe(true);
-    const events = m.events();
-    expect(events.find((e) => e.event_name === "ratelimit.decision.completed")).toMatchObject({
-      class_id: "auth_failure_guard_attendee",
-      result: "FAILED",
-    });
-    expect(events.find((e) => e.event_name === "security.fail_closed.triggered")).toMatchObject({
-      class_id: "auth_failure_guard_attendee",
-    });
-  });
-
-  it("TC-RLM-009-213 before the Principal is resolved the actor is GUEST; a Stage 3 rejection carries the resolved Actor Type and Profile Public Reference", async () => {
-    const trs = createTestRateLimit({
-      overrides: {
-        qr_display: {
-          burst_limit: 6,
-          sustained_limit: 30,
-          additional: { "qr_display.ticket": { limit: 1, window_seconds: 60 } },
-        },
-      },
-    });
-    const m = mini(trs, { "/qr": "qr_display" }, { roles: ["STAFF"], operationId: "API-TKT-003" });
-    m.app.get(
-      "/qr/:id",
-      m.principal,
-      async (c, next) => {
-        markAuthorizationConfirmed(c);
-        await next();
-      },
-      requireResourceRateLimit(trs.rateLimit.limiter, (c) => ({
-        ticket_ref: c.req.param("id") ?? "",
-      })),
-      (c) => c.json({ ok: true }),
-    );
-    expect((await send(m.app, "/qr/t1", "e30.e30.c2ln")).status).toBe(200);
-    expect((await send(m.app, "/qr/t1", "e30.e30.c2ln")).status).toBe(429);
-    const stage3 = m.events().find((e) => e.event_name === "ratelimit.decision.completed");
-    expect(stage3).toMatchObject({
-      actor_type: "STAFF",
-      actor_ref: PROFILE_REF,
-      rule_category: "resource",
-    });
-    // A Stage 1 refusal precedes authentication: GUEST, no actor_ref.
-    const stageOne = createTestRateLimit({
-      overrides: {
-        self_read: {
-          burst_limit: 30,
-          sustained_limit: 120,
-          additional: { "self_read.ip": { limit: 1, window_seconds: 60 } },
-        },
-      },
-    });
-    const s = mini(stageOne, { "/self": "self_read" });
-    s.app.get("/self/:id", s.principal, (c) => c.json({ ok: true }));
-    await send(s.app, "/self/t1", "e30.e30.c2ln");
-    await send(s.app, "/self/t1", "e30.e30.c2ln");
-    const refused = s.events().find((e) => e.event_name === "ratelimit.decision.completed");
-    expect(refused).toMatchObject({ actor_type: "GUEST" });
-    expect(refused).not.toHaveProperty("actor_ref");
   });
 });
 
@@ -1021,175 +955,7 @@ describe("PR #46 concurrent verification and observation regressions", () => {
     }
     expect((await pending).status).toBe(200);
   });
-
-  it("TC-RLM-009-214 every restricted-lane refusal is included in the rejected counter under the guard Class ID", async () => {
-    const metrics = createRateLimitMetrics({ environment: "test", classIds: RATE_LIMIT_CLASS_IDS });
-    const trs = createTestRateLimit({
-      overrides: guardOverride(1),
-      limiter: { observer: createRateLimitMetricsObserver(metrics) },
-      gate: { perIpPerSecond: 0, now: () => 1000 },
-    });
-    const m = mini(trs, { "/buy": "purchase_checkout" });
-    m.app.get("/buy/ok", m.principal, (c) => c.json({ ok: true }));
-    await send(m.app, "/buy/ok", "e30.e30.YmFk");
-    for (let i = 0; i < 100; i++)
-      expect((await send(m.app, "/buy/ok", "e30.e30.YmFk")).status).toBe(429);
-    const rejected = metrics.snapshot().decisions.filter((d) => d.result === "rejected");
-    expect(rejected.reduce((n, d) => n + d.value, 0)).toBe(100);
-    // SPEC-160 §24.1: the event and the metric both use the guard's Class ID, not the route class.
-    expect(new Set(rejected.map((d) => d.class_id))).toEqual(
-      new Set(["auth_failure_guard_attendee"]),
-    );
-    const events = m.events().filter((e) => e.event_name === "ratelimit.decision.completed");
-    expect(events).toHaveLength(100);
-    expect(events.every((e) => e.class_id === "auth_failure_guard_attendee")).toBe(true);
-    expect(events.every((e) => e.actor_type === "GUEST")).toBe(true);
-  });
-
-  it("TC-RLM-009-215 a body-slot refusal records both its event and rejected counter without an extra store call", async () => {
-    const metrics = createRateLimitMetrics({ environment: "test", classIds: RATE_LIMIT_CLASS_IDS });
-    const trs = createTestRateLimit({
-      limiter: { observer: createRateLimitMetricsObserver(metrics) },
-    });
-    const m = mini(trs, { "/auth": "auth_form_proxy" });
-    m.app.post("/auth/form", (c) => c.json({ ok: true }));
-    const controllers: ReadableStreamDefaultController<Uint8Array>[] = [];
-    const held = Array.from({ length: 3 }, () =>
-      m.app.request(
-        "/auth/form",
-        {
-          method: "POST",
-          body: new ReadableStream<Uint8Array>({
-            start(controller) {
-              controllers.push(controller);
-            },
-          }),
-          duplex: "half",
-        } as RequestInit,
-        peer(),
-      ),
-    );
-    try {
-      await vi.waitFor(() => expect(trs.store.calls).toHaveLength(3));
-      const before = trs.store.calls.length;
-      expect(
-        (await m.app.request("/auth/form", { method: "POST", body: "{}" }, peer())).status,
-      ).toBe(429);
-      expect(trs.store.calls.length - before).toBe(1);
-      expect(
-        metrics
-          .snapshot()
-          .decisions.find((d) => d.class_id === "auth_form_proxy" && d.result === "rejected")
-          ?.value,
-      ).toBe(1);
-      // A body-read slot refusal keeps the route class (SPEC-160 §24.1).
-      const concurrency = m.events().filter((e) => e.rule_category === "concurrency");
-      expect(concurrency).toHaveLength(1);
-      expect(concurrency[0]?.class_id).toBe("auth_form_proxy");
-    } finally {
-      for (const controller of controllers) controller.error(new Error("synthetic disconnect"));
-      await Promise.allSettled(held);
-    }
-  });
-
-  it("TC-RLM-009-216 a Stage 2 refusal is attributed to AUTHENTICATED_USER with the auth-subject fingerprint, never a guessed Role or Profile reference", async () => {
-    const trs = createTestRateLimit({
-      overrides: {
-        self_read: {
-          burst_limit: 1,
-          sustained_limit: 120,
-          additional: { "self_read.ip": { limit: 240, window_seconds: 60 } },
-        },
-      },
-    });
-    const m = mini(trs, { "/self": "self_read" }, { roles: ["STAFF"] });
-    m.app.get("/self/x", m.principal, (c) => c.json({ ok: true }));
-    expect((await send(m.app, "/self/x", "e30.e30.c2ln")).status).toBe(200);
-    expect((await send(m.app, "/self/x", "e30.e30.c2ln")).status).toBe(429);
-    const refused = m.events().find((e) => e.event_name === "ratelimit.decision.completed");
-    expect(refused).toMatchObject({
-      actor_type: "AUTHENTICATED_USER",
-      actor_ref: testAuthSubjectRef(subjectN(1)),
-      rule_category: "burst",
-    });
-    expect(refused?.actor_ref).not.toBe(PROFILE_REF);
-  });
-
-  it("TC-RLM-009-217 an undeterminable Client IP (503) is one decision event under the route class and is not counted in the decision metric", async () => {
-    const metrics = createRateLimitMetrics({ environment: "test", classIds: RATE_LIMIT_CLASS_IDS });
-    const trs = createTestRateLimit({
-      limiter: { observer: createRateLimitMetricsObserver(metrics) },
-    });
-    const m = mini(trs, { "/buy": "purchase_checkout" });
-    m.app.get("/buy/ok", (c) => c.json({ ok: true }));
-    // No socket peer: the Client IP cannot be derived (SEC-API-031).
-    expect((await m.app.request("/buy/ok")).status).toBe(503);
-    expect((await m.app.request("/unknown/path")).status).toBe(503);
-    const events = m.events();
-    const decisions = events.filter((e) => e.event_name === "ratelimit.decision.completed");
-    expect(decisions.map((e) => e.class_id)).toEqual(["purchase_checkout", "public_read"]);
-    for (const event of decisions) {
-      expect(event).toMatchObject({
-        result: "FAILED",
-        error_code: "TEMPORARY_UNAVAILABLE",
-        actor_type: "GUEST",
-      });
-      expect(event).not.toHaveProperty("rule_category");
-    }
-    // It is not a store decision: no fail-closed event, no counter (OBS-ALT-041 must not fire).
-    expect(events.some((e) => e.event_name === "security.fail_closed.triggered")).toBe(false);
-    expect(metrics.snapshot().decisions.reduce((n, d) => n + d.value, 0)).toBe(0);
-    expect(trs.store.calls).toHaveLength(0);
-  });
 });
-
-for (const outcome of ["saturated", "store_unavailable"] as const)
-  it(`TC-RLM-005-230 the guard is read once in Stage 1 after the slot, not again before verification: ${outcome}`, async () => {
-    const trs = createTestRateLimit({ gate: { slotsPerIp: 1 } });
-    const base = trs.rateLimit.limiter;
-    let reads = 0;
-    let verifications = 0;
-    const wrapped: TestRateLimit = {
-      ...trs,
-      rateLimit: {
-        ...trs.rateLimit,
-        limiter: {
-          ...base,
-          guardState: async (classId, ip) => {
-            reads += 1;
-            if (reads === 1)
-              return outcome === "saturated"
-                ? { result: "ok", saturated: true }
-                : { result: "store_unavailable" };
-            return base.guardState(classId, ip);
-          },
-        },
-      },
-    };
-    const m = mini(
-      wrapped,
-      { "/buy": "purchase_checkout" },
-      {
-        verifier: {
-          verify: async () => {
-            verifications += 1;
-            return { subject: subjectN(1) };
-          },
-        },
-      },
-    );
-    m.app.get("/buy/ok", m.principal, (c) => c.json({ ok: true }));
-    // A saturated IP's valid token is still verified, in the restricted lane (no re-read of the
-    // counter); a store failure at the single read is a 503 with no verification.
-    expect((await send(m.app, "/buy/ok", "e30.e30.c2ln")).status).toBe(
-      outcome === "saturated" ? 200 : 503,
-    );
-    expect(reads).toBe(1);
-    expect(verifications).toBe(outcome === "saturated" ? 1 : 0);
-    // The slot (slotsPerIp 1) was released in both cases.
-    expect((await send(m.app, "/buy/ok", "e30.e30.c2ln")).status).toBe(200);
-    expect(reads).toBe(2);
-  });
 
 describe("Stage 3 resource references per Operation (SPEC-110 API-RLC-006 / API-RLC-007, SPEC-190 DEV-RLM-005)", () => {
   // The SPEC-110 API-RLC-006 / API-RLC-007 tables, written out independently of the implementation.

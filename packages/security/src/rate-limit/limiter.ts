@@ -408,7 +408,7 @@ export function createRateLimiter(options: RateLimiterOptions): RateLimiter {
           (item) => `${kind}\0${canonicalReference(item)}`,
         ),
       );
-      if (references.length === 0 || references.some((item) => item.endsWith(" ")))
+      if (references.length === 0 || references.some((item) => item.endsWith("\0")))
         throw new Error("Rate limit resource key is required");
       return evaluate(
         input.classId,
