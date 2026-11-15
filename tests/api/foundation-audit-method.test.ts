@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 import { createApp } from "../../apps/api/src/api/app.ts";
 import { createLogger } from "../../packages/observability/src/index.ts";
+import { createTestRateLimit, peer } from "../harness/rate-limit/api.ts";
 
 it("TC-HTTP-AUDIT-001 returns405 and Allow for known paths,404 for unknown paths", async () => {
   const app = createApp({ webOrigin: "https://web.example.test", ready: async () => true });
@@ -50,18 +51,13 @@ it("TC-RPC-AUDIT-001 public Hono RPC type is the mounted canonical principal rou
         }),
       },
     },
-    enforcement: {
-      assertAvailable: async () => {},
-      middleware: async (_c, next) => {
-        await next();
-      },
-    },
+    rateLimit: createTestRateLimit().rateLimit,
   });
   const client = hc<import("../../packages/api-contract/src/index.ts").AppType>(
     "https://api.example.test",
     {
       fetch: async (input: string | URL | Request, init?: RequestInit) =>
-        app.request(String(input), init),
+        app.request(String(input), init, peer()),
     },
   );
   const response = await client.api.v1.self.principal.$get(
@@ -99,7 +95,7 @@ it("TC-RPC-AUDIT-001 public Hono RPC type is the mounted canonical principal rou
       http_route: "/api/v1/self/principal",
     }),
   );
-  expect((await app.request("/api/v1/self/principal")).status).toBe(401);
+  expect((await app.request("/api/v1/self/principal", {}, peer())).status).toBe(401);
   const unavailable = createApp({
     webOrigin: "https://web.example.test",
     ready: async () => false,

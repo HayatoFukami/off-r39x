@@ -3,6 +3,9 @@ import { expect, it, vi } from "vitest";
 import { bootstrap } from "../../apps/api/src/bootstrap/index.ts";
 import { computeMigrationSetHash } from "../../packages/db/src/migrations.ts";
 import { installSyntheticDirectory, prepareFoundationDatabase } from "../harness/db/foundation.ts";
+import { rateLimitEnv } from "../harness/rate-limit/api.ts";
+import { withFault } from "../harness/rate-limit/faults.ts";
+import { createMemoryStore } from "../harness/rate-limit/memory-store.ts";
 
 const release = vi.hoisted(() => ({ hash: "" }));
 // Harness-only release identity and test CA. Production never reads either from
@@ -93,44 +96,68 @@ it("TC-STARTUP-AUDIT-001 actual API bootstrap moves Ready->notReady->Ready on DB
     PUBLIC_AUTH_ORIGIN: "https://api.example.test",
     ALLOWED_HOSTS: "api.example.test",
     ALLOWED_ORIGINS: "https://web.example.test",
+    ...rateLimitEnv(),
   };
-  let unavailable = false;
+  const store = withFault(createMemoryStore());
   let runtime: ReturnType<typeof bootstrap> | undefined;
   let dropped = false;
   try {
-    runtime = bootstrap(env, {
-      assertAvailable: async () => {
-        if (unavailable) throw new Error("synthetic-limiter-private");
-      },
-      middleware: async (_c, next) => {
-        await next();
-      },
-    });
+    // INF-HLT-004 / OBS-ALT-042: the store probe runs on its own timer (<= 30 s). The interval is
+    // faked here so the test does not wait; no request is sent while the store is down.
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    store.inject("FP.RATELIMIT.STORE_UNAVAILABLE");
+    runtime = bootstrap(env, { rateLimitStore: store });
     await new Promise<void>((resolve, reject) => {
       runtime?.server.once("listening", resolve);
       runtime?.server.once("error", reject);
     });
+    // SPEC-160 §42: one series per instance; this process is the only instance.
+    const storeReady = () =>
+      runtime?.rateLimitMetrics.snapshot().storeReady.map((entry) => ({
+        environment: entry.environment,
+        value: entry.value,
+      }));
+    await vi.waitFor(() => expect(storeReady()).toEqual([{ environment: "test", value: 0 }]));
+    store.inject(undefined);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.waitFor(() => expect(storeReady()).toEqual([{ environment: "test", value: 1 }]));
+    store.inject("FP.RATELIMIT.STORE_UNAVAILABLE");
+    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.waitFor(() => expect(storeReady()).toEqual([{ environment: "test", value: 0 }]));
+    store.inject(undefined);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.waitFor(() => expect(storeReady()).toEqual([{ environment: "test", value: 1 }]));
+    vi.useRealTimers();
     const get = (path = "ready") => fetch(`http://127.0.0.1:18931/internal/health/${path}`);
+    // INF-HLT-005: the health answer is the snapshot of the latest probe run, so each change is seen
+    // by the next run (no per-request check). The test runs that probe itself.
+    const probeNow = () => runtime?.readinessProbe.probeNow() ?? Promise.resolve();
+    await probeNow();
     expect((await get("live")).status).toBe(200);
     expect((await get()).status).toBe(200);
-    unavailable = true;
+    store.inject("FP.RATELIMIT.STORE_UNAVAILABLE");
+    await probeNow();
     expect((await get()).status).toBe(503);
     expect((await get("live")).status).toBe(200);
-    unavailable = false;
+    store.inject(undefined);
+    await probeNow();
     expect((await get()).status).toBe(200);
     await setup.query(
       "ALTER TABLE app.business_profiles DROP CONSTRAINT uq_business_profiles_auth_subject",
     );
     dropped = true;
+    await probeNow();
     expect((await get()).status).toBe(503);
     await setup.query(
       "ALTER TABLE app.business_profiles ADD CONSTRAINT uq_business_profiles_auth_subject UNIQUE(auth_subject)",
     );
     dropped = false;
+    await probeNow();
     expect((await get()).status).toBe(200);
     runtime.beginDrain();
     expect((await get()).status).toBe(503);
   } finally {
+    vi.useRealTimers();
     if (dropped)
       await setup.query(
         "ALTER TABLE app.business_profiles ADD CONSTRAINT uq_business_profiles_auth_subject UNIQUE(auth_subject)",

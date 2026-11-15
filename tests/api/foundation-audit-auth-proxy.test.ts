@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import type { AddressInfo } from "node:net";
 import { expect, it, vi } from "vitest";
 import { createAuthProxy } from "../../apps/api/src/api/auth-proxy.ts";
+import { createTestRateLimit, peer } from "../harness/rate-limit/api.ts";
 
 it("TC-AUTH-AUDIT-001 limited proxy preserves provider bytes/status/cookies and rejects CSRF, admin paths and open redirects", async () => {
   const transport = vi.fn(
@@ -123,7 +124,6 @@ it("TC-AUTH-AUDIT-002 upstream failure/body stall/redirects fail closed without 
 it("TC-AUTH-AUDIT-003 mounts all four auth transports behind mandatory shared enforcement", async () => {
   const { createApp } = await import("../../apps/api/src/api/app.ts");
   let calls = 0;
-  let blocked = false;
   const proxy = createAuthProxy(
     {
       baseUrl: "https://neon.example.test/auth",
@@ -142,19 +142,12 @@ it("TC-AUTH-AUDIT-003 mounts all four auth transports behind mandatory shared en
       headers: { Origin: base.webOrigin, "Content-Type": "application/json" },
       body,
     });
-  expect((await createApp(base).request(make("sign-in/email", "{}"))).status).toBe(503);
+  expect(
+    (await createApp(base).request(make("sign-in/email", "{}"), undefined, peer())).status,
+  ).toBe(503);
   expect(calls).toBe(0);
-  const app = createApp({
-    ...base,
-    enforcement: {
-      assertAvailable: async () => {
-        if (blocked) throw new Error("synthetic-shared-store-down");
-      },
-      middleware: async (_c, next) => {
-        await next();
-      },
-    },
-  });
+  const { rateLimit, faults } = createTestRateLimit();
+  const app = createApp({ ...base, rateLimit });
   for (const [path, body] of [
     ["sign-in/email", '{"email":"a@example.test","password":"synthetic"}'],
     ["sign-in/social", '{"provider":"google","callbackURL":"https://web.example.test/mypage"}'],
@@ -164,11 +157,13 @@ it("TC-AUTH-AUDIT-003 mounts all four auth transports behind mandatory shared en
       '{"email":"a@example.test","callbackURL":"https://web.example.test/mypage"}',
     ],
   ]) {
-    expect((await app.request(make(path as string, body as string))).status).toBe(200);
+    expect(
+      (await app.request(make(path as string, body as string), undefined, peer())).status,
+    ).toBe(200);
   }
   expect(calls).toBe(4);
-  blocked = true;
-  const unavailable = await app.request(make("sign-in/email", "{}"));
+  faults.inject("FP.RATELIMIT.STORE_UNAVAILABLE");
+  const unavailable = await app.request(make("sign-in/email", "{}"), undefined, peer());
   expect(unavailable.status).toBe(503);
   expect(await unavailable.text()).not.toContain("synthetic-shared-store-down");
   expect(calls).toBe(4);
@@ -192,12 +187,7 @@ it("TC-AUTH-AUDIT-003 accepts the configured host after TLS termination on a rea
     webOrigin: "https://web.example.test",
     ready: async () => true,
     authProxy: proxy,
-    enforcement: {
-      assertAvailable: async () => {},
-      middleware: async (_c, next) => {
-        await next();
-      },
-    },
+    rateLimit: createTestRateLimit().rateLimit,
   });
   const server = serve({ fetch: app.fetch, port: 0, hostname: "127.0.0.1" });
   await new Promise<void>((resolve) => server.once("listening", resolve));

@@ -1,6 +1,6 @@
 import type { MiddlewareHandler } from "hono";
 import type { z } from "zod";
-import { type ApiEnvironment, ApiFailure } from "../app.ts";
+import { type ApiEnvironment, ApiFailure } from "../failure.ts";
 
 // Detect repeated decoded object keys before JSON.parse discards them.
 export function rejectDuplicateKeys(raw: string): void {

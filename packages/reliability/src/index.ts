@@ -17,6 +17,8 @@ export const TIMEOUTS = Object.freeze({
   webhookSoftMs: 6000,
   webhookHardMs: 8000,
   manualRecoveryMs: 15000,
+  // SPEC-150 REL-SEC-003: one rate limit store evaluation. Not retried.
+  rateLimitStoreMs: 250,
 });
 export class DeadlineError extends Error {
   constructor() {

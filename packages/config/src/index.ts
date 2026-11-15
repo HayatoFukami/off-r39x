@@ -1,4 +1,10 @@
-import { decodeSecretKey, parseQrKeyring } from "@off-r39x/security";
+import {
+  decodeSecretKey,
+  parseQrKeyring,
+  parseRateLimitConfig,
+  parseRateLimitHmac,
+  parseTrustedProxyHops,
+} from "@off-r39x/security";
 import { getDomain } from "tldts";
 import { z } from "zod";
 
@@ -104,6 +110,14 @@ const qr = z.object({
   QR_ALLOWED_READ_VERSIONS: text,
   QR_KEYRING: text,
 });
+const rateLimitStore = text.refine((value) => {
+  try {
+    const u = new URL(value);
+    return (u.protocol === "redis:" || u.protocol === "rediss:") && u.hostname !== "";
+  } catch {
+    return false;
+  }
+});
 const provider = z.object({ RESEND_API_KEY: text });
 const stripe = z.object({ STRIPE_SECRET_KEY: text });
 export type Service = "api" | "email-worker" | "reconciliation-worker";
@@ -112,6 +126,8 @@ const roles = {
   "email-worker": "app_email_runtime",
   "reconciliation-worker": "app_reconciliation_runtime",
 } as const;
+/** INF-SEC-003: only the API service reads the rate limit Secrets. */
+const rateLimitSecrets = ["RATE_LIMIT_REDIS_URL", "RATE_LIMIT_HMAC_KEY"];
 const forbiddenAll = [
   "MIGRATION_DATABASE_URL",
   "BACKUP_DATABASE_URL",
@@ -144,6 +160,7 @@ function parse(service: Service, env: Readonly<Record<string, string | undefined
     throw new Error();
   const forbidden = [
     ...forbiddenAll,
+    ...(service === "api" ? [] : rateLimitSecrets),
     ...(service === "email-worker"
       ? [
           "STRIPE_SECRET_KEY",
@@ -256,6 +273,19 @@ function parse(service: Service, env: Readonly<Record<string, string | undefined
       apiDomain = getDomain(apiHost, { allowPrivateDomains: true });
     if (!webDomain || webDomain !== apiDomain) throw new Error();
   }
+  // SEC-ABU-010 / SEC-API-030 / INF-HLT-004: no fallback when any of these is missing or invalid.
+  const rateLimitSecret = parseRateLimitHmac(
+    env.RATE_LIMIT_HMAC_KEY,
+    env.RATE_LIMIT_HMAC_KEY_VERSION,
+    decodeSecretKey,
+  );
+  const rateLimit = Object.freeze({
+    storeUrl: rateLimitStore.parse(env.RATE_LIMIT_REDIS_URL),
+    hmacKey: () => rateLimitSecret.hmacKey.slice(),
+    hmacKeyVersion: rateLimitSecret.hmacKeyVersion,
+    config: parseRateLimitConfig(env.RATE_LIMIT_CONFIG),
+    trustedProxyHops: parseTrustedProxyHops(env.TRUSTED_PROXY_HOPS),
+  });
   const webhooks = z
     .object({ STRIPE_WEBHOOK_SECRET: text, RESEND_WEBHOOK_SECRET: text })
     .parse(env);
@@ -271,6 +301,7 @@ function parse(service: Service, env: Readonly<Record<string, string | undefined
       allowedHosts: Object.freeze(httpInput.ALLOWED_HOSTS),
       allowedOrigins: Object.freeze(httpInput.ALLOWED_ORIGINS),
     }),
+    rateLimit,
     auth: Object.freeze({
       issuer: authInput.AUTH_ISSUER,
       audience: authInput.AUTH_AUDIENCE,

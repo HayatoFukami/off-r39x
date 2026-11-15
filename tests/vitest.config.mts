@@ -19,6 +19,8 @@ export default defineConfig({
           name: "security",
           environment: "node",
           include: ["security/**/*.test.ts"],
+          // Real Redis (G5): run by the backend config's own project, never by the unit run.
+          exclude: ["security/foundation-*redis.test.ts", "**/node_modules/**"],
           retry: 0,
         },
       },

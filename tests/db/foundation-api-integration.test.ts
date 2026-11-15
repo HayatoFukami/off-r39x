@@ -61,7 +61,7 @@ it("TC-DB-ARC-008-050 real PG profile bigint/public UUID and current roles resol
       exp: now + 900,
       role: "ADMINISTRATOR",
     })
-      .setProtectedHeader({ alg: "EdDSA" })
+      .setProtectedHeader({ alg: "EdDSA", kid: "synthetic-key" })
       .sign(keys.privateKey);
     const verifier = createTokenVerifier(
       {

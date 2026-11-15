@@ -1,0 +1,24 @@
+{
+  "name": "@off-r39x/rate-limit-redis",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "browser": null,
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@off-r39x/reliability": "workspace:*",
+    "@off-r39x/security": "workspace:*",
+    "ioredis": "5.9.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.1",
+    "typescript": "5.9.3"
+  }
+}

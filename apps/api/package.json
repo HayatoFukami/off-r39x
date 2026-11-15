@@ -8,15 +8,17 @@
     "start": "node ../../dist/apps/api/server.js"
   },
   "dependencies": {
+    "@hono/node-server": "1.19.11",
     "@off-r39x/api-contract": "workspace:*",
     "@off-r39x/auth": "workspace:*",
     "@off-r39x/config": "workspace:*",
     "@off-r39x/db": "workspace:*",
     "@off-r39x/observability": "workspace:*",
-    "@hono/node-server": "1.19.11",
+    "@off-r39x/rate-limit-redis": "workspace:*",
+    "@off-r39x/reliability": "workspace:*",
+    "@off-r39x/security": "workspace:*",
     "hono": "4.13.14",
-    "zod": "4.6.7",
-    "@off-r39x/reliability": "workspace:*"
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@types/node": "24.10.1",
