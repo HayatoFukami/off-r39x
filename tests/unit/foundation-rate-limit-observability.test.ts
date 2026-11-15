@@ -282,7 +282,7 @@ describe("OBS-ALT-041 / 042 rate limit store alerts (SPEC-160 §47, §46.1, OBS-
     expect(step(1, 63, recovering.state).notification).toBe("resolve");
   });
 
-  it("TC-RLM-009-114 a single 0 between healthy samples never fires OBS-ALT-042, and a missing sample is never read as 0", () => {
+  it("TC-RLM-009-114 a single 0 between healthy samples never fires OBS-ALT-042, and all missing samples are counted as failures", () => {
     let state = ALERT_INITIAL_STATE;
     for (const [ready, minute] of [
       [0, 0],
@@ -307,11 +307,11 @@ describe("OBS-ALT-041 / 042 rate limit store alerts (SPEC-160 §47, §46.1, OBS-
         nowMs: T0 + minute * 60_000,
         state: unknown,
       });
-      expect(result.firing).toBe(false);
-      expect(result.notification).toBeNull();
+      expect(result.firing).toBe(minute >= 1);
+      expect(result.notification).toBe(minute === 1 ? "open" : null);
       unknown = result.state;
     }
-    // One real 0 followed by a missing sample neither completes nor resets the streak.
+    // One real 0 followed by all samples missing completes the failure streak.
     const zero = evaluateRateLimitStoreReadinessAlert({
       environment: "production",
       ready: 0,
@@ -324,8 +324,8 @@ describe("OBS-ALT-041 / 042 rate limit store alerts (SPEC-160 §47, §46.1, OBS-
       nowMs: T0 + 60_000,
       state: zero.state,
     });
-    expect(gap.state.streak).toBe(1);
-    expect(gap.notification).toBeNull();
+    expect(gap.state.streak).toBe(2);
+    expect(gap.notification).toBe("open");
   });
 
   it("TC-RLM-009-115 OBS-ALT-014 (security configuration) does not fire when only the rate limit store is unreachable; it keeps its own rule ID", () => {

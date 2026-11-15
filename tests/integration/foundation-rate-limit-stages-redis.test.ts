@@ -1,6 +1,7 @@
 // Real Redis (SEC-ABU-026, SEC-ABU-013, TST-RLM-002 / 004). TEST_REDIS_URL is mandatory.
 import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
+import { generateKeyPair, SignJWT } from "jose";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   type ApiEnvironment,
@@ -13,9 +14,10 @@ import { createAuthProxy } from "../../apps/api/src/api/auth-proxy.ts";
 import {
   createPrincipalRateLimitHooks,
   createRateLimitStageOne,
+  createVerificationBudget,
   requireResourceRateLimit,
 } from "../../apps/api/src/api/rate-limit.ts";
-import { AuthFailure } from "../../packages/auth/src/index.ts";
+import { AuthFailure, createTokenVerifier } from "../../packages/auth/src/index.ts";
 import { createRedisRateLimitStore } from "../../packages/rate-limit-redis/src/index.ts";
 import {
   createCounterKeyFactory,
@@ -425,4 +427,79 @@ describe("Webhook global rule against the real Redis (SEC-ABU-030, TST-RLM-002 /
       3000,
     );
   }, 180_000);
+});
+
+it("TC-RLM-005-231 real Redis and Ed25519 verification bound a concurrent burst from an empty guard", async () => {
+  const { limiter } = build();
+  const trusted = await generateKeyPair("EdDSA", { crv: "Ed25519" });
+  const foreign = await generateKeyPair("EdDSA", { crv: "Ed25519" });
+  const verifier = createTokenVerifier(
+    {
+      issuer: "https://issuer.example.test",
+      audience: "api",
+      jwksUrl: "https://issuer.example.test/jwks",
+    },
+    async () => trusted.publicKey,
+  );
+  const forged = await new SignJWT({ sub: PROFILE, iss: "https://issuer.example.test", aud: "api" })
+    .setProtectedHeader({ alg: "EdDSA", kid: "synthetic-key" })
+    .setIssuedAt()
+    .setExpirationTime("15m")
+    .sign(foreign.privateKey);
+  let verifications = 0;
+  let lookups = 0;
+  const app = new Hono<ApiEnvironment>();
+  app.use(
+    "*",
+    createRateLimitStageOne({
+      rateLimit: { limiter, trustedProxyHops: 0 },
+      classify: () => ({ classId: "purchase_checkout", operationId: null }),
+    }),
+  );
+  app.onError((error, c) => {
+    if (error instanceof ApiFailure)
+      return c.json({ code: error.code }, error.code === "RATE_LIMIT_EXCEEDED" ? 429 : 503);
+    return c.json({ code: "AUTHENTICATION_REQUIRED" }, 401);
+  });
+  app.get(
+    "/buy",
+    requirePrincipal(
+      {
+        ...(verifier.inspect ? { inspect: verifier.inspect } : {}),
+        verify: async (token) => {
+          verifications += 1;
+          return verifier.verify(token);
+        },
+      },
+      {
+        findByAuthSubject: async () => {
+          lookups += 1;
+          throw new Error("must not reach DB");
+        },
+      },
+      createPrincipalRateLimitHooks(limiter, {
+        verificationBudget: createVerificationBudget({ now: () => 1000 }),
+      }),
+    ),
+    (c) => c.json({ ok: true }),
+  );
+  const responses = await Promise.all(
+    Array.from({ length: 200 }, () =>
+      app.request(
+        "/buy",
+        { headers: { Authorization: `Bearer ${forged}` } },
+        peer("203.0.113.250"),
+      ),
+    ),
+  );
+  expect(verifications).toBeGreaterThan(0);
+  expect(verifications).toBeLessThanOrEqual(20 + 50);
+  expect(responses.every((res) => res.status === 401 || res.status === 429)).toBe(true);
+  expect(lookups).toBe(0);
+  const key = createCounterKeyFactory(TEST_HMAC_KEY, session.keyVersion).key(
+    "auth_failure_guard_attendee.burst",
+    "ip",
+    "203.0.113.250",
+  );
+  expect(await session.redis.zcard(key)).toBe(20);
 });

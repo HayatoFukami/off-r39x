@@ -20150,7 +20150,7 @@
       "suite": "api",
       "upstream_rule_ids": ["TST-RLM-004", "SEC-ABU-017", "SEC-ABU-019", "SEC-ABU-029"],
       "system_invariant_ids": [],
-      "api_operation_ids": ["API-AUTH-001"],
+      "api_operation_ids": [],
       "db_constraint_names": [],
       "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
       "fixture_ids": [],
@@ -20159,7 +20159,7 @@
       "fault_points": ["FP.RATELIMIT.STORE_UNAVAILABLE"],
       "expected_http": [503],
       "expected_domain_postconditions": [
-        "a Stage 3 store failure is a 503 before the handler runs"
+        "Principal resolution and the resource rule are reached before a resource-specific store fault returns 503; handler never runs"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -23015,7 +23015,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "a single 0 between healthy samples never fires OBS-ALT-042, and a missing sample is never read as 0"
+        "a single 0 between healthy samples never fires; two consecutive all-missing evaluations open OBS-ALT-042"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -23469,6 +23469,188 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": false
+    },
+    {
+      "test_case_id": "TC-RLM-005-226",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["TST-RLM-005", "SEC-ABU-033", "SEC-ABU-021", "SEC-ABU-020"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [401, 429],
+      "expected_domain_postconditions": [
+        "concurrent invalid tokens from an empty guard use the bounded lane before signature work"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-005-227",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["TST-RLM-005", "SEC-ABU-033", "SEC-ABU-021", "SEC-ABU-020"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "a normal verification slot remains held until its failure has been recorded, then is released"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-005-228",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["TST-RLM-005", "SEC-ABU-033", "SEC-ABU-021", "SEC-ABU-020"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": ["the normal slot is released after %s"],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-005-229",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["TST-RLM-005", "SEC-ABU-033", "SEC-ABU-021", "SEC-ABU-020"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "one IP shares its normal slot across guard classes while another IP can verify"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-005-230",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["TST-RLM-005", "SEC-ABU-033", "SEC-ABU-021", "SEC-ABU-020"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": ["FP.RATELIMIT.STORE_UNAVAILABLE"],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "the normal lane rechecks the guard and releases its slot after %s"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-005-231",
+      "level": "Integration",
+      "suite": "integration",
+      "upstream_rule_ids": ["TST-RLM-005", "SEC-ABU-021", "SEC-ABU-033", "SEC-ABU-013"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Disposable real Redis and real Ed25519 verification with synthetic signing keys; process budget clock fixed; empty per-session guard",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [401, 429],
+      "expected_domain_postconditions": [
+        "real Redis and Ed25519 verification bound a concurrent burst from an empty guard"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-009-214",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["TST-RLM-009", "OBS-SEC-009", "SEC-ABU-033"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [429],
+      "expected_domain_postconditions": [
+        "every verification-budget refusal is included in the rejected counter"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": ["ratelimit.decision.completed", "r39x_rate_limit_decisions_total"],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-RLM-009-215",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["TST-RLM-009", "OBS-SEC-009", "SEC-ABU-031"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "In-process Hono app with the memory store double and DI fault injection (FP.RATELIMIT.*); synthetic token verifier and Principal store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [429],
+      "expected_domain_postconditions": [
+        "a body-slot refusal records both its event and rejected counter without an extra store call"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": ["ratelimit.decision.completed", "r39x_rate_limit_decisions_total"],
+      "sensitivity_class": "synthetic",
+      "critical": true
     }
   ]
 }

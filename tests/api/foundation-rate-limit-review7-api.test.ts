@@ -5,7 +5,7 @@
 import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { generateKeyPair, SignJWT } from "jose";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { type ApiEnvironment, ApiFailure, requirePrincipal } from "../../apps/api/src/api/app.ts";
 import {
   createPrincipalRateLimitHooks,
@@ -288,7 +288,7 @@ describe("signature verification budget (SEC-ABU-033)", () => {
     const m = mini(trs, { "/buy": "purchase_checkout" });
     m.app.get("/buy/ok", m.principal, (c) => c.json({ ok: true }));
     expect((await send(m.app, "/buy/ok", "e30.e30.c2ln")).status).toBe(200);
-    expect(trs.store.calls.map((call) => call.mode)).toEqual(["check", "admit"]);
+    expect(trs.store.calls.map((call) => call.mode)).toEqual(["check", "check", "admit"]);
     expect(guardRecords(trs)).toBe(0);
     trs.faults.inject("FP.RATELIMIT.STORE_UNAVAILABLE");
     const res = await send(m.app, "/buy/ok", "e30.e30.c2ln");
@@ -674,3 +674,248 @@ describe("auth_form_proxy early refusals close the connection (SEC-ABU-031)", ()
     expect(other.headers.get("Connection")).toBeNull();
   });
 });
+
+describe("PR #46 concurrent verification and observation regressions", () => {
+  it("TC-RLM-005-226 concurrent invalid tokens from an empty guard use the bounded lane before signature work", async () => {
+    const trs = createTestRateLimit();
+    const counter = { verifications: 0 };
+    const m = mini(
+      trs,
+      { "/buy": "purchase_checkout" },
+      {
+        verifier: countingVerifier(counter),
+        budget: createVerificationBudget({ now: () => 1000 }),
+      },
+    );
+    m.app.get("/buy/ok", m.principal, (c) => c.json({ ok: true }));
+    const forged = await mint({ key: "foreign" });
+    const responses = await Promise.all(
+      Array.from({ length: 200 }, () => send(m.app, "/buy/ok", forged)),
+    );
+    expect(counter.verifications).toBeLessThanOrEqual(20 + 50);
+    expect(counter.verifications).toBeGreaterThan(0);
+    expect(responses.every((res) => res.status === 401 || res.status === 429)).toBe(true);
+    expect(guardRecords(trs)).toBeLessThanOrEqual(20);
+  });
+
+  it("TC-RLM-005-227 a normal verification slot remains held until its failure has been recorded, then is released", async () => {
+    const trs = createTestRateLimit();
+    const original = trs.store.evaluate.bind(trs.store);
+    let release: (() => void) | undefined;
+    let recording = false;
+    trs.store.evaluate = async (mode, rules, id) => {
+      if (mode === "admit" && rules.some((rule) => rule.key.includes("auth_failure_guard"))) {
+        recording = true;
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      }
+      return original(mode, rules, id);
+    };
+    let attempts = 0;
+    const m = mini(
+      trs,
+      { "/buy": "purchase_checkout" },
+      {
+        verifier: {
+          verify: async () => {
+            attempts += 1;
+            throw new AuthFailure("unauthenticated");
+          },
+        },
+        budget: { tryTake: () => false },
+      },
+    );
+    m.app.get("/buy/ok", m.principal, (c) => c.json({ ok: true }));
+    const first = send(m.app, "/buy/ok", "e30.e30.c2ln");
+    try {
+      await vi.waitFor(() => expect(recording).toBe(true));
+      expect((await send(m.app, "/buy/ok", "e30.e30.c2ln")).status).toBe(429);
+      expect(attempts).toBe(1);
+    } finally {
+      release?.();
+    }
+    expect((await first).status).toBe(401);
+    trs.store.evaluate = original;
+    expect((await send(m.app, "/buy/ok", "e30.e30.c2ln")).status).toBe(401);
+    expect(attempts).toBe(2);
+  });
+
+  for (const result of ["success", "unavailable", "record_failure"] as const)
+    it(`TC-RLM-005-228 the normal slot is released after ${result}`, async () => {
+      const trs = createTestRateLimit();
+      let attempts = 0;
+      const m = mini(
+        trs,
+        { "/buy": "purchase_checkout" },
+        {
+          verifier: {
+            verify: async () => {
+              attempts += 1;
+              if (result === "unavailable") throw new AuthFailure("unavailable");
+              if (result === "record_failure") {
+                trs.faults.inject("FP.RATELIMIT.STORE_UNAVAILABLE");
+                throw new AuthFailure("unauthenticated");
+              }
+              return { subject: subjectN(1) };
+            },
+          },
+          budget: { tryTake: () => false },
+        },
+      );
+      m.app.get("/buy/ok", m.principal, (c) => c.json({ ok: true }));
+      await send(m.app, "/buy/ok", "e30.e30.c2ln");
+      trs.faults.inject(undefined);
+      await send(m.app, "/buy/ok", "e30.e30.c2ln");
+      expect(attempts).toBe(2);
+    });
+
+  it("TC-RLM-005-229 one IP shares its normal slot across guard classes while another IP can verify", async () => {
+    const trs = createTestRateLimit();
+    let release: (() => void) | undefined;
+    let attempts = 0;
+    const m = mini(
+      trs,
+      { "/buy": "purchase_checkout", "/handoff": "goods_handoff" },
+      {
+        verifier: {
+          verify: async () => {
+            attempts += 1;
+            if (attempts === 1)
+              await new Promise<void>((resolve) => {
+                release = resolve;
+              });
+            return { subject: subjectN(attempts) };
+          },
+        },
+        budget: { tryTake: () => false },
+      },
+    );
+    m.app.get("/buy/ok", m.principal, (c) => c.json({ ok: true }));
+    m.app.get("/handoff/ok", m.principal, (c) => c.json({ ok: true }));
+    const first = send(m.app, "/buy/ok", "e30.e30.c2ln");
+    try {
+      await vi.waitFor(() => expect(attempts).toBe(1));
+      expect((await send(m.app, "/handoff/ok", "e30.e30.c2ln")).status).toBe(429);
+      expect((await send(m.app, "/handoff/ok", "e30.e30.c2ln", "198.51.100.20")).status).toBe(200);
+    } finally {
+      release?.();
+    }
+    await first;
+    expect((await send(m.app, "/buy/ok", "e30.e30.c2ln")).status).toBe(200);
+  });
+
+  it("TC-RLM-009-214 every verification-budget refusal is included in the rejected counter", async () => {
+    const metrics = createRateLimitMetrics({ environment: "test", classIds: RATE_LIMIT_CLASS_IDS });
+    const trs = createTestRateLimit({
+      overrides: guardOverride(1),
+      limiter: { observer: createRateLimitMetricsObserver(metrics) },
+    });
+    const m = mini(
+      trs,
+      { "/buy": "purchase_checkout" },
+      { budget: createVerificationBudget({ now: () => 1000 }) },
+    );
+    m.app.get("/buy/ok", m.principal, (c) => c.json({ ok: true }));
+    await send(m.app, "/buy/ok", "e30.e30.YmFk");
+    for (let i = 0; i < 100; i++)
+      expect((await send(m.app, "/buy/ok", "e30.e30.YmFk")).status).toBe(429);
+    expect(
+      metrics
+        .snapshot()
+        .decisions.filter((d) => d.result === "rejected")
+        .reduce((n, d) => n + d.value, 0),
+    ).toBe(100);
+    expect(m.events().filter((e) => e.event_name === "ratelimit.decision.completed")).toHaveLength(
+      100,
+    );
+  });
+
+  it("TC-RLM-009-215 a body-slot refusal records both its event and rejected counter without an extra store call", async () => {
+    const metrics = createRateLimitMetrics({ environment: "test", classIds: RATE_LIMIT_CLASS_IDS });
+    const trs = createTestRateLimit({
+      limiter: { observer: createRateLimitMetricsObserver(metrics) },
+    });
+    const m = mini(trs, { "/auth": "auth_form_proxy" });
+    m.app.post("/auth/form", (c) => c.json({ ok: true }));
+    const controllers: ReadableStreamDefaultController<Uint8Array>[] = [];
+    const held = Array.from({ length: 3 }, () =>
+      m.app.request(
+        "/auth/form",
+        {
+          method: "POST",
+          body: new ReadableStream<Uint8Array>({
+            start(controller) {
+              controllers.push(controller);
+            },
+          }),
+          duplex: "half",
+        } as RequestInit,
+        peer(),
+      ),
+    );
+    try {
+      await vi.waitFor(() => expect(trs.store.calls).toHaveLength(3));
+      const before = trs.store.calls.length;
+      expect(
+        (await m.app.request("/auth/form", { method: "POST", body: "{}" }, peer())).status,
+      ).toBe(429);
+      expect(trs.store.calls.length - before).toBe(1);
+      expect(
+        metrics
+          .snapshot()
+          .decisions.find((d) => d.class_id === "auth_form_proxy" && d.result === "rejected")
+          ?.value,
+      ).toBe(1);
+      expect(m.events().filter((e) => e.rule_category === "concurrency")).toHaveLength(1);
+    } finally {
+      for (const controller of controllers) controller.error(new Error("synthetic disconnect"));
+      await Promise.allSettled(held);
+    }
+  });
+});
+
+for (const outcome of ["saturated", "store_unavailable"] as const)
+  it(`TC-RLM-005-230 the normal lane rechecks the guard and releases its slot after ${outcome}`, async () => {
+    const trs = createTestRateLimit();
+    const base = trs.rateLimit.limiter;
+    let reads = 0;
+    let verifications = 0;
+    const wrapped: TestRateLimit = {
+      ...trs,
+      rateLimit: {
+        ...trs.rateLimit,
+        limiter: {
+          ...base,
+          guardState: async (classId, ip) => {
+            reads += 1;
+            if (reads === 2)
+              return outcome === "saturated"
+                ? { result: "ok", saturated: true }
+                : { result: "store_unavailable" };
+            return base.guardState(classId, ip);
+          },
+        },
+      },
+    };
+    const m = mini(
+      wrapped,
+      { "/buy": "purchase_checkout" },
+      {
+        budget: { tryTake: () => false },
+        verifier: {
+          verify: async () => {
+            verifications += 1;
+            return { subject: subjectN(1) };
+          },
+        },
+      },
+    );
+    m.app.get("/buy/ok", m.principal, (c) => c.json({ ok: true }));
+    expect((await send(m.app, "/buy/ok", "e30.e30.c2ln")).status).toBe(
+      outcome === "saturated" ? 429 : 503,
+    );
+    expect(verifications).toBe(0);
+    expect((await send(m.app, "/buy/ok", "e30.e30.c2ln")).status).toBe(200);
+    expect(verifications).toBe(1);
+  });

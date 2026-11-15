@@ -1056,6 +1056,7 @@ describe("resource rule evaluation (TST-RLM-004)", () => {
     const trs = createTestRateLimit();
     const m = miniApp(trs, { "/qr": "qr_display" });
     let handled = 0;
+    let resourceValues = 0;
     m.app.get(
       "/qr/:id",
       m.principal,
@@ -1063,27 +1064,31 @@ describe("resource rule evaluation (TST-RLM-004)", () => {
         markAuthorizationConfirmed(c);
         await next();
       },
-      requireResourceRateLimit(trs.rateLimit.limiter, (c) => ({
-        "qr_display.ticket": c.req.param("id") ?? "",
-      })),
+      requireResourceRateLimit(trs.rateLimit.limiter, (c) => {
+        resourceValues += 1;
+        return { "qr_display.ticket": c.req.param("id") ?? "" };
+      }),
       (c) => {
         handled += 1;
         return c.json({ ok: true });
       },
     );
-    // The subject rules (Stage 2) pass; only the Stage 3 operation, the second store call of this
-    // route (the guard is not consulted before verification), fails.
+    // Target the resource rule, independently of earlier guard/subject store operations.
     const evaluate = trs.store.evaluate.bind(trs.store);
-    let operations = 0;
+    let resourceEvaluations = 0;
     trs.store.evaluate = async (mode, rules, id) => {
-      operations += 1;
-      if (operations === 2) throw new RateLimitStoreError("error");
+      if (rules.some((rule) => rule.key.includes(":qr_display.ticket:"))) {
+        resourceEvaluations += 1;
+        throw new RateLimitStoreError("error");
+      }
       return evaluate(mode, rules, id);
     };
     const res = await call(m.app, "/qr/a");
     expect(res.status).toBe(503);
     expect((await res.json()).code).toBe("TEMPORARY_UNAVAILABLE");
-    expect(operations).toBe(2);
+    expect(resourceValues).toBe(1);
+    expect(resourceEvaluations).toBe(1);
+    expect(m.order).toContain("db");
     expect(handled).toBe(0);
   });
 });
@@ -1112,8 +1117,16 @@ describe("Stage 3 shared resource counters after authorization (SEC-ABU-029, TST
     );
     const res = await call(m.app, "/adm/roles/P1", ADMIN_TOKEN);
     expect(res.status).toBe(200);
-    // SEC-ABU-021 (1): stage 1 only reads the guard counter (check), before the token is verified.
-    expect(order).toEqual(["store:check", "verify", "store:admit", "db", "store:admit", "domain"]);
+    // SEC-ABU-021 / 033: Stage 1 reads the guard; the occupied normal lane rechecks before verification.
+    expect(order).toEqual([
+      "store:check",
+      "store:check",
+      "verify",
+      "store:admit",
+      "db",
+      "store:admit",
+      "domain",
+    ]);
   });
 
   it("TC-RLM-004-240 a valid-JWT holder without Administrator cannot consume the target-profile slot of API-ADM-ROL-002: the 403s leave the counter untouched and the real administrator can still grant", async () => {

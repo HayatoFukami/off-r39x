@@ -145,6 +145,8 @@ export interface RateLimiter {
    * refused and not recorded (rejected; 429).
    */
   recordAuthFailure(classId: RouteClassId, ip: string): Promise<RateLimitDecision>;
+  /** OBS-SEC-009: a process-local resource refusal is a decision too; no store operation. */
+  rejectConcurrency(classId: RouteClassId, operationId?: string): RateLimitDecision;
   /** INF-HLT-004. Throws unless the store is usable. */
   assertReady(): Promise<void>;
   close(): Promise<void>;
@@ -284,6 +286,26 @@ export function createRateLimiter(options: RateLimiterOptions): RateLimiter {
     }
   }
 
+  const reportDecision = (
+    classId: RateLimitClassId,
+    operationId: string | undefined,
+    decision: RateLimitDecision,
+  ): void => {
+    observe(() =>
+      options.observer?.decision({
+        classId,
+        result: decision.result,
+        ...(decision.result === "rejected"
+          ? {
+              ruleCategory: decision.ruleCategory,
+              retryAfterSeconds: decision.retryAfterSeconds,
+            }
+          : {}),
+        ...(operationId ? { operationId } : {}),
+      }),
+    );
+  };
+
   const finish = (
     classId: RateLimitClassId,
     operationId: string | undefined,
@@ -310,19 +332,7 @@ export function createRateLimiter(options: RateLimiterOptions): RateLimiter {
       };
     }
     if (report || decision.result === "store_unavailable")
-      observe(() =>
-        options.observer?.decision({
-          classId,
-          result: decision.result,
-          ...(decision.result === "rejected"
-            ? {
-                ruleCategory: decision.ruleCategory,
-                retryAfterSeconds: decision.retryAfterSeconds,
-              }
-            : {}),
-          ...(operationId ? { operationId } : {}),
-        }),
-      );
+      reportDecision(classId, operationId, decision);
     return decision;
   };
 
@@ -416,6 +426,15 @@ export function createRateLimiter(options: RateLimiterOptions): RateLimiter {
         return { result: "store_unavailable" };
       }
       return { result: "ok", saturated: !outcome.allowed };
+    },
+    rejectConcurrency(classId: RouteClassId, operationId?: string): RateLimitDecision {
+      const decision: RateLimitDecision = {
+        result: "rejected",
+        ruleCategory: "concurrency",
+        retryAfterSeconds: 1,
+      };
+      reportDecision(classId, operationId, decision);
+      return decision;
     },
     async assertReady(): Promise<void> {
       await withDeadline(() => options.store.assertReady(), deadlineMs);

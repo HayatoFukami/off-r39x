@@ -446,9 +446,9 @@ export function evaluateRateLimitStoreUnavailableAlert(input: {
 
 /**
  * Evaluates OBS-ALT-042; call it once per 1-minute evaluation with the latest
- * `r39x_rate_limit_store_ready` sample (`undefined` = no sample, which says nothing: the streak and
- * the alert are left as they are, and it is never read as 0, OBS-MET-002). Two consecutive
- * evaluations with value 0 fire, whatever the request volume. Pure: the caller keeps `state`.
+ * aggregated `r39x_rate_limit_store_ready` value (`undefined` = every instance has no fresh sample).
+ * OBS-ALT-042 explicitly treats all-missing as a failed evaluation; this does not fabricate a gauge
+ * sample (OBS-MET-002). Two consecutive failures fire. Pure: the caller keeps `state`.
  */
 export function evaluateRateLimitStoreReadinessAlert(input: {
   readonly environment: string;
@@ -459,14 +459,7 @@ export function evaluateRateLimitStoreReadinessAlert(input: {
   const rule = RATE_LIMIT_STORE_READINESS_ALERT;
   const state = input.state ?? ALERT_INITIAL_STATE;
   const dedupeKey = `${input.environment}:${rule.ruleId}`;
-  if (input.ready === undefined)
-    return {
-      firing: state.streak >= rule.consecutiveEvaluations,
-      notification: null,
-      dedupeKey,
-      state,
-    };
-  const streak = input.ready === 0 ? state.streak + 1 : 0;
+  const streak = input.ready === 1 ? 0 : state.streak + 1;
   return advanceAlert(
     rule,
     dedupeKey,

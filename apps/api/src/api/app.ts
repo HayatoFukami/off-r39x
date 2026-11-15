@@ -312,7 +312,7 @@ export function requirePrincipal(
       : inspectBearerFormat(c.req.header("Authorization"));
     // SEC-ABU-033 (b): a signature is verified only inside its budget; an exhausted one is a 429 that
     // is not an authentication failure (the token was not judged).
-    if (inspected.ok) await hooks?.beforeVerification(c);
+    const releaseVerification = inspected.ok ? await hooks?.beforeVerification(c) : undefined;
     try {
       if (!inspected.ok) throw new AuthFailure("unauthenticated");
       identity = await verifier.verify(inspected.token);
@@ -328,6 +328,8 @@ export function requirePrincipal(
       // SEC-ABU-021 (5): record the failed structure check / verification for the guard.
       await hooks?.verificationFailed(c, error);
       throw error;
+    } finally {
+      releaseVerification?.();
     }
     // Stage 2 (SEC-ABU-017): per-subject rules, before the DB-backed Principal resolution.
     await hooks?.verified(c, identity);

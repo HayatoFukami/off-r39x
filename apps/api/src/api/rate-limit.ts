@@ -246,12 +246,12 @@ export function createRateLimitStageOne(
       const release = bodySlots.acquire(ip);
       if (!release) {
         c.header("Connection", "close");
-        logDecision(c, route.classId, {
-          result: "rejected",
-          ruleCategory: "concurrency",
-          retryAfterSeconds: 1,
-        });
-        throw new ApiFailure("RATE_LIMIT_EXCEEDED", undefined, 1);
+        enforceDecision(
+          c,
+          route.classId,
+          rateLimit.limiter.rejectConcurrency(route.classId, operationId),
+        );
+        return;
       }
       let loginIdentifier: string | undefined;
       try {
@@ -337,7 +337,7 @@ export function createVerificationBudget(
 /** Stage 2 hooks run inside `requirePrincipal` (SEC-ABU-021, SEC-ABU-033 and the per-subject rules). */
 export interface PrincipalRateLimitHooks {
   /** SEC-ABU-033 (b): called after the structure check, before the signature is verified. */
-  beforeVerification(c: AppContext): Promise<void>;
+  beforeVerification(c: AppContext): Promise<(() => void) | undefined>;
   verificationFailed(c: AppContext, error: unknown): Promise<void>;
   verified(c: AppContext, identity: { readonly subject: string }): Promise<void>;
 }
@@ -346,6 +346,8 @@ export function createPrincipalRateLimitHooks(
   options: { readonly verificationBudget?: VerificationBudget } = {},
 ): PrincipalRateLimitHooks {
   const budget = options.verificationBudget ?? createVerificationBudget();
+  // Only active normal-lane verifications are retained, across both guard classes. No wait queue.
+  const normalInFlight = new Set<string>();
   const classOf = (c: AppContext): RouteClassId => {
     const classId = c.get("rateLimitClass");
     if (!classId) throw new ApiFailure("TEMPORARY_UNAVAILABLE");
@@ -353,16 +355,36 @@ export function createPrincipalRateLimitHooks(
   };
   return {
     async beforeVerification(c) {
-      // An IP below its guard limit verifies on the normal budget. At the limit, the signature is
-      // verified only inside the process-wide budget; an exhausted budget is a 429 (Retry-After: 1),
-      // not an authentication failure, so it is not counted by the guard.
-      if (c.get("guardSaturated") !== true || budget.tryTake()) return;
-      logDecision(c, classOf(c), {
-        result: "rejected",
-        ruleCategory: "concurrency",
-        retryAfterSeconds: 1,
-      });
-      throw new ApiFailure("RATE_LIMIT_EXCEEDED", undefined, 1);
+      const classId = classOf(c);
+      const guard = guardFor(classId);
+      if (!guard) return undefined;
+      const ip = c.get("clientIp");
+      if (!ip) throw new ApiFailure("TEMPORARY_UNAVAILABLE");
+      const restricted = (): undefined => {
+        if (!budget.tryTake())
+          enforceDecision(c, classId, limiter.rejectConcurrency(classId, c.get("operationId")));
+        return undefined;
+      };
+      if (c.get("guardSaturated") === true || normalInFlight.has(ip)) return restricted();
+      normalInFlight.add(ip);
+      const release = () => {
+        normalInFlight.delete(ip);
+      };
+      try {
+        // A request may have read Stage 1 before a preceding failure finished. Recheck after
+        // taking the slot, and hold it through verification AND failure recording.
+        const state = await limiter.guardState(classId, ip);
+        if (state.result === "store_unavailable")
+          enforceDecision(c, guard, { result: "store_unavailable" });
+        if (state.result === "ok" && state.saturated) {
+          release();
+          return restricted();
+        }
+        return release;
+      } catch (error) {
+        release();
+        throw error;
+      }
     },
     async verificationFailed(c, error) {
       // SEC-ABU-020: only a token that failed the structure check or verification counts. An
