@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-120
 title: Email Notification Specification
-version: 2.2.0
+version: 2.3.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -1054,6 +1054,8 @@ Providerのidempotency retention契約が変更された場合は、23時間安�
 
 Resend SDKのwebhook verify helperまたは等価なSvix signature verificationを使用する。
 
+**Rate limit:** 署名検証の前には、webhook source IPごとのburst / sustained ruleだけを評価する。`resend_webhook` のglobal rule（3,000/分）は、署名検証が成功した後、`svix-id` のreceipt dedupe（DB access）の前に評価する（`SPEC-140` `SEC-ABU-030`）。無効署名のrequestはglobal counterを消費せず、超過時は `429 RATE_LIMIT_EXCEEDED`（Providerのretryを許可）を返してReceiptを作らない。
+
 **EML-WHK-001:** raw bodyを `JSON.parse` → `JSON.stringify` した値で署名検証してはならない。
 
 ### 28.1 Webhook dedupe
@@ -2021,3 +2023,5 @@ Email body全文、recipient Email全文、Secretを通常logへ出さない本�
 なし。
 
 本仕様は既存 `Notification Request` State、`app.notification_requests`、Permission Matrix、Business Confirmation、API namespaceを変更せず具体化できる。
+
+`SPEC-140` の共有rate limit（`UCR-140-003`、PR #41 のレビューによる `SEC-ABU-030`）に伴い、本改訂（v2.3.0）で `API-WHK-EML-001` に、`resend_webhook` のglobal ruleを署名検証の成功後・receipt dedupeの前に評価する規則を追記した。無効署名のrequestがglobal枠を消費しない。Notification State、API、Capabilityは追加・変更しない。

@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-150
 title: Reliability, Error and Recovery
-version: 2.1.0
+version: 2.2.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -234,6 +234,7 @@ SECURITY_FAILURE
 | Stripe / Resend webhook handler soft budget | 6秒 | retryable処理を早期終了させる |
 | Stripe / Resend webhook handler hard deadline | 8秒 | response前に安全なreceipt更新を試行し、未完了は5xx |
 | Admin manual recovery HTTP request | 15秒 | final result未確定ならpending / unknownを返し同期waitし続けない |
+| Rate limit store operation（1 requestの評価1回） | 250ms | 失敗として扱い `503 TEMPORARY_UNAVAILABLE`。Fail Closed。再試行しない（`REL-SEC-003`） |
 
 **REL-TMO-001:** Stripe Checkout Session lifetime / Payment Deadline 30分、Karaoke Hold 45分、Safety Buffer 5分、Resend 23時間safe cutoff、Webhook replay tolerance 300秒は上流値をそのまま使用する。
 
@@ -361,7 +362,7 @@ delay = random_uniform(0, cap_n)   # full jitter
 
 **REL-AUTH-001:** Auth verificationが3秒deadlineを超過、JWKS取得不能、issuer / keyを安全に確認不能な場合、protected operationは`SECURITY_FAILURE`またはtemporary auth failureとしてFail Closedにする。
 
-**REL-AUTH-002:** JWKS refreshはtrusted configured endpointへ最大1回だけ行う。refresh失敗後にdecode-only JWT、expired token grace、cached successful roleで続行しない。
+**REL-AUTH-002:** JWKS refreshはtrusted configured endpointへ最大1回だけ行う。refresh失敗後にdecode-only JWT、expired token grace、cached successful roleで続行しない。JWKS refreshは、未知のkey id（`kid`）や署名検証の失敗を理由に、requestごとに起動しない。refreshはprocess単位で同時に1件（single-flight）とし、直近のrefresh開始から30秒の間は新たに開始しない。refreshが実行中または間隔内で、cacheのkeyでは検証できないtokenを受け取ったrequestは、refreshの完了を待たず `503 AUTH_SERVICE_TEMPORARY_FAILURE`（identityを安全に検証できない場合。`SPEC-110` §21）とする。これは「tokenの有効性を判定できなかった場合」であり、Authentication-failure guardに数えない（`SPEC-140` `SEC-ABU-020`）。cacheのkeyで検証できるtokenは、refreshの影響を受けない。これは、無効tokenの大量送信が認証基盤への通信を増やさないための上限である。30秒は運用判断値であり、より長い間隔への変更はSPEC-150の変更を必要とする。cacheしたtrusted keyには最大有効期間600秒（10分）を設ける。期限に達したkeyは、上記のsingle-flight・30秒間隔の範囲でJWKSから再検証し、JWKSに存在すれば有効期間を更新し、存在しなければ破棄する。再検証できない場合（取得不能、またはsingle-flight・間隔内で開始できない場合）は、期限切れのkeyを使わず、そのkeyで検証すべきtokenのrequestを `503 AUTH_SERVICE_TEMPORARY_FAILURE` とする（tokenの有効性を判定できなかった場合。guardに数えない）。これにより、署名鍵が失効・削除されても最大10分で反映される。経過時間（30秒の間隔、600秒の有効期間）は単調時計で測り、壁時計の補正（NTP等）の影響を受けない。
 
 **REL-AUTH-003:** Session refresh failureはBrowser / React SPA側で再認証を要求し、Hono APIのprotected mutationを未検証Sessionで継続しない。
 
@@ -933,6 +934,7 @@ Result reconciliation専用operationは `API-ADM-REC-005`（`SPEC-110 §48.5`）
 | CSRF failure | 403、mutation未実行 | retry時CSRF skip |
 | CORS origin failure | request reject | wildcard credential fallback |
 | rate limit exceeded | 429、Domain state unchanged | limiter off / unlimited |
+| rate limit store unavailable / timeout | 503 `TEMPORARY_UNAVAILABLE`、Domain state unchanged、再試行しない | limiter off / unlimited / process-local counterだけでの継続 |
 | QR key unavailable | display / scan / migration Fail Closed | plaintext fallback |
 | required Secret missing | service not Ready | feature-specific verification bypass |
 | Security config invalid | service not Ready | warning-only startup |
@@ -941,6 +943,20 @@ Result reconciliation専用operationは `API-ADM-REC-005`（`SPEC-110 §48.5`）
 **REL-SEC-001:** Security control failureは`SECURITY_FAILURE`として分類し、Security control自体の回復後に元Operationを最初からcurrent authorizationで再評価する。
 
 **REL-SEC-002:** Security failure中に「可用性維持」のためcredential expiry、signature、CSRF、CORS、Role、QR crypto、rate limitをskipしない。
+
+## 58.1 Rate limit store failure
+
+rate limitのcontrol semanticsは `SPEC-140` Part XIII、storeのwiringは `SPEC-180` が定義する。本節はstore障害時のReliability behaviorだけを定義する。
+
+**REL-SEC-003:** rate limit storeへの評価1回は250msのdeadlineを持つ。deadline超過、接続不能、実行エラー、メモリ上限による書き込み失敗、scriptの実行不能は、すべて「判定不能」として `503 TEMPORARY_UNAVAILABLE` で拒否する。評価を同じrequestで再実行しない。
+
+**REL-SEC-004:** timeout後にstore側で記録済みか不明な場合も、判定不能として扱う。再実行で同じrequestを二重に数えない。「timeout = 許可」としない（`REL-TMO-003` の「timeout = failure断定」の禁止は、Business結果の不明に適用する規則であり、本節の判定不能には適用しない）。
+
+**REL-SEC-005:** store障害が連続する場合、実装は最大2秒間、storeへ問い合わせず同じ `503 TEMPORARY_UNAVAILABLE` を返す短絡（circuit open）を使用してよい。短絡中もunlimited / process-local counterへ切り替えない。短絡の解除は、storeへの少数の試験呼び出しの成功で行う。
+
+**REL-SEC-006:** store障害中に確定済みBusiness Dataを削除・取消・巻き戻ししない（`SEC-ERR-004`）。Stripe / Resend webhookが `503` で拒否された場合の再送受信と、その後のreconciliationは既存の `REL-WHK-*` に従い、rate limit store障害を理由に新しいBusiness retryを追加しない。
+
+**REL-SEC-007:** rate limit store障害は `SECURITY_FAILURE` として分類し、store回復後に元Operationを最初からcurrent authorizationで再評価する（`REL-SEC-001`）。
 
 ---
 
@@ -1135,17 +1151,18 @@ SPEC-160は少なくとも次のReliability semanticを観測可能にする。
 38. Review detailsにSecret / raw QR / full Email / provider raw bodyを保存しない。
 39. Case resolution前にpost-recovery authority / invariantを再検証する。
 40. `recovery.exception.execute`がgeneric SQL / state editorを提供しない。
-41. last Administrator emergency recoveryが通常Role Assignment APIと分離される。
-42. `UCR-130-001〜004/006` および `UCR-150-001〜002` はCanonical化済みとして扱い、`UCR-130-005` のみ未反映として扱う。
-43. automatic repair対象とdetection-only対象が§42のmatrixどおり分離される。
-44. confirmed Order entitlement mismatchをoutside-transactionでblind repairしない。
-45. retry storm防止としてnested automatic retryが最大1層になる。
-46. Client `request_id`をIdempotency Authorityにしない。
-47. manual recoveryはcurrent stateを再読込してpreconditionを再評価する。
-48. Recovery failureでも既存確定historyを削除しない。
-49. SPEC-160が観測可能なReliability semanticをemit可能にするがlog / audit schemaを本書で固定しない。
-50. `INV-010-01〜10`、関連`FR-*`、`BR-*`、`DI-030-*`、`AR-*`、`PAY-*`、`TQR-*`、`KRK-*`、`DB-*`、`API-*`、`EML-*`、`ADM-*` / `STF-*` / `OPS-*`、`SEC-*`へ追跡できる。
-51. Manual Recovery Runbookは §46〜§48 / §53 / §55 / §56 のcanonical operation（`API-ADM-REC-003〜007`, `API-ADM-GDS-005`, `API-ADM-EML-004〜005`, `API-ADM-TQR-001`, `API-ADM-KRK-007`, `API-ADM-PAY-001`）だけを使用し、new route / state / retry / capability / lock / generic commandを追加しない。
+41. rate limit storeのtimeout / 接続不能 / 実行エラー / メモリ上限で `503 TEMPORARY_UNAVAILABLE` とし、再試行せず、unlimited / process-local counterへ切り替えない。短絡中も同じ結果を返す。
+42. last Administrator emergency recoveryが通常Role Assignment APIと分離される。
+43. `UCR-130-001〜004/006` および `UCR-150-001〜002` はCanonical化済みとして扱い、`UCR-130-005` のみ未反映として扱う。
+44. automatic repair対象とdetection-only対象が§42のmatrixどおり分離される。
+45. confirmed Order entitlement mismatchをoutside-transactionでblind repairしない。
+46. retry storm防止としてnested automatic retryが最大1層になる。
+47. Client `request_id`をIdempotency Authorityにしない。
+48. manual recoveryはcurrent stateを再読込してpreconditionを再評価する。
+49. Recovery failureでも既存確定historyを削除しない。
+50. SPEC-160が観測可能なReliability semanticをemit可能にするがlog / audit schemaを本書で固定しない。
+51. `INV-010-01〜10`、関連`FR-*`、`BR-*`、`DI-030-*`、`AR-*`、`PAY-*`、`TQR-*`、`KRK-*`、`DB-*`、`API-*`、`EML-*`、`ADM-*` / `STF-*` / `OPS-*`、`SEC-*`へ追跡できる。
+52. Manual Recovery Runbookは §46〜§48 / §53 / §55 / §56 のcanonical operation（`API-ADM-REC-003〜007`, `API-ADM-GDS-005`, `API-ADM-EML-004〜005`, `API-ADM-TQR-001`, `API-ADM-KRK-007`, `API-ADM-PAY-001`）だけを使用し、new route / state / retry / capability / lock / generic commandを追加しない。
 
 ---
 
@@ -1158,7 +1175,7 @@ SPEC-160は少なくとも次のReliability semanticを観測可能にする。
 - **Status:** `INCORPORATED`（`SPEC-110 v1.1.0`）
 - 対象: `SPEC-110 API Specification`
 - **Canonical evidence:** `API-ADM-REC-003`（Checkout Attempt result reconcile、§46）、`API-ADM-REC-004`（Payment Confirmation reconcile、§47）、`API-ADM-REC-005`（Refund result reconcile、§48）、`API-ADM-REC-006`（Notification unknown result reconcile、§53）、`API-ADM-REC-007`（Consistency Review post-verification resolve、§55）。全て `recovery.exception.execute`、operation-specific precondition、same Business Cause / Provider key、generic state input / arbitrary SQLなし、result unknownをsuccessにせず、raw provider bodyをresponseへ返さない。
-- **本書側反映:** §3.1、§46〜§48、§53、§55、Acceptance 51。
+- **本書側反映:** §3.1、§46〜§48、§53、§55、Acceptance 52。
 
 ### UCR-150-002
 
@@ -1177,6 +1194,13 @@ SPEC-160は少なくとも次のReliability semanticを観測可能にする。
 - **本書側反映:** §3、§9、§11、`REL-DB-001`、`REL-DB-010`、`REL-DB-011`、`REL-PAY-010`、§63、Acceptance 3。
 - **他仕様書への反映:** `SPEC-100` §46、`SPEC-110` §50 / Acceptance 24、`SPEC-120` §42、`SPEC-160` §23 `OBS-DB-003`、`SPEC-170` §24 / §49 / §77、`SPEC-190` `DEV-DB-007`。
 - **残作業:** なし。`FOR UPDATE SKIP LOCKED`（Email claim）は行ロックの競合をskipするが、`ROW SHARE`等のテーブルロックの待機は`lock_timeout`の対象であり、DDLとの競合などで`55P03`が返りうる。その場合は`REL-DB-011`のtransaction retry対象とする。`NOWAIT`は仕様上使用しない。
+
+### UCR-140-003（SPEC-140起票）
+
+- **Status:** `INCORPORATED`（`SPEC-150 v2.2.0`）
+- 対象: `SPEC-150`（§9、§58、§58.1、Acceptance 41）
+- 内容: 共有rate limit storeの障害時のdeadline（250ms）、再試行禁止、短絡、Fail Closedを定義した。control semanticsは `SPEC-140` Part XIII、store wiringは `SPEC-180` が正である。
+- **残作業:** なし。process-localの縮退運用は本書の契約に含めない（別UCRとして検討する）。
 
 ---
 
