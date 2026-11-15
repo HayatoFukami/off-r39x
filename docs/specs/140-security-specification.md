@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-140
 title: Security Specification
-version: 2.4.0
+version: 2.4.1
 status: provisional
 depends_on:
   - SPEC-000
@@ -1841,7 +1841,7 @@ Production startup / readinessで最低限次を検証する。
 - **PR #41 第9回レビューによる追加（購入開始のCapability）:** `SEC-ABU-017` / `SEC-ABU-029` が購入開始を「owner relationもCapabilityも持たない」としたが、`SPEC-060` は `purchase.start` をCapabilityと定め、`API-PUR-CART-001` 等も要求している。記述を「owner relationを持たず、認可確認は `purchase.start` の確認」に直し、事前確認と段階3を `purchase.start` の確認の後に置いた（`SPEC-110` §24.1）。**本書側反映:** `SEC-ABU-017`、`SEC-ABU-029`。
 - **PR #41 第9回レビューによる追加（有効tokenとguardの記述の矛盾）:** `SEC-ABU-021`、Acceptance 12、`TST-RLM-005` が「有効tokenはguardの状態で拒否されない」と無条件に断定する一方、`SEC-ABU-020` と `SEC-ABU-033` (d) は制限枠の枯渇中の `429` を認めていた。「guardの失敗数そのものを理由には拒否されない。ただし制限枠が尽きている間は `429` になりうる」に統一した。同じIPの1台が構造の正しい無効JWTを送り続ける場合の残余リスクを `SEC-ABU-032` (7) に加えた（IPごとの枠により、1つのIPではprocess全体の枠を使い切れない。5つ以上のIPの協調は残る）。制限枠が尽きた場合の期待値を `TST-RLM-004` / `TST-RLM-005` に加えた。**本書側反映:** `SEC-ABU-021`、`SEC-ABU-032`、`SEC-ABU-033`、Acceptance 12。
 - **PR #41 第9回レビューによる追加（JWKSを再取得できない場合のコード）:** `SPEC-150` `REL-AUTH-002` の追記が `503 TEMPORARY_UNAVAILABLE` とする一方、`SPEC-110` §21 は「identityを安全に検証不能」を `AUTH_SERVICE_TEMPORARY_FAILURE` と定めていた。`503 AUTH_SERVICE_TEMPORARY_FAILURE` に統一した。**本書側反映:** `SEC-ABU-020`、`SEC-ABU-021`。
-- **PR #41 第9回レビューによる追加（Google OAuth callbackと外部事実）:** `UCR-110-002` の要求1（`SPEC-180` §17.2への確認項目の追加）が未反映だった。§17.2 に #7 を追加し、Googleログインを本番で提供する場合のProduction promotion gateとして `INF-RLS-008` と整合させた。確認結果は未取得であり、本書は捏造しない。**本書側反映:** なし（`SPEC-180` §17.2 #7、`SPEC-110` §23.1）。
+- **PR #41 第9回レビューによる追加（Google OAuth callbackと外部事実）:** `UCR-110-002` の要求1（`SPEC-180` §17.2への確認項目の追加）が未反映だったため、§17.2 に #7 を追加した。後続レビューのMedium指摘への対応で、既存の全4認証方式の必須契約に合わせ、#7を必須のProduction promotion gateと明確化した（Googleログインの無効化・未提供による省略は認めない）。`SPEC-180` `INF-RLS-008` / Acceptance 53と、`SPEC-110` `UCR-110-002` を同じ条件に揃えた。確認結果は未取得であり、本書は捏造しない。**本書側反映:** なし（`SPEC-180` §17.2 #7、`SPEC-110` §23.1）。
 - **PR #41 第9回レビューの再レビューによる追加（4件）:** (1) 同時検証slot・制限枠・bucket保持数はAPI processごとの資源であり、導出した上限（同時8件、400回/60秒）は1 processあたりで、環境全体ではreplica数倍であること、guard counterは共有storeで環境全体で1つであることを明記した（`SEC-ABU-033`、`SEC-ABU-032` (7)、Acceptance 17）。(2) Client IPを導出できない `503` の記録を、storeの判定ではないためeventだけで記録し、metric `r39x_rate_limit_decisions_total` に数えない（`OBS-ALT-041` を誤発火させない）形に定めた（設計判断。`SPEC-160` §24.1）。(3) IPごとのbucketの保持上限に達している間、新たにlimitに達したIPの有効tokenが `429` になる残余リスクを `SEC-ABU-032` (7) に加えた。(4) 購入開始の認可確認の位置の記述を、メール未確認・Business Profile未解決は手順3・5での拒否であり、`purchase.start` がDenyなのはGuestだけであることに合わせて直した（`SEC-ABU-029`、`SPEC-110` §24.1、`SPEC-170` `TST-RLM-004`）。
 - **PR #41 第9回レビューによる追加（観測定義、テストgroup、古い記述）:** 制限枠の拒否の `class_id` とActor、(IP, identifier) ruleと `IP N/min` ruleの `rule_category`、段階1のguard読取りを判定として数えないこと、store障害時の `class_id` を `SPEC-160` §24.1 に定めた。`TST-RLM-*` のgroup割当（G1 / G4 / G5 / G7。新しいgroupは定義しない）を `SPEC-170` `TST-RLM-010` と `SPEC-180` `INF-TST-004` に定めた。Acceptance 9、§101.4、§101.5、`SPEC-110` / `SPEC-160` / `SPEC-170` / `SPEC-180` の記録とAcceptance、probeの記述（接続とscript実行）、`TST-RLM-004` の句点の古い記述を修正した。**本書側反映:** Acceptance 9、§101.4、§101.5。
 - **PR #46 のレビューを受けた仕様の補足:** 既知のkeyのcache期限（10分）と単調時計（`SPEC-150` `REL-AUTH-002`、`SPEC-180` `INF-HLT-005`）、guard判定のClass ID（`SPEC-160` §24.1。Actorの記録は第8回レビューで修正）、`auth_form_proxy` の全ての早期拒否での接続切断（`SEC-ABU-031`）を明確にした。**本書側反映:** `SEC-ABU-031`。
