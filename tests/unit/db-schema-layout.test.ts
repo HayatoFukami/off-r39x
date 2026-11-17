@@ -21,6 +21,7 @@ interface DrizzleColumn {
   name: string;
   notNull: boolean;
   hasDefault: boolean;
+  default?: unknown;
   columnType: string;
   generatedIdentity?: { type: string };
   getSQLType(): string;
@@ -53,12 +54,13 @@ interface DrizzleTableConfig {
   columns: DrizzleColumn[];
   indexes: DrizzleIndex[];
   foreignKeys: DrizzleForeignKey[];
-  checks: { name: string }[];
+  checks: { name: string; value: unknown }[];
   primaryKeys: DrizzleNamedColumns[];
   uniqueConstraints: DrizzleNamedColumns[];
 }
-const { getTableConfig } = dbRequire("drizzle-orm/pg-core") as {
+const { getTableConfig, PgDialect } = dbRequire("drizzle-orm/pg-core") as {
   getTableConfig(table: unknown): DrizzleTableConfig;
+  PgDialect: new () => { sqlToQuery(query: unknown): { sql: string; params: unknown[] } };
 };
 
 // schema-contract.json row shapes (packages/db/src/schema-contract.json).
@@ -158,6 +160,93 @@ function columnList(columns: DrizzleColumn[]): string {
   return columns.map((column) => column.name).join(", ");
 }
 
+// Expression comparison (default / CHECK / partial-index predicate).
+//
+// Drizzle keeps raw `sql` fragments as SQL objects; PgDialect().sqlToQuery() is the serializer
+// that renders them into DDL. It is the one Drizzle internal this test depends on (a public
+// export of drizzle-orm/pg-core in 0.45; the SQL object itself is reached through the untyped
+// `default`, `checks[].value` and `indexes[].config.where` fields). It qualifies column
+// references as "app"."<table>"."<column>"; stripSchemaQualifiers() reduces them to the bare
+// column name and fails on any other quoting, so the golden strings below stay readable.
+//
+// The golden values are the expressions of the pre-refactor packages/db/src/schema/profiles.ts
+// (origin/dev), copied verbatim apart from that qualifier normalisation. They are compared for
+// exact equality, so a change of function (transaction_timestamp() -> clock_timestamp()), literal,
+// operator, column or predicate fails here. schema-contract.json holds the PostgreSQL-normalised
+// form (pg_get_constraintdef / pg_get_expr), which cannot be string-equal to the raw SQL for
+// CHECKs, so CHECKs are additionally compared with the contract by token: referenced columns,
+// string literals, numbers and IS [NOT] NULL tests. Defaults and the partial-index predicate are
+// the same text in both forms (apart from the ::text cast) and are compared with the contract
+// exactly.
+const dialect = new PgDialect();
+
+function serialize(expression: unknown, what: string): string {
+  expect(expression, `${what} is declared`).toBeDefined();
+  const query = dialect.sqlToQuery(expression);
+  expect(query.params, `${what} must not carry bind parameters`).toEqual([]);
+  return query.sql;
+}
+
+function stripSchemaQualifiers(sqlText: string, table: string, what: string): string {
+  const bare = sqlText.replace(new RegExp(`"app"\\."${table}"\\."([a-z_]+)"`, "g"), "$1");
+  expect(bare, `${what} has an unrecognised quoted identifier`).not.toContain('"');
+  return bare;
+}
+
+const GOLDEN_DEFAULTS: Record<string, Record<string, string>> = {
+  business_profiles: {
+    public_ref: "gen_random_uuid()",
+    created_at: "transaction_timestamp()",
+    updated_at: "transaction_timestamp()",
+  },
+  role_assignments: {
+    public_ref: "gen_random_uuid()",
+    granted_at: "transaction_timestamp()",
+    created_at: "transaction_timestamp()",
+  },
+};
+
+const GOLDEN_CHECKS: Record<string, Record<string, string>> = {
+  business_profiles: {
+    ck_business_profiles_display_name:
+      "display_name IS NULL OR char_length(display_name) BETWEEN 1 AND 80",
+  },
+  role_assignments: {
+    ck_role_assignments_role: "role IN ('STAFF','ADMINISTRATOR')",
+    ck_role_assignments_state: "state IN ('ACTIVE','REVOKED')",
+    ck_role_assignments_revocation:
+      "(state = 'ACTIVE' AND revoked_at IS NULL AND revoked_by_profile_id IS NULL) OR (state = 'REVOKED' AND revoked_at IS NOT NULL)",
+  },
+};
+
+const GOLDEN_PARTIAL_INDEX_WHERE = "state = 'ACTIVE'";
+
+interface ExpressionTokens {
+  columns: string[];
+  literals: string[];
+  numbers: string[];
+  isNull: number;
+  isNotNull: number;
+}
+
+function tokens(expression: string, columnNames: string[]): ExpressionTokens {
+  const literals = [...expression.matchAll(/'([^']*)'/g)].map((m) => m[1] as string).sort();
+  const rest = expression.replace(/'[^']*'/g, " ");
+  return {
+    columns: columnNames.filter((name) => new RegExp(`\\b${name}\\b`).test(rest)).sort(),
+    literals,
+    numbers: [...rest.matchAll(/\b\d+\b/g)].map((m) => m[0]).sort(),
+    isNull: [...rest.matchAll(/\bIS NULL\b/g)].length,
+    isNotNull: [...rest.matchAll(/\bIS NOT NULL\b/g)].length,
+  };
+}
+
+function contractCheckExpression(definition: string): string {
+  const match = /^CHECK \((.*)\)$/.exec(definition);
+  if (!match) throw new Error("Unexpected CHECK definition shape in schema-contract.json");
+  return (match[1] as string).replaceAll("::text", "");
+}
+
 describe("TC-DB-ARC-007-001 Drizzle declarations match schema-contract.json", () => {
   const cases = [
     { exportName: "businessProfiles", table: "business_profiles", columns: 6, constraints: 4 },
@@ -229,6 +318,23 @@ describe("TC-DB-ARC-007-001 Drizzle declarations match schema-contract.json", ()
         }
       });
 
+      it("TC-DB-ARC-007-001 columns: default SQL expressions equal the golden and the contract", async () => {
+        const { config } = await load();
+        const golden = GOLDEN_DEFAULTS[expected.table] as Record<string, string>;
+        const actual: Record<string, string> = {};
+        for (const column of config.columns) {
+          if (column.generatedIdentity || !column.hasDefault) continue;
+          actual[column.name] = serialize(column.default, `default of ${column.name}`);
+        }
+        // (1) exact expression text, e.g. transaction_timestamp() must not become clock_timestamp().
+        expect(actual).toEqual(golden);
+        // (2) the same text as the reviewed contract.
+        for (const [, name, , , identity, , defaultExpr] of contractColumns) {
+          if (identity !== "") continue;
+          expect(defaultExpr, `contract default of ${name}`).toBe(actual[name] ?? null);
+        }
+      });
+
       it("TC-DB-ARC-007-001 columns: bigint IDs and FKs stay in lossless bigint mode (DEV-DB-006)", async () => {
         const { config } = await load();
         const bigintColumns = contractColumns
@@ -272,6 +378,33 @@ describe("TC-DB-ARC-007-001 Drizzle declarations match schema-contract.json", ()
         );
       });
 
+      it("TC-DB-ARC-007-001 constraints: CHECK expressions equal the golden and match the contract tokens", async () => {
+        const { config } = await load();
+        const golden = GOLDEN_CHECKS[expected.table] as Record<string, string>;
+        const columnNames = config.columns.map((c) => c.name);
+        const actual: Record<string, string> = {};
+        for (const check of config.checks) {
+          actual[check.name] = stripSchemaQualifiers(
+            serialize(check.value, `CHECK ${check.name}`),
+            expected.table,
+            `CHECK ${check.name}`,
+          );
+        }
+        // (1) exact expression text: TRUE, a changed literal or operator, or a swapped column fails.
+        expect(actual).toEqual(golden);
+        // (2) the contract's PostgreSQL-normalised definition has the same columns, literals,
+        // numbers and NULL tests (it differs in parentheses, casts and IN -> = ANY(ARRAY[...])).
+        const contractChecks = contractConstraints.filter(([, , kind]) => kind === "c");
+        expect(contractChecks.map(([, name]) => name).sort()).toEqual(Object.keys(golden).sort());
+        for (const [, name, , definition] of contractChecks) {
+          const declared = tokens(actual[name] as string, columnNames);
+          expect(declared.columns.length, `columns of ${name}`).toBeGreaterThan(0);
+          expect(declared, `tokens of ${name}`).toEqual(
+            tokens(contractCheckExpression(definition), columnNames),
+          );
+        }
+      });
+
       it("TC-DB-ARC-007-001 primary key and unique constraint column lists equal the contract definitions", async () => {
         const { config } = await load();
         const definitions = new Map(contractConstraints.map(([, name, , def]) => [name, def]));
@@ -309,6 +442,29 @@ describe("TC-DB-ARC-007-001 Drizzle declarations match schema-contract.json", ()
         expect(definition).toContain(
           "USING btree (profile_id, role) WHERE (state = 'ACTIVE'::text)",
         );
+      });
+
+      it("TC-DB-ARC-007-001 indexes: the partial-index predicate equals the golden and the contract", async () => {
+        const { config } = await load();
+        if (expected.table === "business_profiles") {
+          expect(config.indexes).toHaveLength(0);
+          return;
+        }
+        const [index] = config.indexes;
+        const where = stripSchemaQualifiers(
+          serialize(index?.config.where, "partial index predicate"),
+          expected.table,
+          "partial index predicate",
+        );
+        // (1) exact predicate text: `state = 'REVOKED'` or a changed condition fails.
+        expect(where).toBe(GOLDEN_PARTIAL_INDEX_WHERE);
+        // (2) the contract's pg_get_indexdef predicate is the same text plus the ::text cast.
+        const definition = contractIndexes.find(([, def]) =>
+          def.includes(" ux_role_assignments_profile_role_active "),
+        )?.[1];
+        const predicate = /\sWHERE \((.*)\)$/.exec(definition ?? "")?.[1];
+        expect(predicate, "contract predicate").toBeDefined();
+        expect((predicate as string).replaceAll("::text", "")).toBe(where);
       });
     });
   }
