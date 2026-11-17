@@ -59,6 +59,9 @@ export async function transaction<T>(
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     let client: PoolClient | undefined;
     let discard = false;
+    // Set by the deadline timer when it reaches a retry-budget-shortened deadline. It survives
+    // an in-flight ROLLBACK, where the caught error is still the original SQLSTATE error.
+    let budgetDeadlineReached = false;
     let committing = false;
     let detachConnectionListeners = () => {};
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -73,6 +76,7 @@ export async function transaction<T>(
           timer = setTimeout(() => {
             const left = deadlineAt - performance.now();
             if (left > 0) return arm(Math.ceil(left));
+            if (budgetShortened) budgetDeadlineReached = true;
             discard = true;
             client?.release(true);
             client = undefined;
@@ -217,11 +221,13 @@ export async function transaction<T>(
           ...(code && /^[0-9A-Z]{5}$/.test(code) ? { sqlstate: code } : {}),
           duration_ms: Math.floor(performance.now() - start),
         });
-      // A retry attempt cut off by the shortened retry budget is exhaustion too.
+      // A retry attempt cut off by the shortened retry budget is exhaustion too: either the
+      // attempt itself hit the deadline, or the timer reached it while ROLLBACK was in flight.
+      // Recorded here once; the discard branch below then only rethrows.
       if (
         budgetShortened &&
-        error instanceof TransactionDeadlineError &&
-        performance.now() >= deadlineAt
+        ((error instanceof TransactionDeadlineError && performance.now() >= deadlineAt) ||
+          (budgetDeadlineReached && isDatabaseRetryable(error)))
       )
         exhausted();
       const policy = isDatabaseRetryable(error) ? RETRY_POLICIES[error.code] : undefined;
