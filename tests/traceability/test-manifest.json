@@ -17349,6 +17349,80 @@
       "critical": true
     },
     {
+      "test_case_id": "TC-HTTP-AUDIT-002",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["SEC-API-022", "SEC-ABU-018"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Same app as TC-HTTP-AUDIT-001 (no rate limit); PUT to exact and parameterized GET-only paths and to an unknown path",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [404, 405],
+      "expected_domain_postconditions": [
+        "Known path with an unsupported method is 405 METHOD_NOT_ALLOWED with Allow and retryable false; unknown path is 404 RESOURCE_NOT_FOUND"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-HTTP-AUDIT-003",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["SEC-API-022"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Harness POST route behind validateJson; text/plain, absent Content-Type, malformed JSON and valid JSON",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [200, 400, 415],
+      "expected_domain_postconditions": [
+        "A non-JSON media type is 415 UNSUPPORTED_MEDIA_TYPE and the handler does not run; malformed JSON stays 400 MALFORMED_REQUEST"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-HTTP-AUDIT-004",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["REL-DB-011"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Harness GET route throwing 55P03, 40001, 40P01, a transaction deadline error, and 23505",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "sqlstate_55P03",
+        "sqlstate_40001",
+        "sqlstate_40P01",
+        "transaction_deadline"
+      ],
+      "expected_http": [500, 503],
+      "expected_domain_postconditions": [
+        "A retry-exhausted transient DB error or a transaction deadline is 503 DATABASE_TEMPORARY_FAILURE with retryable true and no SQLSTATE in the body; a constraint violation is not converted to 503"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
       "test_case_id": "TC-STRIPE-AUDIT-003",
       "level": "Unit",
       "suite": "unit",
