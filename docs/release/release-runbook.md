@@ -11,16 +11,16 @@
 
 ### 0.1 リポジトリの運用（承認済み: 2026-11-17）
 
-| 項目 | 規則 |
-|---|---|
-| ブランチ | 起点は常に最新の `origin/dev`。名前は `<種別>/<WP-ID 小文字>-<slug>`（例 `feat/l1-2c-entry-allocation-repo`、`fix/s0-0c-db-retry-55p03-http-errors`）。1 ブランチ = 1 PR、base は `dev` |
-| スタック PR | 1 段まで。base が `dev` でない PR は CI が動かないため、前の PR のマージ後に base を付け替えて CI を通す |
-| `dev` の取込み | `git merge origin/dev`。rebase と force-push は原則使わない。やむを得ない force-push は `--force-with-lease=<ref>:<SHA>` と 4 項目の説明、利用者の承認（`~/.claude/rules/git-force-push.md`） |
-| コミットの型 | C1 `test(...)`（失敗するテスト）→ C2 `feat(db)` migration → C3 repository → C4 `feat(api)` → C5 `chore(traceability)`。レビュー対応は追加コミット（amend しない）。末尾に指定の `Co-Authored-By` 行 |
-| PR の大きさ | テストと生成物を除いて 600 行以内、Operation は 1 PR に 1〜3 本。migration の PR と、それを使うコードの PR は分ける |
-| 仕様の改訂 | **別の PR で先にマージ。** 実装 PR に `docs/specs/**` の変更を混ぜない |
-| GitHub 操作 | `gh` CLI で行い、`-R HayatoFukami/off-r39x` を明示。**PR・Issue の作成、コメント、マージは利用者の承認後**（`.claude/rules/github-cli.md`） |
-| レビュー | 1〜2 往復を前提にする。3 往復目に入ったら理由（範囲 / 仕様の曖昧さ / テスト不足）を記録する。仕様の解釈が割れたら PR を止めて UCR（`SPEC-000 §15.2` 形式）に切り出す |
+| 項目           | 規則                                                                                                                                                                                                            |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ブランチ       | mainはリリースブランチ、起点は常に最新の `origin/dev`。名前は `<種別>/<WP-ID 小文字>-<slug>`（例 `feat/l1-2c-entry-allocation-repo`、`fix/s0-0c-db-retry-55p03-http-errors`）。1 ブランチ = 1 PR、base は `dev` |
+| スタック PR    | 1 段まで。base が `dev` でない PR は CI が動かないため、前の PR のマージ後に base を付け替えて CI を通す                                                                                                        |
+| `dev` の取込み | `git merge origin/dev`。rebase と force-push は原則使わない。やむを得ない force-push は `--force-with-lease=<ref>:<SHA>` と 4 項目の説明、利用者の承認（`~/.claude/rules/git-force-push.md`）                   |
+| コミットの型   | C1 `test(...)`（失敗するテスト）→ C2 `feat(db)` migration → C3 repository → C4 `feat(api)` → C5 `chore(traceability)`。レビュー対応は追加コミット（amend しない）。末尾に指定の `Co-Authored-By` 行             |
+| PR の大きさ    | テストと生成物を除いて 600 行以内、Operation は 1 PR に 1〜3 本。migration の PR と、それを使うコードの PR は分ける                                                                                             |
+| 仕様の改訂     | **別の PR で先にマージ。** 実装 PR に `docs/specs/**` の変更を混ぜない                                                                                                                                          |
+| GitHub 操作    | `gh` CLI で行い、`-R HayatoFukami/off-r39x` を明示。**PR・Issue の作成、コメント、マージは利用者の承認後**（`.claude/rules/github-cli.md`）                                                                     |
+| レビュー       | 1〜2 往復を前提にする。3 往復目に入ったら理由（範囲 / 仕様の曖昧さ / テスト不足）を記録する。仕様の解釈が割れたら PR を止めて UCR（`SPEC-000 §15.2` 形式）に切り出す                                            |
 
 ### 0.2 1 つの PR を作る手順（agent の回し方）
 
@@ -61,14 +61,14 @@ pnpm secret-scan --build-dir dist --require-build
 
 ### 1.1 W1（今週）にやること
 
-| # | 作業 | 完了条件 | 備考 |
-|---|---|---|---|
-| O-1 | 運営主体・名義、公開する運営者情報、問い合わせ用の受信メール窓口を決める | 申請フォームの入力元が確定 | 全申請の前提。Stripe は名義で開設できる形が要る |
-| O-2 | 本番ドメインの取得、DNS を Cloudflare で管理 | ゾーンが有効 | Web と API / Auth は同一親ドメイン配下（`SPEC-180 §10`）。wildcard DNS は作らない |
-| O-3 | **ZeptoMail の申請**（§1.2） | アカウント作成・審査申請を提出 | **審査 2 営業日。ここが Neon Auth の確認メール（W2）の前提** |
-| O-4 | **Stripe**: staging 用のテスト環境、本番アカウントの開設・審査申請 | テストキー発行、審査申請を提出 | 支払方法はカードのみ（仮定）。審査の日数が読めないため最優先 |
-| O-5 | Cloudflare（Pages プロジェクト、Access）、Google OAuth（環境別 credential）、Neon・Railway・Better Stack・Healthchecks.io・GitHub Environment のアカウント | アカウントとメンバー | 実機確認（Neon Auth、#42〜#45）の前提 |
-| O-6 | 仕様 PR の決定: **D-2（RELSCOPE の R-1〜R-8）、D-3（SEED、IDM）** | 選択肢を選ぶ | planner の下書きを見て決める。RELSCOPE が最優先 |
+| #   | 作業                                                                                                                                                       | 完了条件                       | 備考                                                                              |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ | --------------------------------------------------------------------------------- |
+| O-1 | 運営主体・名義、公開する運営者情報、問い合わせ用の受信メール窓口を決める                                                                                   | 申請フォームの入力元が確定     | 全申請の前提。Stripe は名義で開設できる形が要る                                   |
+| O-2 | 本番ドメインの取得、DNS を Cloudflare で管理                                                                                                               | ゾーンが有効                   | Web と API / Auth は同一親ドメイン配下（`SPEC-180 §10`）。wildcard DNS は作らない |
+| O-3 | **ZeptoMail の申請**（§1.2）                                                                                                                               | アカウント作成・審査申請を提出 | **審査 2 営業日。ここが Neon Auth の確認メール（W2）の前提**                      |
+| O-4 | **Stripe**: staging 用のテスト環境、本番アカウントの開設・審査申請                                                                                         | テストキー発行、審査申請を提出 | 支払方法はカードのみ（仮定）。審査の日数が読めないため最優先                      |
+| O-5 | Cloudflare（Pages プロジェクト、Access）、Google OAuth（環境別 credential）、Neon・Railway・Better Stack・Healthchecks.io・GitHub Environment のアカウント | アカウントとメンバー           | 実機確認（Neon Auth、#42〜#45）の前提                                             |
+| O-6 | 仕様 PR の決定: **D-2（RELSCOPE の R-1〜R-8）、D-3（SEED、IDM）**                                                                                          | 選択肢を選ぶ                   | planner の下書きを見て決める。RELSCOPE が最優先                                   |
 
 ### 1.2 ZeptoMail の申請手順
 
@@ -78,12 +78,12 @@ pnpm secret-scan --build-dir dist --require-build
 2. **アカウントの審査を申請する**（Customer validation form）。用途は「本システムのトランザクションメール（購入確認、返金通知、認証メール）に限る」と書く。一括・宣伝メールは不可。審査は 2 営業日が目安。
 3. **Agent を 4 つ作る**（名前は運営者が決める）。Token、SMTP password、Webhook の Authentication Key が Agent 単位のため、これで環境と用途を分離する。
 
-   | Agent | 用途 |
-   |---|---|
-   | production-business | 本番の業務通知（API 送信、Webhook） |
+   | Agent                | 用途                                       |
+   | -------------------- | ------------------------------------------ |
+   | production-business  | 本番の業務通知（API 送信、Webhook）        |
    | production-neon-auth | 本番の Neon Auth の確認メール（SMTP のみ） |
-   | staging-business | staging の業務通知 |
-   | staging-neon-auth | staging の Neon Auth の確認メール |
+   | staging-business     | staging の業務通知                         |
+   | staging-neon-auth    | staging の Neon Auth の確認メール          |
 
 4. **送信ドメインを追加して認証する**（送信前に必須）。本番はサブドメイン（例 `mail.example.com`）を推奨。表示される **DKIM（TXT）と返送用の CNAME** を Cloudflare の DNS に登録する。SPF レコードは不要（CNAME が兼ねる）。DNS 反映に 24〜48 時間。**DNS を後から変更・削除すると送信が止まる**ので、レコードを台帳に記録して触らない。staging は別の送信元（別サブドメイン）にする。
 5. **認証後に到達性を確認する**（Gmail・Outlook・携帯キャリア宛。合成の受信先を使う）。
@@ -96,16 +96,16 @@ pnpm secret-scan --build-dir dist --require-build
 
 ### 1.3 以降の運営者の作業
 
-| 時期 | 作業 |
-|---|---|
-| W2 | ZeptoMail の審査結果と DNS の反映を確認。**R-7、SEED、IDM を決定** |
-| W3 | spike の結果（M-SPK）を確認 |
-| W4 | **M-1（結果不明の扱い）、M-3、M-5、M-6 を決定**（[mail-provider-zeptomail.md](mail-provider-zeptomail.md) §3） |
-| W5 | PR-SPEC-MAIL のレビュー・承認 |
-| W8 | 法務表示（特定商取引法に基づく表記、利用規約、プライバシーポリシー）を確定。**専門家の確認を推奨。** 仕様と UI mock に画面がない（作業計画 O-10）ため、置き場所を決める |
-| W11 | Stripe 本番審査の完了、本番の ZeptoMail Agent・ドメインを確認 |
-| W12 | 本番の Secret の投入を承認 |
-| W13 | **公開の承認** |
+| 時期 | 作業                                                                                                                                                                    |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| W2   | ZeptoMail の審査結果と DNS の反映を確認。**R-7、SEED、IDM を決定**                                                                                                      |
+| W3   | spike の結果（M-SPK）を確認                                                                                                                                             |
+| W4   | **M-1（結果不明の扱い）、M-3、M-5、M-6 を決定**（[mail-provider-zeptomail.md](mail-provider-zeptomail.md) §3）                                                          |
+| W5   | PR-SPEC-MAIL のレビュー・承認                                                                                                                                           |
+| W8   | 法務表示（特定商取引法に基づく表記、利用規約、プライバシーポリシー）を確定。**専門家の確認を推奨。** 仕様と UI mock に画面がない（作業計画 O-10）ため、置き場所を決める |
+| W11  | Stripe 本番審査の完了、本番の ZeptoMail Agent・ドメインを確認                                                                                                           |
+| W12  | 本番の Secret の投入を承認                                                                                                                                              |
+| W13  | **公開の承認**                                                                                                                                                          |
 
 ---
 
@@ -115,49 +115,49 @@ pnpm secret-scan --build-dir dist --require-build
 
 ### 2.1 W1〜W2: 基盤と共通部品（S0）
 
-| 順 | PR | 内容 | 完了条件 |
-|---|---|---|---|
-| 1 | **PR-S0-0c** | DB の lock timeout（`55P03`）を `SPEC-150` どおり retry。405 / 415 のエラーコード追加。`docs/backend-foundation.md` の更新 | CI 緑。既存テストの期待値を変えるのは `55P03` の行だけ |
-| 2 | PR-SPEC-RELSCOPE / SEED / IDM | 仕様 PR（§4 の順）。planner が下書きし、運営者が決定 | 仕様が Canonical Owner の本文に反映されてマージ |
-| 3 | PR-S0-2 | `packages/db` の schema / transactions の骨組みと採番ルール | `0001` と `schema-contract.json` が 1 文字も変わらない |
-| 4 | PR-S0-4 | `audit_events`（`0002`）と writer | 実行時 role は INSERT のみ。UPDATE / DELETE が拒否される |
-| 5 | **PR-S0-1a / 1b** | `api-contract` と `apps/api` のファイル分割（挙動不変） | 既存テストが**修正なし**で通る。以降の PR が共通ファイルを触らない |
-| 6 | PR-S0-3a〜3c | エラー封筒、ページング、冪等性の入力 | 判定できないときは拒否（fail-closed）。内部情報がエラーに出ない |
-| 7 | PR-S0-5 | 通知の enqueue と Review 起票の**型** | 担当2が型をレビューして合意 |
-| 8 | PR-S0-3d | 冪等性の replay 記録（PR-SPEC-IDM のマージ後） | 同じ key・別内容は `409` |
+| 順  | PR                            | 内容                                                                                                                       | 完了条件                                                           |
+| --- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| 1   | **PR-S0-0c**                  | DB の lock timeout（`55P03`）を `SPEC-150` どおり retry。405 / 415 のエラーコード追加。`docs/backend-foundation.md` の更新 | CI 緑。既存テストの期待値を変えるのは `55P03` の行だけ             |
+| 2   | PR-SPEC-RELSCOPE / SEED / IDM | 仕様 PR（§4 の順）。planner が下書きし、運営者が決定                                                                       | 仕様が Canonical Owner の本文に反映されてマージ                    |
+| 3   | PR-S0-2                       | `packages/db` の schema / transactions の骨組みと採番ルール                                                                | `0001` と `schema-contract.json` が 1 文字も変わらない             |
+| 4   | PR-S0-4                       | `audit_events`（`0002`）と writer                                                                                          | 実行時 role は INSERT のみ。UPDATE / DELETE が拒否される           |
+| 5   | **PR-S0-1a / 1b**             | `api-contract` と `apps/api` のファイル分割（挙動不変）                                                                    | 既存テストが**修正なし**で通る。以降の PR が共通ファイルを触らない |
+| 6   | PR-S0-3a〜3c                  | エラー封筒、ページング、冪等性の入力                                                                                       | 判定できないときは拒否（fail-closed）。内部情報がエラーに出ない    |
+| 7   | PR-S0-5                       | 通知の enqueue と Review 起票の**型**                                                                                      | 担当2が型をレビューして合意                                        |
+| 8   | PR-S0-3d                      | 冪等性の replay 記録（PR-SPEC-IDM のマージ後）                                                                             | 同じ key・別内容は `409`                                           |
 
 ### 2.2 W2〜W4: 公開・販売系と Identity
 
-| 順 | PR | 内容 | 完了条件 |
-|---|---|---|---|
-| 1 | PR-L2-2 | 公開・販売系の 8 表（RELSCOPE のマージ後） | 空の DB に順に適用できる。定員の CHECK がある |
-| 2 | PR-L2-3、PR-SEED | 公開読取 API 6 本、初期データ（SEED のマージ後） | 公開状態のものだけが返る |
-| 3 | PR-L2-1a / 1b / 1c | Profile の参照・更新・作成、実 Neon の差異修正 | staging で 登録 → ログイン → `GET /api/v1/self/principal` |
-| 4 | PR-GK-1〜3、PR-L1-1a / 1b / 1c | Goods / Karaoke の表、orders・決済・Ticket・通知の表 | **checkpoint 1: PR-L1-1a が W3 末に `dev` へ** |
+| 順  | PR                             | 内容                                                 | 完了条件                                                  |
+| --- | ------------------------------ | ---------------------------------------------------- | --------------------------------------------------------- |
+| 1   | PR-L2-2                        | 公開・販売系の 8 表（RELSCOPE のマージ後）           | 空の DB に順に適用できる。定員の CHECK がある             |
+| 2   | PR-L2-3、PR-SEED               | 公開読取 API 6 本、初期データ（SEED のマージ後）     | 公開状態のものだけが返る                                  |
+| 3   | PR-L2-1a / 1b / 1c             | Profile の参照・更新・作成、実 Neon の差異修正       | staging で 登録 → ログイン → `GET /api/v1/self/principal` |
+| 4   | PR-GK-1〜3、PR-L1-1a / 1b / 1c | Goods / Karaoke の表、orders・決済・Ticket・通知の表 | **checkpoint 1: PR-L1-1a が W3 末に `dev` へ**            |
 
 ### 2.3 W4〜W6: 購入・決済・Ticket（クリティカルパス）
 
-| 順 | PR | 内容 | 完了条件 |
-|---|---|---|---|
-| 1 | PR-L1-2a〜2e | 購入の判定、在庫確保と注文作成、購入開始、注文参照・取消 | **hot concurrency:** 定員を超えない。同一の Business Cause で重複しない |
-| 2 | PR-L1-3a〜3d | Stripe Checkout Session、Checkout Attempt、結果不明、`reconcileCheckoutAttempt()` | transaction の中で Stripe を呼ばない。結果不明で新しい key を作らない |
-| 3 | PR-L1-4a〜4d | Webhook 受信、**確定 transaction**（Order 確定 → Ticket 発行 → 通知 enqueue）、`reconcilePaymentConfirmation()` | 重複・順不同でも Ticket は 1 回分。署名不正は何も書かない。**M3: staging で決済 → Ticket** |
-| 4 | PR-L1-5a〜5d | QR 鍵、Ticket 参照、QR 表示、整合の読み出し | DB に QR の平文がない。再読込みで token を作り直さない |
-| 5 | PR-L1-6a / 6b | 入場確認 | 同じ Ticket に並列でも成功は 1 回。権限確認が QR 評価より先 |
-| 6 | PR-L1-7a〜7d | 全額返金、`refund.*` Webhook、`reconcileRefundResult()` | 二重返金なし。結果不明は read-only で照合。**checkpoint 2（W6 末）** |
+| 順  | PR            | 内容                                                                                                            | 完了条件                                                                                   |
+| --- | ------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| 1   | PR-L1-2a〜2e  | 購入の判定、在庫確保と注文作成、購入開始、注文参照・取消                                                        | **hot concurrency:** 定員を超えない。同一の Business Cause で重複しない                    |
+| 2   | PR-L1-3a〜3d  | Stripe Checkout Session、Checkout Attempt、結果不明、`reconcileCheckoutAttempt()`                               | transaction の中で Stripe を呼ばない。結果不明で新しい key を作らない                      |
+| 3   | PR-L1-4a〜4d  | Webhook 受信、**確定 transaction**（Order 確定 → Ticket 発行 → 通知 enqueue）、`reconcilePaymentConfirmation()` | 重複・順不同でも Ticket は 1 回分。署名不正は何も書かない。**M3: staging で決済 → Ticket** |
+| 4   | PR-L1-5a〜5d  | QR 鍵、Ticket 参照、QR 表示、整合の読み出し                                                                     | DB に QR の平文がない。再読込みで token を作り直さない                                     |
+| 5   | PR-L1-6a / 6b | 入場確認                                                                                                        | 同じ Ticket に並列でも成功は 1 回。権限確認が QR 評価より先                                |
+| 6   | PR-L1-7a〜7d  | 全額返金、`refund.*` Webhook、`reconcileRefundResult()`                                                         | 二重返金なし。結果不明は read-only で照合。**checkpoint 2（W6 末）**                       |
 
 担当2への受け渡し: `reconcile*` の引数・戻り値の型は PR-L1-3d のレビューで合意（合意前に担当2は L3-4 に入らない）。`releaseOrderResources()` の型は PR-L1-2e で合意。
 
 ### 2.4 W6〜W9: 管理 API と観測性
 
-| 順 | PR | 内容 | 完了条件 |
-|---|---|---|---|
-| 1 | **M-RL** | Rate Limit の class と path の改名（PR-SPEC-MAIL のマージ後）。registry、operations、tests、`SPEC-110 §56.1`。**L3-1a より先にマージ**（同じファイルを触らないため） | `check:boundaries` と Rate Limit のテストが通る |
-| 2 | PR-L2-4a / 4b | Role 管理 | 最後の管理者の解除を 2 人が同時に試みても 1 人は残る |
-| 3 | PR-L2-7a / 7b | 注文・Ticket の管理参照 | 固定 query、未知の query は `400` |
-| 4 | PR-L2-5a〜5d、PR-L2-6 | 公開情報・販売設定の管理（AI 主導） | 楽観ロック（`expected_updated_at`）、Audit が同じ transaction。調整 C を発動した場合は担当2が API も担当 |
-| 5 | PR-GK-4 / 5 | Goods・Karaoke の公開読取 | 販売停止（`SUSPENDED`）のまま |
-| 6 | L2-8 | Rate Limit の仕上げ、観測性（#42・#45 の結果を反映） | **#42・#45 は Production promotion をブロック** |
+| 順  | PR                    | 内容                                                                                                                                                                 | 完了条件                                                                                                 |
+| --- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| 1   | **M-RL**              | Rate Limit の class と path の改名（PR-SPEC-MAIL のマージ後）。registry、operations、tests、`SPEC-110 §56.1`。**L3-1a より先にマージ**（同じファイルを触らないため） | `check:boundaries` と Rate Limit のテストが通る                                                          |
+| 2   | PR-L2-4a / 4b         | Role 管理                                                                                                                                                            | 最後の管理者の解除を 2 人が同時に試みても 1 人は残る                                                     |
+| 3   | PR-L2-7a / 7b         | 注文・Ticket の管理参照                                                                                                                                              | 固定 query、未知の query は `400`                                                                        |
+| 4   | PR-L2-5a〜5d、PR-L2-6 | 公開情報・販売設定の管理（AI 主導）                                                                                                                                  | 楽観ロック（`expected_updated_at`）、Audit が同じ transaction。調整 C を発動した場合は担当2が API も担当 |
+| 5   | PR-GK-4 / 5           | Goods・Karaoke の公開読取                                                                                                                                            | 販売停止（`SUSPENDED`）のまま                                                                            |
+| 6   | L2-8                  | Rate Limit の仕上げ、観測性（#42・#45 の結果を反映）                                                                                                                 | **#42・#45 は Production promotion をブロック**                                                          |
 
 ### 2.5 W10〜W12: 検証
 
@@ -170,14 +170,14 @@ pnpm secret-scan --build-dir dist --require-build
 
 ### 3.1 W1〜W2: 環境とデプロイ CI（L3-8）
 
-| 順 | 作業 | 完了条件 |
-|---|---|---|
-| 1 | Cloudflare Pages（staging / production、Direct Upload）、Railway（api、email-worker、reconciliation-worker、Redis）、Neon（staging）の枠を作る | staging にデプロイ可能 |
-| 2 | **#42〜#45 の外部事実の確認**（Railway ingress の forwarded header と `TRUSTED_PROXY_HOPS`、Redis の TLS・バージョン・`noeviction` / `maxmemory`） | **#42・#45 は Production promotion をブロック。** 結果を Issue に記録 |
-| 3 | デプロイ CI（`release-manifest.json`、migration 順序、Pages Direct Upload、artifact identity 検証） | `SPEC-180 §45.1` の順序で staging に流せる |
-| 4 | Cloudflare Access で staging と preview を保護（全到達経路を検証）。保護 header の実機確認（#31） | 未ログインで全経路が遮断。production の公開ドメインは保護しない |
-| 5 | **Neon Auth の実機確認（ブラウザ側）**: 登録・ログイン・reset・Logout、Cookie、CSRF、Origin / CORS、Safari、4 認証方式。Issue #47〜#49 | 観測結果を記録。差異があれば担当1が UCR と中継の修正 |
-| 6 | **ZeptoMail staging の Agent を準備**し、Neon Auth の SMTP を設定（`neon neon-auth config email-provider update` または管理画面）。送信テスト | 確認メール・Email OTP・Magic Link が合成の受信先に届く（S-2） |
+| 順  | 作業                                                                                                                                               | 完了条件                                                              |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| 1   | Cloudflare Pages（staging / production、Direct Upload）、Railway（api、email-worker、reconciliation-worker、Redis）、Neon（staging）の枠を作る     | staging にデプロイ可能                                                |
+| 2   | **#42〜#45 の外部事実の確認**（Railway ingress の forwarded header と `TRUSTED_PROXY_HOPS`、Redis の TLS・バージョン・`noeviction` / `maxmemory`） | **#42・#45 は Production promotion をブロック。** 結果を Issue に記録 |
+| 3   | デプロイ CI（`release-manifest.json`、migration 順序、Pages Direct Upload、artifact identity 検証）                                                | `SPEC-180 §45.1` の順序で staging に流せる                            |
+| 4   | Cloudflare Access で staging と preview を保護（全到達経路を検証）。保護 header の実機確認（#31）                                                  | 未ログインで全経路が遮断。production の公開ドメインは保護しない       |
+| 5   | **Neon Auth の実機確認（ブラウザ側）**: 登録・ログイン・reset・Logout、Cookie、CSRF、Origin / CORS、Safari、4 認証方式。Issue #47〜#49             | 観測結果を記録。差異があれば担当1が UCR と中継の修正                  |
+| 6   | **ZeptoMail staging の Agent を準備**し、Neon Auth の SMTP を設定（`neon neon-auth config email-provider update` または管理画面）。送信テスト      | 確認メール・Email OTP・Magic Link が合成の受信先に届く（S-2）         |
 
 ### 3.2 W2〜W3: ZeptoMail の技術確認（M-SPK）
 
@@ -189,28 +189,28 @@ staging の Agent と**合成の宛先**だけを使う。結果は spike の記
 
 ### 3.3 W2〜W6: Web の接続
 
-| 順 | WP | 内容 | 完了条件 |
-|---|---|---|---|
-| 1 | W-2 | API client（Hono RPC の型共有）と Auth port を実 API / Neon Auth に接続（非 mock の factory） | staging で登録 → ログイン。**fail-closed を維持** |
-| 2 | W-3 | 公開ページを実 API へ | 公開ページが実データ |
-| 3 | W-4 | 購入導線（Cart → Checkout → 購入状況） | **Checkout の戻りを確定として扱わず**、状態を権威として読む（`PAY-BRW-002`、`003`） |
-| 4 | W-5 | マイページ（Order / Ticket / QR 表示） | E2E（mock と実 API 向け） |
-| 5 | L3-3 | スケジューラ基盤（15 秒 tick、advisory lock、due 判定、last-success metric） | drain 中は新 batch を開始しない |
+| 順  | WP   | 内容                                                                                          | 完了条件                                                                            |
+| --- | ---- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| 1   | W-2  | API client（Hono RPC の型共有）と Auth port を実 API / Neon Auth に接続（非 mock の factory） | staging で登録 → ログイン。**fail-closed を維持**                                   |
+| 2   | W-3  | 公開ページを実 API へ                                                                         | 公開ページが実データ                                                                |
+| 3   | W-4  | 購入導線（Cart → Checkout → 購入状況）                                                        | **Checkout の戻りを確定として扱わず**、状態を権威として読む（`PAY-BRW-002`、`003`） |
+| 4   | W-5  | マイページ（Order / Ticket / QR 表示）                                                        | E2E（mock と実 API 向け）                                                           |
+| 5   | L3-3 | スケジューラ基盤（15 秒 tick、advisory lock、due 判定、last-success metric）                  | drain 中は新 batch を開始しない                                                     |
 
 mock と real は環境変数で切り替えられる状態を維持し、`e2e-ui-mock` を残す。
 
 ### 3.4 W6〜W10: 通知・照合・管理画面・運用
 
-| 順 | WP | 内容 | 完了条件 |
-|---|---|---|---|
-| 1 | **L3-1a**（PR-SPEC-MAIL と M-RL のマージ後） | `packages/providers/zeptomail` の新設（現行 `resend` は 169 行。`Idempotency-Key` 前提を外した再設計）、`packages/providers/resend` の撤去、`EmailRequest.key`・`EmailLookup` の見直し（M-1 の決定に従う）、`packages/config` の環境変数置換（`ZEPTOMAIL_*`、Authentication Key、Logs API を使うなら OAuth の 3 値）、secret-scan・tooling・traceability（map 6 件 + manifest 2 件）の追随、`SPEC-120 §40` の表の草案（担当1が採番）。詳細は [mail-provider-zeptomail.md](mail-provider-zeptomail.md) §2.2〜2.3 | Provider の fault（timeout、5xx）を provider double で再現できる |
-| 2 | L3-1b | Email Worker（claim / lease 120 秒、リトライ、購入確認メール、`reconcileNotificationUnknownResult()`） | Provider 呼出し中に DB transaction を開かない。`FOR UPDATE SKIP LOCKED` |
-| 3 | L3-2 | Webhook 取込み（署名検証、dedupe）、通知の管理参照、`API-ADM-REC-006` | raw body のまま署名を検証。同じ `webhook_request_id` を 1 回だけ処理 |
-| 4 | W-6 | 管理画面（注文・Ticket・返金・公開情報・販売設定・Role・通知・Consistency Review）、スタッフ入場確認画面 | 管理者が操作できる（R5）。Capability に応じた表示 |
-| 5 | L3-4 / L3-5 | 照合ジョブ（決済系、権利・整合系） | cadence を丸めない。advisory lock は最終防御ではない（担当1の repository 側が担保） |
-| 6 | L3-6 | Consistency Review と Recovery の画面 | `recovery.exception.execute` を任意 SQL にしない |
-| 7 | L3-7 | バックアップ（`backup-export`、R2、age 暗号化）、`audit-retention-purge`、`alert-canary`、restore リハーサル | private identity を CI・Railway に置かない |
-| 8 | W-7 | 実 API 向け E2E、Pages の本番設定、CSP・保護 header | 該当 journey が通る |
+| 順  | WP                                           | 内容                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | 完了条件                                                                            |
+| --- | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| 1   | **L3-1a**（PR-SPEC-MAIL と M-RL のマージ後） | `packages/providers/zeptomail` の新設（現行 `resend` は 169 行。`Idempotency-Key` 前提を外した再設計）、`packages/providers/resend` の撤去、`EmailRequest.key`・`EmailLookup` の見直し（M-1 の決定に従う）、`packages/config` の環境変数置換（`ZEPTOMAIL_*`、Authentication Key、Logs API を使うなら OAuth の 3 値）、secret-scan・tooling・traceability（map 6 件 + manifest 2 件）の追随、`SPEC-120 §40` の表の草案（担当1が採番）。詳細は [mail-provider-zeptomail.md](mail-provider-zeptomail.md) §2.2〜2.3 | Provider の fault（timeout、5xx）を provider double で再現できる                    |
+| 2   | L3-1b                                        | Email Worker（claim / lease 120 秒、リトライ、購入確認メール、`reconcileNotificationUnknownResult()`）                                                                                                                                                                                                                                                                                                                                                                                                          | Provider 呼出し中に DB transaction を開かない。`FOR UPDATE SKIP LOCKED`             |
+| 3   | L3-2                                         | Webhook 取込み（署名検証、dedupe）、通知の管理参照、`API-ADM-REC-006`                                                                                                                                                                                                                                                                                                                                                                                                                                           | raw body のまま署名を検証。同じ `webhook_request_id` を 1 回だけ処理                |
+| 4   | W-6                                          | 管理画面（注文・Ticket・返金・公開情報・販売設定・Role・通知・Consistency Review）、スタッフ入場確認画面                                                                                                                                                                                                                                                                                                                                                                                                        | 管理者が操作できる（R5）。Capability に応じた表示                                   |
+| 5   | L3-4 / L3-5                                  | 照合ジョブ（決済系、権利・整合系）                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | cadence を丸めない。advisory lock は最終防御ではない（担当1の repository 側が担保） |
+| 6   | L3-6                                         | Consistency Review と Recovery の画面                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | `recovery.exception.execute` を任意 SQL にしない                                    |
+| 7   | L3-7                                         | バックアップ（`backup-export`、R2、age 暗号化）、`audit-retention-purge`、`alert-canary`、restore リハーサル                                                                                                                                                                                                                                                                                                                                                                                                    | private identity を CI・Railway に置かない                                          |
+| 8   | W-7                                          | 実 API 向け E2E、Pages の本番設定、CSP・保護 header                                                                                                                                                                                                                                                                                                                                                                                                                                                             | 該当 journey が通る                                                                 |
 
 調整 C（W3 末に PR-L1-1a が未マージなら L2-4・L2-5・L2-6 を担当2へ移す）の判定を、W3 末のチェックポイントで行う。
 
@@ -234,17 +234,17 @@ mock と real は環境変数で切り替えられる状態を維持し、`e2e-u
 
 ### 4.3 本番公開の手順（`SPEC-180 §45.2`。順序は固定）
 
-| 順 | 作業 | 主な担当 |
-|---|---|---|
-| 1 | 同じ commit の staging の事前証跡を確認 | 担当1 |
-| 2 | 本番 backup の新しさと復旧点を確認 | 担当2 |
-| 3 | 本番の設定・Secret・環境 identity を dry validation | 担当2 |
-| 4〜6 | migration lock を取得し、**expand-only の migration** を実行、schema readiness を確認 | 担当1（承認: 運営者） |
-| 7〜10 | Railway: API（同じ OCI digest）→ Email Worker → Reconciliation Worker。全 readiness が成功 | 担当2 |
-| 11〜12 | 本番用 Web artifact を Access 保護の preview branch へ Direct Upload。静的配信・routing・header・Secret の非混入・output hash を検証 | 担当2 |
-| 13 | **運営者の承認後**、検査済みの同一 output を production branch へ Direct Upload（deployment ID と hash を記録） | 担当2 |
-| 14〜16 | post-deploy smoke、**観察 10 分**、Critical・High の alert・readiness 失敗・schema 不一致がなければ release accepted | 担当1・担当2 |
-| 追加 | 少額の実決済と返金で疎通を確認（Stripe 本番） | 運営者・担当1 |
+| 順     | 作業                                                                                                                                 | 主な担当              |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------ | --------------------- |
+| 1      | 同じ commit の staging の事前証跡を確認                                                                                              | 担当1                 |
+| 2      | 本番 backup の新しさと復旧点を確認                                                                                                   | 担当2                 |
+| 3      | 本番の設定・Secret・環境 identity を dry validation                                                                                  | 担当2                 |
+| 4〜6   | migration lock を取得し、**expand-only の migration** を実行、schema readiness を確認                                                | 担当1（承認: 運営者） |
+| 7〜10  | Railway: API（同じ OCI digest）→ Email Worker → Reconciliation Worker。全 readiness が成功                                           | 担当2                 |
+| 11〜12 | 本番用 Web artifact を Access 保護の preview branch へ Direct Upload。静的配信・routing・header・Secret の非混入・output hash を検証 | 担当2                 |
+| 13     | **運営者の承認後**、検査済みの同一 output を production branch へ Direct Upload（deployment ID と hash を記録）                      | 担当2                 |
+| 14〜16 | post-deploy smoke、**観察 10 分**、Critical・High の alert・readiness 失敗・schema 不一致がなければ release accepted                 | 担当1・担当2          |
+| 追加   | 少額の実決済と返金で疎通を確認（Stripe 本番）                                                                                        | 運営者・担当1         |
 
 - **Web を先に切り替えて新 API の契約だけを要求しない**（`INF-DEP-003`）。destructive な contract migration は同じ cutover に含めない（`INF-DEP-004`）。
 - ロールバックは `SPEC-180 §48〜§51`。**Provider の副作用（Stripe の決済・返金、ZeptoMail の受理、入場確認）は「なかったこと」にしない。**現在の Provider の状態と照合する。
@@ -268,10 +268,10 @@ mock と real は環境変数で切り替えられる状態を維持し、`e2e-u
 
 Secret でない識別子は、起動時の環境 identity 検証（`EXPECTED_*`）と運用の台帳に使う。**実値の台帳は保管庫に置き、リポジトリには書かない。**
 
-| 項目 | 内容 |
-|---|---|
-| ZeptoMail | Data Center、Agent 名と用途、送信ドメイン、DNS レコードの台帳（DKIM・CNAME）、認証完了日、審査の提出日・完了日、クレジットの購入日と期限 |
-| Stripe | 環境ごとのアカウント、Webhook の endpoint、API バージョン、本番審査の提出日・完了日 |
-| ドメイン | ホスト名の一覧（Web、API / Auth、staging）、更新期限 |
-| Cloudflare / Railway / Neon | プロジェクト名と ID、Access の対象、保護の検証結果 |
-| 決定 | D-2、D-3、R-7、M-1〜M-6 の決定日と選択 |
+| 項目                        | 内容                                                                                                                                     |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| ZeptoMail                   | Data Center、Agent 名と用途、送信ドメイン、DNS レコードの台帳（DKIM・CNAME）、認証完了日、審査の提出日・完了日、クレジットの購入日と期限 |
+| Stripe                      | 環境ごとのアカウント、Webhook の endpoint、API バージョン、本番審査の提出日・完了日                                                      |
+| ドメイン                    | ホスト名の一覧（Web、API / Auth、staging）、更新期限                                                                                     |
+| Cloudflare / Railway / Neon | プロジェクト名と ID、Access の対象、保護の検証結果                                                                                       |
+| 決定                        | D-2、D-3、R-7、M-1〜M-6 の決定日と選択                                                                                                   |
