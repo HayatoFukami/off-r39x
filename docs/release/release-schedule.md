@@ -15,7 +15,7 @@
 | 3 | PR-S0-0c は取込みではなく**再実装**（実装ブランチが存在しない） | W1 の作業に含める |
 | 4 | Goods / Karaoke は**簡易スコープ内**（2026-11-13 決定）。表は仕様どおり全部作り、公開読取と購入可否の照会だけ出す | 仕様 PR（RELSCOPE）が先行。PR-GK-1〜6 を追加 |
 | 5 | 仕様 PR は 4 本（RELSCOPE、SEED、IDM、MAIL） | 優先順は §4 |
-| 6 | PR #51 のレビュー対応（2026-11-17）: M1 の前提 PR の配置（§2.1）、Webhook の検証用受信先 S-0（W2）、class 名と CI の整合（M-5）、M-6 の鍵併用、M-1 の推奨を案 A へ、W11 に余白がない前提での再判定（§6.1）、W9 の祝日 | **決め切れない事項は「要判断（運営者）」と書き、確定していない** |
+| 6 | PR #51 のレビュー対応（2026-11-17）: M1 の前提 PR の配置（§2.1）、Webhook の検証用受信先 S-0（W2）、class 名と CI の整合（M-5）、M-6 の鍵併用、M-1 の推奨を案 A へ、W11 に余白がない前提での再判定（§6.1）、W9 の祝日 | **M-5 案 A（class ID 維持）、M1 案 A、M-1 案 A、M-6 ② は 2026-11-17 に運営者が決定。M-3、PR-SPEC-MAIL 遅延時の扱い（§6.1）は未確定（要判断）** |
 
 ---
 
@@ -44,9 +44,9 @@
 | # | 時期 | 到達点 | 証拠 |
 |---|---|---|---|
 | M0 | W1 末（11/20） | 基盤の整理（#41 / #46 済み、PR-S0-0c）。外部申請の提出（ZeptoMail、Stripe、ドメイン） | PR の状態、申請の提出記録 |
-| M1 | W2 末（11/27） | S0 完了（構成分割、共通ミドルウェア）。Neon Auth の確認メールが ZeptoMail SMTP で届く。API client と Auth port の接続準備（W-2）。**公開読取 API と公開ページの実 API 接続は、前提の PR-L2-2・L2-3・PR-SEED が W3 のため、M2（W3 末）に置く（案 A。要判断、§2.1）** | `dev` の CI、staging |
+| M1 | W2 末（11/27） | S0 完了（構成分割、共通ミドルウェア）。Neon Auth の確認メールが ZeptoMail SMTP で届く。API client と Auth port の接続準備（W-2）。**公開読取 API と公開ページの実 API 接続は、前提の PR-L2-2・L2-3・PR-SEED が W3 のため、M2（W3 末）に置く（案 A、決定。§2.1）** | `dev` の CI、staging |
 | M-SPK | W3 末（12/4） | ZeptoMail の技術確認（S-0〜S-9）の記録。**M-1（結果不明の扱い）の判断材料がそろう** | spike の記録 |
-| M2 / checkpoint 1 | W3 末（12/4） | 登録 → ログイン → `/self/principal` が staging で通る。PR-L1-1a（orders 系の表）が `dev` にマージ。**公開ページが実 API を読む（案 A の場合）** | 互換性結果、migration、staging の公開ページ |
+| M2 / checkpoint 1 | W3 末（12/4） | 登録 → ログイン → `/self/principal` が staging で通る。PR-L1-1a（orders 系の表）が `dev` にマージ。**公開ページが実 API を読む（M1 から移した項目。§2.1 の案 A）** | 互換性結果、migration、staging の公開ページ |
 | M3 | W5 末（12/18） | **staging で Stripe テスト決済 → Ticket 発行。PR-SPEC-MAIL がマージ** | L1-4 の結合テスト、仕様のマージ |
 | M4 / checkpoint 2 | W6 末（12/25） | Ticket / QR 表示、入場確認、全額返金。ZeptoMail adapter の新設 | hot concurrency の結果 |
 | M5 / checkpoint 3 | W9 末（1/15） | 通知・照合・Consistency Review が結合。管理画面が操作できる | Reliability / Recovery suite |
@@ -54,16 +54,16 @@
 | M7 | W11〜W12 | staging 総合検証、G9（ZeptoMail・Stripe の非本番）、本番環境、migration 予行 | `release-manifest.json`、予行の記録 |
 | M8 | W13（2/8 週） | 本番公開、release accepted | `SPEC-180 §45.2`、`SPEC-200 §40` |
 
-### 2.1 M1 の公開 API 接続と、前提 PR の配置（要判断: 運営者）
+### 2.1 M1 の公開 API 接続と、前提 PR の配置（決定: 案 A、2026-11-17 運営者承認）
 
 矛盾: M1 は W2 末（11/27）に「公開読取 API と公開ページが実 API」を求めるが、前提の **PR-L2-2（公開・販売系の 8 表）、PR-L2-3（公開読取）、PR-SEED は W3**（§3、手順書 §2.2）にある。PR-L2-2 は PR-SPEC-RELSCOPE のマージ（W1〜W2）を待つため、W2 の前半までに着手できるとは限らない。
 
 | 案 | 内容 | 影響 |
 |---|---|---|
-| **A（推奨）** | **M1 から公開 API 接続を外し、M2（W3 末）へ移す。** W2 の担当2は W-2（API client と Auth port の接続準備）まで。W-3（公開ページを実 API へ）は W3（PR-L2-3・PR-SEED のマージ後）。M1 は「S0 完了 + Neon Auth のメール」にする | 担当1の W2 を増やさない。担当2の W3 に W-3 が加わる（W3 は spike S-3〜S-9、W-4、L3-3 があるため、W-3 を W3 の後半に置き、W-4 と順序を入れ替える余地を残す）。M2 の完了条件が 1 つ増える |
+| **A（決定）** | **M1 から公開 API 接続を外し、M2（W3 末）へ移す。** W2 の担当2は W-2（API client と Auth port の接続準備）まで。W-3（公開ページを実 API へ）は W3（PR-L2-3・PR-SEED のマージ後）。M1 は「S0 完了 + Neon Auth のメール」にする | 担当1の W2 を増やさない。担当2の W3 に W-3 が加わる（W3 は spike S-3〜S-9、W-4、L3-3 があるため、W-3 を W3 の後半に置き、W-4 と順序を入れ替える余地を残す）。M2 の完了条件が 1 つ増える |
 | B | **PR-L2-2、PR-L2-3、PR-SEED を W2 に前倒しする。** 担当2の W-3 も W2 に残す | 担当1の W2（S0-1・S0-3・S0-5、仕様 PR の起票）に収まるかが問題。RELSCOPE を W1 内にマージする必要がある。収まらない場合は PR-S0-3 の後ろ倒しが要る |
 
-**要判断（運営者）:** A か B か。本書の §2 の M1 と §3 の W2・W3 は、**案 A の配置で書いてある**（決定ではない）。案 B を選ぶ場合は、§3 の W2・W3 の担当1・担当2の欄と M1 を差し替える。
+**決定（2026-11-17、運営者承認）: 案 A。** 本書の §2 の M1 と §3 の W2・W3 は案 A の配置である。案 B（前倒し）は採らない。後から案 B へ変える場合は、§3 の W2・W3 の担当1・担当2の欄と M1 を差し替える。
 
 ---
 
@@ -76,9 +76,9 @@
 | **W1**<br>11/16 | ⚠ **ZeptoMail 申請**（アカウント作成、審査、**Data Center の初回決定（M-3。日本を選べるか申請画面で確認）**、Agent 4 つ）。Stripe 本番審査の申請。ドメイン取得、Cloudflare / Access。Google OAuth。**決定: D-2（RELSCOPE）、D-3（SEED、IDM）** | 作業ブランチを `origin/dev` に同期。**PR-S0-0c**（`55P03` の retry、405 / 415、文書更新）。仕様 PR の下書き（RELSCOPE を最優先）。PR-S0-2（DB の骨組み）、PR-S0-4（`audit_events`） | 環境の枠（Pages / Railway / Redis の staging、Neon の staging）。L3-8（デプロイ CI）に着手。#42〜#45 の確認。Neon Auth の実機確認（ブラウザ側）。ZeptoMail の **staging 用 Agent 2 つ**（業務 / Neon Auth）の準備 | M0 |
 | **W2**<br>11/23 | ZeptoMail の審査結果、ドメインの DKIM + CNAME を DNS へ。⚠ **決定: R-7（受入の扱い）、SEED、IDM** | PR-S0-0c のマージ。**PR-S0-1a / 1b**（契約と route の分割）。PR-S0-3a〜3c（エラー、ページング、冪等性入力）。PR-S0-5（通知の型）。仕様 PR（RELSCOPE、SEED、IDM）の起票 | **ZeptoMail spike S-0〜S-2**（**S-0: Webhook の検証用受信先の準備と到達性（Verify 200）**、S-1: 送信、S-2: Neon Auth の SMTP 設定）。W-2（API client と Auth port の接続準備）。L3-8 の続き | M1（11/27） |
 | **W3**<br>11/30 | spike の確認（実機の合否を共有） | RELSCOPE のマージ後に **PR-L2-2**（8 表）、PR-GK-1、**PR-L1-1a**（orders 系）。PR-L2-3（公開読取）。PR-L2-1a / 1b（Profile）。PR-SEED | **spike S-3〜S-9**（`client_reference`、重複、Webhook（S-0 の受信先）、署名と鍵の入れ替え、Email logs、bounce、制限）。**W-3（公開ページを実 API へ。PR-L2-3・PR-SEED のマージ後。案 A）**。W-4（購入導線）。L3-3（スケジューラ基盤） | **M-SPK、M2（12/4）** |
-| **W4**<br>12/7 | **決定: M-1（結果不明の扱い）、M-5（class 名）、M-6（鍵の入れ替え）。M-3 は W1 の決定の確認と法務表示への反映の整理** | PR-GK-2・3、PR-L1-1b・1c。**PR-L1-2a〜2e**（購入開始）。PR-L2-1c（実 Neon の差異）。**PR-SPEC-MAIL の起票**（spike の結果を反映） | W-5（マイページ）。管理画面の枠（W-6 開始）。spike の記録の整理、Stripe のテスト準備 | |
+| **W4**<br>12/7 | M-1（案 A）、M-5（案 A）、M-6（②）は 2026-11-17 決定済み。spike の結果を PR-SPEC-MAIL へ反映。**M-3（未確定）は W1 の決定の確認と法務表示への反映の整理** | PR-GK-2・3、PR-L1-1b・1c。**PR-L1-2a〜2e**（購入開始）。PR-L2-1c（実 Neon の差異）。**PR-SPEC-MAIL の起票**（spike の結果を反映） | W-5（マイページ）。管理画面の枠（W-6 開始）。spike の記録の整理、Stripe のテスト準備 | |
 | **W5**<br>12/14 | PR-SPEC-MAIL のレビュー・承認 | **PR-L1-3a〜3d**（Stripe Checkout）、**PR-L1-4a〜4d**（Webhook、確定）。PR-SPEC-MAIL のレビュー対応・**マージ**（M-5 案 B なら class の改名と registry・テストを同じ PR に含む） | W-4・W-5 の接続。staging で決済 → Ticket の結合。管理画面（注文） | **M3（12/18）、PR-SPEC-MAIL** |
-| **W6**<br>12/21 | Stripe 本番審査の状況確認 | PR-L1-5a〜5d（Ticket / QR）、PR-L1-6a・6b（入場確認）、PR-L1-7a〜7d（返金）。（M-RL は PR-SPEC-MAIL に統合（M-5 案 B）、または不要（案 A）。単独の W6 の PR にはしない） | **L3-1a**（ZeptoMail adapter、`SPEC-120 §40` の表の草案）。W-6（管理画面: 注文・返金・Ticket） | **M4（12/25）** |
+| **W6**<br>12/21 | Stripe 本番審査の状況確認 | PR-L1-5a〜5d（Ticket / QR）、PR-L1-6a・6b（入場確認）、PR-L1-7a〜7d（返金）。（M-RL は不要。class ID `resend_webhook` を維持する。M-5） | **L3-1a**（ZeptoMail adapter、`SPEC-120 §40` の表の草案）。W-6（管理画面: 注文・返金・Ticket） | **M4（12/25）** |
 | **W7**<br>12/28<br>半週 | （年末休止） | PR-L2-4（Role）、PR-L2-7（注文・Ticket の管理参照） | L3-1b（Email Worker）、L3-2（Webhook 取込み）。管理画面の続き | |
 | **W8**<br>1/4 | 法務表示（特商法、規約、プライバシー）の確定 | PR-L2-5（公開情報管理）、PR-L2-6（販売設定）、PR-GK-4 | **L3-4・L3-5**（照合ジョブ）。スタッフ入場確認画面、Role 管理画面 | |
 | **W9**<br>1/11 | | PR-GK-5、**L2-8**（Rate Limit の仕上げ、観測性、#42・#45 の反映） | L3-6（Consistency Review と画面）、残りの管理画面 | **M5（1/15）** |
@@ -87,7 +87,7 @@
 | **W12**<br>2/1 | 本番の Secret の投入承認 | 本番 promotion 判定（`SPEC-200 §39`）、approval | 本番の Secret（Railway Sealed Variables）、手順書、ロールバックの確認 | |
 | **W13**<br>2/8 | **公開の承認** | 本番 migration、少額の実決済と返金の疎通 | 本番デプロイ、監視、観察 10 分 | **M8** |
 
-> W4〜W5 は担当1の負荷が最も高い（購入・決済・仕様 PR の同時進行）。M-5 で案 B（class 改名を PR-SPEC-MAIL に統合）を選ぶと、W5 の担当1が増える。W7 は半週で、L3-1b・L3-2 は ZeptoMail の仕様確定後の実装になるため、**W5 末の PR-SPEC-MAIL が遅れると W6〜W8 の担当2が詰まる**（再判定は §6.1）。**W11 に余白はない**（G9、staging 総合、本番環境構築、migration 予行が入っている）。
+> W4〜W5 は担当1の負荷が最も高い（購入・決済・仕様 PR の同時進行）。M-5 は class ID を維持する案 A に決めたため、PR-SPEC-MAIL は仕様の文言だけで、W5 の担当1は増えない。W7 は半週で、L3-1b・L3-2 は ZeptoMail の仕様確定後の実装になるため、**W5 末の PR-SPEC-MAIL が遅れると W6〜W8 の担当2が詰まる**（再判定は §6.1）。**W11 に余白はない**（G9、staging 総合、本番環境構築、migration 予行が入っている）。
 
 ---
 
@@ -100,7 +100,7 @@
 | 1 | **PR-SPEC-RELSCOPE** | Goods / Karaoke を簡易スコープ内にする（出さない Operation の一覧、受入の扱い、Cart の `GOODS` 経路）。`UCR-RELSCOPE-001` | 運営者（R-1〜R-8、N-A、N-B） | **W1〜W2** | PR-L2-2 以降の Goods / Karaoke の表と API |
 | 2 | **PR-SPEC-SEED** | Event・Entry Offering などの初期データの作り方 | 運営者 | W2〜W3 | PR-SEED、staging の公開ページ結合 |
 | 3 | **PR-SPEC-IDM** | Transport Idempotency の replay 記録の保存先 | 運営者 | W2〜W3 | PR-S0-3d（`409 IDEMPOTENCY_KEY_REUSED`） |
-| 4 | **PR-SPEC-MAIL** | メール Provider を ZeptoMail に変更。冪等性・照合・Webhook・設定・Secret の改訂。**仕様だけを先にマージすると既存の CI が落ちる項目（class 名・値）がある**ため、M-5 で class 名を維持する（案 A）か、改名とテストを同じ PR に入れる（案 B） | 運営者（M-1〜M-6） | **W5 末（12/18）** | L3-1（W6） |
+| 4 | **PR-SPEC-MAIL** | メール Provider を ZeptoMail に変更。冪等性・照合・Webhook・設定・Secret の改訂。**仕様だけを先にマージすると既存の CI が落ちる項目（class 名・値）がある**ため、**Rate Limit の class ID `resend_webhook` と値は変えない**（M-5 案 A、決定） | 運営者（M-1〜M-6） | **W5 末（12/18）** | L3-1（W6） |
 
 ---
 
@@ -126,13 +126,13 @@
 
 | 時期 | 確認 | 未達の場合 |
 |---|---|---|
-| W3 末（12/4） | PR-L1-1a が `dev` にマージ済みか。Neon Auth の互換性結果が出たか。**ZeptoMail の spike（S-0〜S-9）が終わったか。公開ページが実 API を読めているか（案 A）** | PR-L1-1a が未達なら調整 C（L2-4・L2-5・L2-6 を担当2へ。担当2の W6〜W8 が重なるため、§6.1 の再判定と同時に行う）。Neon Auth に大きな差異があれば UCR を先に出す。spike が遅れたら M-1 の決定を W4 前半に延ばす。**このとき MAIL 依存の WP を見積もる（§6.1）** |
+| W3 末（12/4） | PR-L1-1a が `dev` にマージ済みか。Neon Auth の互換性結果が出たか。**ZeptoMail の spike（S-0〜S-9）が終わったか。公開ページが実 API を読めているか（案 A）** | PR-L1-1a が未達なら調整 C（L2-4・L2-5・L2-6 を担当2へ。担当2の W6〜W8 が重なるため、§6.1 の再判定と同時に行う）。Neon Auth に大きな差異があれば UCR を先に出す。spike が遅れたら PR-SPEC-MAIL への M-1（案 A）の反映（照会の手段の確定）を W4 前半に延ばす。**このとき MAIL 依存の WP を見積もる（§6.1）** |
 | W5 末（12/18） | **PR-SPEC-MAIL がマージ済みか。** staging で決済 → Ticket が通るか | PR-SPEC-MAIL が未達なら L3-1 の Provider 依存部分だけを後ろ倒しし、**§6.1 の手順で担当2の再配分と機能凍結日を再判定する**（W11 には余白がなく、吸収先にしない） |
 | W6 末（12/25） | L1-5（Ticket / QR）まで通っているか | L2-7・L2-8 を後ろ倒しし、公開時期を再計算して所有者へ報告 |
 | W9 末（1/15） | L3-4 と L1-4 の結合（決済系の照合）が通っているか | L3-6 の範囲を絞る前に UCR の要否を確認。Recovery の機能を削る場合は仕様 PR |
 | W10 末（1/23） | G1〜G8・G10 が clean pass か | フリーズを延ばすか、公開を見送るかを所有者が判断 |
 
-### 6.1 PR-SPEC-MAIL が遅れたときの再判定（要判断: 運営者）
+### 6.1 PR-SPEC-MAIL が遅れたときの再判定（未確定。要判断: 運営者）
 
 担当2の W6〜W9 は、MAIL 依存の WP（L3-1a、L3-1b、L3-2、L3-6 の通知部分、`API-ADM-REC-006`）に、MAIL 非依存の WP（W-6 管理画面、L3-4・L3-5 の決済系、スタッフ入場確認画面、Role 管理画面、L3-7）が続く。調整 C を発動すると、同じ週（W6〜W8）に担当1の L2-4・L2-5・L2-6 の API が加わる。**稼働時間と工数は未確認**なので、実行不可能とは断定せず、見積りが出るまで判定を保留する。
 
@@ -152,11 +152,11 @@
 
 | リスク | 影響 | 対応 |
 |---|---|---|
-| **ZeptoMail の冪等性・照会・Webhook が仕様の前提を満たさない**（本書 §1 の変更） | 通知の結果不明の扱い、仕様の大改訂 | W2〜W3 の spike で事実を確定。M-1 は推奨案 A（再送せず、未解決は Review）で決める（B は別の方針変更）。**Webhook は補助情報であり、購入の確定根拠にしない。** 通知の結果不明を解消する証拠としては使う（`SPEC-120 §28.3`） |
+| **ZeptoMail の冪等性・照会・Webhook が仕様の前提を満たさない**（本書 §1 の変更） | 通知の結果不明の扱い、仕様の大改訂 | W2〜W3 の spike で事実を確定。M-1 は案 A（再送せず、未解決は Review）に決定済み（2026-11-17。B は別の方針変更）。**Webhook は補助情報であり、購入の確定根拠にしない。** 通知の結果不明を解消する証拠としては使う（`SPEC-120 §28.3`） |
 | ZeptoMail のアカウント審査・DNS 反映の待ち | Neon Auth の確認メール（W2）、G9 | W1 に申請。審査が通らない場合の代替手段を事前に決める（運営者） |
 | ZeptoMail で日本の Data Center を選べない（公式の Data Hosting 表には JP があるが、メール送信で選べるかは未確認） | 受信者情報の国外送信 | **W1 のアカウント作成時に選べるかを確認して初回決定**（M-3）。選べない場合は、国外を許容するかを運営者が決め、プライバシーポリシーに反映（法務表示。W8） |
 | 仕様 PR が 4 本重なり、担当1の W1〜W5 が重い | 実装の開始が遅れる | planner が下書きし、所有者が選択肢を決める形にする。優先順は §4 |
-| **仕様だけの PR が既存の CI を落とす**（class 名・値を `SPEC-110 §56.1`・`SPEC-140 §68` が完全一致で照合） | PR-SPEC-MAIL がマージできない、または `dev` の CI が赤くなる | M-5: class 名を維持する（案 A）か、改名と registry・テストを同じ PR に入れる（案 B）。**仕様 PR を出す前に `pnpm test:unit` を回す** |
+| **仕様だけの PR が既存の CI を落とす**（class 名・値を `SPEC-110 §56.1`・`SPEC-140 §68` が完全一致で照合） | PR-SPEC-MAIL がマージできない、または `dev` の CI が赤くなる | M-5（決定）: class ID `resend_webhook` と値を維持する。**仕様 PR を出す前に `pnpm test:unit` を回す**。class・値を変える場合は仕様と registry・テストを同じ PR に入れる |
 | PR のレビュー待ち | 全体の遅延 | レビューは 1〜2 往復を前提にし、範囲を広げない。スタック PR は 1 段まで |
 | Neon Auth の実挙動が仕様と合わない | 認証全体 | W1 から実機確認。差異は UCR（#47〜#49） |
 | Stripe の本番審査 | 本番決済 | W1 に申請。テストモードで実装は進める |
