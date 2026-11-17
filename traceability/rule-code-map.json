@@ -3388,6 +3388,8 @@
       "rule_id": "DEV-API-003",
       "code_paths": [
         "apps/api/src/api",
+        "packages/api-contract/src/schemas/errors.ts",
+        "packages/api-contract/src/schemas/common.ts",
         "packages/api-contract/src/index.ts",
         "apps/api/src/api/app.ts",
         "apps/api/src/bootstrap/index.ts"
@@ -3408,19 +3410,19 @@
     },
     {
       "rule_id": "SEC-API-004",
-      "code_paths": ["apps/api/src/api", "packages/api-contract/src/index.ts"],
+      "code_paths": ["apps/api/src/api", "packages/api-contract/src/schemas/errors.ts"],
       "test_case_ids": ["TC-DEV-API-003-050"],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
     },
     {
       "rule_id": "SEC-API-006",
-      "code_paths": ["apps/api/src/api", "packages/api-contract/src/index.ts"],
+      "code_paths": ["apps/api/src/api", "packages/api-contract/src/schemas/errors.ts"],
       "test_case_ids": ["TC-DEV-API-003-050"],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
     },
     {
       "rule_id": "SEC-API-007",
-      "code_paths": ["apps/api/src/api", "packages/api-contract/src/index.ts"],
+      "code_paths": ["apps/api/src/api", "packages/api-contract/src/schemas/errors.ts"],
       "test_case_ids": ["TC-DEV-API-003-050"],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
     },
@@ -3428,7 +3430,7 @@
       "rule_id": "SEC-API-008",
       "code_paths": [
         "apps/api/src/api",
-        "packages/api-contract/src/index.ts",
+        "packages/api-contract/src/schemas/errors.ts",
         "apps/api/src/api/auth-proxy.ts",
         "apps/api/src/api/app.ts",
         "apps/api/src/api/middleware/json.ts",
@@ -3445,25 +3447,29 @@
     },
     {
       "rule_id": "SEC-API-014",
-      "code_paths": ["apps/api/src/api", "packages/api-contract/src/index.ts"],
+      "code_paths": ["apps/api/src/api", "packages/api-contract/src/schemas/errors.ts"],
       "test_case_ids": ["TC-DEV-API-003-050"],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
     },
     {
       "rule_id": "SEC-API-015",
-      "code_paths": ["apps/api/src/api", "packages/api-contract/src/index.ts"],
+      "code_paths": ["apps/api/src/api", "packages/api-contract/src/schemas/errors.ts"],
       "test_case_ids": ["TC-DEV-API-003-050"],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
     },
     {
       "rule_id": "SEC-API-023",
-      "code_paths": ["apps/api/src/api", "packages/api-contract/src/index.ts"],
+      "code_paths": [
+        "apps/api/src/api",
+        "packages/api-contract/src/schemas/errors.ts",
+        "packages/api-contract/src/schemas/common.ts"
+      ],
       "test_case_ids": ["TC-DEV-API-003-050"],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
     },
     {
       "rule_id": "SEC-WEB-015",
-      "code_paths": ["apps/api/src/api", "packages/api-contract/src/index.ts"],
+      "code_paths": ["apps/api/src/api", "packages/api-contract/src/schemas/errors.ts"],
       "test_case_ids": ["TC-DEV-API-003-050"],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
     },
@@ -3650,7 +3656,7 @@
       "rule_id": "SEC-API-022",
       "code_paths": [
         "apps/api/src/api/app.ts",
-        "packages/api-contract/src/index.ts",
+        "packages/api-contract/src/schemas/errors.ts",
         "apps/api/src/api/middleware/json.ts",
         "apps/api/src/api/failure.ts"
       ],
@@ -3811,7 +3817,7 @@
       "rule_id": "SEC-WEB-007",
       "code_paths": [
         "apps/api/src/api",
-        "packages/api-contract/src/index.ts",
+        "packages/api-contract/src/schemas/errors.ts",
         "scripts/generate-web-headers.mts"
       ],
       "test_case_ids": ["TC-DEV-API-003-050", "TC-STACK-008-201", "TC-STACK-008-304"],
@@ -3940,7 +3946,7 @@
       "code_paths": [
         "packages/security/src/rate-limit/limiter.ts",
         "apps/api/src/api/app.ts",
-        "packages/api-contract/src/index.ts",
+        "packages/api-contract/src/schemas/errors.ts",
         "packages/rate-limit-redis/src/evaluate.lua"
       ],
       "test_case_ids": [
