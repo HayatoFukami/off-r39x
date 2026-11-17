@@ -2971,7 +2971,7 @@
     {
       "rule_id": "REL-DB-002",
       "code_paths": ["packages/db/src/transaction.ts"],
-      "test_case_ids": ["TC-DB-FOUNDATION-005", "TC-DB-FOUNDATION-009"],
+      "test_case_ids": ["TC-DB-FOUNDATION-005", "TC-DB-FOUNDATION-009", "TC-DB-RETRY-003"],
       "notes": "No blind constraint retries"
     },
     {
@@ -3076,8 +3076,40 @@
     {
       "rule_id": "REL-DB-001",
       "code_paths": ["packages/reliability/src/index.ts", "packages/db/src/transaction.ts"],
-      "test_case_ids": ["TC-COMMON-003", "TC-DB-FOUNDATION-010"],
-      "notes": "Only explicit SQLSTATE allowlist; lock-timeout specification conflict reported"
+      "test_case_ids": [
+        "TC-COMMON-003",
+        "TC-DB-FOUNDATION-005",
+        "TC-DB-FOUNDATION-010",
+        "TC-DB-RETRY-001",
+        "TC-DB-RETRY-002"
+      ],
+      "notes": "Exact allowlist 40001/40P01/55P03 (UCR-150-003 incorporated)"
+    },
+    {
+      "rule_id": "REL-DB-011",
+      "code_paths": [
+        "packages/reliability/src/index.ts",
+        "packages/db/src/transaction.ts",
+        "apps/api/src/api/app.ts"
+      ],
+      "test_case_ids": [
+        "TC-DB-RETRY-001",
+        "TC-DB-RETRY-002",
+        "TC-DB-RETRY-003",
+        "TC-DB-RETRY-004",
+        "TC-DB-FOUNDATION-011",
+        "TC-DB-FOUNDATION-012",
+        "TC-DB-FOUNDATION-013",
+        "TC-DB-FOUNDATION-014",
+        "TC-HTTP-AUDIT-004"
+      ],
+      "notes": "55P03 retry, explicit ROLLBACK, 4 attempts / 5s, exhausted -> 503"
+    },
+    {
+      "rule_id": "REL-DB-003",
+      "code_paths": ["packages/db/src/transaction.ts"],
+      "test_case_ids": ["TC-DB-RETRY-001", "TC-DB-FOUNDATION-011"],
+      "notes": "Same callback / Business Cause re-executed in a new transaction"
     },
     {
       "rule_id": "DEV-DB-007",
@@ -3551,7 +3583,13 @@
         "apps/email-worker/src/main.ts",
         "apps/reconciliation-worker/src/main.ts"
       ],
-      "test_case_ids": ["TC-OBS-AUDIT-001", "TC-DB-FOUNDATION-008"],
+      "test_case_ids": [
+        "TC-OBS-AUDIT-001",
+        "TC-DB-FOUNDATION-008",
+        "TC-DB-FOUNDATION-012",
+        "TC-DB-RETRY-002",
+        "TC-DB-RETRY-004"
+      ],
       "notes": "Foundation audit repair; local synthetic evidence does not assert live-provider or release readiness"
     },
     {
@@ -3598,8 +3636,13 @@
     },
     {
       "rule_id": "SEC-API-022",
-      "code_paths": ["apps/api/src/api/app.ts"],
-      "test_case_ids": ["TC-HTTP-AUDIT-001"],
+      "code_paths": [
+        "apps/api/src/api/app.ts",
+        "packages/api-contract/src/index.ts",
+        "apps/api/src/api/middleware/json.ts",
+        "apps/api/src/api/failure.ts"
+      ],
+      "test_case_ids": ["TC-HTTP-AUDIT-001", "TC-HTTP-AUDIT-002", "TC-HTTP-AUDIT-003"],
       "notes": "Foundation audit repair; local synthetic evidence does not assert live-provider or release readiness"
     },
     {
