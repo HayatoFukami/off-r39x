@@ -2948,7 +2948,8 @@
         "packages/db/src/schema-contract.ts",
         "packages/db/src/schema-contract.json",
         "apps/api/src/bootstrap/index.ts",
-        "packages/api-contract/src/index.ts"
+        "packages/api-contract/src/schemas/profile.ts",
+        "packages/api-contract/src/rpc.ts"
       ],
       "test_case_ids": [
         "TC-DB-FOUNDATION-004",
@@ -3254,7 +3255,7 @@
       "rule_id": "SEC-AUTH-001",
       "code_paths": [
         "packages/auth/src/index.ts",
-        "packages/api-contract/src/index.ts",
+        "packages/api-contract/src/rpc.ts",
         "apps/api/src/api/app.ts",
         "apps/api/src/bootstrap/index.ts"
       ],
@@ -3325,7 +3326,8 @@
         "apps/api/src/api/app.ts",
         "packages/db/src/principals.ts",
         "apps/api/src/bootstrap/index.ts",
-        "packages/api-contract/src/index.ts"
+        "packages/api-contract/src/schemas/profile.ts",
+        "packages/api-contract/src/rpc.ts"
       ],
       "test_case_ids": ["TC-SEC-AZ-013-050", "TC-DB-ARC-008-050", "TC-AUTH-AUDIT-004"],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
@@ -3390,7 +3392,8 @@
         "apps/api/src/api",
         "packages/api-contract/src/schemas/errors.ts",
         "packages/api-contract/src/schemas/common.ts",
-        "packages/api-contract/src/index.ts",
+        "packages/api-contract/src/schemas/profile.ts",
+        "packages/api-contract/src/rpc.ts",
         "apps/api/src/api/app.ts",
         "apps/api/src/bootstrap/index.ts"
       ],
@@ -3402,6 +3405,8 @@
       "code_paths": [
         "apps/api/src/api",
         "packages/api-contract/src/index.ts",
+        "packages/api-contract/src/rpc.ts",
+        "packages/api-contract/src/schemas/profile.ts",
         "apps/api/src/api/app.ts",
         "apps/api/src/bootstrap/index.ts"
       ],
@@ -3666,7 +3671,7 @@
     {
       "rule_id": "AR-SES-003",
       "code_paths": [
-        "packages/api-contract/src/index.ts",
+        "packages/api-contract/src/rpc.ts",
         "apps/api/src/api/app.ts",
         "apps/api/src/bootstrap/index.ts"
       ],
@@ -3768,7 +3773,7 @@
     {
       "rule_id": "OBS-LOG-006",
       "code_paths": [
-        "packages/api-contract/src/index.ts",
+        "packages/api-contract/src/rpc.ts",
         "apps/api/src/api/app.ts",
         "apps/api/src/bootstrap/index.ts"
       ],
