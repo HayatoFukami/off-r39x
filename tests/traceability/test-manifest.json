@@ -16309,7 +16309,7 @@
       "test_case_id": "TC-DEV-DB-001-001",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["DEV-DB-001", "DB-ARC-001"],
+      "upstream_rule_ids": ["DEV-DB-001"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
