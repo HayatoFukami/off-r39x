@@ -15697,6 +15697,206 @@
       "expected_db_postconditions": ["Timed-out transaction rolls back and connection is discarded"]
     },
     {
+      "test_case_id": "TC-DB-FOUNDATION-011",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": ["REL-DB-011", "REL-DB-003", "REL-DB-001"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real PostgreSQL17; a second session holds a row FOR UPDATE for about 1.5s; transaction pool has max 1 connection; synthetic probe table",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": ["row_lock_held"],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Attempt 1 fails with 55P03 after about 1s; the same callback re-runs in a new transaction on the same connection and commits; the Business effect is applied once"
+      ],
+      "expected_db_postconditions": [
+        "Explicit ROLLBACK after 55P03 (no 25P02 on the reused connection); the transaction id differs between attempts; probe counter is 1"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": ["db.transaction.retry_scheduled"],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DB-FOUNDATION-012",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": ["REL-DB-011", "OBS-DB-003", "REL-DB-001"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real PostgreSQL17; a second session holds a row FOR UPDATE for the whole test; Math.random fixed at 0",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": ["row_lock_held"],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Four attempts then the original 55P03 error is returned; no conflict-loser or not-found conversion"
+      ],
+      "expected_db_postconditions": ["Probe counter unchanged"],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "db.transaction.retry_scheduled",
+        "db.transaction.completed",
+        "reliability.retry.exhausted"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DB-FOUNDATION-013",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": ["REL-DB-011", "REL-TMO-003"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real PostgreSQL17; row 1 held then freed after about 0.8s, row 2 held for the whole test; callback locks row 1, sleeps 1.2s, locks row 2; Math.random fixed at 0",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": ["row_lock_held"],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "lock_timeout applies to each lock wait (one attempt outlasts 1s); the 5s retry budget runs from the first attempt start and cuts the next attempt with a deadline error"
+      ],
+      "expected_db_postconditions": [
+        "Cut-off connection is destroyed (pool.totalCount 0); no row changed"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "db.transaction.retry_scheduled",
+        "reliability.timeout.occurred",
+        "reliability.retry.exhausted"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DB-FOUNDATION-014",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": ["REL-DB-011", "DEV-DB-009"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real PostgreSQL17; (a) a second session holds one row FOR UPDATE; (b) a second session holds an ACCESS EXCLUSIVE table lock for about 1.5s; Math.random fixed at 0",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": ["row_lock_held", "table_lock_held"],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "FOR UPDATE SKIP LOCKED skips the locked row without waiting or retrying; a table-lock wait ends in 55P03 and is retried to success"
+      ],
+      "expected_db_postconditions": [
+        "(a) result excludes the locked row in under 1s; (b) result contains all rows after retry"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": ["db.transaction.retry_scheduled"],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DB-RETRY-001",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["REL-DB-001", "REL-DB-011", "REL-DB-003", "DEV-REL-008", "TST-REL-002"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Fake pool (control flow only, not PostgreSQL behavior); the callback query fails with 55P03 on attempts 1-3 and succeeds on attempt 4; Math.random fixed at 0",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": ["sqlstate_55P03"],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The same callback runs four times, each on a new connection; only the last attempt commits; one retry layer"
+      ],
+      "expected_db_postconditions": [
+        "Each failed attempt sends ROLLBACK and then releases the connection without destroying it"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": ["db.transaction.retry_scheduled", "db.transaction.completed"],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DB-RETRY-002",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["REL-DB-011", "OBS-DB-003", "REL-DB-001"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Fake pool; every attempt fails with 40001, 40P01 or 55P03; Math.random fixed at 0",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": ["sqlstate_40001", "sqlstate_40P01", "sqlstate_55P03"],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Stops after four attempts and returns the original error with its SQLSTATE; no conflict-loser conversion"
+      ],
+      "expected_db_postconditions": ["Every attempt rolls back and releases its connection"],
+      "expected_provider_postconditions": [],
+      "expected_observability": ["db.transaction.retry_scheduled", "reliability.retry.exhausted"],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DB-RETRY-003",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["REL-DB-002", "REL-DB-010", "TST-DB-005", "REL-DB-011"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Fake pool; 23505, 23P01, 57014, and 55P03 followed by a failing ROLLBACK",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": ["sqlstate_23505", "sqlstate_23P01", "sqlstate_57014", "rollback_failure"],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Exactly one attempt in every case; no retry is scheduled and no exhaustion is recorded"
+      ],
+      "expected_db_postconditions": ["A connection whose ROLLBACK failed is destroyed"],
+      "expected_provider_postconditions": [],
+      "expected_observability": ["db.constraint_loser.completed", "reliability.timeout.occurred"],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DB-RETRY-004",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["REL-DB-011", "OBS-DB-003", "REL-TMO-003"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Fake pool and an injected monotonic clock (performance.now); Math.random fixed",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": ["sqlstate_55P03", "clock_advance"],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "A retry cut off by the 5s elapsed budget, or skipped because the next backoff would pass it, ends with the original error or deadline error and records exhaustion; the first attempt's own 8s deadline records a timeout only"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": ["reliability.timeout.occurred", "reliability.retry.exhausted"],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -15845,7 +16045,7 @@
       "test_case_id": "TC-DB-FOUNDATION-005",
       "level": "DB",
       "suite": "db",
-      "upstream_rule_ids": ["REL-DB-001", "REL-DB-002", "DEV-DB-007"],
+      "upstream_rule_ids": ["REL-DB-001", "REL-DB-002", "DEV-DB-007", "REL-DB-011"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -15856,7 +16056,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "40001/40P01 stop at4 attempts;55P03 and23505 attempt once"
+        "40001/40P01/55P03 stop at 4 attempts; 23505 attempts once"
       ],
       "expected_db_postconditions": ["Failed transactions rollback"],
       "expected_provider_postconditions": [],
@@ -16037,7 +16237,7 @@
       "test_case_id": "TC-COMMON-003",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["REL-DB-001", "DEV-DB-007"],
+      "upstream_rule_ids": ["REL-DB-001", "REL-DB-011", "DEV-DB-007"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -16048,7 +16248,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "Only 40001 and 40P01 are retry eligible; lock-timeout conflict remains reported"
+        "Only 40001, 40P01 and 55P03 are retry eligible; constraint and connection codes are not"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -16150,7 +16350,7 @@
       "test_case_id": "TC-COMMON-008",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["DEV-REL-003", "REL-RTY-002"],
+      "upstream_rule_ids": ["DEV-REL-003", "REL-RTY-002", "REL-DB-011"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],

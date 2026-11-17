@@ -52,10 +52,10 @@ describe("common foundation contracts", () => {
     expect(ring.keyFor(1).hmacKey[0]).toBe(1);
     expect(() => ring.keyFor(2)).toThrow();
   });
-  it("TC-COMMON-003 REL-DB-001 retry is restricted to exact SQLSTATE allowlist", () => {
-    expect(isDatabaseRetryable({ code: "40001" })).toBe(true);
-    expect(isDatabaseRetryable({ code: "40P01" })).toBe(true);
-    for (const code of ["55P03", "23505", "23P01", "08006"])
+  it("TC-COMMON-003 REL-DB-001 REL-DB-011 retry is restricted to exact SQLSTATE allowlist", () => {
+    for (const code of ["40001", "40P01", "55P03"])
+      expect(isDatabaseRetryable({ code })).toBe(true);
+    for (const code of ["23505", "23P01", "08006"])
       expect(isDatabaseRetryable({ code })).toBe(false);
   });
   it("TC-COMMON-004 REL-TMO-003 deadline aborts and settles even when operation ignores abort", async () => {
@@ -144,6 +144,14 @@ describe("common foundation contracts", () => {
       jitter: "full",
     });
     expect(RETRY_POLICIES["40P01"].maxElapsedMs).toBe(3000);
+    expect(RETRY_POLICIES["55P03"]).toEqual({
+      initialMs: 50,
+      multiplier: 2,
+      maxDelayMs: 400,
+      maxAttempts: 4,
+      maxElapsedMs: 5000,
+      jitter: "full",
+    });
     for (const policy of Object.values(RETRY_POLICIES)) {
       for (let attempt = 1; attempt < policy.maxAttempts; attempt++) {
         expect(retryDelay(policy, attempt, () => 0)).toBe(0);
