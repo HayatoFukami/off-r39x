@@ -416,4 +416,85 @@ describe("transaction retry with a fake pool (control flow only)", () => {
       vi.useRealTimers();
     }
   });
+
+  it("TC-DB-RETRY-006 REL-DB-011 OBS-DB-003 a retry budget reached while ROLLBACK is in flight is recorded once, an in-budget ROLLBACK is not", async () => {
+    // The deadline timer can fire while the failed attempt's ROLLBACK is awaited. The caught error
+    // is then still the original SQLSTATE error, not a TransactionDeadlineError, but the shortened
+    // retry budget was reached, so the exhaustion must be recorded exactly once (OBS-DB-003).
+    const T0 = 3_000_000;
+    let now = T0;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      for (const budgetReached of [true, false]) {
+        now = T0;
+        const { behavior } = probeFailures((client) => (client <= 1 ? "55P03" : undefined));
+        const fake = createFakePool(behavior);
+        // Hold the ROLLBACK of the second attempt (client 1) until the test releases it.
+        let releaseRollback: () => void = () => {};
+        let rollbackStarted: () => void = () => {};
+        const started = new Promise<void>((resolve) => {
+          rollbackStarted = resolve;
+        });
+        const connect = fake.pool.connect.bind(fake.pool);
+        let connects = 0;
+        // biome-ignore lint/suspicious/noExplicitAny: test-only wrapper around the fake client
+        (fake.pool as any).connect = async () => {
+          const client = await connect();
+          const index = connects++;
+          const query = client.query.bind(client);
+          // biome-ignore lint/suspicious/noExplicitAny: test-only wrapper around the fake client
+          (client as any).query = async (sql: string) => {
+            if (index === 1 && sql === "ROLLBACK") {
+              rollbackStarted();
+              await new Promise<void>((resolve) => {
+                releaseRollback = resolve;
+              });
+            }
+            // biome-ignore lint/suspicious/noExplicitAny: forwards to the fake client
+            return (query as any)(sql);
+          };
+          return client;
+        };
+        const { logger, events } = collector();
+        let calls = 0;
+        const result = transaction(
+          fake.pool,
+          async (client) => {
+            calls++;
+            if (calls === 1) now = T0 + 4900; // attempt 2 starts with 100ms of the 5s budget left
+            await client.query(PROBE);
+            return "business-effect";
+          },
+          { logger, queryName: QUERY_NAME },
+        );
+        const settled = result.then(
+          (value) => ({ value }),
+          (error: unknown) => ({ error }),
+        );
+        await started; // attempt 2 failed with 55P03 and its ROLLBACK is pending
+        if (budgetReached) {
+          now = T0 + 5000.5; // past the shortened budget deadline
+          await vi.advanceTimersByTimeAsync(100); // the deadline timer fires during ROLLBACK
+        }
+        releaseRollback();
+        const outcome = await settled;
+        const all = events();
+        if (budgetReached) {
+          expect(outcome).toMatchObject({ error: { code: "55P03" } });
+          expect(named(all, "reliability.retry.exhausted")).toHaveLength(1);
+          expect(named(all, "reliability.retry.exhausted")[0]).toMatchObject({
+            sqlstate: "55P03",
+            attempt_number: 2,
+          });
+        } else {
+          // ROLLBACK finished inside the budget: attempt 3 runs and commits, nothing is exhausted.
+          expect(outcome).toEqual({ value: { status: "committed", value: "business-effect" } });
+          expect(named(all, "reliability.retry.exhausted")).toHaveLength(0);
+        }
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

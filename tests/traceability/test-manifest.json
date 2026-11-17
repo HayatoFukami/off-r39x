@@ -15920,6 +15920,29 @@
       "critical": true
     },
     {
+      "test_case_id": "TC-DB-RETRY-006",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["REL-DB-011", "OBS-DB-003"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Fake pool whose second-attempt ROLLBACK is held open, an injected monotonic clock (performance.now) and fake setTimeout; Math.random fixed",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": ["sqlstate_55P03", "deadline_timer_fires_during_rollback"],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "When the shortened retry budget is reached while the failed attempt's ROLLBACK is in flight, the original 55P03 error is returned and the retry exhaustion is recorded exactly once; a ROLLBACK that completes inside the budget records no exhaustion and the transaction is retried"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": ["reliability.retry.exhausted"],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
