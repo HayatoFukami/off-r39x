@@ -12,8 +12,8 @@
 1. **メール配信 Provider を Resend から Zoho ZeptoMail に変える**（プロジェクト所有者の決定）。`SPEC-000 §8` により、**実装より先に Canonical Owner（`SPEC-120` ほか）を改訂する**。仕様 PR を 1 本追加する（**PR-SPEC-MAIL**）。
 2. 単純な差し替えでは済まない。**Resend の機能を前提にした仕様の核が、ZeptoMail の公式ドキュメントでは確認できない。**
    - **Provider 側の冪等性（Idempotency Key）:** `SPEC-120 §25` は必須利用としているが、ZeptoMail には記載がない。
-   - **送信結果の照会（同一キーでの再照合）:** Email Logs API は存在するが、`client_reference` などで引けるかは未確認。認証は OAuth 2.0 で、送信用の API キーとは別の資格情報になる。
-   - **Webhook の署名と秘密の重なり期間:** Svix 方式ではなく独自方式（`producer-signature`）。秘密は Agent 単位で 1 つで、`SPEC-180 §29` の「現行と旧の 24 時間重なり」を実現できるか記載がない。
+   - **送信結果の照会（同一キーでの再照合）:** Email Logs API（`GET /v1.1/email`）があり、公式資料に `client_reference` と `request_id` の検索条件が明記されている。ただし認証は OAuth 2.0 で、送信用の API キーとは別の資格情報になる。実環境の権限・反映の遅延・応答の解釈は S-7 で確認する。
+   - **Webhook の署名と秘密の重なり期間:** Svix 方式ではなく独自方式（`producer-signature`）。Authentication Key は Agent 単位で 1 つで、**利用者が Agent に設定する**。ローテーション手順と猶予は記載がない。`SPEC-180 §29` の「現行と旧の 24 時間重なり」は、受信側に新旧の鍵を持たせる形で実現できる見込み（§3 の M-6）。切替直後の配信の挙動は S-6 で確認する。
    - **Webhook の event 種別:** `sent` / `failed` / `delayed` / `suppressed` に相当する event が確認できない。
 3. 影響は **Notification の送信・結果不明の照合・Webhook・設定・Secret・Rate Limit class・テスト**に及ぶ。Business Notification の生成（`SPEC-120 Part II〜VI`）や Template は Provider に依存しない。
 4. **仕様 PR の期限は W5 末（12/18）。** 通知の Provider 依存テーブル（`email_delivery_jobs`、`email_delivery_attempts`、`email_provider_webhook_receipts`）は L3-1（W6）で作るため、それまでに仕様が決まっていればよい。そのために **W2〜W3 に ZeptoMail の技術確認（spike）を行う**。
@@ -42,7 +42,10 @@
 
 ### 1.2 送信結果の照会
 
-- API の一覧に **Email logs**（「配信履歴とメールの状態を見る」）がある。**認証は OAuth 2.0。** endpoint、検索条件（`request_id` / `client_reference` で引けるか）は**未確認**（推測した URL は 404）。
+- 公式の **Get All Email Logs**（2026-11-17 閲覧）: `GET https://cpaas.zoho.com/v1.1/email`。**認証は OAuth 2.0**（`Authorization: Zoho-oauthtoken <token>`、scope は `Zeptomail.email.READ` または `Zeptomail.email.ALL`）。
+- **検索条件**（すべて任意）: `request_id`、**`client_reference`**、`mailagent_key`、`recipient`（To / CC / BCC のいずれか）、`from`、`to`、`subject`、`date_from` / `date_to`（形式 `dd/MM/yyyy, hh:mm a`）、`is_delivered` / `is_hb` / `is_sb` / `is_mailfailure`、ページングは `offset` と `limit`。
+- **応答**（200）: `data[]` に `email_reference`、`sent_time`、`subject`、`from`、`to`、`request_id`、`mailagent_key`、`status`（例 `delivered`）。**`client_reference` は検索条件にあるが、応答項目としては記載がない。**
+- **未記載（S-7 で実環境を確認）:** 送信からログに現れるまでの遅延、検索が完全一致か部分一致か、`limit` の上限、Data Center ごとのホスト、OAuth の取得手順と scope の実在、`status` の取りうる値と「受理済み・配送中」の区別。
 - ログの保持は既定で **60 日**。
 - **Suppression（配信停止リスト）** の API 群もある。hard bounce の自動 suppress は未記載。
 
@@ -57,7 +60,7 @@
 | 認証 | 署名 header `producer-signature`（形式 `ts=<ミリ秒>;s=<base64 url-encoded>;s-algorithm=HmacSHA256`）。**Agent 単位の Authentication Key** を HMAC-SHA256 の鍵にする。サンプルでは body が form-encoded の 1 パラメータで、`=` 以降を URL decode して署名対象にする |
 | 署名の弱点（サンプルからの推測） | サンプルの MAC は body だけを対象にし、`ts` を含まない。`ts` の許容範囲の検査はあるが、`ts` が署名に束縛されていない可能性がある。**`webhook_request_id` の dedupe を必須にする** |
 | 配信保証 | retry、timeout、重複、順序、送信元 IP は**未記載** |
-| 鍵のローテーション | **未記載。** Agent に Authentication Key は 1 つ |
+| 鍵のローテーション | **手順・猶予は未記載。** Agent に Authentication Key は 1 つ（**利用者が入力して設定する**。Zoho が生成する形ではない）。変更の可否は画面で確認する（S-6）。受信側で新旧の鍵を併用することは、Provider の仕様に依存せず**こちらの実装で可能**（§3 の M-6） |
 | 検証 | 疎通確認（Verify）は 200 を返す。Delivered と Feedback loop は**模擬送信ができない**（実メールで確認） |
 
 > 注意: Webhook の資料は「Zoho CPaaS / Agent」のページで、**ZeptoMail の製品ページとの対応が明記されていない。** 同じ仕様か、spike の S-5 で確認する。
@@ -69,7 +72,7 @@
 | アカウント審査 | **新規アカウントは審査あり。** 「Customer validation form」を送り、**審査は 2 営業日**。審査前は購入ボタンが無効 |
 | 用途の制限 | **トランザクションメールのみ。** 一括・宣伝メールは不可。本システムの購入確認、返金通知、認証メールは範囲内 |
 | ドメイン認証 | **送信前に必須。** DKIM（TXT）と、返送先（bounce）用の CNAME。**SPF レコードは不要**（CNAME が兼ねる）。DNS 反映に 24〜48 時間。DNS を変更・削除すると送信が停止される。ドメインは最大 100 |
-| Data Center | 資料に US / EU / IN / AU 等。**日本の Data Center は資料で確認できない。** 地域の選択はアカウント作成時（§3 の M-3） |
+| Data Center | 公式の Data Hosting 表（Zoho CPaaS の GDPR ページ）に **US / EU / CN / IN / AU / JP**（日本は `cpaas.zoho.jp`）が載っている。地域は「アカウントを登録した Zoho のドメイン」で決まる。**ただし、その表は Zoho CPaaS 全体のもので、ZeptoMail のメール送信で日本を選べるか、契約・申請の画面で実際に選べるかは未確認。** 地域の選択はアカウント作成時（§3 の M-3） |
 | SMTP | `smtp.zeptomail.com`、port 465（SSL）/ 587（TLS 1.2）。username は `emailapikey`、password は Agent の SMTP password。**Agent 単位** |
 | 料金 | 従量のクレジット制。1 クレジット = 10,000 通、有効期間 6 か月、「最初の 1 クレジットは無料」。最低購入額は未記載。**審査前は購入できない** |
 | Sandbox | 資料では未確認（サイトマップに sandbox の項目はある） |
@@ -97,7 +100,7 @@ Neon の資料では、本番の Neon Auth は**自前の SMTP**が要る（共�
 | `SPEC-190` | 14 | 例示・禁止事項の Provider 名 | 名前のみ |
 | `SPEC-200` | 12 | `ACC-EML-*`、`ACC-INF-*` | 受入基準の Provider 名と、冪等性・照合の基準 |
 | `SPEC-130` | 9 | `API-ADM-REC-006`（同一キー照合）、`ADM-EML-*` | 照合の手段 |
-| `SPEC-110` | 5 | `API-WHK-EML-001` の path、`API-ADM-REC-006`、`§56.1` の class 表 | **`§56.1` の表は既存テストが文字どおり読む**ため、class 名を変えるなら tests と registry を同じ時期にそろえる |
+| `SPEC-110` | 5 | `API-WHK-EML-001` の path、`API-ADM-REC-006`、`§56.1` の class 表 | **`§56.1` の表は既存テストが実装と完全一致で照合する**（§3 の M-5）。class 名（と値）を変えるなら、仕様と registry・テストを同じ PR で直す。変えないなら path の記述だけ改訂 |
 | `SPEC-100` | 2 | `email_provider_webhook_receipts` ほかの CHECK | `provider` の許可値 |
 | `SPEC-020`、`040`、`050`、`060`、`000` | 各 1〜3 | 機能要件、画面、Neon Auth SMTP の記述 | 名前の置換が中心 |
 
@@ -117,7 +120,7 @@ Web の「再送（resend）」は一般語であり、Provider とは無関係�
 
 - §2 の表で「名前のみ」と書いた `SPEC-150`、`SPEC-170` は、**再設計級に格上げ**する（上の表の「改訂の内容」より、本節の区分を優先）。
 - `validate:traceability` の**スクリプト自体は修正不要**。`traceability/rule-code-map.json` と `tests/traceability/test-manifest.json` の追随だけでよい。
-- レート制限は、Operation ID と class の構成が変わらないため、**ID を維持すれば既存の構造は変更なし**（class 名と path の改名だけが M-RL）。契約テストと E2E は変更不要。
+- レート制限は、Operation ID と class の構成が変わらないため、**ID を維持すれば既存の構造は変更なし**。**class 名を変えるか、維持するかは M-5（要判断）。** 変える場合は、仕様（`SPEC-110 §56.1`、`SPEC-140 §68`）と registry・テストを同じ PR で直す（M-RL）。契約テストと E2E は変更不要。
 
 ### 2.2 実装（コード）の変更箇所
 
@@ -133,7 +136,7 @@ Web の「再送（resend）」は一般語であり、Provider とは無関係�
 | `scripts/secret-scan.mts`、`scripts/check-import-boundaries.mts` | 名称置換 | 小 | パターンと許可パスの Provider 名 |
 | `README.md`、`docs/backend-foundation*.md` | 名称置換 | 小 | |
 
-**担当の割り当て:** 上の変更は**すべて L3-1a（W6、担当2）にまとめる**。ただし `packages/security` の class 名と `SPEC-110 §56.1` に連動する部分は M-RL（担当1、W6）。両者が同じファイルを触らないように、M-RL を先にマージする。
+**担当の割り当て:** 上の変更は**すべて L3-1a（W6、担当2）にまとめる**。ただし `packages/security` の class 名に連動する部分は、M-5 で「class 名を変える」と決めた場合だけ **PR-SPEC-MAIL と同じ PR（M-RL）** に入れる（担当1）。class 名を維持する場合、L3-1a は `packages/security` を触らない。
 
 ### 2.3 テスト・トレーサビリティの変更箇所
 
@@ -145,7 +148,7 @@ Web の「再送（resend）」は一般語であり、Provider とは無関係�
 | tooling のパス固定（`tests/unit/foundation-tooling.test.ts` が `packages/providers/resend/src/index.ts` を固定）、secret-scan の fixture（`tests/harness/script-fixtures.ts` の `resendKey`、`re_` で始まる鍵の形式） | パスの置換。fixture は ZeptoMail の token 形式（`Zoho-enczapikey`）に合わせて作り直す |
 | `traceability/rule-code-map.json` | **map 6 件**を更新 |
 | `tests/traceability/test-manifest.json` | **manifest 2 件**を更新 |
-| Rate Limit のテスト（`tests/unit/foundation-rate-limit-*.test.ts`、`tests/api/*`、`tests/security/*`） | **ID を維持すれば変更なし**。class 名を変えるなら M-RL で同時に直す |
+| Rate Limit のテスト（`tests/unit/foundation-rate-limit-*.test.ts`、`tests/api/*`、`tests/security/*`） | **class 名を維持すれば変更なし**。class 名または値を変えるなら、仕様と同じ PR（M-RL）で直す（M-5） |
 | 契約テスト、E2E | **変更不要** |
 
 変更後は `pnpm validate:traceability`、`pnpm test:unit`、`pnpm check:boundaries`、`pnpm secret-scan` を通す（CI が正）。
@@ -172,11 +175,13 @@ Web の「再送（resend）」は一般語であり、Provider とは無関係�
 
 | 案 | 内容 | 長所 | 短所 |
 |---|---|---|---|
-| **A（推奨）** | `client_reference` に自システムの相関キー（`r39x-email/<job_public_ref>/<attempt_no>`）を入れる。不明時は**再送せず**、① Webhook（Delivered / bounce）の `client_reference` 一致、② Email logs API の照会（spike で可能と確認できた場合）で確定する。一定時間たっても確定しなければ Consistency Review（再送しない） | 現行の方針（盲目的再送の禁止）を維持。二重送信を作らない | 照会手段が使えないと、未確定が Review に流れる量が増える。Logs API の資格情報（OAuth）が追加で要る |
-| B | 不明時の**再送を許可**する（二重に届く可能性を受け入れる）。再送の回数と間隔を決める | 実装が単純。メールが届かない事故が減る | 購入確認が 2 通届く可能性。`SEC-EML-016`、`ADM-EML-001` などの方針を変える（受入基準にも波及） |
-| C | A で始め、spike の結果で Logs API が使えれば A、使えなければ B へ移る | 事実に基づく | 判断が spike 後（W3 末）に延びる |
+| **A（推奨）** | `client_reference` に自システムの相関キー（`r39x-email/<job_public_ref>/<attempt_no>`）を入れる。不明時は**再送せず**、① Webhook（Delivered / bounce）の `client_reference` 一致、② Email logs API（`GET /v1.1/email`、`client_reference` / `request_id` で検索可と公式に明記。実環境での可否は S-7）の照会で確定する。**確定できなければ未解決のまま保持し、Consistency Review に流す**（再送しない） | 現行の方針（盲目的再送の禁止）を維持。二重送信を作らない。照会が使えない・遅れる場合も、A の中に未解決を保持する経路がある | 照会が使えないと、未確定が Review に流れる量が増える。Logs API の資格情報（OAuth）が追加で要る |
+| B | 不明時の**再送を許可**する（二重に届く可能性を受け入れる）。再送の回数と間隔を決める | 実装が単純。メールが届かない事故が減る | 購入確認が 2 通届く可能性。`SEC-EML-016`、`ADM-EML-001` などの方針を変える（受入基準にも波及）。**照会の可否とは別の、独立した方針変更** |
 
-**推奨は C（W3 末の spike の結果を見て A か B を決める）。** 本文書の作業計画は C を前提にする。
+**推奨は A。** 本文書の作業計画は A を前提にする。**要判断（運営者）:** A か B か。
+
+- Logs API が使えるかどうか（S-7）は、**A が成立するかではなく、Review に流れる量の見積り**に使う。S-7 の結果が悪くても、A のまま「未解決を保持して Review」で成立する。B への移行は、その運用負荷と二重送信の許容を比べて運営者が決める別の判断で、**spike の結果から自動で決まるものではない**（「照会できなければ B」と機械的には決めない）。
+- 判断の時期は W4（spike の記録を受けて）。S-7 が遅れた場合は W4 前半に延ばす（スケジュール §6）。
 
 > 追加調査（§2.2）でも、**二重送信を防ぐ代替設計が唯一の設計判断**で、残りは機械的な置換と追随とされている。したがって M-1 が決まれば、`EmailRequest.key`・`EmailLookup`・`SPEC-150` の probe・`SPEC-120` の冪等モデルが連動して確定する。
 
@@ -187,7 +192,11 @@ Web の「再送（resend）」は一般語であり、Provider とは無関係�
 
 ### M-3: ZeptoMail の Data Center（地域）
 
-資料で確認できる地域に日本がない。**受信者のメールアドレス・氏名・購入内容が海外の Data Center を通る**ため、プライバシーポリシー（法務表示。作業計画 O-10）と整合させる。アカウント作成時に地域を決め、後から変えられない可能性がある（要確認）。**日本の Data Center の有無は、Zoho への問合せまたは申請画面で確認する。**
+公式の Data Hosting 表（Zoho CPaaS の GDPR ページ）には **JP（`cpaas.zoho.jp`）が載っている**（§1.4）。したがって「日本がないので国外 Data Center を前提にする」とは書かない。ただし、(1) その表は CPaaS 全体のもので、**ZeptoMail のメール送信で日本を選べるか**、(2) 契約・申請の画面で**実際に選べるか**、(3) 地域を後から変えられるか、は**未確認**。**受信者のメールアドレス・氏名・購入内容が国外の Data Center を通る可能性**は、日本を選べない場合に限って残り、その場合はプライバシーポリシー（法務表示。作業計画 O-10）と整合させる。
+
+- **初回の決定は W1（アカウント作成時）。** 地域は登録に使う Zoho のドメインで決まり、後から変えられない可能性があるため、W1 の申請画面で日本を選べるかを確認して決める。
+- **W4 は確認・整理の時期。** W1 の決定が spike（S-1）の実測（API ホスト、到達性）と整合しているか、法務表示（W8）への反映内容をそろえる。W4 で地域を変えるのは、W1 に決められなかった場合に限る。
+- 日本を選べない場合の判断（国外 Data Center を許容するか、別の Provider を検討するか）は**要判断（運営者）**。
 
 ### M-4: 環境と用途ごとの Agent 分離
 
@@ -202,14 +211,42 @@ Token・SMTP password・Webhook の Authentication Key がすべて **Agent 単�
 
 Agent 名は例。実名は運営者が決める。**アラート通知（Better Stack 側）に ZeptoMail の業務キーを使わない**（`SPEC-180 §58`）。
 
-### M-5: path と class の名前
+### M-5: path と class の名前（CI との関係）
 
-- Webhook の path は `/api/v1/webhooks/zeptomail`、Rate Limit class は `zeptomail_webhook` を推奨。値（per-IP 100 / 300、global 3,000/分）は、Provider が変わっても妥当かを PR-SPEC-MAIL で再評価する。
-- **`SPEC-110 §56.1` の表を既存テストが読む**ため、class 名の変更は仕様 PR のマージ後に、**registry とテストを同じ PR で直す**（担当1の小さな PR。スケジュールの M-RL）。
+- Webhook の path は `/api/v1/webhooks/zeptomail` を推奨する。**path はどのテストも読まない**（`tests/` と `scripts/` に `webhooks/resend` の参照はない。確認済み）ので、仕様だけを先に改訂しても CI は落ちない。
+- **Rate Limit の class 名は、仕様と実装が完全一致で照合される。**
+  - `TC-RLM-007-001`（`tests/api/foundation-rate-limit-registry-api.test.ts`）は `SPEC-110 §56.1` の「class → Operation ID」を `packages/security` の `OPERATION_CLASS_ASSIGNMENT` と**完全一致**で比べ、class の集合を `RATE_LIMIT_CLASS_IDS` と比べる。
+  - `TC-RLM-006-001`（`tests/unit/foundation-rate-limit-registry.test.ts`）は `SPEC-140 §68` の行（Class ID、per-IP の値、追加ルール）を registry と**完全一致**で比べる。
+  - したがって、**仕様だけを `zeptomail_webhook` に改名した時点で CI が落ちる**。逆に registry だけを先に改名しても落ちる。class 名と、per-IP・global の**値**を変えるときも同じ（値だけ変える場合も、仕様と registry を同時に直す）。
+- 各段階で CI が通る進め方（**要判断（運営者）**）:
+
+| 案 | 内容 | 影響 |
+|---|---|---|
+| **A（推奨）** | **class ID `resend_webhook` を維持する。** PR-SPEC-MAIL は、path・説明・Provider 名の文言だけを改訂し、`SPEC-110 §56.1`・`SPEC-140 §68` の Class ID と値は変えない。「歴史的な識別子であり、Provider 名の意味を持たない」と注記する。registry・operations・テストは変更なし | 各 PR で CI が通る。M-RL は不要（公開後の任意の整理に回す）。**名前が実態と合わない負債が残る**（metric・log の class ラベルに `resend_webhook` が出る） |
+| B | class 名を `zeptomail_webhook` に改名する。**PR-SPEC-MAIL と同じ PR に、`SPEC-110 §56.1`・`SPEC-140 §68` の改訂と、registry・operations・テスト（`packages/security`、`tests/unit/foundation-rate-limit-registry.test.ts`、`tests/api/foundation-rate-limit-*.test.ts`、`tests/security/foundation-rate-limit-stages-redis.test.ts`）の改名を入れる**（コミットは仕様 → コードの順。CI は PR の head で動く） | `AGENTS.md §6` の「仕様を先にコミット」は満たす。**手順書 §0.1 の「仕様の改訂は別の PR」の例外**になるため、運営者の承認が要る。M-RL が PR-SPEC-MAIL に統合され、担当1の W4〜W5 の負荷が増える（W6 の M-RL は不要になる） |
+
+  段階的な別名（旧名と新名を同時に許す）は、テストが集合の完全一致を要求するため使えない。
+- 値（per-IP 100 / 300、global 3,000/分）は、Provider が変わっても妥当かを PR-SPEC-MAIL で再評価する。**値を変える場合は A でも B でも、仕様と registry・テストを同じ PR で直す。** 値を変えないなら A はコードに触れない。
 
 ### M-6: Webhook の署名鍵のローテーション
 
-Agent に Authentication Key が 1 つで、重なり期間が確認できない。選択肢: ① 新しい Agent を作り Webhook を付け替える、② ローテーション中は旧と新の両方で検証する（Provider 側に旧鍵が残る間のみ）、③ 短い停止を許容し、取りこぼしを照合で補う。**推奨は ③ + 照合（Webhook は補助情報で、業務の確定根拠ではない）。** `SPEC-180 §29` の「24 時間の重なり」は Stripe の秘密には残す。
+公式資料では、Authentication Key は**利用者が Agent に入力して設定する**（Zoho が生成する形ではない）。Agent に 1 つで、変更手順・猶予・旧鍵の扱いは記載がない（§1.3）。したがって「Provider 側に旧鍵が残る間だけ新旧を併用できる」という前提は取らない。**受信側（こちらの verifier）が新旧の両方を持つことは、Provider の仕様に依存せず実装できる。** Provider が同時に使う鍵が 1 つでも、受信側へ新旧を先に配置してから Provider の鍵を切り替えれば、切替の前後で検証できる。これは `SPEC-180 §29` の手順（sealed へ current / previous を両方配置 → verifier が両方で検証 → Provider の配信を新へ切替 → 最大 24 時間以内に旧を削除）と同じ形で、Provider が鍵を生成する前提ではない点だけが異なる。
+
+| 案 | 内容 | 長所 | 短所・条件 |
+|---|---|---|---|
+| ① | 新しい Agent を作り、Webhook を付け替える | 旧 Agent の鍵をそのまま捨てられる | Agent が増える（M-4 の 4 つに加える）。Token・SMTP password も別になるので、Secret の入れ替え範囲が大きい |
+| **② （推奨）** | **受信側で新旧の鍵を併用する。** 新鍵を `api` に配置（verifier は current / previous の両方で検証、timestamp と `webhook_request_id` の dedupe は維持）→ Provider の Authentication Key を新へ変更 → 最大 24 時間後に旧を削除。侵害時は併用せず旧を即時 revoke（`SPEC-180 §29`） | 停止なし。`SPEC-180 §29` と同じ運用で、仕様の改訂が小さい | S-6 で確認が要る: (a) 鍵を変えた直後に、変更前に生成された配信が旧鍵の署名で届くか、(b) Provider が失敗した配信を再送するか（再送があれば旧鍵の期間を長めに取る）。(a)(b) が不明のままなら、旧鍵の削除を (a)(b) の確認後にする |
+| ③ | 短い停止を許容し、取りこぼしを照合で補う | 実装が最も単純 | **条件つきで許容する**（下記） |
+
+**推奨は ②。** 停止を許容する ③ は、②が S-6 で成立しないと分かった場合の代替とする。**要判断（運営者）:** ② か ③ か、③ を許容する範囲。
+
+③ を選ぶ場合の条件（`SPEC-120 §28.3`: 署名検証済みの Webhook は、`PENDING` / `FAILED_RETRYABLE` で Attempt が Unknown のときに結果を確立する**証拠**になる）:
+1. **停止の時間窓を記録し、上限を決める**（例: 分単位。運営者が決める）。窓の間に Unknown の Attempt があったかを、窓の後に必ず調べる。
+2. **窓の間の取りこぼしを補える手段があること。** Email logs API（S-7）で、`client_reference` / `request_id` により Attempt の結果を引ける場合に限る。S-7 で使えないと分かったら ③ は選べない。
+3. **照合で補えるのは「Provider が受理した事実」まで。** bounce・failed などの配信後の event は、窓の間に落ちた場合に照合では補えない可能性がある（Logs API の `status` の粒度は S-7 で確認）。補えない event は、通知の Domain State を変えない範囲（`SPEC-120 §28.4` の receipt 履歴）なら欠落を許容し、補えない場合の扱いを PR-SPEC-MAIL に書く。
+4. **未解決のまま残った Attempt の扱い:** 再送せず（M-1 の A）、Consistency Review に流して管理者が確定する。窓の後に未解決が残る可能性があるので、窓は Unknown の Attempt が出にくい時間帯（深夜・低トラフィック）に置く。
+
+`SPEC-180 §29` の「24 時間の重なり」は Stripe の秘密にも適用する。
 
 ---
 
@@ -217,19 +254,22 @@ Agent に Authentication Key が 1 つで、重なり期間が確認できない
 
 **目的:** M-1 と M-6 の判断材料を、実機で得る。**担当2が実施**し、担当1が結果を仕様 PR に反映する。staging 用の Agent と**合成の受信先**だけを使う（本番の受信者・実在のメールアドレスをリポジトリや記録に書かない）。
 
+**Webhook の spike（S-5・S-6）は業務 API に登録しない。** 業務 API の受信口（`/api/v1/webhooks/<決定した path>`）は PR-SPEC-MAIL のマージ後（W6 前後）に作るため、W3 の spike には使えない。W2 に **spike 専用の検証用受信先（S-0）**を用意し、W6 以降の業務 API への登録（runbook §1.2 手順 10b）と区別する。
+
 | # | 確認すること | 合格の基準 | 期限 |
 |---|---|---|---|
+| S-0 | **検証用 Webhook 受信先の準備**（業務 API とは別）。使い捨ての HTTPS の受信口（staging の Agent の Webhook にだけ登録）。raw body と header を記録でき、個人情報を伏せて保存する。公開インターネットから到達でき、HTTP 200 を返す。**Webhook の Verify（疎通確認）が通ることまで確認する** | Agent の Webhook 設定で Verify が 200 になる。受信した header と raw body を取り出せる | W2（S-5 の前提） |
 | S-1 | API のホストと Data Center、`Authorization` の形式、最小の送信 | 合成の宛先へ送信でき、`request_id` が返る | W2 |
 | S-2 | **Neon Auth の SMTP 設定**（staging）。確認メール・Email OTP・Magic Link の到達 | Neon の送信テストと実際の登録で届く | W2 |
 | S-3 | `client_reference` の最大長、使える文字、`r39x-email/<uuid>/<n>` の形式 | 採用予定の形式で送れる | W3 |
 | S-4 | 同じ内容を 2 回送ったときの挙動（重複の抑止があるか）、5xx・timeout の実測 | 二重に届くかを記録（M-1 の判断材料） | W3 |
-| S-5 | **Webhook**: 登録、event の一覧、payload（特に Delivered）、`client_reference` と `request_id` の対応、`webhook_request_id`、retry の有無と間隔、HTTP 応答コード | event ごとのサンプルを（個人情報を伏せて）記録 | W3 |
-| S-6 | **署名検証**: `producer-signature` の署名対象（body のどの部分か、`ts` が署名に含まれるか）、鍵の入れ替え | `node:crypto` で検証でき、改ざんを拒否できる | W3 |
-| S-7 | **Email logs API**: 認証（OAuth の取得方法とスコープ）、`client_reference` / `request_id` での検索、遅延 | 不明な送信を 1 件照会できる（可否を M-1 に反映） | W3 |
+| S-5 | **Webhook**（S-0 の受信先に登録）: 登録、event の一覧、payload（特に Delivered）、`client_reference` と `request_id` の対応、`webhook_request_id`、retry の有無と間隔、HTTP 応答コード | event ごとのサンプルを（個人情報を伏せて）記録 | W3 |
+| S-6 | **署名検証**（S-0 の受信先）: `producer-signature` の署名対象（body のどの部分か、`ts` が署名に含まれるか）、**鍵の入れ替え**（Authentication Key を変えた直後に、変更前に生成された配信が旧鍵で署名されて届くか。M-6 の ②/③ の判断材料） | `node:crypto` で検証でき、改ざんを拒否できる。鍵入れ替えの前後の挙動を記録 | W3 |
+| S-7 | **Email logs API**（`GET /v1.1/email`）: 認証（OAuth の取得方法と scope `Zeptomail.email.READ`）、`client_reference` / `request_id` での検索（公式資料に明記。実環境の権限・完全一致か部分一致か・`limit` の上限）、送信から現れるまでの**遅延**、応答の `status` の粒度 | 不明な送信を 1 件照会できる。結果を M-1 の Review 量の見積りと M-6 ③ の条件に反映 | W3 |
 | S-8 | bounce / complaint の実挙動（受信拒否の宛先に送る）、suppression の自動登録 | `Hard bounce` の webhook と suppress の有無を記録 | W3 |
 | S-9 | 送信量・API の制限（rate limit）、非本番の送信先の制約、sandbox の有無 | 数値を記録（なければ「未記載」と記録） | W3 |
 
-結果は spike の記録（日付、環境、確認した値の範囲。Secret と実在のアドレスは書かない）にまとめ、W3 末（12/4）に担当1へ渡す。
+結果は spike の記録（日付、環境、確認した値の範囲。Secret と実在のアドレスは書かない）にまとめ、W3 末（12/4）に担当1へ渡す。**S-0 の受信先は、spike の終了後に Webhook の登録を削除して廃止する**（W6 に業務 API へ登録する前に、Authentication Key も新しい値へ入れ替えて spike 用の鍵を無効にする）。
 
 ---
 
@@ -238,20 +278,20 @@ Agent に Authentication Key が 1 つで、重なり期間が確認できない
 | WP / PR | 内容 | 担当 | 時期 | 依存 |
 |---|---|---|---|---|
 | **外部申請（M-APP）** | ZeptoMail アカウント作成、審査申請、Data Center の決定（M-3）、ドメイン（DKIM + CNAME）、Agent 4 つ | **運営者** | W1〜W2 | ドメイン取得 |
-| **M-SPK** | §4 の spike（S-1〜S-9）と記録 | 担当2 | W2〜W3 | M-APP の審査 |
-| **PR-SPEC-MAIL**（仕様） | `UCR-120-xxx`（番号は Canonical Owner の採番表で確認）。`SPEC-120` を中心に、§2 の仕様を改訂。M-1〜M-6 の決定を反映 | 担当1（planner が下書き、所有者が決定） | 起票 W4、**マージ目標 W5 末（12/18）** | M-SPK の結果、決定 M-1〜M-6 |
-| **M-RL** | Rate Limit class と path の名前変更（registry、operations、tests、`§56.1`） | 担当1 | W6 | PR-SPEC-MAIL のマージ |
-| **L3-1a** | §2.2〜2.3 の実装・テストの変更を 1 つにまとめる: Provider adapter（`packages/providers/zeptomail`）の新設、`packages/providers/resend` の撤去、`EmailRequest.key` と `EmailLookup` の見直し、設定名の変更、secret-scan・tooling・traceability（map 6 件 + manifest 2 件）の追随、`SPEC-120 §40` の表の migration（担当2が草案、担当1が採番）。PR が 600 行を超える場合は「adapter + application の型」と「名称置換 + テスト追随」に分ける | 担当2 | W6 | PR-SPEC-MAIL、M-RL |
+| **M-SPK** | §4 の spike（S-0〜S-9）と記録。**S-0（検証用 Webhook 受信先）は W2 に用意し、到達性を確認する** | 担当2 | W2〜W3 | M-APP の審査 |
+| **PR-SPEC-MAIL**（仕様） | `UCR-120-xxx`（番号は Canonical Owner の採番表で確認）。`SPEC-120` を中心に、§2 の仕様を改訂。M-1〜M-6 の決定を反映。**M-5 で class 名または値を変える場合（案 B）は、`SPEC-110 §56.1`・`SPEC-140 §68` と registry・テストの改名も同じ PR に入れる（M-RL を統合）。class 名を維持する場合（案 A）は仕様の文言だけで、コードに触れない** | 担当1（planner が下書き、所有者が決定） | 起票 W4、**マージ目標 W5 末（12/18）** | M-SPK の結果、決定 M-1〜M-6 |
+| **M-RL**（M-5 案 B のみ） | Rate Limit class の改名（registry、operations、tests、`SPEC-110 §56.1`、`SPEC-140 §68`）。**単独の PR にしない**（仕様だけ先にマージすると CI が落ちるため）。案 B なら PR-SPEC-MAIL に統合し、案 A なら不要（公開後の任意の整理） | 担当1 | 案 B: W5（PR-SPEC-MAIL と同時） | M-5 の決定 |
+| **L3-1a** | §2.2〜2.3 の実装・テストの変更を 1 つにまとめる（`packages/security` の class 名は M-5 の決定に従い、案 A なら触れない）: Provider adapter（`packages/providers/zeptomail`）の新設、`packages/providers/resend` の撤去、`EmailRequest.key` と `EmailLookup` の見直し、設定名の変更、secret-scan・tooling・traceability（map 6 件 + manifest 2 件）の追随、`SPEC-120 §40` の表の migration（担当2が草案、担当1が採番）。PR が 600 行を超える場合は「adapter + application の型」と「名称置換 + テスト追随」に分ける | 担当2 | W6 | PR-SPEC-MAIL（案 B なら M-RL を含む） |
 | L3-1b / L3-2 | Email Worker、Webhook 取込み、通知の管理参照、`API-ADM-REC-006` | 担当2 | W7〜W8 | L3-1a |
 | G9 | Provider Contract Smoke を ZeptoMail の非本番 Agent で実施 | 担当2 | W11 | 非本番 credential |
 
-**PR-SPEC-MAIL が遅れた場合:** L3-1 の Provider 依存部分だけが待つ。それ以外（通知の生成 `PR-L1-1c`、Webhook 以外の Worker 基盤、L3-3 スケジューラ）は進められる。W5 末に未マージなら、公開日への影響を再評価する（W11 に余白が 1 週ある）。
+**PR-SPEC-MAIL が遅れた場合:** L3-1 の Provider 依存部分だけが待つ。それ以外（通知の生成 `PR-L1-1c`、Webhook 以外の Worker 基盤、L3-3 スケジューラ）は進められる。**W11 に余白はない**（G9、staging 総合検証、本番環境構築、migration 予行が既に入っている。[スケジュール](release-schedule.md) §3）ので、W11 で吸収する前提は取らない。W5 末に未マージなら、[スケジュール](release-schedule.md) §6.1 の手順で、担当2の再配分と機能凍結日（1/23）を**再判定**する（要判断: 運営者）。
 
 ---
 
 ## 6. 注意点・未確認
 
-- **ZeptoMail の資料は 2026 年に Zoho CPaaS へ移行中の様子がある。** 画面名・ホスト・API のパスが変わる可能性があるため、申請・設定の時点の公式案内を優先する。
+- **ZeptoMail は 2026 年 9 月に Zoho CPaaS へ改称された**（公式の更新情報。既存の Agent・ドメイン・設定は変わらないと記載）。ただし資料は混在しており（ホストが `api.zeptomail.com` と `cpaas.zoho.com`、scope 名は `Zeptomail.*`、Webhook・Data Hosting の資料は CPaaS 名義）、画面名・ホスト・API のパスが変わる可能性がある。申請・設定の時点の公式案内を優先する。
 - 本書の ZeptoMail に関する事実は**ドキュメントの読取り**で、**実機では何も確認していない。** 特に Webhook の署名・Email logs API・Delivered event は spike で確かめる。
 - 費用（クレジット、必要通数）は未見積り。想定の通数（購入確認・認証メール・再発行）から、運営者が購入量を決める。
 - Neon Auth の標準メールの本文は Neon 側のテンプレート。**送信元（From）と Provider のドメイン認証だけがこちらの責任範囲。**
