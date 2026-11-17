@@ -57,8 +57,8 @@
 | Event | `Open`、`Click`、`Soft bounce`、`Hard bounce`、`Feedback loop`、`Delivered`。**`sent` / `failed` / `delayed` / `suppressed` に相当するものは未記載** |
 | Payload | 最上位に `event_name`、`event_message`、`mailagent_key`、`webhook_request_id`。`event_message.email_info` に `email_reference`、`client_reference`、`bounce_address`、`from`、`to`、`processed_time` など。bounce は `event_data.details` に `reason`、`time`、`diagnostic_message`。**Delivered の payload は未記載** |
 | 相関キー | `client_reference`（自システムの値）が Webhook に載る。`request_id` が送信 API の `request_id` と同じかは**未記載** |
-| 認証 | 署名 header `producer-signature`（形式 `ts=<ミリ秒>;s=<base64 url-encoded>;s-algorithm=HmacSHA256`）。**Agent 単位の Authentication Key** を HMAC-SHA256 の鍵にする。サンプルでは body が form-encoded の 1 パラメータで、`=` 以降を URL decode して署名対象にする |
-| 署名の弱点（サンプルからの推測） | サンプルの MAC は body だけを対象にし、`ts` を含まない。`ts` の許容範囲の検査はあるが、`ts` が署名に束縛されていない可能性がある。**`webhook_request_id` の dedupe を必須にする** |
+| 認証 | 署名 header `producer-signature`（形式 `ts=<ミリ秒>;s=<URL encoded の base64>;s-algorithm=HmacSHA256`）。**Agent 単位の Authentication Key** を HMAC-SHA256 の鍵にする。**公式サンプル（Java。ページの最終更新 2026-11-17、同日に再確認）は、リクエスト body の未加工バイト列（`getInputStream().readAllBytes()`）をそのまま HMAC の入力にする。** 「body を加工すると署名が合わなくなる」と明記されている。**URL decode するのは署名 header の `s`（`%3D` など）で、その後 Base64 decode して比較する。** body の Content-Type（JSON か form か）と、Authentication Key の文字列を鍵のバイト列にする文字コードは**未記載**（S-6 で確認）。本書の初版には「body が form-encoded の 1 パラメータで、`=` 以降を URL decode して署名対象にする」と書いていたが、現行のページのサンプルとは一致しないため撤回した（初版の根拠にした版・URL は特定できていない。現行のページを正とし、実配信のバイト列で S-6 が確認する） |
+| 署名の弱点（サンプルからの推測） | サンプルの MAC は body だけを対象にし、**`ts` は署名に含まれない**（`ts` は許容時間差の検査にだけ使う）。したがって `ts` の書換えを署名で検出できない。**`webhook_request_id` の dedupe を必須にする** |
 | 配信保証 | retry、timeout、重複、順序、送信元 IP は**未記載** |
 | 鍵のローテーション | **手順・猶予は未記載。** Agent に Authentication Key は 1 つ（**利用者が入力して設定する**。Zoho が生成する形ではない）。変更の可否は画面で確認する（S-6）。受信側で新旧の鍵を併用することは、Provider の仕様に依存せず**こちらの実装で可能**（§3 の M-6） |
 | 検証 | 疎通確認（Verify）は 200 を返す。Delivered と Feedback loop は**模擬送信ができない**（実メールで確認） |
@@ -160,6 +160,7 @@ Web の「再送（resend）」は一般語であり、Provider とは無関係�
 | Zoho アカウントと、環境ごとの Agent の作成 | 運営者 | W1〜W2 | §3 の M-4 の 4 Agent |
 | DNS に DKIM（TXT）と CNAME を追加 | 運営者 | 審査後 | 反映 24〜48 時間。**SPF の要否は要確認**（公式資料は不要としているが、spike S-1 で到達性とあわせて確認） |
 | Railway の各サービスへ API キーを配置 | 運営者 | W6 前後 | **Webhook 用の鍵は `api` のみ**。`email-worker`・`reconciliation-worker` には送信用 token（と必要なら OAuth）だけを渡す |
+| **本番 Webhook の登録と受信確認**（`production-business`。staging の登録では本番をカバーできない: 登録は Agent ごと） | 運営者 + 担当2 | W13（本番 API のデプロイ後、公開の承認の前。runbook §4.3） | 本番専用の Authentication Key を `api` にのみ配置 → 本番 URL と購読 event を登録 → Verify → **署名検証済みの受信を実際に確認**（Verify 200 だけでは署名・event の処理を実証したことにならない） |
 | **Neon Auth の SMTP を ZeptoMail に切り替え** | 運営者 + 担当2 | W2 | 認証メール用。**業務用の Agent と分離**（`SPEC-180 §18.1`） |
 | Resend 側のドメイン認証（DNS）の撤去 | 運営者 | 実施済みの場合のみ | **本計画では Resend の申請はまだ行っていない**ため、通常は不要。すでにレコードを入れた場合だけ、ZeptoMail の認証が通った後に削除する |
 
@@ -181,9 +182,9 @@ Web の「再送（resend）」は一般語であり、Provider とは無関係�
 **決定（2026-11-17、運営者承認）: 案 A。** 本文書の作業計画は A を前提にする。案 B（再送許可）は、二重送信を許容する**独立した方針変更**であり、運営者が別途判断する場合に限り検討する（本決定には含まれない）。
 
 - Logs API が使えるかどうか（S-7）は、**A が成立するかではなく、Review に流れる量の見積り**に使う。S-7 の結果が悪くても、A のまま「未解決を保持して Review」で成立する。B への移行は、その運用負荷と二重送信の許容を比べて運営者が決める別の判断で、**spike の結果から自動で決まるものではない**（「照会できなければ B」と機械的には決めない）。
-- 判断の時期は W4（spike の記録を受けて）。S-7 が遅れた場合は W4 前半に延ばす（スケジュール §6）。
+- W4 は、**採用方針（案 A）を改めて決める時期ではなく**、spike の記録を受けて詳細（Logs API の使い方、`client_reference` の形式、Review に流れる量の見積り）を確定し、PR-SPEC-MAIL へ反映する時期。S-7 が遅れた場合は、その反映を W4 前半に延ばす（スケジュール §6）。案 A から変える場合（B への変更、または照会手段が全く使えない場合の方針の見直し）は、運営者の**再承認**を別に取る。
 
-> 追加調査（§2.2）でも、**二重送信を防ぐ代替設計が唯一の設計判断**で、残りは機械的な置換と追随とされている。したがって M-1 が決まれば、`EmailRequest.key`・`EmailLookup`・`SPEC-150` の probe・`SPEC-120` の冪等モデルが連動して確定する。
+> 追加調査（§2.2）でも、**二重送信を防ぐ代替設計が唯一の設計判断**で、残りは機械的な置換と追随とされている。したがって M-1 の方針（案 A）に従い、spike の結果で詳細を確定すれば、`EmailRequest.key`・`EmailLookup`・`SPEC-150` の probe・`SPEC-120` の冪等モデルが連動して確定する。
 
 ### M-2: Provider message ID と Webhook の dedupe key
 
@@ -232,7 +233,7 @@ Agent 名は例。実名は運営者が決める。**アラート通知（Better
 | 案 | 内容 | 長所 | 短所・条件 |
 |---|---|---|---|
 | ① | 新しい Agent を作り、Webhook を付け替える | 旧 Agent の鍵をそのまま捨てられる | Agent が増える（M-4 の 4 つに加える）。Token・SMTP password も別になるので、Secret の入れ替え範囲が大きい |
-| **② （決定）** | **受信側で新旧の鍵を併用する。** 新鍵を `api` に配置（verifier は current / previous の両方で検証、timestamp と `webhook_request_id` の dedupe は維持）→ Provider の Authentication Key を新へ変更 → 最大 24 時間後に旧を削除。侵害時は併用せず旧を即時 revoke（`SPEC-180 §29`） | 停止なし。`SPEC-180 §29` と同じ運用で、仕様の改訂が小さい | S-6 で確認が要る: (a) 鍵を変えた直後に、変更前に生成された配信が旧鍵の署名で届くか、(b) Provider が失敗した配信を再送するか（再送があれば旧鍵の期間を長めに取る）。(a)(b) が不明のままなら、旧鍵の削除を (a)(b) の確認後にする |
+| **② （決定）** | **受信側で新旧の鍵を併用する。** 新鍵を `api` に配置（verifier は current / previous の両方で検証、timestamp と `webhook_request_id` の dedupe は維持）→ Provider の Authentication Key を新へ変更 → 最大 24 時間後に旧を削除。侵害時は併用せず旧を即時 revoke（`SPEC-180 §29`） | 停止なし。`SPEC-180 §29` と同じ運用で、仕様の改訂が小さい | **併用は最大 24 時間**（`SPEC-140 §46.1`、`SPEC-180 §29`）で、期限なしには延ばさない。次の (a)(b) は **S-6 で切替の前に確認しておく**: (a) 鍵を変えた直後に、変更前に生成された配信が旧鍵の署名で届くか、(b) Provider が失敗した配信を再送するか、その間隔と期間。**確認できていなければ、Provider の鍵変更を開始しない（延期する）。** 切替の開始後は 24 時間以内に旧鍵を削除する。24 時間を超える併用が必要と分かった場合は、既存仕様と同じ運用とは扱わず、**UCR と正式仕様の改訂・承認を先に行う** |
 | ③ | 短い停止を許容し、取りこぼしを照合で補う | 実装が最も単純 | **条件つきで許容する**（下記） |
 
 **決定（2026-11-17、運営者承認）: ② 受信側の新旧鍵併用。** 停止を許容する ③ は、②が S-6 で成立しないと分かった場合の代替とする（その場合は、③ を許容する範囲を運営者が改めて決める）。
@@ -243,7 +244,7 @@ Agent 名は例。実名は運営者が決める。**アラート通知（Better
 3. **照合で補えるのは「Provider が受理した事実」まで。** bounce・failed などの配信後の event は、窓の間に落ちた場合に照合では補えない可能性がある（Logs API の `status` の粒度は S-7 で確認）。補えない event は、通知の Domain State を変えない範囲（`SPEC-120 §28.4` の receipt 履歴）なら欠落を許容し、補えない場合の扱いを PR-SPEC-MAIL に書く。
 4. **未解決のまま残った Attempt の扱い:** 再送せず（M-1 の A）、Consistency Review に流して管理者が確定する。窓の後に未解決が残る可能性があるので、窓は Unknown の Attempt が出にくい時間帯（深夜・低トラフィック）に置く。
 
-`SPEC-180 §29` の「24 時間の重なり」は Stripe の秘密にも適用する。
+`SPEC-180 §29` の「24 時間の重なり」（上限）は Stripe の秘密にも適用する。
 
 ---
 
@@ -261,7 +262,7 @@ Agent 名は例。実名は運営者が決める。**アラート通知（Better
 | S-3 | `client_reference` の最大長、使える文字、`r39x-email/<uuid>/<n>` の形式 | 採用予定の形式で送れる | W3 |
 | S-4 | 同じ内容を 2 回送ったときの挙動（重複の抑止があるか）、5xx・timeout の実測 | 二重に届くかを記録（M-1 の判断材料） | W3 |
 | S-5 | **Webhook**（S-0 の受信先に登録）: 登録、event の一覧、payload（特に Delivered）、`client_reference` と `request_id` の対応、`webhook_request_id`、retry の有無と間隔、HTTP 応答コード | event ごとのサンプルを（個人情報を伏せて）記録 | W3 |
-| S-6 | **署名検証**（S-0 の受信先）: `producer-signature` の署名対象（body のどの部分か、`ts` が署名に含まれるか）、**鍵の入れ替え**（Authentication Key を変えた直後に、変更前に生成された配信が旧鍵で署名されて届くか。M-6 の ②/③ の判断材料） | `node:crypto` で検証でき、改ざんを拒否できる。鍵入れ替えの前後の挙動を記録 | W3 |
+| S-6 | **署名検証**（S-0 の受信先）: **実配信の未加工バイト列**（フレームワークが body を解析・再整形する前）に HMAC-SHA256 を掛け、署名 header の `s` を URL decode → Base64 decode したものと比較して一致するか。`ts` が署名に含まれないこと、body の Content-Type、Authentication Key 文字列→鍵のバイト列の変換（文字コード）、**鍵の入れ替え**（Authentication Key を変えた直後に、変更前に生成された配信が旧鍵で署名されて届くか。M-6 の ②/③ の判断材料） | `node:crypto` で検証でき、改ざんを拒否できる。鍵入れ替えの前後の挙動を記録 | W3 |
 | S-7 | **Email logs API**（`GET /v1.1/email`）: 認証（OAuth の取得方法と scope `Zeptomail.email.READ`）、`client_reference` / `request_id` での検索（公式資料に明記。実環境の権限・完全一致か部分一致か・`limit` の上限）、送信から現れるまでの**遅延**、応答の `status` の粒度 | 不明な送信を 1 件照会できる。結果を M-1 の Review 量の見積りと M-6 ③ の条件に反映 | W3 |
 | S-8 | bounce / complaint の実挙動（受信拒否の宛先に送る）、suppression の自動登録 | `Hard bounce` の webhook と suppress の有無を記録 | W3 |
 | S-9 | 送信量・API の制限（rate limit）、非本番の送信先の制約、sandbox の有無 | 数値を記録（なければ「未記載」と記録） | W3 |
