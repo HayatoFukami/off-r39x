@@ -96,6 +96,7 @@ const EXPECTED_ROOT_EXPORTS = [
   "computeMigrationSetHash",
   "createDatabase",
   "createPrincipalRepository",
+  "insertAuditEvent",
   "installBaselineRoles",
   "installIdentityDirectory",
   "migrationIdentity",
@@ -106,12 +107,13 @@ const EXPECTED_ROOT_EXPORTS = [
 ];
 
 describe("TC-DEV-DB-001-001 db package public surface", () => {
-  it("TC-DEV-DB-001-001 @off-r39x/db/schema exports exactly app, businessProfiles and roleAssignments", async () => {
+  it("TC-DEV-DB-001-001 @off-r39x/db/schema exports exactly app, auditEvents, businessProfiles and roleAssignments", async () => {
     const schemaModule = await import("@off-r39x/db/schema");
 
     // (1) no helper or extra name leaks through the barrel (DEV-DB-001).
     expect(Object.keys(schemaModule).sort()).toEqual([
       "app",
+      "auditEvents",
       "businessProfiles",
       "roleAssignments",
     ]);
@@ -119,27 +121,30 @@ describe("TC-DEV-DB-001-001 db package public surface", () => {
     // (2) the shared pgSchema object is the "app" schema.
     expect((schemaModule.app as unknown as { schemaName: string }).schemaName).toBe("app");
 
-    // (3) both tables live in that same schema, and the contract agrees.
+    // (3) all tables live in that same schema, and the contract agrees.
     const profiles = getTableConfig(schemaModule.businessProfiles);
     const roles = getTableConfig(schemaModule.roleAssignments);
+    const audit = getTableConfig(schemaModule.auditEvents);
     expect(profiles.schema).toBe("app");
     expect(roles.schema).toBe("app");
+    expect(audit.schema).toBe("app");
     expect(profiles.schema).toBe(
       (schemaModule.app as unknown as { schemaName: string }).schemaName,
     );
     expect(contract.schemas.map(([name]) => name)).toContain("app");
   });
 
-  it("TC-DEV-DB-001-001 @off-r39x/db root exports exactly the 12 runtime names", async () => {
+  it("TC-DEV-DB-001-001 @off-r39x/db root exports exactly the 13 runtime names", async () => {
     const rootModule = await import("@off-r39x/db");
 
     // (4) runtime exports only; type-only exports are erased and out of scope. Importing the
     // package must not open a connection: createDatabase is never called here.
     expect(Object.keys(rootModule).sort()).toEqual(EXPECTED_ROOT_EXPORTS);
-    expect(EXPECTED_ROOT_EXPORTS).toHaveLength(12);
+    expect(EXPECTED_ROOT_EXPORTS).toHaveLength(13);
     // The schema is intentionally not part of the root surface.
     expect(rootModule).not.toHaveProperty("businessProfiles");
     expect(rootModule).not.toHaveProperty("roleAssignments");
+    expect(rootModule).not.toHaveProperty("auditEvents");
     expect(rootModule).not.toHaveProperty("app");
   });
 });
@@ -551,11 +556,11 @@ describe("TC-DB-ARC-007-001 Drizzle declarations match schema-contract.json", ()
     }
   });
 
-  it("TC-DB-ARC-007-001 business_profiles has no foreign keys and no declared tables beyond the two", async () => {
+  it("TC-DB-ARC-007-001 business_profiles has no foreign keys and the contract declares exactly the three app tables", async () => {
     const schemaModule = await import("@off-r39x/db/schema");
     expect(getTableConfig(schemaModule.businessProfiles).foreignKeys).toHaveLength(0);
     expect(
       contract.tables.map(([name]) => name).filter((name) => name !== "schema_migrations"),
-    ).toEqual(["business_profiles", "role_assignments"]);
+    ).toEqual(["audit_events", "business_profiles", "role_assignments"]);
   });
 });
