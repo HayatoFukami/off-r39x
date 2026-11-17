@@ -97,16 +97,12 @@ Worker の停止は、新規処理を止めて協調終了を待ち、15秒を�
 - 個別 Worker handler、claim/lease/通知永続化、業務照合・復旧の実装。空の起動基盤を配送・reconciliation の完了と扱わない。
 - 本番の監視配線、監査の運用、バックアップ、restore rehearsal、staging・全システム G1〜G10 の公開 gate。この基盤 suite だけで公開を許可しない。
 
-## 仕様矛盾の報告（正式仕様は未変更）
+## 解消済みの仕様矛盾
 
-### UCR-BACKEND-001
-
-- 対象: SPEC-150 §14 `REL-DB-001`、§16 `REL-DB-011`
-- 現在の仕様: `REL-DB-001` は自動 transaction retry を `40001` / `40P01` のみに限定する一方、`REL-DB-011` は lock timeout にも最大4回の retry を要求する。
-- 要求する変更: Canonical Owner で lock timeout の SQLSTATE と retry 可否・適用 policy を統一する。
-- 理由: `55P03` 等を agent 判断で retry allowlist に追加できない。
-- 変更しない場合の影響: 矛盾する lock-timeout 自動 retry は実装せず上位へ返す。明示的な `40001` / `40P01` のみを retry する基盤として扱い、lock-timeout 要件を満たしたとは報告しない。
-- 影響を受ける可能性がある仕様書: SPEC-100、SPEC-150、SPEC-170、SPEC-190。
+- `UCR-BACKEND-001`（`REL-DB-001` と `REL-DB-011` の lock timeout の食い違い）は、SPEC-150 の `UCR-150-003`（INCORPORATED。`REL-DB-001` / `REL-DB-011` / §11 の `55P03` 行）と SPEC-110 §50 で解消済みである。仕様はこの実装では変更していない。
+- 実装: `55P03` を transaction 単位で retry する（4 attempts、初回 50ms、倍率2、最大 400ms、full jitter、最初の attempt 開始から最大5秒）。retry の前に失敗した transaction を明示 `ROLLBACK` し、同じ callback を新しい transaction で再実行する。budget が尽きたときは元のエラー（`code` を保持）を返し、`reliability.retry.exhausted` を記録する（`40001` / `40P01` も同じ）。API は、retry 可能な SQLSTATE または `TransactionDeadlineError` を `503 DATABASE_TEMPORARY_FAILURE` にする。SQLSTATE は応答に含めない。DB 接続不能（`08xxx` など）の 503 への対応は含まない。
+- 405 / 415 の公開コード（`UCR-140-002` INCORPORATED）を実装した: `METHOD_NOT_ALLOWED`（`Allow` 付き）と `UNSUPPORTED_MEDIA_TYPE`。
+- 残る未検証事項: 実 PG17 の lock 再現テスト（`tests/db/`）は CI（Linux）の結果が根拠である。`r39x_db_transaction_retries_total` は未実装。`transaction()` を使う業務 Operation はまだ無いため、HTTP 503 への対応は harness route でしか確認していない。
 
 `UCR-130-005` の deferred operational index は追加しない。
 
@@ -116,5 +112,6 @@ Worker の停止は、新規処理を止めて協調終了を待ち、15秒を�
 - Directoryは3列の型／grantだけでなく、直接投影、Subjectの有効な一意Index、Subject／verified列のNOT NULLと有効な一意Indexによってcardinalityを確認する。catalogとOIDを用い、Directoryを読めないReconへ行読取権限を要求しない。実Neonのsource mappingはdeploymentで確認し、Provider所有tableは変更しない。
 - Stripe lookupはSDK Fetch transportを明示採用し、本文処理まで10秒のadapter deadlineと単調時計の確認を適用する。SDKの自動network retryは0。旧Node socket inactivity timeoutへの依存を除いた。
 - `GET /api/v1/self/principal` (`API-AUTH-001`) は公開RPC型と同じbuilderでmountする。署名済みJWT→現在Directory／Profile／Role→メール確認→共有guardを経てnavigation情報だけを返す。GETによるProfile作成は行わない。
+- 未対応 method は `405 METHOD_NOT_ALLOWED`（`Allow` 付き）、JSON 以外の Content-Type は `415 UNSUPPORTED_MEDIA_TYPE`（`SEC-API-022`）。`/auth/*` 中継が自前で返す 415 の body は中継の形式のまま（SPEC-110 §23.1）。
 - 本変更は全SPEC-110の実装ではない。Profile provisioning／編集を含むその他のoperation、購入・予約・決済、Worker業務handlerは追加していない。
 - `NEON_AUTH_BASE_URL`／Directory mapping／共有guardが成立しない標準API起動はReadyにならない。空Worker registryも引き続きReadyにならない。合成依存による正常系試験を、標準3プロセスの本番Readyと読み替えない。
