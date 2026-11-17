@@ -1,3 +1,4 @@
+import type { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TransactionDeadlineError, transaction } from "../../packages/db/src/index.ts";
 import { createLogger } from "../../packages/observability/src/index.ts";
@@ -347,6 +348,29 @@ describe("transaction retry with a fake pool (control flow only)", () => {
       const exhausted = named(all, "reliability.retry.exhausted");
       expect(exhausted).toHaveLength(1);
       expect(exhausted[0]).toMatchObject({ attempt_number: 1, sqlstate: "55P03" });
+    }
+    {
+      // (iv) A retry attempt that is abandoned because its connection ended, well inside the
+      // budget, is not a budget exhaustion: the deadline was not reached.
+      now = T0;
+      const { behavior } = probeFailures((client) => (client === 0 ? "55P03" : undefined));
+      const fake = createFakePool(behavior);
+      const { logger, events } = collector();
+      let calls = 0;
+      const result = transaction(
+        fake.pool,
+        async (client) => {
+          calls++;
+          await client.query(PROBE);
+          if (calls === 2) (client as unknown as EventEmitter).emit("end");
+        },
+        { logger, queryName: QUERY_NAME },
+      );
+      await expect(result).rejects.toBeInstanceOf(TransactionDeadlineError);
+      expect(calls).toBe(2);
+      const all = events();
+      expect(named(all, "db.transaction.retry_scheduled")).toHaveLength(1);
+      expect(named(all, "reliability.retry.exhausted")).toHaveLength(0);
     }
   });
 });
