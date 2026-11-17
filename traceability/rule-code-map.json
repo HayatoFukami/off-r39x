@@ -3397,7 +3397,7 @@
         "apps/api/src/api/app.ts",
         "apps/api/src/bootstrap/index.ts"
       ],
-      "test_case_ids": ["TC-DEV-API-003-050", "TC-RPC-AUDIT-001"],
+      "test_case_ids": ["TC-DEV-API-003-050", "TC-RPC-AUDIT-001", "TC-DEV-API-003-001"],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
     },
     {
@@ -3410,7 +3410,7 @@
         "apps/api/src/api/app.ts",
         "apps/api/src/bootstrap/index.ts"
       ],
-      "test_case_ids": ["TC-DEV-API-003-050", "TC-RPC-AUDIT-001"],
+      "test_case_ids": ["TC-DEV-API-003-050", "TC-RPC-AUDIT-001", "TC-DEV-API-002-001"],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
     },
     {
