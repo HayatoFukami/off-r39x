@@ -3,28 +3,24 @@ import {
   bigint,
   check,
   foreignKey,
-  pgSchema,
   primaryKey,
   text,
-  timestamp,
   unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { app } from "./app-schema.ts";
+import { internalId, publicRef, timestamptz, timestamptzNow } from "./common.ts";
 
-export const app = pgSchema("app");
-const id = () => bigint("id", { mode: "bigint" }).generatedAlwaysAsIdentity();
-const time = (name: string) =>
-  timestamp(name, { withTimezone: true }).notNull().default(sql`transaction_timestamp()`);
 export const businessProfiles = app.table(
   "business_profiles",
   {
-    id: id(),
-    publicRef: uuid("public_ref").notNull().defaultRandom(),
+    id: internalId(),
+    publicRef: publicRef(),
     authSubject: uuid("auth_subject").notNull(),
     displayName: text("display_name"),
-    createdAt: time("created_at"),
-    updatedAt: time("updated_at"),
+    createdAt: timestamptzNow("created_at"),
+    updatedAt: timestamptzNow("updated_at"),
   },
   (t) => [
     primaryKey({ name: "pk_business_profiles", columns: [t.id] }),
@@ -39,16 +35,16 @@ export const businessProfiles = app.table(
 export const roleAssignments = app.table(
   "role_assignments",
   {
-    id: id(),
-    publicRef: uuid("public_ref").notNull().defaultRandom(),
+    id: internalId(),
+    publicRef: publicRef(),
     profileId: bigint("profile_id", { mode: "bigint" }).notNull(),
     role: text("role").notNull(),
     state: text("state").notNull(),
     grantedByProfileId: bigint("granted_by_profile_id", { mode: "bigint" }),
     revokedByProfileId: bigint("revoked_by_profile_id", { mode: "bigint" }),
-    grantedAt: time("granted_at"),
-    revokedAt: timestamp("revoked_at", { withTimezone: true }),
-    createdAt: time("created_at"),
+    grantedAt: timestamptzNow("granted_at"),
+    revokedAt: timestamptz("revoked_at"),
+    createdAt: timestamptzNow("created_at"),
   },
   (t) => [
     primaryKey({ name: "pk_role_assignments", columns: [t.id] }),
