@@ -31,7 +31,7 @@ export type ApiEnvironment = {
 export class ApiFailure extends Error {
   constructor(
     readonly code: ErrorCode,
-    readonly statusOverride?: 400 | 405 | 413 | 415,
+    readonly statusOverride?: 400 | 413,
     /** Only for RATE_LIMIT_EXCEEDED: the integer-second Retry-After value (SEC-ABU-007). */
     readonly retryAfterSeconds?: number,
   ) {
