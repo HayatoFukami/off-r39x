@@ -16838,6 +16838,61 @@
       "critical": true
     },
     {
+      "test_case_id": "TC-DEV-API-002-001",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["DEV-API-002", "DEV-TS-014"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Static import of @off-r39x/api-contract by package name; synthetic UUIDs only; no network, database or environment variables",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "@off-r39x/api-contract exports exactly createPublicRpc, errorSchema, errorStatuses, principalNavigationSchema and successSchema at runtime",
+        "ErrorCode, PrincipalNavigation and AppType keep their compile-time shapes (enforced by pnpm typecheck)",
+        "createPublicRpc registers only GET /api/v1/self/principal and answers it with the data/meta envelope built from the injected principal and request ID; a principal with an extra key is rejected by the strict schema with 500"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-DEV-API-003-001",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "DEV-API-003",
+        "SEC-API-022",
+        "SPEC-110-19",
+        "SPEC-110-20",
+        "SPEC-110-21"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Static import of @off-r39x/api-contract by package name; fixed synthetic inputs; no network, database or environment variables",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "errorStatuses keeps the 26 codes in order with their HTTP statuses, including METHOD_NOT_ALLOWED 405 and UNSUPPORTED_MEDIA_TYPE 415, and errorSchema's code enum equals that list",
+        "errorSchema, successSchema and principalNavigationSchema accept and reject the same fixed inputs with the same parsed data and issue codes/paths as before the file split"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-FOUNDATION-RUNTIME-001",
       "level": "Unit",
       "suite": "unit",
