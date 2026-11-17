@@ -63,7 +63,10 @@ export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number];
 
 // Formats. Each pattern must match the whole value. None of them admits ".", "/", "@" or
 // whitespace in a reference, which rejects Email addresses, URLs, raw QR strings (they contain ".")
-// and JWT / Session tokens (also "."), as well as free text, before the value is stored.
+// and other dotted tokens such as JWTs, as well as free text, before the value is stored.
+// Limit: a reference made only of [A-Za-z0-9_:-] (for example a bare provider key) still passes.
+// SPEC-160 §33.1 defines no provider identifier format, so which identifiers may be stored, and
+// keeping Secrets out of them (SPEC-160 §12), stays with the caller that builds the event.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const FINGERPRINT = /^[0-9a-f]{32}$/; // SPEC-160 §11
 const SAFE_REF = /^[A-Za-z0-9_:-]{1,128}$/;
