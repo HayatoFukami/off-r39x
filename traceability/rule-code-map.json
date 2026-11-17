@@ -2873,17 +2873,13 @@
     },
     {
       "rule_id": "DB-ARC-007",
-      "code_paths": [
-        "packages/db/src/schema.ts",
-        "packages/db/src/schema",
-        "packages/db/migrations/0001_foundation.sql"
-      ],
+      "code_paths": ["packages/db/src/schema", "packages/db/migrations/0001_foundation.sql"],
       "test_case_ids": ["TC-DB-FOUNDATION-001", "TC-DB-FOUNDATION-009"],
       "notes": "Explicit named constraints and lossless bigint schema"
     },
     {
       "rule_id": "DB-STA-001",
-      "code_paths": ["packages/db/src/schema/profiles.ts"],
+      "code_paths": ["packages/db/src/schema/identity.ts"],
       "test_case_ids": ["TC-DB-FOUNDATION-009"],
       "notes": "Only canonical Role and Role Assignment states"
     },
