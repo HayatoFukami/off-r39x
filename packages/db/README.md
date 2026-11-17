@@ -20,9 +20,9 @@ bigint-mode tables; reviewed SQL lives in `migrations/`.
 - `src/transaction.ts` is the generic transaction boundary: isolation, timeout,
   the `SPEC-150` retry policy, `commit_unknown` and advisory locks.
   `src/transactions/` is the planned home of business transaction modules: one
-  use case per transaction, no external calls inside, and the caller of
-  `transaction()`. The directory does not exist yet; the first PR that adds a
-  business transaction creates it (`DEV-DB-003`, `SPEC-100 §55`).
+  use case per transaction, no external calls inside (`DEV-DB-010`), and the
+  caller of `transaction()`. The directory does not exist yet; the first PR that
+  adds a business transaction creates it (`DEV-DB-003`, `SPEC-100 §55`).
 
 ## Migration numbering
 
@@ -45,9 +45,11 @@ bigint-mode tables; reviewed SQL lives in `migrations/`.
 5. When a migration changes the schema, update `src/schema-contract.json` in the
    same commit and the matching Drizzle declarations in `src/schema/*.ts` in the
    same PR.
-6. `pnpm validate:migrations` is a conservative aid (duplicate numeric prefixes,
-   destructive SQL and similar). It checks neither naming nor SQL correctness, so
-   a real PostgreSQL 17 test is still required (`DEV-DB-013`).
+6. `pnpm validate:migrations` is a conservative aid. It requires a unique numeric
+   prefix (and rejects destructive SQL and similar patterns) but checks neither the
+   four-digit / snake_case form nor SQL correctness. Every migration still needs a
+   diff review (`DEV-DB-013`) and the real PostgreSQL 17 migration test
+   (`SPEC-170 §22`).
 
 ## Deployment boundaries
 

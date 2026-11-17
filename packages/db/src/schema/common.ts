@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { bigint, timestamp, uuid } from "drizzle-orm/pg-core";
 
-// Column helpers only (DEV-DB-006, DB-ID-001..003). Each call returns a fresh column builder;
+// Column helpers only (DEV-DB-006, SPEC-100 §7 / DB-ID-003). Each call returns a fresh column builder;
 // builders are stateful and must not be shared between tables. Constraints (PK, UNIQUE, FK,
 // CHECK) and their explicit names stay in each table definition (DB-ARC-007), and no helper
 // hides a Domain State column (DB-STA-001).
