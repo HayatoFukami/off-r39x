@@ -16306,6 +16306,57 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-DEV-DB-001-001",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["DEV-DB-001", "DB-ARC-001"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Static import of package exports; no database connection",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "@off-r39x/db/schema exports exactly app, businessProfiles and roleAssignments with no helper leaking through the barrel",
+        "The app schema object and both tables use the schema name app",
+        "@off-r39x/db root exports exactly the 12 runtime names and does not export the schema"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-DB-ARC-007-001",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["DB-ARC-007", "DB-STA-001", "DEV-DB-006"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Static Drizzle declaration check against the reviewed schema-contract.json; not a database execution test; DB enforcement is TC-DB-FOUNDATION-001/009 on real PostgreSQL 17",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Drizzle declaration names for business_profiles and role_assignments constraints and indexes equal schema-contract.json by name and kind",
+        "Column order, SQL type, NOT NULL, identity always and default presence equal schema-contract.json",
+        "bigint IDs and foreign key columns use lossless bigint mode (PgBigInt64)",
+        "Three role_assignments foreign keys reference business_profiles(id) with ON DELETE RESTRICT; ux_role_assignments_profile_role_active is a partial unique index on (profile_id, role)"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
       "test_case_id": "TC-DEV-SEC-004-020",
       "level": "Unit",
       "suite": "unit",
