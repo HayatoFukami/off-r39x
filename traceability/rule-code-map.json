@@ -3251,6 +3251,40 @@
       "notes": "bigint-mode internal IDs and FKs (lossless)"
     },
     {
+      "rule_id": "OBS-AUD-004",
+      "code_paths": [
+        "packages/db/migrations/0002_audit_events.sql",
+        "packages/db/src/schema/audit.ts",
+        "packages/db/src/schema-contract.json"
+      ],
+      "test_case_ids": ["TC-OBS-AUD-004-001", "TC-OBS-AUD-004-002", "TC-DB-009-001"],
+      "notes": "Append-only app.audit_events: runtime INSERT only, no UPDATE/DELETE/SELECT; no correction path"
+    },
+    {
+      "rule_id": "OBS-AUD-006",
+      "code_paths": ["packages/db/src/audit-events.ts"],
+      "test_case_ids": ["TC-OBS-AUD-006-001", "TC-OBS-AUD-006-002"],
+      "notes": "before/after/changed_fields/safe_change_summary only from per-operation change specs (enum, public ref, integer); no operation spec registered yet (SPEC-160 §35 key names pending)"
+    },
+    {
+      "rule_id": "OBS-AUD-007",
+      "code_paths": ["packages/db/src/audit-events.ts"],
+      "test_case_ids": ["TC-DB-008-001"],
+      "notes": "Writer inserts on the caller transaction client; audit insert failure rolls back the business write"
+    },
+    {
+      "rule_id": "OBS-AUD-008",
+      "code_paths": ["packages/db/src/audit-events.ts"],
+      "test_case_ids": ["TC-OBS-AUD-006-001"],
+      "notes": "Writer-level only: single INSERT, no own transaction, no retry, error propagated; provider flow evidence pending"
+    },
+    {
+      "rule_id": "INF-AUD-001",
+      "code_paths": ["packages/db/migrations/0002_audit_events.sql"],
+      "test_case_ids": ["TC-DB-009-001"],
+      "notes": "Only app_api_runtime has INSERT; email/reconciliation runtimes have none until an upstream audit requirement is implemented"
+    },
+    {
       "rule_id": "SEC-AUTH-001",
       "code_paths": [
         "packages/auth/src/index.ts",
