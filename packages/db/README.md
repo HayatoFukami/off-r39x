@@ -12,6 +12,7 @@ bigint-mode tables; reviewed SQL lives in `migrations/`.
   column. Constraints and their explicit names stay in each table definition.
 - `src/schema/identity.ts`: `business_profiles` and `role_assignments`.
 - `src/schema/audit.ts`: `audit_events` (SPEC-160 §33). Append-only; `app_api_runtime` has INSERT only.
+- `src/audit-events.ts`: caller-transaction Audit writer (INSERT only, no RETURNING, no retry, per-operation change specs).
 - `src/schema/index.ts`: the barrel. It re-exports `app` and the tables by name,
   unchanged, and exports no helper (`DEV-DB-001`). To add a table, put it in the
   file for its table domain (`SPEC-100 §55`) and add a named export to `index.ts`.
