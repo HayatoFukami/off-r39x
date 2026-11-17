@@ -1,6 +1,6 @@
 import catalog from "./schema-contract.json" with { type: "json" };
 
-// Release-required PG17 catalog, reviewed against 0001_foundation.sql and the
+// Release-required PG17 catalog, reviewed against packages/db/migrations/*.sql and the
 // migration journal DDL. Never derive the expectation from the live database.
 export const requiredCatalog = catalog;
 export const catalogQuery = `SELECT jsonb_build_object(
