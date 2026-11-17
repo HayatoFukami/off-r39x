@@ -3097,6 +3097,7 @@
         "TC-DB-RETRY-002",
         "TC-DB-RETRY-003",
         "TC-DB-RETRY-004",
+        "TC-DB-RETRY-005",
         "TC-DB-FOUNDATION-011",
         "TC-DB-FOUNDATION-012",
         "TC-DB-FOUNDATION-013",
@@ -3588,7 +3589,8 @@
         "TC-DB-FOUNDATION-008",
         "TC-DB-FOUNDATION-012",
         "TC-DB-RETRY-002",
-        "TC-DB-RETRY-004"
+        "TC-DB-RETRY-004",
+        "TC-DB-RETRY-005"
       ],
       "notes": "Foundation audit repair; local synthetic evidence does not assert live-provider or release readiness"
     },

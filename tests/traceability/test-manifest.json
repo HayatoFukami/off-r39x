@@ -15897,6 +15897,29 @@
       "critical": true
     },
     {
+      "test_case_id": "TC-DB-RETRY-005",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["REL-DB-011", "OBS-DB-003"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Fake pool, an injected monotonic clock (performance.now) and fake setTimeout; the deadline timer fires 0.5ms before the budget deadline and is re-armed; Math.random fixed",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": ["sqlstate_55P03", "deadline_timer_fires_early"],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "A deadline timer that fires slightly before the monotonic budget deadline (Node truncates fractional delays) is re-armed, so the attempt is still cut at the deadline and both the timeout and the retry exhaustion are recorded"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": ["reliability.timeout.occurred", "reliability.retry.exhausted"],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],

@@ -373,4 +373,47 @@ describe("transaction retry with a fake pool (control flow only)", () => {
       expect(named(all, "reliability.retry.exhausted")).toHaveLength(0);
     }
   });
+
+  it("TC-DB-RETRY-005 REL-DB-011 OBS-DB-003 a deadline timer that fires just before the budget deadline still records the exhaustion", async () => {
+    // Node truncates fractional timer delays, so the timer can fire a fraction of a millisecond
+    // before the monotonic deadline. The deadline must be re-checked, not trusted (OBS-DB-003).
+    const T0 = 2_000_000;
+    let now = T0;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const { behavior } = probeFailures((client) => (client === 0 ? "55P03" : undefined));
+      const fake = createFakePool(behavior);
+      const { logger, events } = collector();
+      let calls = 0;
+      const result = transaction(
+        fake.pool,
+        async (client) => {
+          calls++;
+          if (calls === 1) {
+            now = T0 + 4900; // attempt 2 starts with 100ms of the 5s budget left
+            await client.query(PROBE);
+            return;
+          }
+          now = T0 + 4999.5; // 0.5ms short of the deadline when the timer first fires
+          await new Promise<never>(() => {});
+        },
+        { logger, queryName: QUERY_NAME },
+      );
+      const settled = result.then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      while (calls < 2) await new Promise((resolve) => setImmediate(resolve));
+      await vi.advanceTimersByTimeAsync(100); // the timer fires before the deadline
+      now = T0 + 5000.5;
+      await vi.advanceTimersByTimeAsync(1); // the re-armed timer reaches the deadline
+      expect(await settled).toBeInstanceOf(TransactionDeadlineError);
+      const all = events();
+      expect(named(all, "reliability.timeout.occurred")).toHaveLength(1);
+      expect(named(all, "reliability.retry.exhausted")).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
