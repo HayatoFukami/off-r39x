@@ -69,13 +69,13 @@ export async function withDeadline<T>(
     signal?.removeEventListener("abort", onAbort);
   }
 }
-export type DatabaseRetryState = "40001" | "40P01";
+export type DatabaseRetryState = "40001" | "40P01" | "55P03";
 export function isDatabaseRetryable(error: unknown): error is { code: DatabaseRetryState } {
   return (
     typeof error === "object" &&
     error !== null &&
     "code" in error &&
-    (error.code === "40001" || error.code === "40P01")
+    (error.code === "40001" || error.code === "40P01" || error.code === "55P03")
   );
 }
 export interface RetryPolicy {
@@ -103,6 +103,8 @@ const policy = (
 export const RETRY_POLICIES = Object.freeze({
   "40001": policy(50, 400, 4, 2000),
   "40P01": policy(100, 800, 4, 3000),
+  // SPEC-150 §11: lock timeout (REL-DB-011). 4 attempts, 5 s from the first attempt.
+  "55P03": policy(50, 400, 4, 5000),
   databaseConnection: policy(100, 500, 3, 3000),
   auth: policy(100, 500, 2, 7000),
   stripeCheckout: policy(500, 5000, 5, 30000),

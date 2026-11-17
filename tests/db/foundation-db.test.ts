@@ -164,7 +164,7 @@ describe("PostgreSQL 17 foundation (real database)", () => {
     }
   });
 
-  it("TC-DB-FOUNDATION-005 real SQLSTATE retries are bounded and lock timeout is not retried", async () => {
+  it("TC-DB-FOUNDATION-005 real SQLSTATE retries are bounded; lock timeout is retried within its budget", async () => {
     const pool = new Pool({ connectionString: url });
     try {
       for (const code of ["40001", "40P01", "55P03", "23505"]) {
@@ -177,7 +177,7 @@ describe("PostgreSQL 17 foundation (real database)", () => {
             );
           }),
         ).rejects.toMatchObject({ code });
-        expect(attempts).toBe(code === "40001" || code === "40P01" ? 4 : 1);
+        expect(attempts).toBe(code === "40001" || code === "40P01" || code === "55P03" ? 4 : 1);
       }
     } finally {
       await pool.end();

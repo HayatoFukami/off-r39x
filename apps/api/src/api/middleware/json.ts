@@ -32,7 +32,7 @@ export function rejectDuplicateKeys(raw: string): void {
 export function validateJson<T extends z.ZodType>(schema: T): MiddlewareHandler<ApiEnvironment> {
   return async (c, next) => {
     if (!/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(c.req.header("Content-Type") ?? ""))
-      throw new ApiFailure("MALFORMED_REQUEST", 415);
+      throw new ApiFailure("UNSUPPORTED_MEDIA_TYPE");
     let value: unknown;
     const raw = await c.req.text();
     try {

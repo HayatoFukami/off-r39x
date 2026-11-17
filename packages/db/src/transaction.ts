@@ -1,6 +1,12 @@
 import { performance } from "node:perf_hooks";
 import { setTimeout as sleep } from "node:timers/promises";
-import { isDatabaseRetryable, RETRY_POLICIES, retryDelay, TIMEOUTS } from "@off-r39x/reliability";
+import {
+  type DatabaseRetryState,
+  isDatabaseRetryable,
+  RETRY_POLICIES,
+  retryDelay,
+  TIMEOUTS,
+} from "@off-r39x/reliability";
 import type { Pool, PoolClient } from "pg";
 import { type DatabaseLogger, databaseLogger, logDatabase } from "./observability.ts";
 
@@ -42,13 +48,20 @@ export async function transaction<T>(
   if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(queryName)) throw new Error("Invalid query name");
   const start = performance.now();
   let deadlineAt = start + TIMEOUTS.transactionMs;
-  for (
-    let attempt = 1;
-    attempt <= Math.max(RETRY_POLICIES["40001"].maxAttempts, RETRY_POLICIES["40P01"].maxAttempts);
-    attempt++
-  ) {
+  // True once a retry policy's elapsed budget has shortened the deadline, so a
+  // later deadline hit is retry-budget exhaustion rather than the 8 s wall clock.
+  let budgetShortened = false;
+  const maxAttempts = Math.max(
+    RETRY_POLICIES["40001"].maxAttempts,
+    RETRY_POLICIES["40P01"].maxAttempts,
+    RETRY_POLICIES["55P03"].maxAttempts,
+  );
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     let client: PoolClient | undefined;
     let discard = false;
+    // Set by the deadline timer when it reaches a retry-budget-shortened deadline. It survives
+    // an in-flight ROLLBACK, where the caught error is still the original SQLSTATE error.
+    let budgetDeadlineReached = false;
     let committing = false;
     let detachConnectionListeners = () => {};
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -56,12 +69,21 @@ export async function transaction<T>(
       const remaining = deadlineAt - performance.now();
       if (remaining <= 0) throw new TransactionDeadlineError();
       const deadline = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
-          discard = true;
-          client?.release(true);
-          client = undefined;
-          reject(new TransactionDeadlineError());
-        }, remaining);
+        // Node truncates fractional delays, so the timer can fire a fraction of a millisecond
+        // before the monotonic deadline. Re-check the clock and re-arm until the deadline has
+        // really passed, so the exhaustion check below sees a consistent state (OBS-DB-003).
+        const arm = (delayMs: number) => {
+          timer = setTimeout(() => {
+            const left = deadlineAt - performance.now();
+            if (left > 0) return arm(Math.ceil(left));
+            if (budgetShortened) budgetDeadlineReached = true;
+            discard = true;
+            client?.release(true);
+            client = undefined;
+            reject(new TransactionDeadlineError());
+          }, Math.ceil(delayMs));
+        };
+        arm(remaining);
       });
       const work = async (): Promise<TransactionResult<T>> => {
         const acquiring = performance.now();
@@ -142,8 +164,7 @@ export async function transaction<T>(
         });
         return { status: "commit_unknown" };
       }
-      const timeout =
-        error instanceof TransactionDeadlineError || code === "57014" || code === "55P03";
+      const timeout = error instanceof TransactionDeadlineError || code === "57014";
       const unavailable =
         !timeout &&
         (!client ||
@@ -188,13 +209,45 @@ export async function transaction<T>(
           discard = true;
         }
       }
+      const exhausted = () =>
+        logDatabase(logger, {
+          event_name: "reliability.retry.exhausted",
+          level: "ERROR",
+          result: "FAILED",
+          failure_class: "TEMPORARY_FAILURE",
+          is_retry: attempt > 1,
+          attempt_number: attempt,
+          query_name: queryName,
+          ...(code && /^[0-9A-Z]{5}$/.test(code) ? { sqlstate: code } : {}),
+          duration_ms: Math.floor(performance.now() - start),
+        });
+      // A retry attempt cut off by the shortened retry budget is exhaustion too: either the
+      // attempt itself hit the deadline, or the timer reached it while ROLLBACK was in flight.
+      // Recorded here once; the discard branch below then only rethrows.
+      if (
+        budgetShortened &&
+        ((error instanceof TransactionDeadlineError && performance.now() >= deadlineAt) ||
+          (budgetDeadlineReached && isDatabaseRetryable(error)))
+      )
+        exhausted();
       const policy = isDatabaseRetryable(error) ? RETRY_POLICIES[error.code] : undefined;
-      if (!policy || attempt >= policy.maxAttempts || discard) throw error;
+      if (!policy || discard) throw error;
+      if (attempt >= policy.maxAttempts) {
+        exhausted();
+        throw error;
+      }
       // Retry budgets include all previous attempts and backoff, not just the
       // interval until the next attempt. A later SQLSTATE cannot extend them.
-      deadlineAt = Math.min(deadlineAt, start + policy.maxElapsedMs);
+      const budgetAt = start + policy.maxElapsedMs;
+      if (budgetAt < deadlineAt) {
+        deadlineAt = budgetAt;
+        budgetShortened = true;
+      }
       const delay = retryDelay(policy, attempt);
-      if (performance.now() + delay >= deadlineAt) throw error;
+      if (performance.now() + delay >= deadlineAt) {
+        exhausted();
+        throw error;
+      }
       if (timer) clearTimeout(timer);
       detachConnectionListeners();
       client?.release();
@@ -206,7 +259,7 @@ export async function transaction<T>(
         is_retry: true,
         attempt_number: attempt + 1,
         query_name: queryName,
-        sqlstate: code as "40001" | "40P01",
+        sqlstate: code as DatabaseRetryState,
         failure_class: "TEMPORARY_FAILURE",
       });
       await sleep(delay);

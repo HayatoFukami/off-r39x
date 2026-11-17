@@ -10,7 +10,9 @@ import {
   type TokenInspection,
   type TokenVerifier,
 } from "@off-r39x/auth";
+import { TransactionDeadlineError } from "@off-r39x/db";
 import type { createLogger, LogEvent } from "@off-r39x/observability";
+import { isDatabaseRetryable } from "@off-r39x/reliability";
 import { Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { TrieRouter } from "hono/router/trie-router";
@@ -59,7 +61,7 @@ const EXPOSED_HEADERS = "X-Request-Id, Retry-After";
 function failure(
   c: import("hono").Context<ApiEnvironment>,
   code: ErrorCode,
-  statusOverride?: 400 | 405 | 413 | 415,
+  statusOverride?: 400 | 413,
   retryAfterSeconds?: number,
 ) {
   c.header("Cache-Control", "no-store");
@@ -188,6 +190,10 @@ export function createApp(dependencies: AppDependencies) {
     if (error instanceof ApiFailure)
       return failure(c, error.code, error.statusOverride, error.retryAfterSeconds);
     if (error instanceof AuthFailure) return failure(c, authErrorCodes[error.kind]);
+    // SPEC-110 §50 / REL-DB-011: an exhausted transaction retry budget is a temporary failure,
+    // never 404 / 409 / 500. The SQLSTATE stays out of the response (SPEC-110 §20).
+    if (isDatabaseRetryable(error) || error instanceof TransactionDeadlineError)
+      return failure(c, "DATABASE_TEMPORARY_FAILURE");
     return failure(c, "INTERNAL_ERROR");
   });
   app.use("/api/v1/*", async (c, next) => {
@@ -300,7 +306,7 @@ export function createApp(dependencies: AppDependencies) {
     if (methods.has("GET") && !c.req.path.startsWith("/auth/")) methods.add("HEAD");
     if (methods.size) {
       c.header("Allow", [...methods].sort().join(", "));
-      return failure(c, "MALFORMED_REQUEST", 405);
+      return failure(c, "METHOD_NOT_ALLOWED");
     }
     return failure(c, "RESOURCE_NOT_FOUND");
   });

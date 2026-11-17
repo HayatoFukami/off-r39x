@@ -158,3 +158,12 @@ Directoryの最小権限probeを追加した際、Recon identityでreadinessが`
 検証はNode 24.22.1 / corepack pnpm 12.3.4、専用PostgreSQL 17.11、UTC、合成CA・verified TLS、ファイル単位の独立DBで実施した。lint（既存warning 2件）、typecheck、boundaries、traceability（654 TC / 218 Rule）、migration静的検査、unit（106 files / 2303 tests）、backend（21 files / 80 tests）、backend build、`secret-scan --build-dir dist --require-build`（516 files）はPASS。build manifestとruntimeの集合ハッシュも一致した。後から追加したlogger例外時のrollback/retry assertionは同じ実DB suiteでPASS。最初に追加した回帰試験は修正前にそれぞれ失敗を確認した。初回logger例外試験は接続が解放されずtimeoutし、その後修正して通過した。
 
 #33は確認時点でOPENのため、計画の条件に従い`origin/dev`のmerge・競合解消とその後の全工程再検証は未実施。Web mock build・ヘッダー検査・E2Eはdev統合後の残作業である。push、PR投稿、先行PRのmergeは実施していない。上記のProvider、共有Rate Limit、業務handler、deploymentに関する既存の未検証事項は継続する。
+
+## 2026-11-17 追記（PR-S0-0c）
+
+この記録の本文は書き換えていない。以下は、本文の次の記述が現在は当てはまらないことの注記である。
+
+- `55P03` の retry を追加しない（93行）と `UCR-BACKEND-001`（継続）（106-113行）は解消済みである。SPEC-150 の `UCR-150-003` が INCORPORATED となり、PR-S0-0c で `55P03` を4 attempts・最大5秒で retry する実装を追加した。`OBS-DB-003`（20行）の「lock timeout を timeout として区別」は、`55P03` を timeout ではなく transaction retry として記録し、枯渇を `reliability.retry.exhausted` で記録する形に変わった。
+- `SEC-API-022` の PASS（22行）は、405 の status と `Allow` の確認だけに基づく判定だった。当時の実装は `MALFORMED_REQUEST` の status を 405 / 415 に上書きしており、公開エラーコードは満たしていなかった。`UCR-140-002`（155行）は INCORPORATED となり、PR-S0-0c で `METHOD_NOT_ALLOWED` と `UNSUPPORTED_MEDIA_TYPE` を実装した。
+- 実 PG17 の lock 再現テストは CI（Linux）の結果が根拠であり、この追記の時点で Windows 環境では実行していない。
+- 冒頭の共有 Rate Limit の FAIL 判定は、この追記の対象外である。
