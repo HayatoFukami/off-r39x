@@ -221,6 +221,28 @@ const GOLDEN_CHECKS: Record<string, Record<string, string>> = {
 
 const GOLDEN_PARTIAL_INDEX_WHERE = "state = 'ACTIVE'";
 
+// The contract side is pinned independently of the Drizzle side. The token comparison below only
+// proves that the two sides agree on columns, literals, numbers and NULL tests, so a contract-only
+// edit that keeps those (char_length -> octet_length, >= -> <, OR -> AND) would otherwise pass.
+// These are the pg_get_constraintdef / pg_get_indexdef strings of the reviewed schema-contract.json,
+// compared for exact equality by name. A deliberate change to a CHECK or to the partial index must
+// update the contract, the Drizzle declaration, the migration and this golden together.
+const GOLDEN_CONTRACT_CHECK_DEFINITIONS: Record<string, Record<string, string>> = {
+  business_profiles: {
+    ck_business_profiles_display_name:
+      "CHECK (((display_name IS NULL) OR ((char_length(display_name) >= 1) AND (char_length(display_name) <= 80))))",
+  },
+  role_assignments: {
+    ck_role_assignments_role: "CHECK ((role = ANY (ARRAY['STAFF'::text, 'ADMINISTRATOR'::text])))",
+    ck_role_assignments_state: "CHECK ((state = ANY (ARRAY['ACTIVE'::text, 'REVOKED'::text])))",
+    ck_role_assignments_revocation:
+      "CHECK ((((state = 'ACTIVE'::text) AND (revoked_at IS NULL) AND (revoked_by_profile_id IS NULL)) OR ((state = 'REVOKED'::text) AND (revoked_at IS NOT NULL))))",
+  },
+};
+
+const GOLDEN_CONTRACT_PARTIAL_INDEX_DEFINITION =
+  "CREATE UNIQUE INDEX ux_role_assignments_profile_role_active ON app.role_assignments USING btree (profile_id, role) WHERE (state = 'ACTIVE'::text)";
+
 interface ExpressionTokens {
   columns: string[];
   literals: string[];
@@ -378,6 +400,19 @@ describe("TC-DB-ARC-007-001 Drizzle declarations match schema-contract.json", ()
         );
       });
 
+      it("TC-DB-ARC-007-001 constraints: the contract CHECK definitions equal the golden by name", () => {
+        const contractChecks = Object.fromEntries(
+          contractConstraints
+            .filter(([, , kind]) => kind === "c")
+            .map(([, name, , definition]) => [name, definition]),
+        );
+        // Exact pg_get_constraintdef text per name: octet_length, a flipped comparison, AND for OR
+        // or a changed literal in the contract alone fails here, independent of the Drizzle side.
+        expect(contractChecks).toEqual(
+          GOLDEN_CONTRACT_CHECK_DEFINITIONS[expected.table] as Record<string, string>,
+        );
+      });
+
       it("TC-DB-ARC-007-001 constraints: CHECK expressions equal the golden and match the contract tokens", async () => {
         const { config } = await load();
         const golden = GOLDEN_CHECKS[expected.table] as Record<string, string>;
@@ -437,11 +472,8 @@ describe("TC-DB-ARC-007-001 Drizzle declarations match schema-contract.json", ()
         const definition = contractIndexes.find(([, def]) =>
           def.includes(" ux_role_assignments_profile_role_active "),
         )?.[1];
-        expect(definition).toBeDefined();
-        expect(definition).toContain("CREATE UNIQUE INDEX");
-        expect(definition).toContain(
-          "USING btree (profile_id, role) WHERE (state = 'ACTIVE'::text)",
-        );
+        // Exact pg_get_indexdef text: uniqueness, columns, method and predicate of the contract.
+        expect(definition).toBe(GOLDEN_CONTRACT_PARTIAL_INDEX_DEFINITION);
       });
 
       it("TC-DB-ARC-007-001 indexes: the partial-index predicate equals the golden and the contract", async () => {

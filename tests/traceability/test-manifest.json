@@ -16348,8 +16348,9 @@
         "Drizzle declaration names for business_profiles and role_assignments constraints and indexes equal schema-contract.json by name and kind",
         "Column order, SQL type, NOT NULL, identity always and default presence equal schema-contract.json; default SQL expressions (transaction_timestamp(), gen_random_uuid()) equal the pre-refactor golden and the contract",
         "CHECK expressions serialised by PgDialect equal the pre-refactor golden exactly and match the contract definitions by referenced columns, literals, numbers and NULL tests",
+        "The four CHECK definitions in schema-contract.json (ck_business_profiles_display_name, ck_role_assignments_role, ck_role_assignments_state, ck_role_assignments_revocation) equal the pinned pg_get_constraintdef strings exactly by name, so a contract-only edit of a function, operator, boolean connective or literal fails",
         "bigint IDs and foreign key columns use lossless bigint mode (PgBigInt64)",
-        "Three role_assignments foreign keys reference business_profiles(id) with ON DELETE RESTRICT; ux_role_assignments_profile_role_active is a partial unique index on (profile_id, role) whose predicate equals the golden state = 'ACTIVE' and the contract"
+        "Three role_assignments foreign keys reference business_profiles(id) with ON DELETE RESTRICT; ux_role_assignments_profile_role_active is a partial unique index on (profile_id, role) whose predicate equals the golden state = 'ACTIVE' and the contract; the contract's full pg_get_indexdef string for that index equals the pinned golden exactly"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
