@@ -55,6 +55,22 @@ async function holdLock(sql: string) {
     },
   };
 }
+/**
+ * Resolves once some other session is waiting for a lock, i.e. the transaction under test has
+ * actually started its first lock wait. Releasing a holder relative to this moment (not to the
+ * start of the test) keeps the timings independent of connection setup latency. Resolves after
+ * `timeoutMs` even if no wait was seen, so a broken implementation fails on its own assertions.
+ */
+async function firstLockWait(admin: Pool, timeoutMs = 10000): Promise<void> {
+  const giveUp = performance.now() + timeoutMs;
+  while (performance.now() < giveUp) {
+    const waiting = await admin.query(
+      "SELECT 1 FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND pid <> pg_backend_pid()",
+    );
+    if (waiting.rowCount) return;
+    await delay(10);
+  }
+}
 async function resetProbe(admin: Pool, rows: number): Promise<void> {
   await admin.query(
     `CREATE TABLE IF NOT EXISTS ${TABLE}(id int primary key, counter int not null)`,
@@ -85,7 +101,10 @@ describe("PostgreSQL 17 lock timeout retry (real database)", () => {
       await resetProbe(admin, 1);
       await pool.query("SELECT 1");
       holder = await holdLock(`SELECT id FROM ${TABLE} WHERE id = 1 FOR UPDATE`);
-      const releasing = delay(1500).then(() => holder?.release());
+      // Freed 1.5s after the first lock wait began, i.e. after attempt 1's lock_timeout (1s).
+      const releasing = firstLockWait(admin)
+        .then(() => delay(1500))
+        .then(() => holder?.release());
       const attempts: { pid: number; xid: string; failedAfterMs?: number }[] = [];
       const result = await transaction(
         pool,
@@ -203,8 +222,10 @@ describe("PostgreSQL 17 lock timeout retry (real database)", () => {
       await pool.query("SELECT 1");
       holderA = await holdLock(`SELECT id FROM ${TABLE} WHERE id = 1 FOR UPDATE`);
       holderB = await holdLock(`SELECT id FROM ${TABLE} WHERE id = 2 FOR UPDATE`);
-      // Row 1 is freed after ~0.45s, i.e. inside one lock_timeout; row 2 is never freed.
-      const releasing = delay(450).then(() => holderA?.release());
+      // Row 1 is freed ~0.45s after the first lock wait began, i.e. inside one lock_timeout; row 2 is never freed.
+      const releasing = firstLockWait(admin)
+        .then(() => delay(450))
+        .then(() => holderA?.release());
       let attempts = 0;
       const attemptMs: number[] = [];
       const started = performance.now();
