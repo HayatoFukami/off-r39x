@@ -203,8 +203,8 @@ describe("PostgreSQL 17 lock timeout retry (real database)", () => {
       await pool.query("SELECT 1");
       holderA = await holdLock(`SELECT id FROM ${TABLE} WHERE id = 1 FOR UPDATE`);
       holderB = await holdLock(`SELECT id FROM ${TABLE} WHERE id = 2 FOR UPDATE`);
-      // Row 1 is freed after ~0.8s, i.e. inside one lock_timeout; row 2 is never freed.
-      const releasing = delay(800).then(() => holderA?.release());
+      // Row 1 is freed after ~0.45s, i.e. inside one lock_timeout; row 2 is never freed.
+      const releasing = delay(450).then(() => holderA?.release());
       let attempts = 0;
       const attemptMs: number[] = [];
       const started = performance.now();
@@ -228,9 +228,9 @@ describe("PostgreSQL 17 lock timeout retry (real database)", () => {
       const elapsed = performance.now() - started;
       await releasing;
 
-      // Attempt 1 = ~0.8s on row 1 + 1.2s sleep + 1s lock_timeout on row 2: a single attempt
+      // Attempt 1 = ~0.45s on row 1 + 1.2s sleep + 1s lock_timeout on row 2: a single attempt
       // outlasts lock_timeout, so the 1s limit applies to each lock wait, not to the attempt.
-      expect(attemptMs[0]).toBeGreaterThanOrEqual(2700);
+      expect(attemptMs[0]).toBeGreaterThanOrEqual(2400);
       // The retry budget is cumulative from the first attempt's start: the next attempt is cut at 5s.
       expect(attempts).toBeGreaterThanOrEqual(2);
       expect(attempts).toBeLessThanOrEqual(4);

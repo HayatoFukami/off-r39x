@@ -112,6 +112,6 @@ Worker の停止は、新規処理を止めて協調終了を待ち、15秒を�
 - Directoryは3列の型／grantだけでなく、直接投影、Subjectの有効な一意Index、Subject／verified列のNOT NULLと有効な一意Indexによってcardinalityを確認する。catalogとOIDを用い、Directoryを読めないReconへ行読取権限を要求しない。実Neonのsource mappingはdeploymentで確認し、Provider所有tableは変更しない。
 - Stripe lookupはSDK Fetch transportを明示採用し、本文処理まで10秒のadapter deadlineと単調時計の確認を適用する。SDKの自動network retryは0。旧Node socket inactivity timeoutへの依存を除いた。
 - `GET /api/v1/self/principal` (`API-AUTH-001`) は公開RPC型と同じbuilderでmountする。署名済みJWT→現在Directory／Profile／Role→メール確認→共有guardを経てnavigation情報だけを返す。GETによるProfile作成は行わない。
-- 未対応 method は `405 METHOD_NOT_ALLOWED`（`Allow` 付き）、JSON 以外の Content-Type は `415 UNSUPPORTED_MEDIA_TYPE`（`SEC-API-022`）。`/auth/*` 中継が自前で返す 415 の body は中継の形式のまま（SPEC-110 §23.1）。
+- 未対応 method は `405 METHOD_NOT_ALLOWED`（`Allow` 付き）、JSON 以外の Content-Type は `415 UNSUPPORTED_MEDIA_TYPE`（`SEC-API-022`）。`/auth/*` 中継が自前で返す 415 の body は中継の形式のままで、本変更の対象外。中継のローカル拒否の形式は仕様上未確定。
 - 本変更は全SPEC-110の実装ではない。Profile provisioning／編集を含むその他のoperation、購入・予約・決済、Worker業務handlerは追加していない。
 - `NEON_AUTH_BASE_URL`／Directory mapping／共有guardが成立しない標準API起動はReadyにならない。空Worker registryも引き続きReadyにならない。合成依存による正常系試験を、標準3プロセスの本番Readyと読み替えない。

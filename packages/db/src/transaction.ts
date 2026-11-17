@@ -210,7 +210,12 @@ export async function transaction<T>(
           duration_ms: Math.floor(performance.now() - start),
         });
       // A retry attempt cut off by the shortened retry budget is exhaustion too.
-      if (budgetShortened && error instanceof TransactionDeadlineError) exhausted();
+      if (
+        budgetShortened &&
+        error instanceof TransactionDeadlineError &&
+        performance.now() >= deadlineAt
+      )
+        exhausted();
       const policy = isDatabaseRetryable(error) ? RETRY_POLICIES[error.code] : undefined;
       if (!policy || discard) throw error;
       if (attempt >= policy.maxAttempts) {

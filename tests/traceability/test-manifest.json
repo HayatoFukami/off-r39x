@@ -15756,7 +15756,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "Real PostgreSQL17; row 1 held then freed after about 0.8s, row 2 held for the whole test; callback locks row 1, sleeps 1.2s, locks row 2; Math.random fixed at 0",
+      "preconditions": "Real PostgreSQL17; row 1 held then freed after about 0.45s, row 2 held for the whole test; callback locks row 1, sleeps 1.2s, locks row 2; Math.random fixed at 0",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -17410,6 +17410,7 @@
         "sqlstate_55P03",
         "sqlstate_40001",
         "sqlstate_40P01",
+        "sqlstate_23505",
         "transaction_deadline"
       ],
       "expected_http": [500, 503],
