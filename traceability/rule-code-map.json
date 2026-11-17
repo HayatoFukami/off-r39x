@@ -2874,13 +2874,13 @@
     {
       "rule_id": "DB-ARC-007",
       "code_paths": ["packages/db/src/schema", "packages/db/migrations/0001_foundation.sql"],
-      "test_case_ids": ["TC-DB-FOUNDATION-001", "TC-DB-FOUNDATION-009"],
+      "test_case_ids": ["TC-DB-FOUNDATION-001", "TC-DB-FOUNDATION-009", "TC-DB-ARC-007-001"],
       "notes": "Explicit named constraints and lossless bigint schema"
     },
     {
       "rule_id": "DB-STA-001",
       "code_paths": ["packages/db/src/schema/identity.ts"],
-      "test_case_ids": ["TC-DB-FOUNDATION-009"],
+      "test_case_ids": ["TC-DB-FOUNDATION-009", "TC-DB-ARC-007-001"],
       "notes": "Only canonical Role and Role Assignment states"
     },
     {
@@ -3203,6 +3203,18 @@
       "code_paths": ["scripts/validate-generated-migrations.mts"],
       "test_case_ids": ["TC-DEV-DB-013-001"],
       "notes": "Conservative migration source review aid; not a SQL parser"
+    },
+    {
+      "rule_id": "DEV-DB-001",
+      "code_paths": ["packages/db/src/schema/index.ts", "packages/db/src/schema/app-schema.ts"],
+      "test_case_ids": ["TC-DEV-DB-001-001"],
+      "notes": "Schema split by table domain; named re-export barrel preserves table identity; single pgSchema('app')"
+    },
+    {
+      "rule_id": "DEV-DB-006",
+      "code_paths": ["packages/db/src/schema/common.ts", "packages/db/src/schema/identity.ts"],
+      "test_case_ids": ["TC-DB-ARC-007-001"],
+      "notes": "bigint-mode internal IDs and FKs (lossless)"
     },
     {
       "rule_id": "SEC-AUTH-001",
