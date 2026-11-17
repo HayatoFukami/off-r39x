@@ -308,7 +308,11 @@ describe("PostgreSQL 17 lock timeout retry (real database)", () => {
 
       // (b) A table-level lock is not skipped: the wait ends in 55P03 and the transaction is retried.
       holder = await holdLock(`LOCK TABLE ${TABLE} IN ACCESS EXCLUSIVE MODE`);
-      const releasing = delay(1500).then(() => holder?.release());
+      // Start the release timer only after the database reports a lock waiter, so a slow setup
+      // cannot let the lock go before the first 55P03 (same pattern as 011 and 013).
+      const releasing = firstLockWait(admin)
+        .then(() => delay(1500))
+        .then(() => holder?.release());
       {
         const { logger, events } = collector();
         let attempts = 0;
