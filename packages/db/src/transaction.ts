@@ -66,12 +66,20 @@ export async function transaction<T>(
       const remaining = deadlineAt - performance.now();
       if (remaining <= 0) throw new TransactionDeadlineError();
       const deadline = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
-          discard = true;
-          client?.release(true);
-          client = undefined;
-          reject(new TransactionDeadlineError());
-        }, remaining);
+        // Node truncates fractional delays, so the timer can fire a fraction of a millisecond
+        // before the monotonic deadline. Re-check the clock and re-arm until the deadline has
+        // really passed, so the exhaustion check below sees a consistent state (OBS-DB-003).
+        const arm = (delayMs: number) => {
+          timer = setTimeout(() => {
+            const left = deadlineAt - performance.now();
+            if (left > 0) return arm(Math.ceil(left));
+            discard = true;
+            client?.release(true);
+            client = undefined;
+            reject(new TransactionDeadlineError());
+          }, Math.ceil(delayMs));
+        };
+        arm(remaining);
       });
       const work = async (): Promise<TransactionResult<T>> => {
         const acquiring = performance.now();
