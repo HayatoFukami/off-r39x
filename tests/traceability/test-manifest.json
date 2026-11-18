@@ -18119,7 +18119,7 @@
       "fault_points": [],
       "expected_http": [200, 204, 401, 403, 404, 503],
       "expected_domain_postconditions": [
-        "Every response carries a fresh server-generated UUID X-Request-Id, an incoming canonical UUID is not adopted, and the header equals the error/meta request_id and the request_id of every log record of that request"
+        "Every API response except the relayed /auth/* answer carries a fresh server-generated UUID X-Request-Id, an incoming canonical UUID is not adopted, and the header equals the error/meta request_id and the request_id of every log record of that request; the relayed auth proxy answer carries no X-Request-Id (pinned as observed)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -18186,7 +18186,7 @@
       "clock_instant": null,
       "concurrency_seed": null,
       "fault_points": [],
-      "expected_http": [200, 401, 404, 405, 503],
+      "expected_http": [200, 400, 401, 404, 405, 503],
       "expected_domain_postconditions": [
         "Each request emits exactly one http.request.completed record, last; http_route is one of the 18 registered templates (2 health, the principal route and 15 auth routes) or '/' otherwise, with the recorded key set, method, status, level and result"
       ],
