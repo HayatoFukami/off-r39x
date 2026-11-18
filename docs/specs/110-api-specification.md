@@ -408,7 +408,7 @@ Transport idempotencyのreplay記録（以下「記録」）は、業務DBの `a
 
 **API-IDM-003:** 記録を作る対象は、§18の「対象」一覧のOperation、および `SPEC-120` が `Idempotency-Key` 必須と定めるOperation（`API-ADM-EML-004`、`API-ADM-EML-005`。`SPEC-120 §36.1`）のうち、`Idempotency-Key` を受けて処理するものとする。Check-inはHeaderを受けても記録を作らない（Ticket consume-onceがCanonicalである。`SPEC-150` `REL-RTY-013`）。Headerを必要としない参照Operation（bulk eligibilityなど）は記録を作らない（`SPEC-140` `SEC-API-029`）。
 
-**API-IDM-004:** 記録は、そのOperationで業務更新を**最初にcommitするtransaction**の中で、`SPEC-100 §43.1` `DB-IDM-002` の位置にINSERTし、業務更新と同じcommitで確定する。外部呼出しの前に業務commitを持つOperation（購入開始、`API-CHK-001`、Refund requestなど）ではそのtransaction（transaction A）、外部のlookupを先に行うOperation（§48.5の照合Operationなど）ではlookup後の保存transactionとする。外部呼出しの後のtransactionで重ねて書かない。lookupの結果が不明でmutationをしなかった場合は記録が残らず、同じkeyの再試行で照合を続けられる。INSERTが失敗した場合はそのtransaction全体をrollbackする。失敗がDB障害、またはretry上限を使い切ったretryable error（§50、§51）なら既存の `503 DATABASE_TEMPORARY_FAILURE`（§21）を返す。一意制約の競合（`23505`）は `API-IDM-009` と `DB-IDM-002` に従い、その他の制約違反は §50 に従う。新しいerror code・stateを追加しない。
+**API-IDM-004:** 記録は、そのOperationで業務更新を**最初にcommitするtransaction**の中で、`SPEC-100 §43.1` `DB-IDM-002` の位置にINSERTし、業務更新と同じcommitで確定する。外部呼出しの前に業務commitを持つOperation（購入開始、`API-CHK-001`、Refund requestなど）ではそのtransaction（transaction A）、外部のlookupを先に行うOperation（§48.5の照合Operationなど）ではlookup後の保存transactionとする。外部呼出しの後のtransactionで重ねて書かない。業務更新を伴わずに成功する場合（§29手順3の既存の有効Checkoutの返却、§30の既に `CANCELED` のOrderの `200` など、既存結果を返すだけのNOOP）も、応答の前に、記録だけを書く最小のtransactionでkey・request digest・結果の参照を確定する。このtransactionの失敗は上記の `503` とする。lookupの結果が不明でmutationをしなかった場合、またはOperationが失敗した場合は記録を書かず、同じkeyの再試行で照合を続けられる（成功したNOOPと区別する）。INSERTが失敗した場合はそのtransaction全体をrollbackする。失敗がDB障害、またはretry上限を使い切ったretryable error（§50、§51）なら既存の `503 DATABASE_TEMPORARY_FAILURE`（§21）を返す。一意制約の競合（`23505`）は `API-IDM-009` と `DB-IDM-002` に従い、その他の制約違反は §50 に従う。新しいerror code・stateを追加しない。
 
 **API-IDM-005:** 記録の一意キーは `(Principal の Business Profile, Operation ID, key digest)` とする。
 
@@ -422,7 +422,7 @@ Transport idempotencyのreplay記録（以下「記録」）は、業務DBの `a
 2. 期限内で、request digestが一致する場合はreplayとし、Domain Business Causeから既存結果へ収束する（§52）。新しいBusiness Causeを作らない。同じBusiness Causeについて、元の要求の未完了の部分を既存の回復手順（§29手順7、§48.5）で続けることは許される。
 3. 期限内で、request digestが一致しない場合は `409 IDEMPOTENCY_KEY_REUSED` とし、Domain stateを変更しない。
 
-**API-IDM-007:** 記録には、結果を再構成するための参照（種別とPublic Reference）だけを保存する。応答body、Checkout URL、Stripe Session ID、個人情報、Email、QRを保存しない。replayの応答は、そのOperationが定めるreplay用のHTTP status（例: 新規 `201`、replay `200`）とし、**現在の状態から作り直した通常の成功response**とする。replay時の結果は各Operationの既存のreplay規則（§29手順2、§30、§46、§48、§48.5など）を優先し、記録が存在することを理由にその規則を上書きしない。
+**API-IDM-007:** 記録には、結果を再特定するための参照（結果の種類と、その参照の集合）だけを保存する。参照は、Public Referenceを持つresourceでは `public_ref`、Public Referenceを持たないRefund Recordでは `business_cause_key`（`SPEC-100 §23`）とし、複数のresourceに及ぶ結果で元の集合をDomain側の関係から再特定できない場合（既存のexact-match Slotを再利用する `API-ADM-KRK-003` など）は、元の結果の全resourceの参照を保持する（`SPEC-100 §43.1`）。応答body、Checkout URL、Stripe Session ID、個人情報、Email、QRを保存しない。replayの応答は、そのOperationが定めるreplay用のHTTP status（例: 新規 `201`、replay `200`）とし、**現在の状態から作り直した通常の成功response**とする。replay時の結果は各Operationの既存のreplay規則（§29手順2、§30、§46、§48、§48.5など）を優先し、記録が存在することを理由にその規則を上書きしない。
 
 **API-IDM-008:** 記録の保持期間は作成時刻から24時間とする。期限後の記録は存在しないものとして扱う（`API-IDM-006` 1）。期限切れの行の物理削除（purgeの関数・job・role）は定義しない。
 

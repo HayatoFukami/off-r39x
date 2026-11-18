@@ -1653,8 +1653,8 @@ Columns:
 - `operation_id text NOT NULL`（`SPEC-110` のAPI Operation ID）
 - `key_digest bytea NOT NULL CHECK octet_length(key_digest) = 32`（受信した `Idempotency-Key` 値のSHA-256）
 - `request_digest bytea NOT NULL CHECK octet_length(request_digest) = 32`（normalized requestのcanonical表現のSHA-256）
-- `result_ref_type text NULL`
-- `result_ref uuid NULL`（結果を再構成するためのPublic Reference。結果が単一のresourceに対応しないOperationではNULLとし、既存結果はDomain Business Causeから導く）
+- `result_ref_type text NULL`（結果の種類。参照の種類とlookupの列を決める）
+- `result_refs uuid[] NOT NULL DEFAULT '{}'`（結果を再特定するための参照の集合。`result_ref_type` ごとに参照の種類とlookupの列を定める。Public Referenceを持つresourceは `public_ref`、Public Referenceを持たないRefund Recordは `refund_records.business_cause_key` とする。結果が複数のresourceに及び、Domain側の関係から元の結果集合を一意に再特定できないOperationでは、元の結果の全resourceの参照を保持する。例: 既存のexact-match Slotを再利用する `API-ADM-KRK-003` は、新規と再利用の全Slotの `public_ref` を保持する。要素数の上限は当該Operationの入力上限に従う）
 - `created_at timestamptz NOT NULL DEFAULT transaction_timestamp()`
 - `expires_at timestamptz NOT NULL DEFAULT transaction_timestamp() + interval '24 hours'`
 
@@ -1663,16 +1663,16 @@ Constraints / index:
 ```text
 ux_idempotency_records_principal_operation_key UNIQUE(principal_profile_id, operation_id, key_digest)
 ck_idempotency_records_expiry CHECK (expires_at = created_at + interval '24 hours')
-ck_idempotency_records_result_ref CHECK ((result_ref_type IS NULL) = (result_ref IS NULL))
+ck_idempotency_records_result_ref CHECK ((result_ref_type IS NULL) = (cardinality(result_refs) = 0))
 ```
 
-lookupはこのUNIQUE indexが担い、追加のindexを作らない。`expires_at` はgenerated columnにせず、既定値とCHECKで固定する（`created_at` と同じ `transaction_timestamp()` から求め、Clientが任意の `expires_at` をINSERT / UPDATEできない）。`result_ref_type` / `result_ref` は、INSERTの時点では結果の行がまだないためNULLでよく、同じtransactionの中で結果の行を作った後に `UPDATE` で設定してよい。
+lookupはこのUNIQUE indexが担い、追加のindexを作らない。`expires_at` はgenerated columnにせず、既定値とCHECKで固定する（`created_at` と同じ `transaction_timestamp()` から求め、Clientが任意の `expires_at` をINSERT / UPDATEできない）。`result_ref_type` / `result_refs` は、INSERTの時点では結果の行がまだないため未設定（NULLと空配列）でよく、同じtransactionの中で結果の行を作った後に `UPDATE` で設定してよい。
 
 **DB-IDM-001:** raw `Idempotency-Key`、応答body、Checkout URL、Stripe Session ID、Email等の個人情報、QR tokenをこの表に保存しない。保存するのはPrincipal（Business Profile）、Operation ID、digest、結果の参照、時刻だけである（`SPEC-110` `API-IDM-005`、`API-IDM-007`）。
 
 **DB-IDM-002:** 行のINSERTは、そのOperationで業務更新を最初にcommitするtransaction（`SPEC-110` `API-IDM-004`）の中で、§47のlock順序に従う位置に置く。Business Profileを `FOR UPDATE` するOperationでは、そのlockの**後**にINSERTする（先にINSERTすると、FKの検査が親のProfile rowへ `FOR KEY SHARE` を取り、同じProfileについて2つのtransactionがそれぞれKEY SHAREを取った後に `FOR UPDATE` へ引き上げようとして互いに待つdeadlockになりうるため）。Profileをlockしないadmin等のOperationでは、他の業務rowのlockより前にINSERTする。同じ一意キーのINSERTが競合した場合は、先のtransactionの終了後に既存行を読み直し、`SPEC-110` `API-IDM-006` で判定する（`23505` はknown idempotent duplicateとして分類する。§46）。最初の業務commitの後のtransaction（外部呼出しの後のtransaction Bなど）では重ねて書かない（`DB-TXN-003`）。
 
-**DB-IDM-003:** 保持期間は `created_at` から24時間（`expires_at`）とする。期限切れの行は存在しないものとして扱い、同じ一意キーの再利用は、条件付き（`expires_at` 以後）の `UPDATE` で `request_digest`、`result_ref_type`、`result_ref`、`created_at`、`expires_at` を更新する（`created_at` は `transaction_timestamp()`、`expires_at` はそれに24時間を足した値）。Business APIは行をDELETEせず、purgeの関数・job・roleも定義しない（`app_api_runtime` に `DELETE` を与えない。`SPEC-180 §22.2`）。この表は§12の業務履歴ではなく、業務DBのsupport tableである。保存するのはPrincipal（Business Profile）、Operation ID、digest、結果の参照、時刻だけで、個人情報・応答body・Checkout URLを含まないため、`SPEC-140` `SEC-PII-013` の「二次copyを増やさない」対象のtemporary artifact / support exportには当たらない。同じ理由でBusiness APIは `DELETE` を発行しない。
+**DB-IDM-003:** 保持期間は `created_at` から24時間（`expires_at`）とする。期限切れの行は存在しないものとして扱い、同じ一意キーの再利用は、条件付き（`expires_at` 以後）の `UPDATE` で `request_digest`、`result_ref_type`、`result_refs`、`created_at`、`expires_at` を更新する（`created_at` は `transaction_timestamp()`、`expires_at` はそれに24時間を足した値）。Business APIは行をDELETEせず、purgeの関数・job・roleも定義しない（`app_api_runtime` に `DELETE` を与えない。`SPEC-180 §22.2`）。この表は§12の業務履歴ではなく、業務DBのsupport tableである。保存するのはPrincipal（Business Profile）、Operation ID、digest、結果の参照、時刻だけで、個人情報・応答body・Checkout URLを含まないため、`SPEC-140` `SEC-PII-013` の「二次copyを増やさない」対象のtemporary artifact / support exportには当たらない。同じ理由でBusiness APIは `DELETE` を発行しない。
 
 Trace: `API-IDM-001〜010`, `TST-IDM-003〜008`, `INV-010-10`.
 
@@ -1846,7 +1846,7 @@ Entry／Goodsの全購入開始経路（単品互換APIを含む）は、Profile
 | Slot sales stop / edit | Slot `FOR UPDATE` | READ COMMITTED | current state rule + exclusion on time/scope edit |
 | Slot batch generation | Scope rows ascending `FOR UPDATE` | READ COMMITTED | exact unique + exclusion; all-or-nothing |
 
-`Idempotency-Key` を受けるOperationの上表のtransactionは、`app.idempotency_records` の行のINSERTを同じtransactionに含む（位置は §43.1 `DB-IDM-002`）。記録のINSERT失敗はそのtransaction全体のrollbackとする。
+`Idempotency-Key` を受けるOperationのうち、**そのOperationで業務更新を最初にcommitするtransactionだけ**が、`app.idempotency_records` の行のINSERTを含む（位置は §43.1 `DB-IDM-002`）。上表のCheckout Binding等、最初の業務commitの後のtransaction（外部呼出しの後のtransaction Bなど）では記録を重ねてINSERTしない。業務更新を伴わず成功する場合は `SPEC-110` `API-IDM-004` に従う。記録のINSERT失敗はそのtransaction全体のrollbackとする。
 
 ## 49. Database temporary failure / partial commit
 
