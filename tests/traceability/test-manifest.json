@@ -17671,7 +17671,7 @@
       "expected_provider_postconditions": [],
       "expected_observability": [],
       "sensitivity_class": "synthetic",
-      "critical": false
+      "critical": true
     },
     {
       "test_case_id": "TC-NTF-PORT-003",
