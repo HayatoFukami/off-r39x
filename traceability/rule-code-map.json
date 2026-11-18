@@ -2950,7 +2950,8 @@
         "apps/api/src/bootstrap/index.ts",
         "packages/api-contract/src/schemas/profile.ts",
         "packages/api-contract/src/rpc.ts",
-        "apps/api/src/api/middleware/principal.ts"
+        "apps/api/src/api/middleware/principal.ts",
+        "apps/api/src/api/routes/self-profile.ts"
       ],
       "test_case_ids": [
         "TC-DB-FOUNDATION-004",
@@ -3293,7 +3294,8 @@
         "packages/api-contract/src/rpc.ts",
         "apps/api/src/api/app.ts",
         "apps/api/src/bootstrap/index.ts",
-        "apps/api/src/api/middleware/auth.ts"
+        "apps/api/src/api/middleware/auth.ts",
+        "apps/api/src/api/routes/self-profile.ts"
       ],
       "test_case_ids": [
         "TC-SEC-AUTH-001-050",
@@ -3366,7 +3368,8 @@
         "packages/api-contract/src/schemas/profile.ts",
         "packages/api-contract/src/rpc.ts",
         "apps/api/src/api/middleware/principal.ts",
-        "apps/api/src/api/middleware/capability.ts"
+        "apps/api/src/api/middleware/capability.ts",
+        "apps/api/src/api/routes/self-profile.ts"
       ],
       "test_case_ids": ["TC-SEC-AZ-013-050", "TC-DB-ARC-008-050", "TC-AUTH-AUDIT-004"],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
@@ -3743,7 +3746,8 @@
         "packages/api-contract/src/rpc.ts",
         "apps/api/src/api/app.ts",
         "apps/api/src/bootstrap/index.ts",
-        "apps/api/src/api/middleware/auth.ts"
+        "apps/api/src/api/middleware/auth.ts",
+        "apps/api/src/api/routes/self-profile.ts"
       ],
       "test_case_ids": ["TC-RPC-AUDIT-001"],
       "notes": "Foundation audit repair; local synthetic evidence does not assert live-provider or release readiness"
@@ -3847,7 +3851,8 @@
         "apps/api/src/api/app.ts",
         "apps/api/src/bootstrap/index.ts",
         "apps/api/src/api/middleware/request-context.ts",
-        "apps/api/src/api/routes.ts"
+        "apps/api/src/api/routes.ts",
+        "apps/api/src/api/routes/self-profile.ts"
       ],
       "test_case_ids": ["TC-RPC-AUDIT-001"],
       "notes": "Foundation audit repair; local synthetic evidence does not assert live-provider or release readiness"

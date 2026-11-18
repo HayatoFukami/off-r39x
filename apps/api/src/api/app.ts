@@ -1,11 +1,4 @@
-import { createPublicRpc } from "@off-r39x/api-contract";
-import {
-  AuthFailure,
-  capabilities,
-  hasCapability,
-  type PrincipalStore,
-  type TokenVerifier,
-} from "@off-r39x/auth";
+import { AuthFailure, type PrincipalStore, type TokenVerifier } from "@off-r39x/auth";
 import { TransactionDeadlineError } from "@off-r39x/db";
 import type { createLogger } from "@off-r39x/observability";
 import { isDatabaseRetryable } from "@off-r39x/reliability";
@@ -16,7 +9,6 @@ import { secureHeaders } from "hono/secure-headers";
 import { actorContext } from "./actor-context.ts";
 import { AUTH_ROUTES, type AuthProxy } from "./auth-proxy.ts";
 import { type ApiEnvironment, ApiFailure } from "./failure.ts";
-import { requirePrincipal, requireVerifiedEmail } from "./middleware/principal.ts";
 import { operationContext, requestContextMiddleware } from "./middleware/request-context.ts";
 import {
   type AppRateLimit,
@@ -25,6 +17,7 @@ import {
   createVerificationGate,
 } from "./rate-limit.ts";
 import { assertMountedAuthRoutes, assertMountedRoutesClassified } from "./routes.ts";
+import { mountRpcRoutes } from "./rpc.ts";
 import { type ErrorCode, errorSchema, errorStatuses } from "./schemas/common.ts";
 
 export { type ApiEnvironment, ApiFailure } from "./failure.ts";
@@ -206,31 +199,7 @@ export function createApp(dependencies: AppDependencies) {
         authSubjectRef: dependencies.rateLimit.authSubjectRef,
       })
     : undefined;
-  app.route(
-    "/",
-    createPublicRpc<ApiEnvironment>({
-      guard: async (c, next) => {
-        if (!dependencies.auth || !principalHooks) throw new ApiFailure("TEMPORARY_UNAVAILABLE");
-        await requirePrincipal(
-          dependencies.auth.verifier,
-          dependencies.auth.store,
-          principalHooks,
-        )(c, async () => {
-          await requireVerifiedEmail()(c, next);
-        });
-      },
-      principal: (c) => {
-        const principal = c.get("principal");
-        return {
-          profile_ref: principal.profileRef,
-          capabilities: capabilities.filter((capability) => hasCapability(principal, capability)),
-          has_staff_role: principal.roles.includes("STAFF"),
-          has_administrator_role: principal.roles.includes("ADMINISTRATOR"),
-        };
-      },
-      requestId: (c) => c.get("requestId"),
-    }),
-  );
+  mountRpcRoutes(app, { app: dependencies, principalHooks });
   if (dependencies.authProxy) {
     for (const [path, method] of Object.entries(AUTH_ROUTES)) {
       app.on([method, "OPTIONS"], `/auth/${path}`, async (c) => {
