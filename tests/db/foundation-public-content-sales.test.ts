@@ -1954,37 +1954,42 @@ describe("TC-SEC-DB-001-001 runtime privileges on the eight tables (real Postgre
     ).rows;
     expect(withAcl, "columns with a column-level ACL").toEqual([]);
     const COLUMN_PRIVILEGES = ["SELECT", "INSERT", "UPDATE", "REFERENCES"] as const;
-    for (const table of TABLES) {
-      const columns = (
-        await admin.query(
-          `SELECT a.attname FROM pg_attribute a
-            WHERE a.attrelid = $1::regclass AND a.attnum > 0 AND NOT a.attisdropped
-            ORDER BY a.attnum`,
-          [`app.${table}`],
-        )
-      ).rows.map((row) => row.attname as string);
-      expect(columns.length, `${table} has columns`).toBeGreaterThan(0);
-      for (const role of ROLES) {
-        const granted = role === "app_api_runtime" ? (API_GRANTS[table] ?? []) : [];
-        for (const column of columns) {
-          const actual: string[] = [];
-          for (const privilege of COLUMN_PRIVILEGES) {
-            const allowed = (
-              await admin.query("SELECT has_column_privilege($1, $2, $3, $4) AS allowed", [
-                role,
-                `app.${table}`,
-                column,
-                privilege,
-              ])
-            ).rows[0].allowed as boolean;
-            if (allowed) actual.push(privilege);
-          }
-          expect(actual, `${role} ${table}.${column}`).toEqual(
-            COLUMN_PRIVILEGES.filter((privilege) => granted.includes(privilege)),
-          );
-        }
-      }
-    }
+    // One round trip: every (table, column, role, privilege) combination is evaluated in SQL.
+    const effective = (
+      await admin.query(
+        `SELECT c.relname AS table_name, a.attname AS column_name, r.role_name, p.privilege,
+                has_column_privilege(r.role_name, c.oid, a.attnum, p.privilege) AS allowed
+           FROM pg_attribute a
+           JOIN pg_class c ON c.oid = a.attrelid
+           JOIN pg_namespace n ON n.oid = c.relnamespace
+          CROSS JOIN unnest($2::text[]) AS r(role_name)
+          CROSS JOIN unnest($3::text[]) AS p(privilege)
+          WHERE n.nspname = 'app' AND c.relname = ANY($1) AND a.attnum > 0 AND NOT a.attisdropped`,
+        [[...TABLES], [...ROLES], [...COLUMN_PRIVILEGES]],
+      )
+    ).rows as {
+      table_name: string;
+      column_name: string;
+      role_name: string;
+      privilege: string;
+      allowed: boolean;
+    }[];
+    const columnCount = GOLDEN_TABLES.reduce((total, golden) => total + golden.columns.length, 0);
+    expect(effective.length, "combinations evaluated").toBe(
+      columnCount * ROLES.length * COLUMN_PRIVILEGES.length,
+    );
+    // Each entry names the table, column, role and privilege that deviates from the table-level grants.
+    const deviations = effective
+      .filter((row) => {
+        const granted =
+          row.role_name === "app_api_runtime" ? (API_GRANTS[row.table_name] ?? []) : [];
+        return row.allowed !== granted.includes(row.privilege);
+      })
+      .map(
+        (row) =>
+          `${row.role_name} ${row.table_name}.${row.column_name} ${row.privilege}=${row.allowed}`,
+      );
+    expect(deviations, "column privileges that differ from the table-level grants").toEqual([]);
   });
 
   it("TC-SEC-DB-001-001 the ACL names only the owner and app_api_runtime, never PUBLIC, and no role has a privilege on the identity sequences", async () => {
