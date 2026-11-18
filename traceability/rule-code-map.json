@@ -2969,8 +2969,17 @@
     },
     {
       "rule_id": "REL-DB-002",
-      "code_paths": ["packages/db/src/transaction.ts"],
-      "test_case_ids": ["TC-DB-FOUNDATION-005", "TC-DB-FOUNDATION-009", "TC-DB-RETRY-003"],
+      "code_paths": [
+        "packages/db/src/transaction.ts",
+        "apps/api/src/api/services/constraint-violation.ts"
+      ],
+      "test_case_ids": [
+        "TC-DB-FOUNDATION-005",
+        "TC-DB-FOUNDATION-009",
+        "TC-DB-RETRY-003",
+        "TC-DEV-API-010-001",
+        "TC-DEV-API-010-002"
+      ],
       "notes": "No blind constraint retries"
     },
     {
@@ -3015,8 +3024,8 @@
     },
     {
       "rule_id": "REL-DB-006",
-      "code_paths": ["packages/db/src/transaction.ts"],
-      "test_case_ids": ["TC-DB-FOUNDATION-007"],
+      "code_paths": ["packages/db/src/transaction.ts", "apps/api/src/api/respond.ts"],
+      "test_case_ids": ["TC-DB-FOUNDATION-007", "TC-REL-DB-009-002"],
       "notes": "Real COMMIT-ack loss is unknown and discards session"
     },
     {
@@ -3114,8 +3123,8 @@
     },
     {
       "rule_id": "DEV-DB-007",
-      "code_paths": ["packages/reliability/src/index.ts"],
-      "test_case_ids": ["TC-COMMON-003"],
+      "code_paths": ["packages/reliability/src/index.ts", "packages/db/src/errors.ts"],
+      "test_case_ids": ["TC-COMMON-003", "TC-DEV-API-010-001", "TC-REL-DB-009-001"],
       "notes": "SQLSTATE classification"
     },
     {
@@ -3460,9 +3469,17 @@
         "packages/api-contract/src/schemas/profile.ts",
         "packages/api-contract/src/rpc.ts",
         "apps/api/src/api/app.ts",
-        "apps/api/src/bootstrap/index.ts"
+        "apps/api/src/bootstrap/index.ts",
+        "apps/api/src/api/respond.ts"
       ],
-      "test_case_ids": ["TC-DEV-API-003-050", "TC-RPC-AUDIT-001", "TC-DEV-API-003-001"],
+      "test_case_ids": [
+        "TC-DEV-API-003-050",
+        "TC-RPC-AUDIT-001",
+        "TC-DEV-API-003-001",
+        "TC-DEV-API-003-002",
+        "TC-DEV-API-003-003",
+        "TC-DEV-API-003-004"
+      ],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
     },
     {
@@ -3752,13 +3769,15 @@
         "apps/api/src/api/app.ts",
         "packages/api-contract/src/schemas/errors.ts",
         "apps/api/src/api/middleware/json.ts",
-        "apps/api/src/api/failure.ts"
+        "apps/api/src/api/failure.ts",
+        "apps/api/src/api/respond.ts"
       ],
       "test_case_ids": [
         "TC-HTTP-AUDIT-001",
         "TC-HTTP-AUDIT-002",
         "TC-HTTP-AUDIT-003",
-        "TC-SEC-API-022-001"
+        "TC-SEC-API-022-001",
+        "TC-SEC-API-022-002"
       ],
       "notes": "Foundation audit repair; local synthetic evidence does not assert live-provider or release readiness"
     },
@@ -5015,6 +5034,55 @@
         "TC-RLM-004-294"
       ],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
+    },
+    {
+      "rule_id": "DEV-API-010",
+      "code_paths": [
+        "apps/api/src/api/services/constraint-violation.ts",
+        "packages/db/src/errors.ts"
+      ],
+      "test_case_ids": ["TC-DEV-API-010-001", "TC-DEV-API-010-002", "TC-HTTP-AUDIT-004"],
+      "notes": "Backend foundation only; no business Operation uses this yet"
+    },
+    {
+      "rule_id": "DEV-API-011",
+      "code_paths": ["apps/api/src/api/respond.ts", "apps/api/src/api/app.ts"],
+      "test_case_ids": ["TC-DEV-API-011-001", "TC-DEV-API-003-004"],
+      "notes": "Backend foundation only; no business Operation uses this yet"
+    },
+    {
+      "rule_id": "SEC-ERR-001",
+      "code_paths": ["apps/api/src/api/respond.ts", "packages/api-contract/src/schemas/errors.ts"],
+      "test_case_ids": ["TC-SEC-ERR-001-001", "TC-DEV-API-011-001"],
+      "notes": "Backend foundation only; no business Operation uses this yet"
+    },
+    {
+      "rule_id": "SEC-ERR-002",
+      "code_paths": ["packages/api-contract/src/schemas/errors.ts", "apps/api/src/api/respond.ts"],
+      "test_case_ids": ["TC-DEV-API-003-002", "TC-DEV-API-003-004"],
+      "notes": "Backend foundation only; no business Operation uses this yet"
+    },
+    {
+      "rule_id": "SEC-ERR-003",
+      "code_paths": ["apps/api/src/api/respond.ts", "apps/api/src/api/app.ts"],
+      "test_case_ids": ["TC-DEV-API-011-001"],
+      "notes": "Backend foundation only; no business Operation uses this yet"
+    },
+    {
+      "rule_id": "SEC-API-020",
+      "code_paths": ["apps/api/src/api/respond.ts"],
+      "test_case_ids": ["TC-DEV-API-011-001", "TC-HTTP-AUDIT-004"],
+      "notes": "Backend foundation only; no business Operation uses this yet"
+    },
+    {
+      "rule_id": "REL-DB-009",
+      "code_paths": [
+        "packages/db/src/errors.ts",
+        "packages/db/src/transaction.ts",
+        "apps/api/src/api/respond.ts"
+      ],
+      "test_case_ids": ["TC-REL-DB-009-001", "TC-REL-DB-009-002", "TC-REL-DB-009-003"],
+      "notes": "Backend foundation only; no business Operation uses this yet"
     }
   ]
 }

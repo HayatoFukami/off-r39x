@@ -17100,7 +17100,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "@off-r39x/api-contract exports exactly createPublicRpc, errorSchema, errorStatuses, principalNavigationSchema and successSchema at runtime",
+        "@off-r39x/api-contract exports exactly createPublicRpc, errorRetryable, errorSchema, errorStatuses, principalNavigationSchema and successSchema at runtime",
         "ErrorCode, PrincipalNavigation and AppType keep their compile-time shapes (enforced by pnpm typecheck)",
         "createPublicRpc registers only GET /api/v1/self/principal and answers it with the data/meta envelope built from the injected principal and request ID; a principal with an extra key is rejected by the strict schema with 500"
       ],
@@ -17131,8 +17131,8 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "errorStatuses keeps the 26 codes in order with their HTTP statuses, including METHOD_NOT_ALLOWED 405 and UNSUPPORTED_MEDIA_TYPE 415, and errorSchema's code enum equals that list",
-        "errorSchema, successSchema and principalNavigationSchema accept and reject the same fixed inputs with the same parsed data and issue codes/paths as before the file split"
+        "errorStatuses keeps the 26 codes in order with their HTTP statuses, including METHOD_NOT_ALLOWED 405 and UNSUPPORTED_MEDIA_TYPE 415, and errorSchema's discriminated-union variants carry those codes in the same order",
+        "errorSchema, successSchema and principalNavigationSchema accept and reject the fixed inputs with the same parsed data and issue codes/paths as before, except that an unknown code is an invalid_union at the code path and a missing retryable is an invalid_value (S0-3a discriminated union, SPEC-110 section 16)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -25200,6 +25200,311 @@
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
       "expected_observability": ["ratelimit.decision.completed"],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DEV-API-003-002",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "DEV-API-003",
+        "SEC-ERR-002",
+        "SEC-ERR-001",
+        "SPEC-110-16",
+        "SPEC-110-20",
+        "SPEC-110-21",
+        "SPEC-110-28"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Static import of @off-r39x/api-contract by package name; synthetic UUIDs only; no network, database or environment variables",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "errorRetryable equals the SPEC-110 section 21 Retryable column in errorStatuses order; the 24 codes with a fixed Retryable reject the opposite value and the two conditional codes accept both booleans",
+        "STATE_CONFLICT alone accepts details null or a strict item_failures of 1 to 50 entries ({ kind ENTRY|GOODS, target_ref lowercase UUID, reasons }) with reasons non-empty, unique and in API-PUR-ELG-001 order and no repeated (kind, target_ref); every other code accepts details null only",
+        "Extra keys, unknown reasons and kinds, uppercase or non-UUID target_ref, and field or item_failures details on other codes are rejected; the parsed code type equals ErrorCode"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DEV-API-010-001",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["DEV-API-010", "REL-DB-002", "TST-DB-005", "DEV-DB-007", "SPEC-110-50"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Synthetic error objects and a table whose resolve callbacks are counted; classification logic only, not evidence of what PostgreSQL returns (TST-UNT-001)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "classifyDatabaseError maps 40001/40P01/55P03 to retryable, a transaction deadline to deadline, 08xxx/57P01-57P03/Node connection errno and DatabaseUnavailableError to unavailable, 57014 to statement_timeout, 23505/23P01/23503/23514 to constraint (name only when a string) and everything else to other",
+        "resolveConstraintViolation calls the table's resolve exactly once and returns its result unchanged only for a registered name with a matching SQLSTATE; every other error is rethrown as the same reference with resolve not called; a resolve failure propagates; the original operation is never re-run"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-REL-DB-009-001",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["REL-DB-009", "DEV-DB-007", "REL-DB-001"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Fake pool with an injected connect() failure and a discarded connection; no real PostgreSQL",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": ["pool_connect_failure", "connection_error_event"],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "A codeless pool connect failure or a codeless failure on a discarded connection rejects with DatabaseUnavailableError carrying the original as cause and a fixed message; the callback does not run for a connect failure; no retry is scheduled",
+        "An error that carries a connection SQLSTATE is rethrown as it is, and a codeless error from a healthy connection stays the callback's own error"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "db.availability.failed is logged once; db.transaction.retry_scheduled is not logged"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-SEC-ERR-001-001",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": [
+        "SEC-ERR-001",
+        "SEC-API-022",
+        "DEV-API-003",
+        "SPEC-110-17",
+        "SPEC-110-20",
+        "SPEC-110-21"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Harness-only routes on a test app throw ApiFailure for each code; known path hit with PUT for METHOD_NOT_ALLOWED; no DB or Redis",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [400, 401, 403, 404, 405, 409, 410, 413, 415, 422, 424, 429, 500, 503],
+      "expected_domain_postconditions": [
+        "Each of the 26 codes answers with its section 21 status, a body that passes errorSchema, retryable from errorRetryable (conditional resolves to false), details null, one of two fixed messages, error.request_id equal to X-Request-Id and Cache-Control no-store",
+        "RATE_LIMIT_EXCEEDED carries an integer Retry-After of at least 1 (0 rounds up to 1); METHOD_NOT_ALLOWED alone carries Allow"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": ["http.request.completed is recorded for each response"],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-SEC-API-022-002",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["SEC-API-022", "SPEC-110-21"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Literal path, parameterized path, multi-method path and an unknown path hit with PUT, DELETE and others; harness routes only",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [404, 405],
+      "expected_domain_postconditions": [
+        "A known path answers 405 METHOD_NOT_ALLOWED with Allow listing its methods in ascending order (GET adds HEAD) and retryable false; an unknown path answers 404 RESOURCE_NOT_FOUND for every method without Allow; neither is converted to 401, 403 or 409"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": ["http.request.completed is recorded for each response"],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DEV-API-003-003",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["DEV-API-003", "SPEC-110-19", "SPEC-110-17", "SEC-ERR-001"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Harness-only routes call successResponse and respond with matching, extra-key and wrong-type data",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [200, 201, 500],
+      "expected_domain_postconditions": [
+        "Matching data answers 200 or 201 with exactly { data, meta: { request_id } } and meta.request_id equal to X-Request-Id",
+        "Data that does not match the schema answers 500 INTERNAL_ERROR with details null and neither the body nor the log contains the data values"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "http.request.completed is recorded with the response status and no data values"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DEV-API-003-004",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": [
+        "SEC-ERR-001",
+        "SEC-ERR-002",
+        "DEV-API-011",
+        "SPEC-110-20",
+        "SPEC-110-28"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Harness-only route returns rejected, temporary and commit_unknown service results through respond(), including invalid details",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [409, 424, 500, 503],
+      "expected_domain_postconditions": [
+        "STATE_CONFLICT with valid item_failures answers 409 with the details unchanged; without details it answers details null",
+        "Details with an unknown reason, an extra key, or on a code that allows none answer 500 INTERNAL_ERROR with details null and no echo of the input or the original code",
+        "A temporary Stripe failure answers 424 retryable; commit_unknown answers 503 DATABASE_TEMPORARY_FAILURE retryable; exactly one response per request"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": ["http.request.completed is recorded with the response status"],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-REL-DB-009-002",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["REL-DB-009", "REL-DB-006", "SEC-API-020", "SPEC-110-51"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Harness-only route throws 08006, 57P01, ECONNRESET, DatabaseUnavailableError, a plain Error and 57014",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": ["synthetic_exception"],
+      "expected_http": [500, 503],
+      "expected_domain_postconditions": [
+        "Connection-class SQLSTATE, Node connection errno and DatabaseUnavailableError answer 503 DATABASE_TEMPORARY_FAILURE with retryable true, details null and no SQLSTATE, errno or message in the body",
+        "A plain Error without SQLSTATE answers 500 INTERNAL_ERROR; 57014 stays 500 INTERNAL_ERROR in this change (S0-3a G-a5 A)"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "http.request.completed is recorded once with http_status equal to the response status"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DEV-API-011-001",
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": [
+        "DEV-API-011",
+        "SEC-ERR-001",
+        "SEC-ERR-003",
+        "SEC-API-020",
+        "OBS-LOG-005"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Harness-only routes throw synthetic Errors carrying markers, pg-style fields, bigint properties, a ZodError and a nested cause; synthetic markers only",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": ["synthetic_exception"],
+      "expected_http": [500],
+      "expected_domain_postconditions": [
+        "Every unclassified exception answers the exact fixed INTERNAL_ERROR envelope; neither the body, the headers nor any log line contains the markers, constraint or table names, SQLSTATE, internal ids, stack frames or file paths"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "http.request.completed keeps its fixed key set and shows no marker or stack"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DEV-API-010-002",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": ["DEV-API-010", "REL-DB-002", "TST-DB-004", "TST-DB-005", "DB-ARC-007"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [
+        "uq_constraint_probe_key",
+        "ux_constraint_probe_active_slot",
+        "ex_constraint_probe_during",
+        "fk_constraint_probe_parent",
+        "ck_constraint_probe_qty"
+      ],
+      "preconditions": "Real PostgreSQL17 disposable database; synthetic probe table with constraints uq_constraint_probe_key, ux_constraint_probe_active_slot, ex_constraint_probe_during, fk_constraint_probe_parent and ck_constraint_probe_qty (names are synthetic)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The callback runs once per violation; classifyDatabaseError returns constraint with the real SQLSTATE and constraint name; a registered name settles through resolve once (existing row, or SLOT_UNAVAILABLE) and an unregistered CHECK violation is rethrown"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "db.constraint_loser.completed is recorded for the unique, partial unique and exclusion violations (pre-classification recording, existing behavior)"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-REL-DB-009-003",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": ["REL-DB-009", "DEV-DB-007"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real PostgreSQL17; test-only pool with max 1 and a short connectionTimeoutMillis whose only client is held by the test",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": ["pool_acquire_timeout"],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "transaction() rejects with DatabaseUnavailableError whose cause is the pool's codeless acquisition error, the callback does not run, and it succeeds again once the client is released"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": ["db.availability.failed is logged once"],
       "sensitivity_class": "synthetic",
       "critical": true
     }
