@@ -18102,7 +18102,7 @@
       "expected_provider_postconditions": [],
       "expected_observability": [],
       "sensitivity_class": "synthetic",
-      "critical": false
+      "critical": true
     },
     {
       "test_case_id": "TC-SEC-API-023-001",
@@ -18125,7 +18125,7 @@
       "expected_provider_postconditions": [],
       "expected_observability": ["http.request.completed", "auth.verification.completed"],
       "sensitivity_class": "synthetic",
-      "critical": false
+      "critical": true
     },
     {
       "test_case_id": "TC-SEC-API-023-002",
@@ -18157,7 +18157,7 @@
       ],
       "expected_observability": ["http.request.completed", "auth.verification.completed"],
       "sensitivity_class": "synthetic",
-      "critical": false
+      "critical": true
     },
     {
       "test_case_id": "TC-SEC-API-023-003",
@@ -18180,7 +18180,7 @@
       "expected_provider_postconditions": [],
       "expected_observability": [],
       "sensitivity_class": "synthetic",
-      "critical": false
+      "critical": true
     },
     {
       "test_case_id": "TC-INF-RWY-005-001",
@@ -18203,7 +18203,7 @@
       "expected_provider_postconditions": ["The auth proxy transport is not called while draining"],
       "expected_observability": ["http.request.completed"],
       "sensitivity_class": "synthetic",
-      "critical": false
+      "critical": true
     },
     {
       "test_case_id": "TC-SEC-API-022-001",
@@ -18226,7 +18226,7 @@
       "expected_provider_postconditions": [],
       "expected_observability": [],
       "sensitivity_class": "synthetic",
-      "critical": false
+      "critical": true
     },
     {
       "test_case_id": "TC-TST-OBS-001-001",
@@ -18286,7 +18286,7 @@
         "http.request.completed"
       ],
       "sensitivity_class": "synthetic",
-      "critical": false
+      "critical": true
     },
     {
       "test_case_id": "TC-SEC-AUTH-003-001",
@@ -18323,7 +18323,7 @@
         "http.request.completed"
       ],
       "sensitivity_class": "synthetic",
-      "critical": false
+      "critical": true
     },
     {
       "test_case_id": "TC-SEC-AUTH-003-002",
@@ -18346,7 +18346,7 @@
       "expected_provider_postconditions": [],
       "expected_observability": [],
       "sensitivity_class": "synthetic",
-      "critical": false
+      "critical": true
     },
     {
       "test_case_id": "TC-DEV-API-002-002",
