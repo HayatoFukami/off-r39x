@@ -21,6 +21,17 @@ export interface FakeQueryContext {
 /** Return an error to make this query reject with it; return `undefined` to let it succeed. */
 export type FakeQueryBehavior = (context: FakeQueryContext) => Error | undefined;
 
+/**
+ * Return an error to make this `connect()` call reject with it (a pool acquisition failure, so no
+ * client is created); return `undefined` to let it succeed. `attempt` is the zero-based number of
+ * the `connect()` call, counting rejected calls too.
+ */
+export type FakeConnectBehavior = (attempt: number) => Error | undefined;
+
+export interface FakePoolOptions {
+  readonly connect?: FakeConnectBehavior;
+}
+
 export interface FakeClientRecord {
   readonly index: number;
   /** Every SQL string sent on this client, in order (including ones that were made to fail). */
@@ -35,6 +46,8 @@ export interface FakePool {
   readonly clients: FakeClientRecord[];
   /** Chronological record across all clients (connect / query / release). */
   readonly timeline: FakePoolEvent[];
+  /** How many times `connect()` was called, including calls made to reject. */
+  connectAttempts(): number;
 }
 
 /** A synthetic server error carrying only a SQLSTATE; the message is a fixed marker, never real data. */
@@ -68,16 +81,22 @@ class FakeClient extends EventEmitter {
  * `behavior` decides, per query, whether it fails. Typical use: fail the callback's probe query
  * (`SELECT probe`) on the first N clients, and optionally fail `ROLLBACK`.
  */
-export function createFakePool(behavior: FakeQueryBehavior = () => undefined): FakePool {
+export function createFakePool(
+  behavior: FakeQueryBehavior = () => undefined,
+  options: FakePoolOptions = {},
+): FakePool {
   const clients: FakeClientRecord[] = [];
   const timeline: FakePoolEvent[] = [];
+  let attempts = 0;
   const pool = {
     async connect() {
+      const failure = options.connect?.(attempts++);
+      if (failure) throw failure;
       const record: FakeClientRecord = { index: clients.length, queries: [], releases: [] };
       clients.push(record);
       timeline.push({ client: record.index, kind: "connect" });
       return new FakeClient(record, timeline, behavior);
     },
   };
-  return { pool: pool as unknown as Pool, clients, timeline };
+  return { pool: pool as unknown as Pool, clients, timeline, connectAttempts: () => attempts };
 }
