@@ -439,15 +439,15 @@ describe("TC-REVIEW-PORT-004 ReviewCaseOpenInput expresses the target constraint
   });
 
   it("rejects empty targets and targets that hold only undefined at compile time", () => {
-    // @ts-expect-error SPEC-100 §43 CHECK: at least one target is required
     const empty: ReviewCaseOpenInput = {
       reasonCode: "PAY_BINDING_INCONSISTENT",
+      // @ts-expect-error SPEC-100 §43 CHECK: at least one target is required
       targets: {},
       details,
     };
-    // @ts-expect-error an explicitly undefined target is not a target
     const undef: ReviewCaseOpenInput = {
       reasonCode: "PAY_BINDING_INCONSISTENT",
+      // @ts-expect-error an explicitly undefined target is not a target
       targets: { orderId: undefined },
       details,
     };

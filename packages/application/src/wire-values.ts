@@ -51,10 +51,11 @@ export const singleLineText = z
   .min(1)
   .regex(/^[^\r\n]+$/);
 
-// SPEC-100 §7.1: Internal IDs are bigint identities. The brand keeps an Order ID from being passed
-// where a Reservation ID is expected. A `number` is never accepted.
+// SPEC-100 §7.1: Internal IDs are bigint identities (PostgreSQL signed 64-bit, so 1 .. 2^63-1).
+// The brand keeps an Order ID from being passed where a Reservation ID is expected. A `number` is
+// never accepted, and a value no row can have is refused before it reaches an adapter.
 function internalId<Name extends string>() {
-  return z.bigint().positive().brand<Name>();
+  return z.bigint().positive().max(MAX_BIGINT_64).brand<Name>();
 }
 export const businessProfileId = internalId<"BusinessProfileId">();
 export const orderId = internalId<"OrderId">();

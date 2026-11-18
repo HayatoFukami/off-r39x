@@ -92,23 +92,22 @@ function hasOnlyOrderOrReservation(targets: ReviewCaseTargets): boolean {
 
 // SPEC-150 §44 REL-REC-008: details hold only allowlisted state, public refs, amount / currency,
 // provider status category and timestamps.
-// What the structure prevents: an email address ("@" and "." do not match a token or a key), free
-// text and lower-case or mixed-case Secrets in a value (tokens are upper-case only), a
+// The "state" and "provider_status_category" kinds are NOT accepted yet: no owner defines the
+// allowlisted vocabulary (UCR U-6), a token shape check cannot tell an allowlisted value from an
+// unknown one or from a Secret made of upper-case letters, digits and "_", and this port must not
+// invent the vocabulary (AGENTS.md §7). Add each kind back as a closed enum once it is specified.
+// What the structure prevents in the accepted kinds: an email address, free text and lower-case or
+// mixed-case Secrets (a UUID, a decimal amount and a canonical timestamp have fixed forms), a
 // numeric Internal ID (number and boolean values have no slot), and nested values or a raw body.
-// What it does not prevent, and the caller must not pass: an Internal ID or other digits embedded
-// in a token value or in a key (e.g. ORDER_123), and a Secret made only of upper-case letters,
-// digits and "_" (it matches the token pattern).
-const detailToken = z.string().regex(/^[A-Z][A-Z0-9_]{0,63}$/);
-
+// What it does not prevent, and the caller must not pass: a public_ref that is really some other
+// UUID-shaped value.
 const detailValue = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("state"), value: detailToken }),
   z.strictObject({ kind: z.literal("public_ref"), value: lowerUuid }),
   z.strictObject({
     kind: z.literal("money"),
     amount: moneyAmount,
     currency: z.string().regex(/^[A-Z]{3}$/),
   }),
-  z.strictObject({ kind: z.literal("provider_status_category"), value: detailToken }),
   z.strictObject({ kind: z.literal("timestamp"), value: isoUtc }),
 ]);
 
@@ -118,7 +117,7 @@ export type ReviewCaseDetails = z.infer<typeof detailsSchema>;
 
 // Generated or later-owned columns (public reference, opened / resolved times, resolution note)
 // and the dedupe key have no slot.
-export const reviewCaseOpenInputSchema = z
+const reviewCaseOpenInputBase = z
   .strictObject({
     reasonCode: reviewReasonCodeSchema,
     targets: targetsObject,
@@ -141,4 +140,39 @@ export const reviewCaseOpenInputSchema = z
       });
     }
   });
-export type ReviewCaseOpenInput = z.infer<typeof reviewCaseOpenInputSchema>;
+
+// The public type carries the two target constraints, so a value typed ReviewCaseOpenInput has
+// already satisfied them at compile time; the schema above enforces them at run time. z.infer of
+// a superRefine schema cannot express them, hence the explicit type and the cast below.
+type AtLeastOne<T> = {
+  [Key in keyof T]-?: { [Name in Key]-?: NonNullable<T[Name]> } & {
+    [Name in Exclude<keyof T, Key>]?: T[Name];
+  };
+}[keyof T];
+type EmailReasonCode = Extract<ReviewReasonCode, `EML_${string}`>;
+type NonEmailReasonCode = Exclude<ReviewReasonCode, EmailReasonCode>;
+
+export type ReviewCaseOpenInput =
+  | {
+      readonly reasonCode: EmailReasonCode;
+      readonly targets: AtLeastOne<Pick<ReviewCaseTargets, "orderId" | "karaokeReservationId">>;
+      readonly details: ReviewCaseDetails;
+    }
+  | {
+      readonly reasonCode: NonEmailReasonCode;
+      readonly targets: AtLeastOne<ReviewCaseTargets>;
+      readonly details: ReviewCaseDetails;
+    };
+
+// Fails to compile when the explicit type drifts from the run-time shape (an added, removed or
+// retyped item): the explicit type must stay assignable to what the schema accepts.
+type AssertAssignable<Narrow extends Wide, Wide> = Narrow;
+export type ReviewCaseOpenInputIsParsable = AssertAssignable<
+  ReviewCaseOpenInput,
+  z.infer<typeof reviewCaseOpenInputBase>
+>;
+
+export const reviewCaseOpenInputSchema = reviewCaseOpenInputBase as unknown as z.ZodType<
+  ReviewCaseOpenInput,
+  z.input<typeof reviewCaseOpenInputBase>
+>;
