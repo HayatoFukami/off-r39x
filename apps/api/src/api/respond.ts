@@ -110,8 +110,8 @@ export function respond<S extends z.ZodType>(
 
 /**
  * onError mapping (DEV-TS-013: an exception is classified once, at the boundary). Raw constraint
- * violations, statement timeouts (G-a5 A) and anything unclassified are INTERNAL_ERROR; nothing of
- * the exception reaches the response.
+ * violations, statement timeouts (SPEC-110 sections 50/51 define no mapping for SQLSTATE 57014) and
+ * anything unclassified are INTERNAL_ERROR; nothing of the exception reaches the response.
  */
 export function errorFromException(
   c: AppContext,

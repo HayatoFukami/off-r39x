@@ -3098,7 +3098,9 @@
       "code_paths": [
         "packages/reliability/src/index.ts",
         "packages/db/src/transaction.ts",
-        "apps/api/src/api/app.ts"
+        "apps/api/src/api/app.ts",
+        "apps/api/src/api/respond.ts",
+        "packages/db/src/errors.ts"
       ],
       "test_case_ids": [
         "TC-DB-RETRY-001",
@@ -4069,10 +4071,12 @@
       "code_paths": [
         "packages/security/src/rate-limit/limiter.ts",
         "apps/api/src/api/app.ts",
+        "apps/api/src/api/respond.ts",
         "packages/api-contract/src/schemas/errors.ts",
         "packages/rate-limit-redis/src/evaluate.lua"
       ],
       "test_case_ids": [
+        "TC-SEC-ERR-001-001",
         "TC-RLM-002-007",
         "TC-RLM-002-102",
         "TC-RLM-002-103",

@@ -32,8 +32,8 @@ export type ErrorCode = keyof typeof errorStatuses;
 
 /**
  * SPEC-110 section 21 Retryable column, in `errorStatuses` order. "conditional" is the table's
- * 条件付き: the condition is not defined, so the envelope accepts either boolean and a producer
- * resolves it to false (S0-3a G-a1 B; REL-RTY-007).
+ * 条件付き: the condition is undefined in SPEC-110 section 21, so the schema accepts a boolean and a
+ * producer resolves it to false (REL-RTY-007).
  */
 export const errorRetryable = {
   MALFORMED_REQUEST: false,
@@ -111,6 +111,9 @@ export type ItemFailure = z.infer<typeof itemFailureSchema>;
 type FixedRetryableCode = {
   [C in ErrorCode]: (typeof errorRetryable)[C] extends boolean ? C : never;
 }[ErrorCode];
+type ConditionalRetryableCode = {
+  [C in ErrorCode]: (typeof errorRetryable)[C] extends "conditional" ? C : never;
+}[ErrorCode];
 
 // One strict variant per code (SPEC-110 section 16). `details` is null except where section 20 /
 // 21 / an Operation allows a shape (SEC-ERR-001, SEC-ERR-002).
@@ -129,7 +132,8 @@ function variant<C extends ErrorCode, R extends z.ZodType, D extends z.ZodType>(
 }
 const fixed = <C extends FixedRetryableCode>(code: C) =>
   variant(code, z.literal(errorRetryable[code]), z.null());
-const conditional = <C extends ErrorCode>(code: C) => variant(code, z.boolean(), z.null());
+const conditional = <C extends ConditionalRetryableCode>(code: C) =>
+  variant(code, z.boolean(), z.null());
 
 export const errorSchema = z.strictObject({
   error: z.discriminatedUnion("code", [
@@ -165,6 +169,16 @@ export const errorSchema = z.strictObject({
     conditional("INTERNAL_ERROR"),
   ]),
 });
+// Compile-time check: the schema's code union and ErrorCode are mutually equal.
+type SchemaCode = z.infer<typeof errorSchema>["error"]["code"];
+type ErrorCodesMatchSchema = [SchemaCode] extends [ErrorCode]
+  ? [ErrorCode] extends [SchemaCode]
+    ? true
+    : never
+  : never;
+const errorCodesMatchSchema: ErrorCodesMatchSchema = true;
+void errorCodesMatchSchema;
+
 /** The `details` type of an error envelope with code `C`. */
 export type ErrorDetails<C extends ErrorCode> = Extract<
   z.infer<typeof errorSchema>["error"],

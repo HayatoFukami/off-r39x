@@ -46,6 +46,9 @@ export function isDatabaseUnavailableCode(code: string): boolean {
 
 export type ConstraintSqlstate = "23505" | "23P01" | "23503" | "23514";
 const CONSTRAINT_CODES: ReadonlySet<string> = new Set(["23505", "23P01", "23503", "23514"]);
+function isConstraintSqlstate(code: string): code is ConstraintSqlstate {
+  return CONSTRAINT_CODES.has(code);
+}
 
 /** A database vocabulary only (DEV-DB-007); mapping to HTTP is the API layer's job. */
 export type DatabaseErrorClass =
@@ -68,14 +71,14 @@ export function classifyDatabaseError(error: unknown): DatabaseErrorClass {
   if (code === undefined) return { kind: "other" };
   if (isDatabaseUnavailableCode(code)) return { kind: "unavailable" };
   if (code === "57014") return { kind: "statement_timeout" };
-  if (CONSTRAINT_CODES.has(code)) {
+  if (isConstraintSqlstate(code)) {
     const constraint =
       typeof error === "object" && error !== null && "constraint" in error
         ? error.constraint
         : undefined;
     return {
       kind: "constraint",
-      sqlstate: code as ConstraintSqlstate,
+      sqlstate: code,
       ...(typeof constraint === "string" ? { constraint } : {}),
     };
   }
