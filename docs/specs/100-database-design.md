@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-100
 title: Database Design
-version: 2.3.0
+version: 2.4.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -453,6 +453,33 @@ Index: `ix_sponsor_logos_event_state_sort(event_id, state, sort_order, public_re
 
 **DB-SAL-002:** URLは外部HTTPSの参照のみとし、形式・許可originの検証は `SPEC-140` と `SPEC-110` のcreate/update/publicationで行う。画像upload／server fetchは行わない。公開queryは `PUBLISHED` のみを返す。Profileの任意 `display_name` と異なり、Logoの表示名称は必須とする。Trace: `FR-PUB-011,015`, `FR-ADM-018`, `BR-EVT-005`。
 
+
+### 13.5 初期データ（Event / Entry Ticket Offering）
+
+`UCR-180-001`。Business API（`SPEC-110`）にはEventとEntry Ticket Offeringの作成Operationがなく、追加しない。最初の行は、`SPEC-180 §45.3` の専用の運用コマンドだけが作る。FAQ・Announcement・Sponsor Logoは既存の作成Operationで作るため、本節の対象外である。
+
+| 対象 | 作成する条件 | 入力する項目 | 作成時に固定する値 |
+|---|---|---|---|
+| `app.events` | 行が0件 | `name`, `summary`, `starts_at`, `ends_at`, `venue_name`, `venue_details`, `access_information`, `participant_notices` | `business_timezone = 'Asia/Tokyo'` |
+| `app.entry_ticket_offerings` | 親Eventに紐づく行が0件 | 1件以上。各件は `name`, `description`, `unit_amount`, `currency`, `sales_starts_at`, `sales_ends_at`, `sales_capacity`, `purchase_limit`, `checkin_opens_at`, `checkin_closes_at` | `sale_control_state = 'SUSPENDED'`, `held_quantity = 0`, `committed_quantity = 0` |
+
+Goods、Karaoke Sales Configuration、Exclusive Scopeは本表の対象外である。対象を増やす場合は、上流仕様の変更として本表へ行を追加し、同じ規則（`DB-SEED-001〜006`）に従う。
+
+**DB-SEED-001:** 作成は「対象が0件のときだけ」とする。Eventは、0件なら作り、1件なら何もせず（`NOOP`）、2件以上ならコマンドを失敗させる（`SPEC-110` `API-RLC-007` の「Eventは1件だけ」の前提が崩れており、どの行を採るか判断しない）。Entry Ticket Offeringは、そのEventに紐づく行が0件なら入力の件数を作り、1件以上あれば何もしない。足りない分を補わず、既存の行を更新・削除しない。運用で変更した値（`API-ADM-CNT-002`、`API-ADM-ENT-SALES-003`）を、再実行で巻き戻さない。
+
+**DB-SEED-002:** 判定と作成は、1つのDB transactionで行い、`pg_advisory_xact_lock(hashtext('app:initial-data-seed'))` で同時実行を直列化する。検証に失敗した場合は、全体をrollbackし、一部の行だけを残さない。DB commitの結果が不明な場合は、blind再INSERTをせず、現在の行を読み直して `DB-SEED-001` に従う（`SPEC-150 §20` のUnknown DB commitと同じ）。外部呼出しを行わない。既存の行を更新しないため、§47のlock順序へ影響しない。
+
+**DB-SEED-003:** 入力はstrictに検証する。未知のkeyを拒否し、§13.1・§15.1のCHECKと同じ条件（`starts_at < ends_at`、`sales_starts_at < sales_ends_at`、`checkin_opens_at < checkin_closes_at`、`unit_amount >= 0`、`sales_capacity >= 0`、`purchase_limit > 0` など）をコマンドで検証したうえで、DBのCHECKを最後の防御とする。ID、`public_ref`、counter、`created_at` / `updated_at`、`business_timezone`、`sale_control_state` は入力として受け取らない。`public_ref` はDBが生成する。未設定の項目へ推測値を入れず、nullableな項目は入力になければ `NULL` のままとする（`BR-EVT-001`）。
+
+**DB-SEED-004:** Entry Ticket Offeringは常に `SUSPENDED` で作る。販売の開始は、既存の `API-ADM-ENT-SALES-003` による `sale_control_state` の変更で行う。
+
+**DB-SEED-005:** 作成した行ごとに、`SPEC-160 §37` のAudit Eventを同じtransactionで記録する。Audit Eventの挿入に失敗した場合は、投入全体をrollbackする。
+
+**DB-SEED-006:** 実在の会場名・日時・価格・個人情報を、仕様・source・test fixture・migrationへ置かない。リポジトリに置く入力の見本は合成値だけとする（`SPEC-180 INF-SEED-002`）。
+
+**DB-SEED-007:** 本節は、新しい列・制約・Index・Operation・Capability・Stateを追加しない。「Eventは高々1件」はDB制約ではなく、`DB-SEED-001` の事前条件と `API-RLC-007` の前提で守る。DB制約として強制する場合は、別の仕様変更とする。
+
+Trace: `FR-PUB-001〜004`, `FR-PUB-007`, `FR-ADM-014`, `BR-EVT-001`, `BR-SAL-001`, `UCR-180-001`.
 ---
 
 ## 14. Identity / Authorization tables
@@ -2347,5 +2374,6 @@ Retry count、backoff、reconciliation、Review Case解消Runbookを定義する
 | UCR-100-002 | INCORPORATED | §13.4のSponsor Logo、SPEC-110公開／管理API、SPEC-130 `PG-ADM-027` |
 | UCR-100-003 | INCORPORATED | §§16〜19,24,39,47〜49の複合Purpose／source FK／原子Transaction |
 | UCR-110-003 | INCORPORATED | §43.1 `app.idempotency_records`、§45.6、§47、§48、`DB-IDM-001〜003`、SPEC-110 §18.1 `API-IDM-003〜010` |
+| UCR-180-001 | INCORPORATED | §13.5 初期データ（`DB-SEED-001〜007`）、`SPEC-180 §45.3` `INF-SEED-001〜006` |
 
 既存の `UCR-130-005` は引き続き `DEFERRED_NONBLOCKING` であり、運用Indexの先取り追加は行わない。
