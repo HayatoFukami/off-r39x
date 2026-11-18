@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-180
 title: Infrastructure and Deployment Specification
-version: 2.2.1
+version: 2.3.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -679,6 +679,7 @@ Canonical placement:
 | Email DB credential | No | No | Yes | No | No | No | No | No |
 | Recon DB credential | No | No | No | Yes | No | No | No | No |
 | migration credential | No | No | No | No | Yes | No | No | emergency only |
+| 初期データの入力（`INF-SEED-002`） | No | No | No | No | Yes | No | No | No |
 | Stripe secret key | No | Yes | No | Yes | No | No | No | No |
 | Stripe webhook signing secret | No | Yes | No | No | No | No | No | No |
 | Resend API key | No | Yes (`API-ADM-REC-006` same-key lookup only) | Yes | Yes same-key reconciliation only | No | No | No | No |
@@ -1073,9 +1074,10 @@ Webのoutput hash / 公開設定hash / Pages project ID / preview deployment ID 
 6. bounded backfill
 7. constraint validation
 8. schema readiness check
-9. Railway API / workers deploy
-10. Cloudflare Pages staging projectへ静的artifactをdeploy（Access保護）
-11. staging smoke / `G10` / Provider Contract Smoke
+9. 初期データの投入（§45.3。stagingは合成値だけを使用する）
+10. Railway API / workers deploy
+11. Cloudflare Pages staging projectへ静的artifactをdeploy（Access保護）
+12. staging smoke / `G10` / Provider Contract Smoke
 
 ### 45.2 Production
 
@@ -1087,20 +1089,37 @@ Production releaseは次順序を固定する。
 4. Production migration lock取得
 5. **expand-only / backward-compatible migration**実行
 6. schema readiness check
-7. Railway APIをsame OCI digestでdeploy
-8. Railway Email Worker deploy
-9. Railway Reconciliation Worker deploy
-10. all Railway readiness success
-11. 本番用Web artifactをProduction projectのAccess保護preview branchへDirect Upload
-12. 検査harnessで本番API / Auth通信を遮断し、静的配信・routing・headers・Secret非混入・output hashを検証。合成応答はProvider / API動作の証明にしない
-13. project-owner承認後、検査済みの同一outputをProduction branchへDirect Uploadし、production deployment ID / hashを記録（別deploymentでありpreviewの昇格ではない）
-14. post-deploy smoke
-15. deployment observation window **10分**
-16. active CRITICAL/HIGH alert、readiness failure、schema mismatch、Critical smoke failureがなければrelease accepted
+7. 初期データの投入（§45.3。Productionの入力はproject-ownerが準備した実値）
+8. Railway APIをsame OCI digestでdeploy
+9. Railway Email Worker deploy
+10. Railway Reconciliation Worker deploy
+11. all Railway readiness success
+12. 本番用Web artifactをProduction projectのAccess保護preview branchへDirect Upload
+13. 検査harnessで本番API / Auth通信を遮断し、静的配信・routing・headers・Secret非混入・output hashを検証。合成応答はProvider / API動作の証明にしない
+14. project-owner承認後、検査済みの同一outputをProduction branchへDirect Uploadし、production deployment ID / hashを記録（別deploymentでありpreviewの昇格ではない）
+15. post-deploy smoke
+16. deployment observation window **10分**
+17. active CRITICAL/HIGH alert、readiness failure、schema mismatch、Critical smoke failureがなければrelease accepted
 
 **INF-DEP-003:** Webを先に切り替えて新API contractだけを要求するdeploymentをしない。APIはold/new Webが共存できる後方互換性を先に持つ。
 
 preview検査は本番data / Sessionを使用しない。Production API / Authの接続、実本番hostのCookie / CORS / callback確認は公開直後の安全なsmokeで行い、失敗時は旧production deploymentへrollbackする。previewだけで本番連携を実証したと扱わない。
+
+### 45.3 Initial data seeding
+
+`UCR-180-001`。Business API（`SPEC-110`）にはEventとEntry Ticket Offeringの作成Operationがなく、本節はそれを追加しない。空のDBに最初の行を作る方法を定める。対象、入力の項目、作成時の値、冪等の条件は `SPEC-100 §13.5`、Auditは `SPEC-160 §37` が定める。
+
+**INF-SEED-001:** 初期データは、専用の運用コマンド（`packages/db` のCLI。名称・引数は実装のWork Planが決める）だけが投入する。migration、Business API、Browser、runtime principal（`app_api_runtime` を含む）、手作業のSQLでは投入しない。
+
+**INF-SEED-002:** 入力は、環境ごと（stagingとproduction）のGitHub protected Environment Secretに置き、migration jobだけが読む（§26）。値はSecretではないが公開前の情報であるため、source、test fixture、log、artifact、release evidence、Pull Requestへ出さない（`INF-SEC-001`）。リポジトリに置くのは、合成値（架空の名称、予約済みdomain）の見本だけとする。stagingとdevelopment・testは合成値だけを使い、Productionの入力はproject-ownerが準備してstagingと共有しない（`INF-SEC-002`、§18 の非本番はsynthetic dataとする規則）。入力が作成に必要になるのは、`SPEC-100 §13.5` の条件で作成する行があるときだけである。
+
+**INF-SEED-003:** コマンドはmigration jobの一部として、migration lock（§24）の取得中に、`app_migrator` で実行する。schema readiness checkの後、API deployの前に置く（§45.1、§45.2）。API・workerへmigration credentialを置かず（`INF-DB-006`）、新しいDB roleを追加しない。コマンドは対象の2表と `app.audit_events` へのINSERT、および `SPEC-100 §13.5` の判定に必要なSELECTだけを発行し、それ以外のDML・DDL・GRANTを発行しない。Productionの実行は、migrationと同じprotected Environmentのproject-owner承認に含まれ、別の承認や、break-glass（§70）の手順を要求しない。
+
+**INF-SEED-004:** コマンドは毎回のdeployで実行してよい。結果は `CREATED`（1行以上を作成）、`NOOP`（作成する行がない）、`FAILED` のいずれかとする。`FAILED` はmigration failureと同じく、deploymentを停止し、API・workerをdeployしない（§47、`INF-DEP-005`）。投入は1つのtransactionであり、失敗してもDBへ部分的な行を残さない。原因を直した後は、同じ手順を再実行できる。
+
+**INF-SEED-005:** コマンドのlogとrelease evidenceへ出すのは、結果の区分、作成した行の `public_ref`、件数、Audit Event IDだけとする。入力の値とDB connection stringは出力しない（`INF-SEC-001`）。release evidence（§76）に結果の区分・`public_ref`・件数・実行identityを記録する。
+
+**INF-SEED-006:** 初期データは、API deployの前に投入する。公開API（`API-PUB-001`、`API-PUB-005`）が、行のない状態で配信される期間を作らない。初期データの不足を、空の応答の許容や、APIの起動時の自動作成で補わない。
 
 ## 46. Expand / contract compatibility
 
@@ -1690,6 +1709,7 @@ staging deployment IDs
 staging readiness/smoke result
 provider contract smoke result
 migration set hash
+initial data seeding result（区分、public_ref、件数、実行identity。値を含めない。INF-SEED-005）
 production backup freshness check
 production config drift check
 approval actor ref
@@ -1709,6 +1729,7 @@ approval actor ref
 | Reconciliation Worker down | restart / missed due scan / alert | Provider unknownをsuccess扱い |
 | DB unavailable | Ready=false where required / 503 / fail closed | empty data / sold-out偽装 |
 | migration failure | deployment stop / forward-fix | application-only fallback |
+| initial data seeding failure（`FAILED`） | deployment stop / API・workerをdeployしない / 入力または原因を直して同じ手順を再実行 | 部分的な行を残したままAPIを配信 / 手作業のSQLで投入 / 実値をlogやrepositoryへ出す |
 | Stripe outage | API remains live but operation fails/reconciles | process restart loop / fake payment success |
 | Resend outage | Email queue retains state | confirmed purchase rollback |
 | observability sink outage | bounded buffering / freshness stale | unbounded memory / raw log fallback |
@@ -1735,6 +1756,7 @@ approval actor ref
 | `INF-PRV-*` | relevant `API-WHK-*`, `API-WHK-EML-*`, `EML-RSD-*`, `SEC-PAY-*`, `SEC-EML-*`, `REL-PAY-*`, `REL-EML-*`, `REL-WHK-*`, `TST-PRV-*` |
 | `INF-WRK-*` | `EML-*`, `REL-KRK-*`, `REL-EML-*`, `REL-REC-*`, `OBS-REC-*`, `TST-REC-*` |
 | `INF-DEP-*`, `INF-RBK-*` | `DB-MIG-*`, `REL-GEN-*`, `REL-DB-*`, `TST-FLK-*`, `TST-TRC-*` |
+| `INF-SEED-*` | `DB-SEED-*`, `REL-AUTH-008`（out-of-band投入の前例）, `OBS-AUD-014`, `BR-EVT-001`, `TST-SEED-*` |
 | `INF-HLT-*` | `SEC-KEY-006`, `REL-DB-012`, `OBS-ALT-014`, `TST-SEC-*` |
 | `INF-OBS-*` | `OBS-GEN-*`, `OBS-LOG-*`, `OBS-MET-*`, `OBS-ALT-*`, `OBS-SEC-*`, `TST-OBS-*` |
 | `INF-AUD-*` | `OBS-AUD-*`, `SEC-PII-*`, `TST-OBS-*`, `TST-CON-AUDIT-*` |
@@ -1818,6 +1840,7 @@ SPEC-180は次をすべて満たしたとき受入可能とする。
 52. rate limit configuration不正、store接続不能、`TRUSTED_PROXY_HOPS` 未設定でAPI readinessがfalseになる。
 53. Production promotion前に `INF-RLS-008`（#1 `TRUSTED_PROXY_HOPS` の検証、#3 Redisの実versionとCIのRedis majorの一致、#4 Redisの `maxmemory-policy` / `maxmemory` の設定、#6 Providerのrate / bot protection、#7 Google OAuth callbackの経路）が完了している。Googleログインの無効化・未提供を理由に#7や§18.1の全4方式の互換性gateを省略していない。
 54. rate limitの実Redis Testは、`SPEC-170` `TST-RLM-010` のgroup（G5）で、Pull Requestとmerge commitのgateとして実行される（`INF-TST-004`）。
+55. 初期データ（EventとEntry Ticket Offering）が、専用の運用コマンドだけで、migration jobの `app_migrator` により、schema readiness checkの後・API deployの前に投入される。入力は環境別のprotected Environment Secretから渡り、実値がsource・log・artifact・release evidenceに出ない。対象が0件のときだけ作り、再実行で行が増えず、Offeringは `SUSPENDED` で作られ、失敗時はdeploymentが停止する（`INF-SEED-001〜006`）。
 
 ---
 
@@ -1827,7 +1850,7 @@ SPEC-180は次をすべて満たしたとき受入可能とする。
 
 `UCR-140-003` により本書が受けた変更は §14、§16、§17.1〜§17.2、§26、§28.1〜§28.2、§40、§74.1、§77 に反映済みである。本書が起票する要求は次の1件である。
 
-### UCR-180-001 — ACCEPTED（本文への反映は同じPull Requestの次のcommit）
+### UCR-180-001 — INCORPORATED
 
 - **対象:** SPEC-180（deploy手順、DB principal、Secretの置き場）。`SPEC-100`（初期行の不変条件）、`SPEC-160`（Audit）、`SPEC-170`、`SPEC-200` に及ぶ。
 - **現在の仕様:** `SPEC-110 §46` はEventを参照と更新だけ、`§48.1` はEntry Ticket Offeringを一覧・詳細・更新だけとし、作成のOperationがない。`SPEC-100 §13.1`、`§15.1` は列と制約のみを定める。`SPEC-110` `API-RLC-007` は「Eventは1件だけ」を前提にするが、件数の定めと制約は `SPEC-030`・`SPEC-100` にない。`SPEC-150 §20` は初期Administratorのbootstrapだけをout-of-bandと定め、本書 §70 のbreak-glass対象にも初期データは含まれない。空のDB（staging・本番）にEventとEntry Ticket Offeringの最初の行を作る方法が、どの仕様にもない。
@@ -1841,6 +1864,7 @@ SPEC-180は次をすべて満たしたとき受入可能とする。
 - **理由:** 実装者が推測で投入手段を作ると、後で仕様と食い違う（`SPEC-000 §15.1`）。migrationに実値を入れるとファイルが不変で後から直せず、公開前の会場・価格がリポジトリの履歴に残る。管理APIの追加はOperation・Capability・Rate Limit class・Audit・Testの追加で仕様の変更が最も大きく、1回だけの操作に常設のAPIを残す。運用コマンドは、`SPEC-150 §20` の「通常APIの外の投入」と本書のmigration jobの前例に最も近く、新しいOperation・Capability・状態・DB roleを必要としない。
 - **変更しない場合の影響:** staging・本番の公開API（`API-PUB-001`、`API-PUB-005`）が返す行がなく、stagingの結合確認（公開ページが実APIを使う）ができない。実装者が実値をリポジトリに置く、または手作業のSQLで投入する危険がある。
 - **影響を受ける可能性がある仕様書:** SPEC-100、SPEC-110（`API-RLC-007` の前提の参照のみ）、SPEC-150（`§20` の参照のみ）、SPEC-160、SPEC-170、SPEC-200。
+- **反映先:** 本書 §26（Secret reader matrix）、§45.1・§45.2（手順への追加）、§45.3（`INF-SEED-001〜006`）、§76、§77、§78、§80 項目55。`SPEC-100` v2.4.0 §13.5（`DB-SEED-001〜007`）、`SPEC-160` v2.3.0（§19.1、§20、§35、§37、`OBS-AUD-014`）、`SPEC-170` v2.5.0 §22.1（`TST-SEED-001〜005`）、`SPEC-200` v2.2.0（`ACC-INF-023`）。現在の契約は本文を正とし、本記録は経緯である。新しい列・制約・Operation・Capability・状態・DB roleは追加していない。
 - **決定（利用者）:** 投入は専用の運用コマンド、値は環境別のprotected Environment Secret、冪等は「対象が0件のときだけ作る」、Auditは残す、Offeringは `SUSPENDED` 固定、実行はmigration jobの `app_migrator`、対象はEventとEntry Ticket Offeringのみ。
 
 本仕様は、Infrastructure Ownerとして明示的に委譲されたEnvironment、DB principal、Secret placement、scheduler、health、deployment、Audit access/purge、observability backend、backup / restore、Test gateの具体化だけを行っている。
