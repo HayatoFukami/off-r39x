@@ -16568,7 +16568,7 @@
       "expected_domain_postconditions": [
         "@off-r39x/db/schema exports exactly app, auditEvents, businessProfiles and roleAssignments with no helper leaking through the barrel",
         "The app schema object and both tables use the schema name app",
-        "@off-r39x/db root exports exactly the 13 runtime names and does not export the schema"
+        "@off-r39x/db root exports exactly the 16 runtime names and does not export the schema"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
