@@ -116,12 +116,6 @@ interface Case {
   readonly status: number;
   readonly code: string | null;
   readonly order: readonly string[];
-  /**
-   * The plan lists a success event of the Email check ahead of a Business Profile failure for these
-   * rows, but whether the event is emitted when the profile step then fails is not fixed by SPEC-110
-   * or SPEC-160; the order is compared without that one success event.
-   */
-  readonly emailSuccessEventUnpinned?: true;
 }
 const CASES: readonly Case[] = [
   {
@@ -164,14 +158,12 @@ const CASES: readonly Case[] = [
     order: EMAIL_REFUSED,
   },
   {
-    name: "4 verified Email, no Business Profile: still AUTHORIZATION_DENIED (Email event first)",
+    name: "4 verified Email, no Business Profile: still AUTHORIZATION_DENIED (no Email event: it is emitted on the success path only)",
     row: () => ({ directory: directory(true), profile: null, roles: [] }),
-    emailSuccessEventUnpinned: true,
     status: 403,
     code: "AUTHORIZATION_DENIED",
     order: [
       ...PREFIX,
-      "log:auth.email_verified_resolution.completed",
       "log:auth.business_profile_resolution.completed:BUSINESS_PROFILE_UNRESOLVED",
       "log:security.fail_closed.triggered:AUTHORIZATION_DENIED",
       "log:http.request.completed",
@@ -233,12 +225,10 @@ const CASES: readonly Case[] = [
   {
     name: "7b verified Email, the Business Profile belongs to another subject: still 409",
     row: () => ({ directory: directory(true), profile: profile(OTHER_SUBJECT), roles: [] }),
-    emailSuccessEventUnpinned: true,
     status: 409,
     code: "CONSISTENCY_REVIEW_REQUIRED",
     order: [
       ...PREFIX,
-      "log:auth.email_verified_resolution.completed",
       "log:auth.business_profile_resolution.completed:BUSINESS_PROFILE_INCONSISTENT",
       "log:security.fail_closed.triggered:CONSISTENCY_REVIEW_REQUIRED",
       "log:http.request.completed",
@@ -247,12 +237,10 @@ const CASES: readonly Case[] = [
   {
     name: "7c verified Email, an unknown role: still 409",
     row: () => ({ directory: directory(true), profile: profile(), roles: ["CUSTOMER"] }),
-    emailSuccessEventUnpinned: true,
     status: 409,
     code: "CONSISTENCY_REVIEW_REQUIRED",
     order: [
       ...PREFIX,
-      "log:auth.email_verified_resolution.completed",
       "log:auth.business_profile_resolution.completed:BUSINESS_PROFILE_INCONSISTENT",
       "log:security.fail_closed.triggered:CONSISTENCY_REVIEW_REQUIRED",
       "log:http.request.completed",
@@ -283,10 +271,7 @@ describe("TC-SEC-AUTH-003-001 the Email verified check comes from the directory 
       expect(r.reads()).toBe(1);
       expect(res.status).toBe(c.status);
       if (c.code) expect(await codeOf(res)).toBe(c.code);
-      const unpinned = (x: string) => x !== "log:auth.email_verified_resolution.completed";
-      if (c.emailSuccessEventUnpinned) {
-        expect(r.order.filter(unpinned)).toEqual(c.order.filter(unpinned));
-      } else expect(r.order).toEqual(c.order);
+      expect(r.order).toEqual(c.order);
     });
   }
 

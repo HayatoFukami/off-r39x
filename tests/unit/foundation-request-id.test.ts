@@ -97,7 +97,11 @@ describe("TC-SEC-API-023-003 adoptableRequestId (SEC-API-023, OBS-COR-001, SPEC-
       `\n${V4}`,
       `${V4}\r\nX-Injected: 1`,
       `${V4}\r\n`,
-      `${V4} `,
+      `${V4}\u2028`,
+      `${V4}\u2029`,
+      `${V4}\u0085`,
+      `${V4}\u00a0`,
+      `\u2028${V4}`,
       `${V4} `,
       ` ${V4}`,
       `\t${V4}`,

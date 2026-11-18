@@ -171,9 +171,13 @@ it("TC-SEC-AZ-013-050 HTTP authorization uses current DB roles/email, never JWT 
   record = { ...saved, directory: null };
   expect((await get()).status).toBe(401);
   record = { ...saved, profile: null };
-  expect((await get()).status).toBe(403);
+  response = await get();
+  expect(response.status).toBe(403);
+  expect((await response.json()).error.code).toBe("AUTHORIZATION_DENIED");
   record = { ...saved, roles: ["CUSTOMER"] };
-  expect((await get()).status).toBe(409);
+  response = await get();
+  expect(response.status).toBe(409);
+  expect((await response.json()).error.code).toBe("CONSISTENCY_REVIEW_REQUIRED");
   expect(logs.some((line) => JSON.parse(line).event_name === "http.request.completed")).toBe(true);
   expect(logs.join("")).not.toContain(token);
   expect(logs.join("")).not.toContain("secret SQL");
