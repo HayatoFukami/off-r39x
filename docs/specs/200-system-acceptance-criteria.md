@@ -1005,7 +1005,7 @@ Pagesは静的SPAのみとしNode server runtimeを持たない。Node majorはC
 
 **ACC-INF-022:** active Critical/High condition、readiness failure、schema mismatch、Critical smoke failure等、Current `SPEC-180`がrelease acceptanceを停止すると定義したconditionが存在する間はSystem Acceptanceしない。
 
-**ACC-INF-023:** 初期データ（EventとEntry Ticket Offering）が、専用の運用コマンドだけで、migration jobの `app_migrator` により、schema readiness checkの後・API deployの前に、stagingとproductionへ投入されている。入力は環境別のprotected Environment Secretから渡り、実値がsource・log・artifact・release evidenceに出ない。対象が0件のときだけ作り、再実行で行が増えず、運用で変更した値を巻き戻さず、Offeringは `SUSPENDED` で作られ、作成した行ごとのAudit Eventが残る。Business APIにEvent・Offeringの作成経路がない（`SPEC-180 INF-SEED-001〜006`、`SPEC-100 DB-SEED-001〜007`、`SPEC-160 OBS-AUD-014`、`TST-SEED-001〜005`）。
+**ACC-INF-023:** 初期データ（EventとEntry Ticket Offering）が、専用の運用コマンドだけで、migration jobの `app_migrator` により、schema readiness checkの後・API deployの前に、stagingとproductionへ投入されている。入力は環境別のprotected Environment Secretから渡り、実値がsource・log・artifact・release evidenceに出ない。対象が0件のときだけ作り、再実行で行が増えず、運用で変更した値を巻き戻さず、Offeringは `SUSPENDED` で作られ、作成した行ごとのAudit Eventが残る。Business APIにEvent・Offeringの作成経路がない（`SPEC-180 INF-SEED-001〜006`、`SPEC-100 DB-SEED-001〜007`、`SPEC-160 OBS-AUD-014`、`TST-SEED-001〜006`）。
 
 ---
 
