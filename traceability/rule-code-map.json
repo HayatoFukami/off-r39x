@@ -3576,6 +3576,12 @@
       "notes": "event_name (part of the subject) rejects CR / LF; other subject inputs are the Worker and Provider adapter's"
     },
     {
+      "rule_id": "SEC-EML-007",
+      "code_paths": ["packages/application/src/notification.ts"],
+      "test_case_ids": ["TC-NTF-PORT-002"],
+      "notes": "Per-notification-type Zod schemas for render_context; HTML escaping stays in the Template"
+    },
+    {
       "rule_id": "REL-REC-006",
       "code_paths": ["packages/application/src/review-case.ts"],
       "test_case_ids": ["TC-REVIEW-PORT-001"],
