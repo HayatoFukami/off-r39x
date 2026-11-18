@@ -418,7 +418,7 @@ Transport idempotencyのreplay記録（以下「記録」）は、業務DBの `a
 
 **API-IDM-006:** 記録の判定は次のとおりとする。
 
-1. 一意キーの行がない、または期限切れ（現在時刻が `expires_at` 以後）の場合は初回とする。期限切れの行は、request digest・結果の参照・作成時刻を新しい要求のものへ更新して再利用する。
+1. 一意キーの行がない、または期限切れ（DBの `transaction_timestamp()` が `expires_at` 以後）の場合は初回とする。期限切れの行は、request digest・結果の参照・作成時刻を新しい要求のものへ更新して再利用する。
 2. 期限内で、request digestが一致する場合はreplayとし、Domain Business Causeから既存結果へ収束する（§52）。新しいBusiness Causeを作らない。同じBusiness Causeについて、元の要求の未完了の部分を既存の回復手順（§29手順7、§48.5）で続けることは許される。
 3. 期限内で、request digestが一致しない場合は `409 IDEMPOTENCY_KEY_REUSED` とし、Domain stateを変更しない。
 
@@ -2375,7 +2375,7 @@ resolveConsistencyReviewCase()
 43. Consistency Review resolutionはpost-verificationなしのmark-fixedを提供せず、source historyを削除しない。
 44. `API-ADM-GDS-005` Inventory adjustmentはClientからreason code / free textを受け取らず、serverがfixed `ADMINISTRATIVE_CAPACITY_ADJUSTMENT`を導出し、same-transaction Audit Eventへsigned adjustment quantity / safe before/after counters / resultと共に永続化する（`SPEC-160 §28.1`, `OBS-GDS-002,004,005`）。
 45. 全canonical Operation IDは§56.1でexactly 1つのrate limit classを持つ。`429` は `Retry-After`付きで `RATE_LIMIT_EXCEEDED`、rate limit store判定不能は `503 TEMPORARY_UNAVAILABLE` を返し、どちらもDomain stateを変更しない。
-46. Transport Idempotencyのreplay記録は業務DBの `app.idempotency_records` だけに保存し、業務更新と同じtransactionで書く。応答body・Checkout URL・個人情報・raw keyを保存せず、保持期間は24時間とする（§18.1）。保存の失敗は既存の `503 DATABASE_TEMPORARY_FAILURE`、処理中の同じkeyは新しいerror codeを作らず、`IDEMPOTENCY_KEY_REUSED` または既存結果への収束とする。
+46. Transport Idempotencyのreplay記録は業務DBの `app.idempotency_records` だけに保存し、業務更新と同じtransactionで書く。応答body・Checkout URL・個人情報・raw keyを保存せず、保持期間は24時間とする（§18.1）。DB障害による保存の失敗は既存の `503 DATABASE_TEMPORARY_FAILURE`（一意制約の競合は `API-IDM-009`、その他の制約違反は §50）、処理中の同じkeyは新しいerror codeを作らず、`IDEMPOTENCY_KEY_REUSED` または既存結果への収束とする。
 
 ---
 
@@ -2485,4 +2485,4 @@ retry count / backoff / queue / operator RunbookはSPEC-150。本書§48.5はSPE
   5. **処理中に同じkeyが来たとき:** 記録のUNIQUEで直列化し、先のtransactionのcommit後に、requestのdigestが同じなら既存結果へ収束、違えば `409 IDEMPOTENCY_KEY_REUSED` とする。先がrollbackなら後の要求が初回になる。「処理中」を示す新しいエラーコード・状態は追加しない。
 - 理由: Transport Idempotencyの記録は補助であり、重複防止の本命はDomain側（`API-IDM-001`、`API-IDM-002`、§52）である。記録を業務DBへ同じtransactionで書けば、「業務はcommitしたが記録がない」「記録だけある」という食い違いが生じず、照合が単純である。`SPEC-180` はRedisをrate limit専用のsupporting infrastructureとして永続化なし・限定された保存値に固定しており（`INF-RLS-003`、`INF-RLS-007`）、replay記録の保存先にするには `SPEC-180` と `SPEC-150` §58.1 の変更が要る。24時間は、仕様に値がないため本UCRが決める値であり（利用者の決定）、`SPEC-150 REL-TMO-001` のPayment Deadline 30分・Karaoke Hold 45分の再送窓を超える長さとして選んだ。外部Providerの保証値は根拠にしていない。応答bodyを保存しないのは、Checkout URLを「Customerが遷移するために必要な期間だけ返す」とする §29 と、PIIの二次コピーを増やさない方針（`SEC-PII-013`）に沿うためである。
 - 変更しない場合の影響: 実装者が保存先・保持期間・保存項目を推測で決め、仕様と乖離する（Redis流用による `SPEC-180` との矛盾、応答bodyの保存によるCheckout URL・個人情報の複製など）。`Idempotency-Key` 必須Operationの「同じkeyの別内容は `409`」を実装・試験できない。
-- 影響を受ける可能性がある仕様書: SPEC-100, SPEC-170（SPEC-160 §11、SPEC-200、SPEC-140、SPEC-150、SPEC-180 は、読んだ結果、変更不要と判断した。SPEC-160 `OBS-COR-005`・`OBS-COR-006` と整合し、SPEC-200 は `ACC-GEN-004` により追加のUCRのstatusをOwner本文で確認する）
+- 影響を受ける可能性がある仕様書: SPEC-100, SPEC-170（SPEC-120 §36.1、SPEC-160 §11、SPEC-200、SPEC-140、SPEC-150、SPEC-180 は、読んだ結果、変更不要と判断した。SPEC-160 `OBS-COR-005`・`OBS-COR-006` と整合し、SPEC-200 は `ACC-GEN-004` により追加のUCRのstatusをOwner本文で確認する）
