@@ -143,6 +143,7 @@ related_specs:
 | `INF-VCL-*` | Cloudflare Pages |
 | `INF-RWY-*` | Railway |
 | `INF-RLS-*` | Rate limit store |
+| `INF-SEED-*` | Initial data seeding |
 | `INF-DB-*` | Neon PostgreSQL / migration |
 | `INF-AUTH-*` | Neon Auth infrastructure |
 | `INF-SEC-*` | Secret / key / infrastructure access |
@@ -555,7 +556,7 @@ auth_directory_owner       NOLOGIN, owns restricted identity_directory view only
 app_api_runtime            LOGIN, API scoped
 app_email_runtime          LOGIN, Email scoped
 app_reconciliation_runtime LOGIN, reconciliation scoped
-app_migrator               LOGIN, DDL / GRANT / extension
+app_migrator               LOGIN, DDL / GRANT / extension（加えて、INF-SEED-003 の初期データ投入に限るINSERT）
 app_incident_reader         LOGIN or temporary LOGIN, read-only business incident scope
 app_audit_reader            LOGIN or temporary LOGIN, audit-only read
 app_audit_maintenance_owner NOLOGIN, owns fixed audit purge function only
@@ -648,7 +649,7 @@ Migrationは1 Environmentにつき同時1件とする。
 SELECT pg_advisory_lock(hashtext('r39x:schema-migration'));
 ```
 
-専用single connectionで取得し、migration終了時にreleaseする。lock取得上限は60秒とし、取得不能ならdeploymentを失敗させる。
+専用single connectionで取得し、migration終了時にreleaseする。初期データの投入（§45.3）はmigration jobの一部であり、lockは投入の完了後にreleaseする。lock取得上限は60秒とし、取得不能ならdeploymentを失敗させる。
 
 **INF-DB-008:** migration lock待ちを理由に複数migration processを並行実行しない。
 
@@ -1111,13 +1112,13 @@ preview検査は本番data / Sessionを使用しない。Production API / Auth�
 
 **INF-SEED-001:** 初期データは、専用の運用コマンド（`packages/db` のCLI。名称・引数は実装のWork Planが決める）だけが投入する。migration、Business API、Browser、runtime principal（`app_api_runtime` を含む）、手作業のSQLでは投入しない。
 
-**INF-SEED-002:** 入力は、環境ごと（stagingとproduction）のGitHub protected Environment Secretに置き、migration jobだけが読む（§26）。値はSecretではないが公開前の情報であるため、source、test fixture、log、artifact、release evidence、Pull Requestへ出さない（`INF-SEC-001`）。リポジトリに置くのは、合成値（架空の名称、予約済みdomain）の見本だけとする。stagingとdevelopment・testは合成値だけを使い、Productionの入力はproject-ownerが準備してstagingと共有しない（`INF-SEC-002`、§18 の非本番はsynthetic dataとする規則）。入力が作成に必要になるのは、`SPEC-100 §13.5` の条件で作成する行があるときだけである。
+**INF-SEED-002:** 入力は、環境ごと（stagingとproduction）のGitHub protected Environment Secretに置き、migration jobだけが読む（§26）。値はSecretではないが公開前の情報であるため、source、test fixture、log、artifact、release evidence、Pull Requestへ出さない（`INF-SEC-001`）。リポジトリに置くのは、合成値（架空の名称、予約済みdomain）の見本だけとする。stagingとdevelopment・testは合成値だけを使い、Productionの入力はproject-ownerが準備してstagingと共有しない（`INF-SEC-002`、§18 の非本番はsynthetic dataとする規則）。入力を読み、検証するのは、`SPEC-100 §13.5` の条件で作成する行があるときだけとする（`INF-SEED-004`）。
 
-**INF-SEED-003:** コマンドはmigration jobの一部として、migration lock（§24）の取得中に、`app_migrator` で実行する。schema readiness checkの後、API deployの前に置く（§45.1、§45.2）。API・workerへmigration credentialを置かず（`INF-DB-006`）、新しいDB roleを追加しない。コマンドは対象の2表と `app.audit_events` へのINSERT、および `SPEC-100 §13.5` の判定に必要なSELECTだけを発行し、それ以外のDML・DDL・GRANTを発行しない。Productionの実行は、migrationと同じprotected Environmentのproject-owner承認に含まれ、別の承認や、break-glass（§70）の手順を要求しない。
+**INF-SEED-003:** コマンドはmigration jobの一部として、migration lock（§24）を保持したまま、`app_migrator` で実行する。schema readiness checkの後、API deployの前に置く（§45.1、§45.2）。API・workerへmigration credentialを置かず（`INF-DB-006`）、新しいDB roleを追加しない。コマンドは `SPEC-100 §13.5` の対象表と `app.audit_events` へのINSERT、および `SPEC-100 §13.5` の判定に必要なSELECTだけを発行し、それ以外のDML・DDL・GRANTを発行しない。Productionの実行は、migrationと同じprotected Environmentのproject-owner承認に含まれ、別の承認や、break-glass（§70）の手順を要求しない。
 
-**INF-SEED-004:** コマンドは毎回のdeployで実行してよい。結果は `CREATED`（1行以上を作成）、`NOOP`（作成する行がない）、`FAILED` のいずれかとする。`FAILED` はmigration failureと同じく、deploymentを停止し、API・workerをdeployしない（§47、`INF-DEP-005`）。投入は1つのtransactionであり、失敗してもDBへ部分的な行を残さない。原因を直した後は、同じ手順を再実行できる。
+**INF-SEED-004:** コマンドは、毎回のdeployで実行しなければならない。判定の順序は、(1) `SPEC-100 §13.5` のlockを取得、(2) 対象の件数を判定、(3) 作成する行があるときだけ入力を読んで検証する、とする。作成する行がなければ入力を読まず、入力が未設定または不正でも `NOOP` とする。作成する行があるのに入力が未設定または不正なときは `FAILED` とする。結果は `CREATED`（1行以上を作成）、`NOOP`（作成する行がない）、`FAILED` のいずれかとする。`FAILED` はmigration failureと同じく、deploymentを停止し、API・workerをdeployしない（§47、`INF-DEP-005`）。投入は1つのtransactionであり、失敗してもDBへ部分的な行を残さない。原因を直した後は、同じ手順を再実行できる。
 
-**INF-SEED-005:** コマンドのlogとrelease evidenceへ出すのは、結果の区分、作成した行の `public_ref`、件数、Audit Event IDだけとする。入力の値とDB connection stringは出力しない（`INF-SEC-001`）。release evidence（§76）に結果の区分・`public_ref`・件数・実行identityを記録する。
+**INF-SEED-005:** コマンドのlogとrelease evidence（§76）へ出すのは、結果の区分、作成した行の `public_ref`、件数、実行identity、Audit Event IDだけとする。入力の値とDB connection stringは出力しない（`INF-SEC-001`）。
 
 **INF-SEED-006:** 初期データは、API deployの前に投入する。公開API（`API-PUB-001`、`API-PUB-005`）が、行のない状態で配信される期間を作らない。初期データの不足を、空の応答の許容や、APIの起動時の自動作成で補わない。
 
@@ -1348,7 +1349,7 @@ Railway `alert-canary` Cronを5分ごとに実行する。
 
 `app.audit_events` はBusiness Database内append-only recordとして維持する。
 
-**INF-AUD-001:** API / worker runtimeはrequired Audit EventのINSERTだけを行い、UPDATE / DELETE権限を持たない。
+**INF-AUD-001:** API / worker runtimeはrequired Audit EventのINSERTだけを行い、UPDATE / DELETE権限を持たない。`app_migrator` は初期データの投入（`INF-SEED-003`、`OBS-AUD-014`）に限り、required Audit EventのINSERTだけを行い、UPDATE / DELETEを発行しない。
 
 **INF-AUD-002:** ordinary Administrator / StaffはDB credential / SQL console / Better Stackを通じてfull Audit datasetへ直接アクセスしない。
 
@@ -1709,7 +1710,7 @@ staging deployment IDs
 staging readiness/smoke result
 provider contract smoke result
 migration set hash
-initial data seeding result（区分、public_ref、件数、実行identity。値を含めない。INF-SEED-005）
+initial data seeding result（区分、public_ref、件数、実行identity、Audit Event ID。値を含めない。INF-SEED-005）
 production backup freshness check
 production config drift check
 approval actor ref
