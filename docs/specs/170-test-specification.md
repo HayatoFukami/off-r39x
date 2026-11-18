@@ -750,11 +750,11 @@ API-ADM-EML-001..005
 
 全canonical routeは上記Operation ID manifestでTestする。method / pathの文字列fallbackは使用しない。
 
-Release Manifestの `mounted_operation_ids`（`SPEC-180 §44`）に含まれるOperationは、上記のとおり100% contract caseを持つ。含まれないOperation（`SPEC-200` §7.5のUnmounted Operation）は、`ACC-GEN-029` の `404 RESOURCE_NOT_FOUND` caseを1件以上持つ（`TST-COV-004`）。
+Release Manifestの `mounted_operation_ids`（`SPEC-180 §44`）に含まれるOperationは、上記のとおり100% contract caseを持つ。含まれないOperation（`SPEC-200` §7.5のUnmounted Operation）は、`ACC-GEN-029` の404 / 405 caseを1件以上持つ（`TST-COV-004`）。必須のOperation family Testの選択は `TST-COV-005` による。
 
 ## 27.1 Newly canonical operation family coverage
 
-次のoperation familyは、それぞれの `SPEC-110` / `SPEC-120` / `SPEC-130` contractに対して、下表のTest assertionを必須とする。API / schema / behaviorの定義はSPEC-170では行わない。
+次のoperation familyは、それぞれの `SPEC-110` / `SPEC-120` / `SPEC-130` contractに対して、下表のTest assertionを必須とする。Unmounted Operationを前提とするassertionの扱いは `TST-COV-005` による。API / schema / behaviorの定義はSPEC-170では行わない。
 
 | Family | Operation IDs | Required Test assertions |
 |---|---|---|
@@ -1747,6 +1747,8 @@ E2EはPlaywright-compatible browser automation contractを使用し、production
 
 ## 66. Mandatory journeys
 
+Unmounted Operationを前提とするjourneyの扱いは `TST-COV-005` による。
+
 - signup/login gate
 - email verification gate state
 - Entry purchase start -> controlled Stripe boundary -> pending -> confirmed
@@ -1929,7 +1931,7 @@ Generated type declarations、migration SQL、pure config manifestはline covera
 - `INV-010-01〜10`: 各1件以上Critical Test、§64のminimum case全部。
 - Current Canonical `DI-030-*` 全件（`DI-030-013`を含む）: 各1件以上。番号範囲を上限にしない。
 - critical `BR-*`: state/invariant groupごとにpositive + negative。
-- Current API Operation ID: `mounted_operation_ids` に含まれるOperation IDは100% contract case、含まれないOperation IDは `ACC-GEN-029` の404 case（`TST-COV-004`）。
+- Current API Operation ID: `mounted_operation_ids` に含まれるOperation IDは100% contract case、含まれないOperation IDは `ACC-GEN-029` の404 / 405 case（`TST-COV-004`）。
 - API mutation: 100% auth + validation + current-state test。
 - critical API mutation: 100% idempotency / response-loss test。
 - SPEC-100 critical named constraints: 100% real PostgreSQL Test。
@@ -1943,7 +1945,9 @@ Generated type declarations、migration SQL、pure config manifestはline covera
 
 **TST-COV-003:** Current DI集合はSPEC-030本文のInvariant定義から取得し、test manifest／Acceptanceとのjoinに欠落があれば不合格とする。新DI追加時も既存の固定番号範囲を根拠に除外しない。`DI-030-013` は `TC-API-004-001〜004` のreal PostgreSQL／Fault／並行性Evidenceで直接証明する。実装未完了や未実行をPassに変換しない。
 
-**TST-COV-004:** Operation単位の網羅では、Unmounted Operationのcontract caseを `ACC-GEN-029` の404 caseに置き換える。置き換えには `ACC-GEN-029` のEvidenceがあればよく、`ACC-GEN-030` のEvidenceは要らない。mountしたOperationの分岐を分母から外せるのは、`SPEC-200` `ACC-GEN-031` (a) が認める到達できない分岐だけである。その場合も、既存のfail-closedの規則のcaseと、`INV-010-*` の§64.1の最小Test Caseは外さない（`TST-TRC-003`）。
+**TST-COV-004:** Operation単位の網羅では、Unmounted Operationのcontract caseを `ACC-GEN-029` の404 / 405 caseに置き換える。置き換えには `ACC-GEN-029` のEvidenceがあればよく、`ACC-GEN-030` のEvidenceは要らない。mountしたOperationの分岐を分母から外せるのは、`SPEC-200` `ACC-GEN-031` (a) が認める到達できない分岐だけである。その場合も、既存のfail-closedの規則のcaseと、`INV-010-*` の§64.1の最小Test Caseは外さない（`TST-TRC-003`）。
+
+**TST-COV-005:** §27.1、§27.2、§66、§77 のUnmounted Operationを前提とする必須case（Operation familyのTest assertion、Mandatory journey、§77の項目）は、Release Manifestの `mounted_operation_ids` と、`SPEC-200` `ACC-GEN-030` で `NOT_APPLICABLE` とした条項によってreleaseごとに選択する。必須caseから外せるのは、`ACC-GEN-030` の (1)〜(4) のEvidenceがある条項のcaseだけである。外したcaseと外した条項は、Acceptance Manifestに条項ごとに記録する。Unmounted Operationそのもののcaseは `ACC-GEN-029` の404 / 405 caseに置き換える。外していないrequired caseは、G4 / G8 gateの要求として維持する。`INV-010-*` の§64.1の最小Test Caseと、既存のfail-closedの規則のcaseは外さない（`TST-TRC-003`）。
 
 ---
 
@@ -1991,7 +1995,7 @@ Generated type declarations、migration SQL、pure config manifestはline covera
 
 ## 77. SPEC-170 acceptance
 
-SPEC-170に準拠したTest implementationは、少なくとも次をすべて満たさなければならない。
+SPEC-170に準拠したTest implementationは、少なくとも次をすべて満たさなければならない。Unmounted Operationを前提とする項目の扱いは `TST-COV-005` による。
 
 1. `INV-010-01〜10`全てがCritical Testへtraceされる。
 2. Current Canonical `DI-030-*` 全件がTest manifestとAcceptanceへtraceされ、§27.2の複合Order／Logo／Profile／eligibility／通知Caseも個別に接続される。
@@ -2082,7 +2086,7 @@ Canonical化済みoperationは §27.1／§27.2 のoperation-family Test対象と
 
 - **Status:** `INCORPORATED`（`SPEC-200 §48`、`SPEC-180 §44`）
 - **Canonical evidence:** `SPEC-180 §44` のRelease Manifestの `mounted_operation_ids`、`SPEC-200 §7.5` の `ACC-GEN-029〜031`。
-- **本書側反映:** §27、§74、`TST-COV-004`。
+- **本書側反映:** §27、§27.1、§66、§74、§77、`TST-COV-004`、`TST-COV-005`。
 - **残作業:** なし。
 
 ---

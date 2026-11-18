@@ -1062,7 +1062,7 @@ Webのoutput hash / 公開設定hash / Pages project ID / preview deployment ID 
 
 **INF-DEP-002:** Production deploy時に`latest` tagだけを参照しない。digest / immutable deployment IDをrelease evidenceへ保存する。
 
-`mounted_operation_ids` は、当該releaseのHono route registry（`SPEC-110` `API-RLC-001`）に登録した `SPEC-110` のcanonical Operation IDの昇順の配列である。`SPEC-110` のOperationのうちこの配列に含まれないものは、当該releaseではmountされない（登録されない）。mountされないOperationのmethod / pathは、どのrouteにも一致しないpathとして `404 RESOURCE_NOT_FOUND` を返す（`SPEC-110 §21`）。`SPEC-200 §7.5` は、この配列をAcceptanceのOperation集合として参照する（`UCR-RELSCOPE-001`）。
+`mounted_operation_ids` は、当該releaseのHono route registry（`SPEC-110` `API-RLC-001`）に登録した `SPEC-110` のcanonical Operation IDの昇順の配列である。`SPEC-110` のOperationのうちこの配列に含まれないものは、当該releaseではmountされない（登録されない）。mountされないOperationのmethod / pathへのRequestは、`SPEC-110 §21` に従い、そのpath全体がmountされていなければ `404 RESOURCE_NOT_FOUND`、同じpathに別のmethodがmountされていれば `405 METHOD_NOT_ALLOWED`（`Allow` header付き）を返す。`SPEC-200 §7.5` は、この配列をAcceptanceのOperation集合として参照する（`UCR-RELSCOPE-001`）。
 
 **INF-DEP-006:** `mounted_operation_ids` はbuild時にroute registryから機械的に生成し、手で編集しない。実際に登録したrouteと一致しない場合、またはstagingとProductionで値が異なる場合は、同一releaseのidentity不一致として扱い、Production promotionしない。この配列は実装範囲の記録であり、`SPEC-110` のOperationをCanonicalから外すものではない。
 
