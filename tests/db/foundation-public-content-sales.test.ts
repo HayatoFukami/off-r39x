@@ -2162,6 +2162,17 @@ describe("TC-SEC-DB-001-001 runtime privileges on the eight tables (real Postgre
     it("TC-SEC-DB-001-001 app_email_runtime and app_reconciliation_runtime are refused SELECT, INSERT, UPDATE and DELETE on all eight tables with 42501", async () => {
       const before = await snapshot();
       const eventId = seeded.event as string;
+      const goodsId = (await admin.query("SELECT id FROM app.goods LIMIT 1")).rows[0].id as string;
+      const inserts: [string, Row][] = [
+        ["events", eventRow()],
+        ["faq_items", faqRow(eventId)],
+        ["announcements", announcementRow(eventId)],
+        ["sponsor_logos", sponsorRow(eventId)],
+        ["entry_ticket_offerings", entryRow(eventId)],
+        ["karaoke_sales_configurations", karaokeRow(eventId)],
+        ["goods", goodsRow(eventId)],
+        ["goods_inventory", inventoryRow(goodsId)],
+      ];
       for (const role of ["app_email_runtime", "app_reconciliation_runtime"] as const) {
         const pool = poolOf(role);
         for (const table of TABLES) {
@@ -2175,13 +2186,13 @@ describe("TC-SEC-DB-001-001 runtime privileges on the eight tables (real Postgre
             });
           }
         }
-        const [insertText, insertValues] = insertStatement("faq_items", faqRow(eventId));
-        await expect(
-          pool.query(insertText, insertValues),
-          `${role} faq INSERT`,
-        ).rejects.toMatchObject({
-          code: "42501",
-        });
+        for (const [table, row] of inserts) {
+          const [insertText, insertValues] = insertStatement(table, row);
+          await expect(
+            pool.query(insertText, insertValues),
+            `${role} ${table} INSERT`,
+          ).rejects.toMatchObject({ code: "42501" });
+        }
       }
       expect(await snapshot()).toEqual(before);
     });

@@ -2873,8 +2873,18 @@
     },
     {
       "rule_id": "DB-ARC-007",
-      "code_paths": ["packages/db/src/schema", "packages/db/migrations/0001_foundation.sql"],
-      "test_case_ids": ["TC-DB-FOUNDATION-001", "TC-DB-FOUNDATION-009", "TC-DB-ARC-007-001"],
+      "code_paths": [
+        "packages/db/src/schema",
+        "packages/db/migrations/0001_foundation.sql",
+        "packages/db/migrations/0003_public_content_sales.sql"
+      ],
+      "test_case_ids": [
+        "TC-DB-FOUNDATION-001",
+        "TC-DB-FOUNDATION-009",
+        "TC-DB-ARC-007-001",
+        "TC-DB-ARC-007-003",
+        "TC-DB-ARC-007-004"
+      ],
       "notes": "Explicit named constraints and lossless bigint schema"
     },
     {
