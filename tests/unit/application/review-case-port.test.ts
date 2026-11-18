@@ -469,6 +469,19 @@ describe("TC-REVIEW-PORT-004 ReviewCaseOpenInput expresses the target constraint
     expect([ok, bad]).toHaveLength(2);
   });
 
+  it("rejects an EML_* target variable that mixes an allowed and a forbidden key", () => {
+    // A variable, not a literal: excess property checks do not apply, so the type itself must
+    // forbid the other target keys.
+    const mixed = { orderId: 1n as OrderId, paymentBindingId: 3n as PaymentBindingId };
+    const input: ReviewCaseOpenInput = {
+      reasonCode: "EML_RENDER_CONTEXT_INVALID",
+      // @ts-expect-error SPEC-120 §43.1: a forbidden target next to an allowed one is still refused
+      targets: mixed,
+      details,
+    };
+    expect(input.reasonCode).toBe("EML_RENDER_CONTEXT_INVALID");
+  });
+
   it("keeps the schema output assignable to the public type", () => {
     const parsed = reviewCaseOpenInputSchema.parse(openInput());
     expectTypeOf(parsed).toEqualTypeOf<ReviewCaseOpenInput>();
