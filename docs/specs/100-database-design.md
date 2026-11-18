@@ -1656,23 +1656,25 @@ Columns:
 - `result_ref_type text NULL`
 - `result_ref uuid NULL`（結果を再構成するためのPublic Reference。結果が単一のresourceに対応しないOperationではNULLとし、既存結果はDomain Business Causeから導く）
 - `created_at timestamptz NOT NULL DEFAULT transaction_timestamp()`
-- `expires_at timestamptz GENERATED ALWAYS AS (created_at + interval '24 hours') STORED`
+- `expires_at timestamptz NOT NULL DEFAULT transaction_timestamp() + interval '24 hours'`
 
 Constraints / index:
 
 ```text
 ux_idempotency_records_principal_operation_key UNIQUE(principal_profile_id, operation_id, key_digest)
+ck_idempotency_records_expiry CHECK (expires_at = created_at + interval '24 hours')
+ck_idempotency_records_result_ref CHECK ((result_ref_type IS NULL) = (result_ref IS NULL))
 ```
 
-lookupはこのUNIQUE indexが担い、追加のindexを作らない。`result_ref_type` / `result_ref` は両方NULLまたは両方non-nullとする（CHECK）。
+lookupはこのUNIQUE indexが担い、追加のindexを作らない。`expires_at` はgenerated columnにせず、既定値とCHECKで固定する（`created_at` と同じ `transaction_timestamp()` から求め、Clientが任意の `expires_at` をINSERT / UPDATEできない）。`result_ref_type` / `result_ref` は、INSERTの時点では結果の行がまだないためNULLでよく、同じtransactionの中で結果の行を作った後に `UPDATE` で設定してよい。
 
 **DB-IDM-001:** raw `Idempotency-Key`、応答body、Checkout URL、Stripe Session ID、Email等の個人情報、QR tokenをこの表に保存しない。保存するのはdigest、結果の参照、時刻だけである（`SPEC-110` `API-IDM-005`、`API-IDM-007`）。
 
-**DB-IDM-002:** 行のINSERTは、`Idempotency-Key` を受けるOperationの最初のDB transactionの中で、§47のlock順序に従う位置に置く。Business Profileを `FOR UPDATE` するOperationでは、そのlockの**後**にINSERTする（FKのkey share lockが先に取られると、同じProfileへ `FOR UPDATE` する別transactionと逆順になるため）。Profileをlockしないadmin等のOperationでは、他の業務rowのlockより前にINSERTする。同じ一意キーのINSERTが競合した場合は、先のtransactionの終了後に既存行を読み直し、`SPEC-110` `API-IDM-006` で判定する（`23505` はknown idempotent duplicateとして分類する。§46）。外部呼出しを伴うOperationでは、外部呼出しの前のtransactionで書き、後のtransactionでは書かない（`DB-TXN-003`）。
+**DB-IDM-002:** 行のINSERTは、そのOperationで業務更新を最初にcommitするtransaction（`SPEC-110` `API-IDM-004`）の中で、§47のlock順序に従う位置に置く。Business Profileを `FOR UPDATE` するOperationでは、そのlockの**後**にINSERTする（先にINSERTすると、FKの検査が親のProfile rowへ `FOR KEY SHARE` を取り、同じProfileについて2つのtransactionがそれぞれKEY SHAREを取った後に `FOR UPDATE` へ引き上げようとして互いに待つdeadlockになりうるため）。Profileをlockしないadmin等のOperationでは、他の業務rowのlockより前にINSERTする。同じ一意キーのINSERTが競合した場合は、先のtransactionの終了後に既存行を読み直し、`SPEC-110` `API-IDM-006` で判定する（`23505` はknown idempotent duplicateとして分類する。§46）。外部呼出しの後のtransactionでは書かない（`DB-TXN-003`）。
 
-**DB-IDM-003:** 保持期間は `created_at` から24時間（`expires_at`）とする。期限切れの行は存在しないものとして扱い、同じ一意キーの再利用は、条件付き（`expires_at` 以後）の `UPDATE` で `request_digest`、`result_ref_type`、`result_ref`、`created_at` を更新する。Business APIは行をDELETEせず、purgeの関数・job・roleも定義しない（`app_api_runtime` に `DELETE` を与えない。`SPEC-180 §22.2`）。この表は§12の業務履歴ではないが、同じ理由でBusiness APIは `DELETE` を発行しない。
+**DB-IDM-003:** 保持期間は `created_at` から24時間（`expires_at`）とする。期限切れの行は存在しないものとして扱い、同じ一意キーの再利用は、条件付き（`expires_at` 以後）の `UPDATE` で `request_digest`、`result_ref_type`、`result_ref`、`created_at`、`expires_at` を更新する。Business APIは行をDELETEせず、purgeの関数・job・roleも定義しない（`app_api_runtime` に `DELETE` を与えない。`SPEC-180 §22.2`）。この表は§12の業務履歴ではなく、業務DBのsupport tableである。保存するのはdigestと結果の参照だけで、個人情報・応答body・Checkout URLを含まないため、`SPEC-140` `SEC-PII-013` の「二次copyを増やさない」対象のtemporary artifact / support exportには当たらない。同じ理由でBusiness APIは `DELETE` を発行しない。
 
-Trace: `API-IDM-001〜010`, `TST-IDM-003〜`, `INV-010-10`.
+Trace: `API-IDM-001〜010`, `TST-IDM-003〜008`, `INV-010-10`.
 
 ## 44. Audit persistence boundary
 

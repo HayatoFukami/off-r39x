@@ -408,7 +408,7 @@ Transport idempotencyのreplay記録（以下「記録」）は、業務DBの `a
 
 **API-IDM-003:** 記録を作る対象は、§18の「対象」一覧のOperationのうち、`Idempotency-Key` を受けて処理するものとする。Check-inはHeaderを受けても記録を作らない（Ticket consume-onceがCanonicalである。`SPEC-150` `REL-RTY-013`）。Headerを必要としない参照Operation（bulk eligibilityなど）は記録を作らない（`SPEC-140` `SEC-API-029`）。
 
-**API-IDM-004:** 記録は、Operationの最初のDB transactionで、`SPEC-100 §43.1` `DB-IDM-002` の位置にINSERTし、業務更新と同じcommitで確定する。Stripe等の外部呼出しを伴うOperationは、外部呼出しの前のtransaction（transaction A）で書き、外部呼出しの後のtransactionでは書かない。INSERTが失敗した場合はそのtransaction全体をrollbackし、既存の `503 DATABASE_TEMPORARY_FAILURE`（§21、§51）を返す。新しいerror code・stateを追加しない。
+**API-IDM-004:** 記録は、そのOperationで業務更新を**最初にcommitするtransaction**の中で、`SPEC-100 §43.1` `DB-IDM-002` の位置にINSERTし、業務更新と同じcommitで確定する。外部呼出しの前に業務commitを持つOperation（購入開始、`API-CHK-001`、Refund requestなど）ではそのtransaction（transaction A）、外部のlookupを先に行うOperation（§48.5の照合Operationなど）ではlookup後の保存transactionとする。外部呼出しの後のtransactionで重ねて書かない。lookupの結果が不明でmutationをしなかった場合は記録が残らず、同じkeyの再試行で照合を続けられる。INSERTが失敗した場合はそのtransaction全体をrollbackする。失敗がDB障害、またはretry上限を使い切ったretryable error（§50、§51）なら既存の `503 DATABASE_TEMPORARY_FAILURE`（§21）を返す。一意制約の競合（`23505`）は `API-IDM-009` と `DB-IDM-002` に従い、その他の制約違反は §50 に従う。新しいerror code・stateを追加しない。
 
 **API-IDM-005:** 記録の一意キーは `(Principal の Business Profile, Operation ID, key digest)` とする。
 
@@ -419,16 +419,16 @@ Transport idempotencyのreplay記録（以下「記録」）は、業務DBの `a
 **API-IDM-006:** 記録の判定は次のとおりとする。
 
 1. 一意キーの行がない、または期限切れ（現在時刻が `expires_at` 以後）の場合は初回とする。期限切れの行は、request digest・結果の参照・作成時刻を新しい要求のものへ更新して再利用する。
-2. 期限内で、request digestが一致する場合はreplayとし、Domain Business Causeから既存結果へ収束する（§52）。新しい業務effectを作らない。
+2. 期限内で、request digestが一致する場合はreplayとし、Domain Business Causeから既存結果へ収束する（§52）。新しいBusiness Causeを作らない。同じBusiness Causeについて、元の要求の未完了の部分を既存の回復手順（§29手順7、§48.5）で続けることは許される。
 3. 期限内で、request digestが一致しない場合は `409 IDEMPOTENCY_KEY_REUSED` とし、Domain stateを変更しない。
 
-**API-IDM-007:** 記録には、結果を再構成するための参照（種別とPublic Reference）だけを保存する。応答body、Checkout URL、Stripe Session ID、個人情報、Email、QRを保存しない。replayの応答は、そのOperationが定めるreplay用のHTTP status（例: 新規 `201`、replay `200`）とし、**現在の状態から作り直した通常の成功response**とする。現在の状態から成功responseを構成できない場合（対象が既に終端状態であるなど）は、そのOperationの既存のprecondition / state conflictの規則に従い、記録が存在することだけを理由に過去の成功を返さない。
+**API-IDM-007:** 記録には、結果を再構成するための参照（種別とPublic Reference）だけを保存する。応答body、Checkout URL、Stripe Session ID、個人情報、Email、QRを保存しない。replayの応答は、そのOperationが定めるreplay用のHTTP status（例: 新規 `201`、replay `200`）とし、**現在の状態から作り直した通常の成功response**とする。replay時の結果は各Operationの既存のreplay規則（§29手順2、§30、§46、§48、§48.5など）を優先し、記録が存在することを理由にその規則を上書きしない。
 
 **API-IDM-008:** 記録の保持期間は作成時刻から24時間とする。期限後の記録は存在しないものとして扱う（`API-IDM-006` 1）。期限切れの行の物理削除（purgeの関数・job・role）は定義しない。
 
-**API-IDM-009:** 同じ一意キーの要求が同時に来た場合は、記録のUNIQUEで直列化する。後の要求は先のtransactionの終了を待ち、先がcommitなら `API-IDM-006` の2または3、rollbackなら初回として処理する。「処理中」を示す新しいHTTP status・error code・stateを追加しない。待ちは `lock_timeout` の範囲とし、超過した場合は §50 の `55P03` の既存分類に従う。
+**API-IDM-009:** 同じ一意キーの要求が同時に来た場合は、記録のUNIQUEで直列化する。後の要求は先のtransactionの終了を待ち、先がcommitなら `API-IDM-006` の2または3、rollbackなら初回として処理する。期限切れの行を同時に再利用する場合は、UNIQUEではなくrow lockで直列化され、負けた側の条件付きUPDATEが0行になる。その場合は行を読み直し、`API-IDM-006` の2または3で判定する。「処理中」を示す新しいHTTP status・error code・stateを追加しない。待ちは `lock_timeout` の範囲とし、超過した場合は §50 の `55P03` の既存分類に従う。
 
-**API-IDM-010:** 記録が期限切れ・喪失・未作成であっても、Domain Business Cause / DB unique relationが重複を防ぐ（`API-IDM-001`）。このとき「同じkeyの別内容は `409`」は保証されない（本節の記録は補助である）。
+**API-IDM-010:** 記録が期限切れ・喪失・未作成であっても、同一Domain Business Causeのcritical duplicateはDomain Business Cause / DB unique relationが防ぐ（`API-IDM-001`、`SPEC-170 §28` 項目3）。Domain側に同一Business Causeの一意性がないOperation（§52で「transport key + normalized request」を主とするもの）では、別のkeyの再送は別の要求になりうる。このとき「同じkeyの別内容は `409`」は保証されない（本節の記録は補助である）。
 
 ## 19. Common success envelope
 
@@ -2474,15 +2474,15 @@ retry count / backoff / queue / operator RunbookはSPEC-150。本書§48.5はSPE
 
 ### UCR-110-003 — INCORPORATED
 
-- **Status:** `INCORPORATED`。要求1〜5は、本改訂（v2.4.0）で §18.1（`API-IDM-003`〜`API-IDM-010`）と §52、§51、Acceptance 46、`SPEC-100` v2.3.0 の §43.1（`DB-IDM-001`〜`DB-IDM-003`）へ反映した。現在の契約は本文を正とし、以下の要求はその経緯の記録である。新しいerror code・state・Capability・Operationは追加していない。要求のうち「purgeの関数・job・roleは追加しない」は、期限切れの行が表に残ることを意味する（件数は小さい。増加が問題になれば別のUCRで扱う）
+- **Status:** `INCORPORATED`。要求1〜5は、本改訂（v2.4.0）で §18.1（`API-IDM-003`〜`API-IDM-010`）、§51、§52、Acceptance 46、`SPEC-100` v2.3.0 の §43.1（`DB-IDM-001`〜`DB-IDM-003`）と §45.6・§47・§48・§62・§67〜§70、`SPEC-170` v2.4.0 の §28.1（`TST-IDM-004`〜`TST-IDM-008`）・§78へ反映した。現在の契約は本文を正とし、以下の要求はその経緯の記録である。新しいerror code・state・Capability・Operationは追加していない。要求のうち「purgeの関数・job・roleは追加しない」は、期限切れの行が表に残ることを意味する（件数は小さい。増加が問題になれば別のUCRで扱う）
 - 対象: SPEC-110 §18（Transport idempotency input）、§51、§52。`SPEC-100`（Transport Idempotencyのreplay記録の物理設計）、`SPEC-170` §28。
 - 現在の仕様: §18 は、同じPrincipal + Operation ID + normalized request fingerprint + 同じkeyなら同じtransport resultを返してよく、同じkeyで別内容なら `409 IDEMPOTENCY_KEY_REUSED` とする。`API-IDM-001` は、記録が失われてもDomain Business Cause / DB unique relationで重複を防げることを要求し、`SPEC-170` §28 項目5 / `TST-IDM-003` は「idempotency persistence」の障害を試験対象にする。しかし、この記録を**どこに保存するか、何を保存するか、いつまで保持するか、保存に失敗したときと処理中に同じkeyが来たときに何を返すか**は、`SPEC-100`（全表と §48 のtransaction一覧）、`SPEC-110`、`SPEC-140`、`SPEC-150`、`SPEC-160` §11（fingerprintは相関専用で判定に使わない。`OBS-COR-005`）、`SPEC-180`（Redisはrate limit専用で、永続化なし、保存値はHMAC hash済みkeyと時刻だけ。`INF-RLS-003`、`INF-RLS-007`）のいずれにも定義がない。
 - 要求する変更:
-  1. **保存先:** 業務DBの新表 `app.idempotency_records`（`SPEC-100`）とする。業務の最初のcommitと同じtransactionで1行を書き、Redisや業務表ごとの列は使わない。`SPEC-180` の基盤・Secret・runtime roleの権限は変えない。
+  1. **保存先:** 業務DBの新表 `app.idempotency_records`（`SPEC-100`）とする。業務の最初のcommitと同じtransactionで1行を書き、Redisや業務表ごとの列は使わない。`SPEC-180` の基盤・Secret・runtime roleの権限は変えない。記録を作る対象は `Idempotency-Key` を受けて処理するOperationとし、Check-inはHeaderを受けても作らない（Ticket consume-onceがCanonicalである）。
   2. **保存項目:** Principal（Business Profile）、Operation ID、`Idempotency-Key` のdigest、正規化したrequestのdigest、結果を再構成するための参照、作成時刻、期限だけを保存する。raw key、応答body、Checkout URL、Stripe Session ID、個人情報、QRを保存しない。replay時は参照から**現在の状態で応答を作り直す**。
   3. **保持期間と削除:** 作成から24時間とする。期限後は「記録なし」と同じに扱い、同じkeyの再利用は新しい要求として行を上書きする。物理削除（purge）の関数・job・roleは追加しない。
   4. **保存に失敗したとき:** 記録は業務transactionと同じなので全体をrollbackし、既存の `503 DATABASE_TEMPORARY_FAILURE` を返す。記録が期限切れ・喪失している場合は新しい要求として扱い、Domain Business Cause / DB uniqueが重複を防ぐ。新しいエラーコード・状態は追加しない。
   5. **処理中に同じkeyが来たとき:** 記録のUNIQUEで直列化し、先のtransactionのcommit後に、requestのdigestが同じなら既存結果へ収束、違えば `409 IDEMPOTENCY_KEY_REUSED` とする。先がrollbackなら後の要求が初回になる。「処理中」を示す新しいエラーコード・状態は追加しない。
-- 理由: Transport Idempotencyの記録は補助であり、重複防止の本命はDomain側（`API-IDM-001`、`API-IDM-002`、§52）である。記録を業務DBへ同じtransactionで書けば、「業務はcommitしたが記録がない」「記録だけある」という食い違いが生じず、照合が単純である。`SPEC-180` はRedisをrate limit専用のsupporting infrastructureとして永続化なし・限定された保存値に固定しており（`INF-RLS-003`、`INF-RLS-007`）、replay記録の保存先にするには `SPEC-180` と `SPEC-150` §58.1 の変更が要る。応答bodyを保存しないのは、Checkout URLを「Customerが遷移するために必要な期間だけ返す」とする §29 と、PIIの二次コピーを増やさない方針（`SEC-PII-013`）に沿うためである。
+- 理由: Transport Idempotencyの記録は補助であり、重複防止の本命はDomain側（`API-IDM-001`、`API-IDM-002`、§52）である。記録を業務DBへ同じtransactionで書けば、「業務はcommitしたが記録がない」「記録だけある」という食い違いが生じず、照合が単純である。`SPEC-180` はRedisをrate limit専用のsupporting infrastructureとして永続化なし・限定された保存値に固定しており（`INF-RLS-003`、`INF-RLS-007`）、replay記録の保存先にするには `SPEC-180` と `SPEC-150` §58.1 の変更が要る。24時間は、仕様に値がないため本UCRが決める値であり（利用者の決定）、`SPEC-150 REL-TMO-001` のPayment Deadline 30分・Karaoke Hold 45分の再送窓を超える長さとして選んだ。外部Providerの保証値は根拠にしていない。応答bodyを保存しないのは、Checkout URLを「Customerが遷移するために必要な期間だけ返す」とする §29 と、PIIの二次コピーを増やさない方針（`SEC-PII-013`）に沿うためである。
 - 変更しない場合の影響: 実装者が保存先・保持期間・保存項目を推測で決め、仕様と乖離する（Redis流用による `SPEC-180` との矛盾、応答bodyの保存によるCheckout URL・個人情報の複製など）。`Idempotency-Key` 必須Operationの「同じkeyの別内容は `409`」を実装・試験できない。
-- 影響を受ける可能性がある仕様書: SPEC-100, SPEC-170（SPEC-160 §11、SPEC-200 は参照の追随のみ。SPEC-140、SPEC-150、SPEC-180 は変更しない）
+- 影響を受ける可能性がある仕様書: SPEC-100, SPEC-170（SPEC-160 §11、SPEC-200、SPEC-140、SPEC-150、SPEC-180 は、読んだ結果、変更不要と判断した。SPEC-160 `OBS-COR-005`・`OBS-COR-006` と整合し、SPEC-200 は `ACC-GEN-004` により追加のUCRのstatusをOwner本文で確認する）
