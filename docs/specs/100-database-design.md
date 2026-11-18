@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-100
 title: Database Design
-version: 2.2.0
+version: 2.3.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -1642,6 +1642,40 @@ WHERE resolved_at IS NULL;
 
 Trace: `BR-ORD-010`, `PAY-REC-*`, `TQR-REC-*`, `KRK-REC-*`.
 
+## 43.1 `app.idempotency_records`
+
+`SPEC-110 §18.1` のTransport Idempotency replay記録（`UCR-110-003`）を保存するsupport table。Domain上の重複防止のauthorityではなく、補助記録である（`SPEC-110` `API-IDM-001`）。Domain State・Business Causeを追加しない。
+
+Columns:
+
+- `id bigint identity PK`
+- `principal_profile_id bigint NOT NULL FK -> business_profiles(id)`（`ON DELETE RESTRICT`）
+- `operation_id text NOT NULL`（`SPEC-110` のAPI Operation ID）
+- `key_digest bytea NOT NULL CHECK octet_length(key_digest) = 32`（受信した `Idempotency-Key` 値のSHA-256）
+- `request_digest bytea NOT NULL CHECK octet_length(request_digest) = 32`（normalized requestのcanonical表現のSHA-256）
+- `result_ref_type text NULL`（結果の種類。参照の種類とlookupの列を決める）
+- `result_refs uuid[] NOT NULL DEFAULT '{}'`（結果を再特定するための参照の集合。`result_ref_type` ごとに参照の種類とlookupの列を定める。Public Referenceを持つresourceは `public_ref`、Public Referenceを持たないRefund Recordは `refund_records.business_cause_key` とする。結果が複数のresourceに及び、Domain側の関係から元の結果集合を一意に再特定できないOperationでは、元の結果の全resourceの参照を保持する。例: 既存のexact-match Slotを再利用する `API-ADM-KRK-003` は、新規と再利用の全Slotの `public_ref` を保持する。要素数の上限は当該Operationの入力上限に従う）
+- `created_at timestamptz NOT NULL DEFAULT transaction_timestamp()`
+- `expires_at timestamptz NOT NULL DEFAULT transaction_timestamp() + interval '24 hours'`
+
+Constraints / index:
+
+```text
+ux_idempotency_records_principal_operation_key UNIQUE(principal_profile_id, operation_id, key_digest)
+ck_idempotency_records_expiry CHECK (expires_at = created_at + interval '24 hours')
+ck_idempotency_records_result_ref CHECK ((result_ref_type IS NULL) = (cardinality(result_refs) = 0))
+```
+
+lookupはこのUNIQUE indexが担い、追加のindexを作らない。`expires_at` はgenerated columnにせず、既定値とCHECKで固定する（`created_at` と同じ `transaction_timestamp()` から求め、Clientが任意の `expires_at` をINSERT / UPDATEできない）。`result_ref_type` / `result_refs` は、INSERTの時点では結果の行がまだないため未設定（NULLと空配列）でよく、同じtransactionの中で結果の行を作った後に `UPDATE` で設定してよい。
+
+**DB-IDM-001:** raw `Idempotency-Key`、応答body、Checkout URL、Stripe Session ID、Email等の個人情報、QR tokenをこの表に保存しない。保存するのはPrincipal（Business Profile）、Operation ID、digest、結果の参照、時刻だけである（`SPEC-110` `API-IDM-005`、`API-IDM-007`）。
+
+**DB-IDM-002:** 行のINSERTは、そのOperationで業務更新を最初にcommitするtransaction（`SPEC-110` `API-IDM-004`）の中で、§47のlock順序に従う位置に置く。Business Profileを `FOR UPDATE` するOperationでは、そのlockの**後**にINSERTする（先にINSERTすると、FKの検査が親のProfile rowへ `FOR KEY SHARE` を取り、同じProfileについて2つのtransactionがそれぞれKEY SHAREを取った後に `FOR UPDATE` へ引き上げようとして互いに待つdeadlockになりうるため）。Profileをlockしないadmin等のOperationでは、他の業務rowのlockより前にINSERTする。同じ一意キーのINSERTが競合した場合は、先のtransactionの終了後に既存行を読み直し、`SPEC-110` `API-IDM-006` で判定する（`23505` はknown idempotent duplicateとして分類する。§46）。最初の業務commitの後のtransaction（外部呼出しの後のtransaction Bなど）では重ねて書かない（`DB-TXN-003`）。
+
+**DB-IDM-003:** 保持期間は `created_at` から24時間（`expires_at`）とする。期限切れの行は存在しないものとして扱い、同じ一意キーの再利用は、条件付き（`expires_at` 以後）の `UPDATE` で `request_digest`、`result_ref_type`、`result_refs`、`created_at`、`expires_at` を更新する（`created_at` は `transaction_timestamp()`、`expires_at` はそれに24時間を足した値）。Business APIは行をDELETEせず、purgeの関数・job・roleも定義しない（`app_api_runtime` に `DELETE` を与えない。`SPEC-180 §22.2`）。この表は§12の業務履歴ではなく、業務DBのsupport tableである。保存するのはPrincipal（Business Profile）、Operation ID、digest、結果の参照、時刻だけで、個人情報・応答body・Checkout URLを含まないため、`SPEC-140` `SEC-PII-013` の「二次copyを増やさない」対象のtemporary artifact / support exportには当たらない。同じ理由でBusiness APIは `DELETE` を発行しない。
+
+Trace: `API-IDM-001〜010`, `TST-IDM-003〜008`, `INV-010-10`.
+
 ## 44. Audit persistence boundary
 
 SPEC-160のAudit Event taxonomyを本書で先取りしないため、generic audit tableは**SPEC-100では作成しない**。
@@ -1721,6 +1755,7 @@ PK / UNIQUE constraintにより自動生成されるindexは重複して追加�
 - `ix_goods_handoffs_pending(created_at) WHERE state='PENDING'`
 - `ix_notification_requests_pending(created_at) WHERE state IN ('PENDING','FAILED_RETRYABLE')`
 - `ix_consistency_review_cases_unresolved`
+- `ux_idempotency_records_principal_operation_key`（UNIQUEで足りるため、追加のindexは作らない。§43.1）
 
 ### 45.7 Admin Order search
 
@@ -1785,7 +1820,7 @@ Order -> Allocation/Hold -> Capacity/Inventory/Slot -> Entitlement
 
 とする。各operationの具体順は次表を優先する。
 
-Entry／Goodsの全購入開始経路（単品互換APIを含む）は、Profile → 全Offering（ID昇順）→ 全Goods Inventory（goods_id昇順）を共通順とする。既存Orderの複合確定／解放はOrder → 全Entry Allocation（ID昇順）→ 全Goods Allocation（ID昇順）→ 全Offering（ID昇順）→ 全Inventory（goods_id昇順）→ 全権利の順でlockする。同じTransaction内でこの資源順を逆転させない。Stripe／Resend呼出しはlock保持中に行わない。
+Entry／Goodsの全購入開始経路（単品互換APIを含む）は、Profile → 全Offering（ID昇順）→ 全Goods Inventory（goods_id昇順）を共通順とする。既存Orderの複合確定／解放はOrder → 全Entry Allocation（ID昇順）→ 全Goods Allocation（ID昇順）→ 全Offering（ID昇順）→ 全Inventory（goods_id昇順）→ 全権利の順でlockする。同じTransaction内でこの資源順を逆転させない。Stripe／Resend呼出しはlock保持中に行わない。`Idempotency-Key` を受けるOperationは、`app.idempotency_records` の行のINSERT位置も同じ順序に従う（§43.1 `DB-IDM-002`。Business Profileを `FOR UPDATE` するOperationではその後、しないOperationでは他の業務rowのlockより前）。
 
 ## 48. Business Transaction matrix
 
@@ -1810,6 +1845,8 @@ Entry／Goodsの全購入開始経路（単品互換APIを含む）は、Profile
 | Goods Handoff | Goods Order Item → Handoff `FOR UPDATE` | READ COMMITTED | one Handoff unique; PENDING conditional update |
 | Slot sales stop / edit | Slot `FOR UPDATE` | READ COMMITTED | current state rule + exclusion on time/scope edit |
 | Slot batch generation | Scope rows ascending `FOR UPDATE` | READ COMMITTED | exact unique + exclusion; all-or-nothing |
+
+`Idempotency-Key` を受けるOperationのうち、**そのOperationで業務更新を最初にcommitするtransactionだけ**が、`app.idempotency_records` の行のINSERTを含む（位置は §43.1 `DB-IDM-002`）。上表のCheckout Binding等、最初の業務commitの後のtransaction（外部呼出しの後のtransaction Bなど）では記録を重ねてINSERTしない。業務更新を伴わず成功する場合は `SPEC-110` `API-IDM-004` に従う。記録のINSERT失敗はそのtransaction全体のrollbackとする。
 
 ## 49. Database temporary failure / partial commit
 
@@ -2106,6 +2143,7 @@ Karaoke exclusionやactive Hold unique等を、既存違反を無視してapplic
 | DB-GDS-001〜005 | Inventory non-negative、allocation / handoff exactly-once | `BR-GDS-*`, `DI-030-006` |
 | DB-XFN-001〜003 | Notification independence / Review retention | `BR-NTF-*`, `PAY-REC-*`, `TQR-REC-*`, `KRK-REC-*` |
 | DB-TXN-001〜004 | partial commit防止 / response loss retry | `DI-030-009`, `DI-030-012`, `INV-010-07`, `INV-010-10` |
+| DB-IDM-001〜003 | Transport Idempotency replay記録（digestのみ、同一transaction、24時間） | `INV-010-10`, `SPEC-110` `API-IDM-001〜010` |
 
 ## 63. System Invariant traceability
 
@@ -2222,6 +2260,7 @@ Karaoke exclusionやactive Hold unique等を、既存違反を無視してapplic
 36. Migrationが上流State / Business Ruleを独自変更しない。
 37. Consistency ReviewがPayment / Hold / Reservation / Ticket / Goodsを相関して追跡できる。
 38. SPEC-110がowner-safe detail、purchase start、status、availability、webhook、QR lookup、atomic check-in、admin search、recovery lookupを推測なしで実装できる。
+39. Transport Idempotency replay記録は `app.idempotency_records` に、`(principal_profile_id, operation_id, key_digest)` のUNIQUEで保存され、raw key・応答body・Checkout URL・個人情報を保存しない。記録のINSERTは業務更新と同じtransactionで、INSERT失敗時は全体をrollbackする。保持期間は24時間で、Business APIは行をDELETEしない。
 
 ---
 
@@ -2249,6 +2288,9 @@ Karaoke exclusionやactive Hold unique等を、既存違反を無視してapplic
 - DB triggerへOrder confirmation / Check-in / Inventory Business Logicを隠す
 - SQL-only constraintをDrizzle schema外の手作業DB設定として管理
 - MigrationでState名や30分/45分/5分等の上流Ruleを無断変更
+- `app.idempotency_records` へraw `Idempotency-Key`、応答body、Checkout URL、個人情報を保存
+- Transport Idempotencyのreplay記録をRedisや業務表ごとの列へ保存（`app.idempotency_records` だけに保存する）
+- `app.idempotency_records` の行を、Business Profileの `FOR UPDATE` より前にINSERT（同じProfileへの逆順lockを避ける）
 
 ---
 
@@ -2264,6 +2306,7 @@ Karaoke exclusionやactive Hold unique等を、既存違反を無視してapplic
 - capacity / inventory / slot lock transaction
 - Checkout Attempt / Payment Binding persistence
 - webhook Event idempotency
+- Transport Idempotency replay record（`app.idempotency_records`、`SPEC-110 §18.1`）
 - Order confirmation transaction
 - slot availability / 1-hour query indexes
 - QR digest lookup
@@ -2303,5 +2346,6 @@ Retry count、backoff、reconciliation、Review Case解消Runbookを定義する
 | UCR-100-001 | INCORPORATED | §14.1の任意Display name、SPEC-110 `API-AUTH-002/004` |
 | UCR-100-002 | INCORPORATED | §13.4のSponsor Logo、SPEC-110公開／管理API、SPEC-130 `PG-ADM-027` |
 | UCR-100-003 | INCORPORATED | §§16〜19,24,39,47〜49の複合Purpose／source FK／原子Transaction |
+| UCR-110-003 | INCORPORATED | §43.1 `app.idempotency_records`、§45.6、§47、§48、`DB-IDM-001〜003`、SPEC-110 §18.1 `API-IDM-003〜010` |
 
 既存の `UCR-130-005` は引き続き `DEFERRED_NONBLOCKING` であり、運用Indexの先取り追加は行わない。

@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-170
 title: Test Specification
-version: 2.3.0
+version: 2.4.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -820,6 +820,20 @@ API-ADM-EML-001..005
 5. idempotency persistence障害時もDB unique / Business Causeでcritical duplicateを防ぐ。
 
 **TST-IDM-001:** Transport Idempotency、Domain Business Cause、Provider Idempotency、Webhook Event dedupe、Ticket consume-once、Goods Handoff one-time、Notification Business Cause、Consistency Review dedupeを別々のTest Caseとして持つ。
+
+### 28.1 Replay record（`SPEC-110 §18.1`、`SPEC-100 §43.1`）
+
+replay記録（`app.idempotency_records`）のTestは、実PostgreSQLで行う。fake storeやmockのDBで、一意制約・同一transaction・期限・並行を代替しない。Test Case IDとmanifestへの登録は、実装のWork Planが `SPEC-190` に従って行う。
+
+**TST-IDM-004:** 記録の構造とdigestをTestする（(1)〜(3) はG2 / G3、(4) は純粋な関数のTestとしてG1でも実行できる）。(1) `(principal_profile_id, operation_id, key_digest)` のUNIQUE、`key_digest` / `request_digest` が32 byte、`result_ref_type` の未設定と `result_refs` の空配列が対応する（CHECK）、`expires_at` が `created_at` + 24時間であること（CHECKで固定され、任意の値をINSERT / UPDATEできない）。(2) 表にraw `Idempotency-Key`、応答body、Checkout URL、Stripe Session ID、個人情報の列がなく、保存された行にもそれらが含まれないこと（`DB-IDM-001`）。(3) 同じkeyでもPrincipal・Operation IDが違えば別の記録になり、互いに `409` を起こさないこと。(4) request digestがJSONのkey順序・書式上の空白・既定値の有無に依らず、同じ内容なら同じ値になること。`Authorization`・Cookie・`Idempotency-Key`・`X-Request-Id` を含まないこと（`API-IDM-005`）。
+
+**TST-IDM-005:** 判定と応答をTestする（G4）。同じPrincipal + Operation + request + keyの再送が、既存の結果へ収束し新しい業務effectを作らないこと。同じkeyで別内容が、Domain stateを変更せず `409 IDEMPOTENCY_KEY_REUSED` になること。replayのHTTP statusが各Operationの定義どおりであること（例: 新規 `201`、replay `200`）。応答が現在の状態から作り直され、保存されたbody・Checkout URLを返さないこと。replay時の結果が各Operationの既存のreplay規則（SPEC-110 §§29,30,46,48,48.5など。終端状態でのreplayを `200` の既存結果とするOperationを含む）に従い、記録の存在によって上書きされないこと。複数transactionにまたがるOperationで、同じkeyの再送が同じBusiness Causeの既存の回復手順を続け、新しいBusiness Causeを作らないこと。Check-inがHeaderを受けても記録を作らないこと。業務更新を伴わず成功したNOOP（既存の有効Checkoutの返却、既に `CANCELED` のOrderの `200` など）の後に、同じkeyを別の対象に使うと `409 IDEMPOTENCY_KEY_REUSED` になり、別のCheckoutを開始しないこと。Refund requestの記録から、元のRefund Record（`business_cause_key`）を一意に再特定でき、別Business Causeの返金状態を返さないこと。既存のexact-match Slotを再利用するSlot generationで、元の候補を後から時間・Scope編集で移した後も、同じkeyの再送が再利用分を含む元の結果集合を返し、新しいSlotを作らないこと（`API-IDM-003`、`API-IDM-006`、`API-IDM-007`）。
+
+**TST-IDM-006:** 期限をTestする（G3 / G4）。固定clock（記録の `created_at` / `expires_at` はDBの `transaction_timestamp()` で決まるため、Testはその時刻を制御できるDB fixtureを使う）で、`expires_at` の直前は記録が有効、`expires_at` 以後は記録なしと同じに扱われ、同じkeyの再利用が新しい要求として行を更新すること（新しいrequest digestで `409` にならない）。期限切れの行を同時に再利用する要求で、負けた側の条件付きUPDATEが0行になっても、行を読み直して `API-IDM-006` の2または3で判定すること（`API-IDM-009`）。期限切れの行をBusiness APIがDELETEしないこと（`app_api_runtime` にDELETE権限がない。`DB-IDM-003`、`API-IDM-008`）。
+
+**TST-IDM-007:** 同一transaction・失敗・並行をTestする（G3 / G4 / G6 / G10）。(1) DB障害、またはretry上限を使い切ったretryable errorによる記録のINSERTの失敗、および記録のINSERT後・commit前のFaultで、業務更新と記録がどちらも残らず、`503 DATABASE_TEMPORARY_FAILURE` になり新しいerror codeが現れないこと。一意制約の競合（`23505`）は `API-IDM-009` に従い、その他の制約違反は `SPEC-110 §50` に従うこと。(2) 業務更新のrollbackで記録も残らないこと。(3) 記録が、そのOperationで業務更新を最初にcommitするtransactionにだけ書かれ、外部呼出しの後のtransactionで重ねて書かれないこと。外部呼出しの前に業務commitを持つOperation（購入開始、Checkout開始）では、再送が同じAttemptの復旧へ進むこと。lookupを先に行う照合Operation（`API-ADM-REC-006` など）で結果が不明だった場合は記録が残らず、同じkeyの再試行で照合が進むこと。最初の業務commitの後に外部呼出し（Stripe）が失敗して `424 STRIPE_TEMPORARY_FAILURE` を返す購入開始・Checkout開始では、記録が残り、同じkeyの再送が元のOrder・Attemptへ収束し新しいOrderを作らないこと（`API-IDM-004`）。(4) 同じ一意キーのN並行（同じrequestと異なるrequestの両方）で、初回が1件だけ成立し、残りが既存結果への収束または `409` になり、「処理中」を示す新しいHTTP status・error codeが現れないこと。Business Profileの `FOR UPDATE` を取るOperationで、同じProfileへのbarrier付きN並行（異なるkeyを含む）を行い、`40P01` が0件であること（`DB-IDM-002`）。G10のbarrier付き並行Testは、pre-release staging gateで実行する（§67）。
+
+**TST-IDM-008:** 記録が失われても重複しないことをTestする（G3 / G6、`TST-IDM-003` の具体化）。記録の行をFaultで消す・期限切れにする・作らない状態で、同一Domain Business Causeの再送（SPEC-110 §52でDomain側のcanonical keyを持つOperation: Entry Ticket発行、Refund、Goods Handoff、Checkout Attempt、Role Assignmentのactive uniqueなど）を別のkeyまたは同じkeyで行っても、Domain Business Cause / DB uniqueがcritical duplicateを防ぐこと。Domain側に同一Business Causeの一意性がないOperationの別keyの再送を、重複防止の期待値にしないこと。このとき「同じkeyの別内容は `409`」を期待値にしないこと（`API-IDM-010`）。
 
 ---
 
@@ -1664,7 +1678,7 @@ Critical concurrency Testはbinary raceを毎CI run、hot contentionをnightly /
 
 **TST-IDM-002:** `request_id`を変えたduplicate requestでもIdempotencyが破れないことをexplicit Testする。
 
-**TST-IDM-003:** Transport Idempotency recordをfaultで失わせてもcritical Domain duplicateをDB constraint / Business Causeで防ぐTestを持つ。
+**TST-IDM-003:** Transport Idempotency recordをfaultで失わせてもcritical Domain duplicateをDB constraint / Business Causeで防ぐTestを持つ（具体的なCaseは §28.1 `TST-IDM-008`）。
 
 ---
 
@@ -2039,6 +2053,7 @@ SPEC-170に準拠したTest implementationは、少なくとも次をすべて�
 
 - `UCR-100-001〜003`: `INCORPORATED`（`SPEC-100` §§13.4,14.1,16〜19,24,39,47〜49）
 - `UCR-110-001`: `INCORPORATED`（`SPEC-110` Cart／eligibility／Logo／Orderサマリー契約、§27.2の個別Case）
+- `UCR-110-003`: `INCORPORATED`（`SPEC-110 §18.1` `API-IDM-003〜010`、`SPEC-100 §43.1` `DB-IDM-001〜003`、本書 §28.1 `TST-IDM-004〜008`のTest）
 - `UCR-130-001〜004/006`: `INCORPORATED`（`SPEC-060` / `SPEC-110` / `SPEC-120` / `SPEC-130`）
 - `UCR-130-005`: `DEFERRED_NONBLOCKING`（`SPEC-100`、speculative indexなし）
 - `UCR-150-001`: `INCORPORATED`（`SPEC-110 §48.5` `API-ADM-REC-003〜007`）
