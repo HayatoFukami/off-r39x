@@ -250,6 +250,24 @@ describe("TC-REVIEW-PORT-002 targets follow SPEC-100 §43 and SPEC-120 §43.1", 
     });
   }
 
+  // An explicit undefined means "no target". The parsed output must not keep the key, so a caller
+  // that inspects Object.keys or `in` sees only real targets (and the EML_* public type, which
+  // forbids the other keys, stays true of the output).
+  describe("an explicitly undefined target is dropped from the parsed output", () => {
+    const keysOf = (reasonCode: string, targets: unknown) => {
+      const parsed = reviewCaseOpenInputSchema.safeParse(openInput({ reasonCode, targets }));
+      return parsed.success ? Object.keys(parsed.data.targets).sort() : null;
+    };
+    for (const code of ["EML_RENDER_CONTEXT_INVALID", "PAY_BINDING_INCONSISTENT"]) {
+      it(`${code} keeps only the real targets`, () => {
+        expect(keysOf(code, { orderId: 1n, paymentBindingId: undefined })).toEqual(["orderId"]);
+        expect(keysOf(code, { orderId: undefined, karaokeReservationId: 2n })).toEqual([
+          "karaokeReservationId",
+        ]);
+      });
+    }
+  });
+
   for (const code of EML_REASON_CODES) {
     describe(code, () => {
       it("accepts orderId only, karaokeReservationId only, and both", () => {
