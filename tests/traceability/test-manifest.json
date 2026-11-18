@@ -16787,7 +16787,8 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "Invalid actor_ref per actor_type, unsafe reference text (Email, URL, raw QR and other values with a dot, slash, at sign or whitespace; the format cannot tell a Secret without such characters, which stays the caller's duty under SPEC-160 section 12), non UUID, bad fingerprint, reason_code, capability and non allowlisted enum values are refused before any statement is sent, and the error message omits the input",
-        "A change is accepted only when issued by a per-operation change spec (enum, public reference, count or integer values); forged, copied or plain objects, free text and out-of-spec keys, states, fields and values are refused",
+        "A change is accepted only when issued by a per-operation change spec (enum, public reference, count or integer values) and only for the operation IDs that spec was defined for; forged, copied or plain objects, a change issued for another operation, free text and out-of-spec keys, states, fields and values are refused",
+        "operation_id accepts only a SPEC-110 API-* Operation ID or one of the 21 SPEC-160 section 9.1 internal keys (for example RECOVERY.ADMIN_BOOTSTRAP); free labels, reference-like values and unknown keys are refused",
         "An accepted event sends exactly one bound INSERT into app.audit_events with no RETURNING, BEGIN or COMMIT, no timestamp and no generated id",
         "A database error is rethrown as the same object after a single attempt, with no retry (writer level only for OBS-AUD-008; no Provider flow is exercised)",
         "Unsafe change input is also a compile time error, checked by pnpm typecheck"

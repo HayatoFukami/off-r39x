@@ -26,6 +26,7 @@ const long129 = "a".repeat(129);
 
 // A synthetic spec for tests only; it is not a canonical operation spec (O-5).
 const probe = defineAuditChange({
+  operationIds: ["API-ADM-ROL-001"],
   states: ["ACTIVE", "REVOKED"],
   fields: ["role", "state"],
   summary: {
@@ -42,7 +43,7 @@ const VALID: AuditEventInput = {
   actorRef: uuid(1),
   effectiveRole: "STAFF",
   capability: "audit.probe",
-  operationId: "audit_probe_operation",
+  operationId: "API-ADM-ROL-001",
   operationExecutionId: uuid(2),
   preconditionResult: "PASSED",
   auditResult: "COMMITTED",
@@ -226,13 +227,76 @@ describe("TC-OBS-AUD-006-001 writer input checks (rejections reach no database)"
       "businessCauseRef",
       "providerEventRef",
       "providerObjectRef",
-      "operationId",
     ]) {
       for (const [label, value] of bad)
         await expectRejected(`${field} with ${label}`, { [field]: value }, value || undefined);
       await expectAccepted(`${field} with 128 characters`, { [field]: "a".repeat(128) });
     }
-    await expectRejected("operationId omitted", { operationId: undefined });
+  });
+
+  it("TC-OBS-AUD-006-001 operation_id accepts an API Operation ID or a SPEC-160 §9.1 internal key and nothing else", async () => {
+    // SPEC-160 §9.1: SPEC-110 API-* IDs exactly, plus this bounded internal key list.
+    const internalKeys = [
+      "WORKER.EMAIL.DELIVERY",
+      "WORKER.EMAIL.CLAIM_RECOVERY",
+      "WORKER.KARAOKE.HOLD_EXPIRY",
+      "RECON.ORDER.PREPARED",
+      "RECON.CHECKOUT.UNKNOWN",
+      "RECON.ORDER.AWAITING_PAYMENT",
+      "RECON.ORDER.REVIEW_REQUIRED",
+      "RECON.STRIPE_WEBHOOK",
+      "RECON.REFUND",
+      "RECON.ENTITLEMENT_COMPLETENESS",
+      "RECON.TICKET_CHECKIN",
+      "RECON.KARAOKE_RELATION",
+      "RECON.GOODS_INVENTORY",
+      "RECON.GOODS_HANDOFF",
+      "RECON.NOTIFICATION_MISSING",
+      "RECON.RESEND_UNKNOWN",
+      "RECON.RESEND_WEBHOOK",
+      "RECON.QR_KEY_MIGRATION",
+      "RECOVERY.AUTOMATIC",
+      "RECOVERY.MANUAL",
+      "RECOVERY.ADMIN_BOOTSTRAP",
+    ];
+    expect(internalKeys).toHaveLength(21);
+    const apiIds = [
+      "API-ADM-ROL-001",
+      "API-ADM-CNT-007",
+      "API-ADM-ENT-SALES-003",
+      "API-ADM-KRK-SALES-003",
+      "API-ADM-EML-001",
+      "API-AUTH-001",
+    ];
+    for (const operationId of [...apiIds, ...internalKeys])
+      await expectAccepted(`operationId ${operationId}`, { operationId });
+
+    const bad: [string, unknown][] = [
+      ["Email", emailLike],
+      ["QR shape", qrLike],
+      ["token shape", jwtLike],
+      ["URL", "https://example.com/path"],
+      ["whitespace", spaced],
+      ["empty", ""],
+      ["129 characters", long129],
+      ["an API ID in lowercase", "api-adm-cnt-007"],
+      ["an API ID with a trailing space", "API-ADM-CNT-007 "],
+      ["a bare prefix", "API-"],
+      ["a key outside the §9.1 list", "RECOVERY.UNKNOWN"],
+      ["a §9.1 key with a suffix", "RECON.REFUND.EXTRA"],
+      ["a §9.1 key in lowercase", "recon.refund"],
+      ["a partial §9.1 key", "WORKER.EMAIL"],
+      ["a free label", "audit_probe_operation"],
+      ["omitted", undefined],
+      ["null", null],
+      ["a number", 1],
+    ];
+    for (const [label, value] of bad)
+      await expectRejected(
+        `operationId with ${label}`,
+        { operationId: value },
+        typeof value === "string" && value.length > 0 ? value : undefined,
+      );
   });
 
   it("TC-OBS-AUD-006-001 UUID fields reject anything that is not a lowercase UUID", async () => {
@@ -342,10 +406,49 @@ describe("TC-OBS-AUD-006-001 writer input checks (rejections reach no database)"
     await expectAccepted("null change", { change: null });
     await expectAccepted("omitted change", { change: undefined });
   });
+
+  it("TC-OBS-AUD-006-001 a change is accepted only for the operations its spec was defined for (SPEC-160 §35)", async () => {
+    const genuine = probe.change({
+      beforeState: "ACTIVE",
+      afterState: "REVOKED",
+      summary: { role: "ADMINISTRATOR" },
+    });
+    // The Role operation's change is refused for another API operation, an internal key and a
+    // second Role operation the spec does not list, and none of them reaches the database.
+    for (const operationId of ["API-ADM-CNT-007", "RECOVERY.ADMIN_BOOTSTRAP", "API-ADM-ROL-002"])
+      await expectRejected(
+        `a Role change for ${operationId}`,
+        { operationId, targetType: "PUBLIC_CONTENT", change: genuine },
+        "ADMINISTRATOR",
+      );
+    await expectAccepted("the operation the change was issued for", { change: genuine });
+
+    // A spec may list several operations; each of them, and only they, accept its changes.
+    const shared = defineAuditChange({
+      operationIds: ["API-ADM-ROL-002", "RECOVERY.ADMIN_BOOTSTRAP"],
+      states: ["ACTIVE", "REVOKED"],
+      fields: ["state"],
+      summary: {},
+    });
+    const sharedChange = shared.change({ afterState: "REVOKED", changedFields: ["state"] });
+    await expectAccepted("first listed operation", {
+      operationId: "API-ADM-ROL-002",
+      change: sharedChange,
+    });
+    await expectAccepted("second listed operation", {
+      operationId: "RECOVERY.ADMIN_BOOTSTRAP",
+      change: sharedChange,
+    });
+    await expectRejected("an operation the shared spec does not list", {
+      operationId: "API-ADM-ROL-001",
+      change: sharedChange,
+    });
+  });
 });
 
 describe("TC-OBS-AUD-006-001 defineAuditChange and change() (OBS-AUD-006, SPEC-160 §35)", () => {
   const baseSpec = {
+    operationIds: ["API-ADM-ROL-001"],
     states: ["ACTIVE", "REVOKED"],
     fields: ["role", "state"],
     summary: { role: { kind: "enum", values: ["STAFF", "ADMINISTRATOR"] } },
@@ -375,6 +478,14 @@ describe("TC-OBS-AUD-006-001 defineAuditChange and change() (OBS-AUD-006, SPEC-1
       ],
       ["a free text kind", { summary: { note: { kind: "text" } } }, "text"],
       ["a missing kind", { summary: { note: {} } }],
+      ["no operationIds", { operationIds: undefined }],
+      ["an empty operationIds", { operationIds: [] }],
+      ["an operationIds that is not an array", { operationIds: "API-ADM-ROL-001" }],
+      ["a duplicated operation ID", { operationIds: ["API-ADM-ROL-001", "API-ADM-ROL-001"] }],
+      ["a free label as operation ID", { operationIds: ["audit_probe_operation"] }, "audit_probe"],
+      ["an Email as operation ID", { operationIds: [emailLike] }, "audit-probe"],
+      ["a key outside the §9.1 list", { operationIds: ["RECOVERY.UNKNOWN"] }, "RECOVERY.UNKNOWN"],
+      ["a non-string operation ID", { operationIds: [1] }],
     ];
     for (const [label, override, leak] of cases) {
       let caught: unknown;
@@ -542,7 +653,7 @@ describe("TC-OBS-AUD-006-001 accepted events reach the database as one bound INS
         "STAFF",
         uuid(1),
         "audit.probe",
-        "audit_probe_operation",
+        "API-ADM-ROL-001",
         uuid(2),
         "ROLE_ASSIGNMENT",
         uuid(8),
@@ -625,10 +736,24 @@ describe("TC-OBS-AUD-006-001 type level: the compiler also refuses unsafe change
     await expect(send({ change: plain })).rejects.toThrow();
     // @ts-expect-error an audit_event_type outside the allowlist
     await expect(send({ auditEventType: "UNKNOWN" })).rejects.toThrow();
-    const freeText = { states: [], fields: [], summary: { n: { kind: "text" } } } as const;
+    await expect(
+      insertAuditEvent(client, {
+        ...VALID,
+        operationId: "API-ADM-CNT-007",
+        // @ts-expect-error a change issued for another operation is not accepted for this one
+        change: probe.change({ afterState: "REVOKED" }),
+      }),
+    ).rejects.toThrow();
+    const freeText = {
+      operationIds: ["API-ADM-ROL-001"],
+      states: [],
+      fields: [],
+      summary: { n: { kind: "text" } },
+    } as const;
     // @ts-expect-error a free text summary kind cannot be declared
     expect(() => defineAuditChange(freeText)).toThrow();
     const noValues = {
+      operationIds: ["API-ADM-ROL-001"],
       states: [],
       fields: [],
       summary: { n: { kind: "enum", values: [] } },

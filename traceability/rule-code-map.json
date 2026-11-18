@@ -3264,7 +3264,7 @@
       "rule_id": "OBS-AUD-006",
       "code_paths": ["packages/db/src/audit-events.ts"],
       "test_case_ids": ["TC-OBS-AUD-006-001", "TC-OBS-AUD-006-002"],
-      "notes": "before/after/changed_fields/safe_change_summary only from per-operation change specs (enum, public ref, integer); no operation spec registered yet (SPEC-160 §35 key names pending)"
+      "notes": "before/after/changed_fields/safe_change_summary only from per-operation change specs (enum, public ref, integer), accepted only for the operation IDs the spec lists; no operation spec registered yet (SPEC-160 §35 key names pending)"
     },
     {
       "rule_id": "OBS-AUD-007",

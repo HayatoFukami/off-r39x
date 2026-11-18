@@ -485,7 +485,7 @@ describe("TC-DB-008-001 audit INSERT is atomic with the business write (real Pos
     actorRef: uuid(0x40),
     effectiveRole: "STAFF",
     capability: "audit.probe",
-    operationId: "audit_probe_operation",
+    operationId: "API-ADM-ROL-001",
     operationExecutionId: executionId,
     preconditionResult: "PASSED",
     auditResult: "COMMITTED",
@@ -587,6 +587,7 @@ describe("TC-DB-008-001 audit INSERT is atomic with the business write (real Pos
 
 describe("TC-OBS-AUD-006-002 writer persists every column and the change summary (real PostgreSQL 17)", () => {
   const probe = defineAuditChange({
+    operationIds: ["API-ADM-ROL-001"],
     states: ["ACTIVE", "REVOKED"],
     fields: ["role", "state"],
     summary: {
@@ -607,7 +608,7 @@ describe("TC-OBS-AUD-006-002 writer persists every column and the change summary
       actorRef: uuid(0x54),
       effectiveRole: "STAFF",
       capability: "audit.probe",
-      operationId: "audit_probe_operation",
+      operationId: "API-ADM-ROL-001",
       operationExecutionId: fullId,
       targetType: "ROLE_ASSIGNMENT",
       targetRef: uuid(0x55),
@@ -640,7 +641,7 @@ describe("TC-OBS-AUD-006-002 writer persists every column and the change summary
       auditEventType: "BUSINESS_EFFECT",
       actorType: "SYSTEM_WORKER",
       actorRef: "email-worker",
-      operationId: "audit_probe_minimal",
+      operationId: "WORKER.EMAIL.DELIVERY",
       operationExecutionId: minimalId,
       preconditionResult: "NOT_APPLICABLE",
       auditResult: "NOOP",
@@ -659,7 +660,7 @@ describe("TC-OBS-AUD-006-002 writer persists every column and the change summary
       actor_ref: full.actorRef,
       effective_role: "STAFF",
       capability: "audit.probe",
-      operation_id: "audit_probe_operation",
+      operation_id: "API-ADM-ROL-001",
       operation_execution_id: fullId,
       target_type: "ROLE_ASSIGNMENT",
       target_ref: full.targetRef,

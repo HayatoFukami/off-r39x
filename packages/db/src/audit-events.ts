@@ -78,6 +78,41 @@ const FIELD_NAME = /^[a-z][a-z0-9_]{0,63}$/;
 const WORKER_KEY = /^[a-z][a-z0-9-]{0,63}$/;
 const RECONCILIATION_KEY = /^[a-z][a-z0-9_:-]{0,63}$/;
 
+// operation_id (SPEC-160 §9.1): a SPEC-110 `API-*` Operation ID used exactly, or one of the bounded
+// internal keys below. Nothing else, so a free label or a reference-like value cannot stand in for
+// an operation. Whether an API ID names a real operation is the caller's duty (SPEC-110 manifest).
+export const AUDIT_INTERNAL_OPERATION_KEYS = [
+  "WORKER.EMAIL.DELIVERY",
+  "WORKER.EMAIL.CLAIM_RECOVERY",
+  "WORKER.KARAOKE.HOLD_EXPIRY",
+  "RECON.ORDER.PREPARED",
+  "RECON.CHECKOUT.UNKNOWN",
+  "RECON.ORDER.AWAITING_PAYMENT",
+  "RECON.ORDER.REVIEW_REQUIRED",
+  "RECON.STRIPE_WEBHOOK",
+  "RECON.REFUND",
+  "RECON.ENTITLEMENT_COMPLETENESS",
+  "RECON.TICKET_CHECKIN",
+  "RECON.KARAOKE_RELATION",
+  "RECON.GOODS_INVENTORY",
+  "RECON.GOODS_HANDOFF",
+  "RECON.NOTIFICATION_MISSING",
+  "RECON.RESEND_UNKNOWN",
+  "RECON.RESEND_WEBHOOK",
+  "RECON.QR_KEY_MIGRATION",
+  "RECOVERY.AUTOMATIC",
+  "RECOVERY.MANUAL",
+  "RECOVERY.ADMIN_BOOTSTRAP",
+] as const;
+const API_OPERATION_ID = /^API-[A-Z0-9]+(?:-[A-Z0-9]+)*$/;
+const OPERATION_ID_MAX_LENGTH = 64;
+
+const isOperationId = (value: unknown): value is string =>
+  typeof value === "string" &&
+  value.length <= OPERATION_ID_MAX_LENGTH &&
+  (API_OPERATION_ID.test(value) ||
+    (AUDIT_INTERNAL_OPERATION_KEYS as readonly string[]).includes(value));
+
 const rejectField = (field: string): never => {
   throw new Error(`Invalid audit event field: ${field}`);
 };
@@ -110,19 +145,24 @@ type SummaryValue<V extends AuditSummaryValueSpec> = V extends {
     ? string
     : number;
 
-declare const auditChangeBrand: unique symbol;
+declare const auditChangeOperations: unique symbol;
 
-/** A value issued by `defineAuditChange(...).change(...)`. Plain objects do not type-check as one. */
-export type AuditChange = {
-  readonly [auditChangeBrand]: true;
+/**
+ * A value issued by `defineAuditChange(...).change(...)` for the operations `Ops`. Plain objects do
+ * not type-check as one. `Ops` is contravariant: a change issued for several operations is accepted
+ * for each of them, and a change issued for another operation is a type error.
+ */
+export type AuditChange<Ops extends string = string> = {
+  readonly [auditChangeOperations]: (operation: Ops) => void;
   readonly beforeState: string | null;
   readonly afterState: string | null;
   readonly changedFields: readonly string[];
   readonly summary: Readonly<Record<string, string | number>>;
 };
 
-// A cast cannot forge an issued change: the writer accepts only objects registered here.
-const issuedChanges = new WeakSet<object>();
+// A cast cannot forge an issued change: the writer accepts only objects registered here, and only
+// for the operations their spec was defined for (SPEC-160 §35 is an allowlist per operation).
+const issuedChanges = new WeakMap<object, ReadonlySet<string>>();
 
 const hasDuplicates = (values: readonly string[]): boolean =>
   new Set(values).size !== values.length;
@@ -133,17 +173,29 @@ const hasDuplicates = (values: readonly string[]): boolean =>
  * No operation spec is registered yet (SPEC-160 §35 does not name the summary keys).
  */
 export function defineAuditChange<
+  const O extends string,
   const S extends string,
   const F extends string,
   const V extends Record<string, AuditSummaryValueSpec>,
->(spec: { readonly states: readonly S[]; readonly fields: readonly F[]; readonly summary: V }) {
+>(spec: {
+  readonly operationIds: readonly [O, ...O[]];
+  readonly states: readonly S[];
+  readonly fields: readonly F[];
+  readonly summary: V;
+}) {
   const input = spec as {
+    operationIds?: unknown;
     states?: unknown;
     fields?: unknown;
     summary?: unknown;
   } | null;
   if (typeof input !== "object" || input === null) return rejectSpec("spec");
-  const { states, fields, summary } = input;
+  const { operationIds, states, fields, summary } = input;
+  if (!Array.isArray(operationIds) || operationIds.length === 0) return rejectSpec("operationIds");
+  for (const operationId of operationIds) {
+    if (!isOperationId(operationId)) rejectSpec("operationIds");
+  }
+  if (hasDuplicates(operationIds as string[])) rejectSpec("operationIds");
   if (!Array.isArray(states)) return rejectSpec("states");
   if (!Array.isArray(fields)) return rejectSpec("fields");
   if (typeof summary !== "object" || summary === null || Array.isArray(summary))
@@ -197,6 +249,7 @@ export function defineAuditChange<
     }
   }
 
+  const allowedOperations: ReadonlySet<string> = new Set(operationIds as string[]);
   const frozenStates: readonly string[] = Object.freeze(allowedStates);
   const frozenFields: readonly string[] = Object.freeze(allowedFields);
 
@@ -222,7 +275,7 @@ export function defineAuditChange<
       afterState?: S | null;
       changedFields?: readonly F[];
       summary?: { readonly [K in keyof V]?: SummaryValue<V[K]> };
-    }): AuditChange {
+    }): AuditChange<O> {
       const beforeState = change.beforeState ?? null;
       const afterState = change.afterState ?? null;
       if (!matchesState(beforeState)) return rejectChange("beforeState");
@@ -250,8 +303,8 @@ export function defineAuditChange<
         afterState,
         changedFields: Object.freeze(changedFields),
         summary: Object.freeze(resultSummary),
-      }) as unknown as AuditChange;
-      issuedChanges.add(issued);
+      }) as unknown as AuditChange<O>;
+      issuedChanges.set(issued, allowedOperations);
       return issued;
     },
   };
@@ -259,10 +312,10 @@ export function defineAuditChange<
 
 // ---- writer -------------------------------------------------------------------------------------
 
-export type AuditEventInput = {
+export type AuditEventInput<O extends string = string> = {
   readonly auditEventType: AuditEventType;
   readonly actorType: AuditActorType;
-  readonly operationId: string;
+  readonly operationId: O;
   readonly operationExecutionId: string;
   readonly preconditionResult: AuditPreconditionResult;
   readonly auditResult: AuditResult;
@@ -280,7 +333,9 @@ export type AuditEventInput = {
   readonly providerIdempotencyFp?: string | null;
   readonly failureClass?: AuditFailureClass | null;
   readonly reasonCode?: string | null;
-  readonly change?: AuditChange | null;
+  // With a literal operationId the change must have been issued for it. With a plain string the
+  // operation is only known at run time, where the writer makes the same check.
+  readonly change?: (string extends O ? AuditChange<never> : AuditChange<NoInfer<O>>) | null;
   readonly consistencyReviewRef?: string | null;
   readonly recoveryExecutionId?: string | null;
 };
@@ -340,7 +395,10 @@ function actorRefFor(actorType: AuditActorType, value: unknown): string | null {
  * assigned by the database (DB-TIM-002). A failure from PostgreSQL is rethrown as the driver's own
  * error object so that SQLSTATE based handling in `transaction()` keeps working.
  */
-export async function insertAuditEvent(client: PoolClient, event: AuditEventInput): Promise<void> {
+export async function insertAuditEvent<const O extends string = string>(
+  client: PoolClient,
+  event: AuditEventInput<O>,
+): Promise<void> {
   if (typeof event !== "object" || event === null) return rejectField("event");
 
   const auditEventType = oneOf(event.auditEventType, AUDIT_EVENT_TYPES, "auditEventType");
@@ -350,7 +408,9 @@ export async function insertAuditEvent(client: PoolClient, event: AuditEventInpu
   const capability = optionalMatching(event.capability, CAPABILITY, "capability");
   if (capability !== null && capability.length > CAPABILITY_MAX_LENGTH)
     return rejectField("capability");
-  const operationId = matching(event.operationId, SAFE_REF, "operationId");
+  const operationId = isOperationId(event.operationId)
+    ? event.operationId
+    : rejectField("operationId");
   const operationExecutionId = matching(event.operationExecutionId, UUID, "operationExecutionId");
   const targetType = optionalOneOf(event.targetType, AUDIT_TARGET_TYPES, "targetType");
   const targetRef = optionalMatching(event.targetRef, SAFE_REF, "targetRef");
@@ -393,8 +453,10 @@ export async function insertAuditEvent(client: PoolClient, event: AuditEventInpu
   );
 
   const change = event.change ?? null;
-  if (change !== null && !(typeof change === "object" && issuedChanges.has(change)))
-    return rejectField("change");
+  if (change !== null) {
+    const operations = typeof change === "object" ? issuedChanges.get(change) : undefined;
+    if (operations === undefined || !operations.has(operationId)) return rejectField("change");
+  }
 
   // Only the known keys are copied, so an unknown input property can never reach the statement.
   const row = {
