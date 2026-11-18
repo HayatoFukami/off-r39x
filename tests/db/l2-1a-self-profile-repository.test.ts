@@ -247,4 +247,31 @@ describe("TC-API-007-005 unavailable classification (SPEC-110 §50/§51, FP.DB.B
       await pool.end();
     }
   });
+
+  it("a saturated pool (max 1, the only client held) raises a code-less 'timeout exceeded when trying to connect' that is returned as unavailable for read and update", async () => {
+    // FP.DB.BEFORE_TRANSACTION via pool exhaustion against the real PG17 (pg-pool raises this without a code).
+    const pool = new Pool({ connectionString: url, max: 1, connectionTimeoutMillis: 200 });
+    pool.on("error", () => undefined);
+    const held = await pool.connect();
+    try {
+      const raw = await pool.query("SELECT 1").then(
+        () => undefined,
+        (error: { code?: unknown; message: string }) => error,
+      );
+      expect(raw, "the saturated pool must reject").toBeDefined();
+      expect(raw?.code).toBeUndefined();
+      expect(raw?.message).toMatch(/^timeout exceeded when trying to connect/);
+
+      const saturated = createCurrentProfileRepository(pool);
+      expect(await saturated.readCurrentBusinessProfile(SUBJECT_A)).toEqual({
+        status: "unavailable",
+      });
+      expect(await saturated.updateCurrentBusinessProfile(SUBJECT_A, "name")).toEqual({
+        status: "unavailable",
+      });
+    } finally {
+      held.release();
+      await pool.end();
+    }
+  });
 });

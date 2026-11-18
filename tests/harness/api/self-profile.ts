@@ -30,7 +30,10 @@ type ReadResult = Awaited<ReturnType<CurrentProfileStore["readCurrentBusinessPro
 type UpdateResult = Awaited<ReturnType<CurrentProfileStore["updateCurrentBusinessProfile"]>>;
 export type StoredProfile = { publicRef: string; displayName: string | null; updatedAt: string };
 
-/** SPEC-170 Fault Points used here (DI only; the production adapter is never patched). */
+/**
+ * Injection points of the recording store (DI only; the production adapter is never patched).
+ * `FP.DB.*` are SPEC-170 Fault Points; `PROFILE.*` are this harness's own injection points, not SPEC-170 Fault Points.
+ */
 export type ProfileFaultPoint =
   | "FP.DB.INSIDE_STATEMENT"
   | "FP.DB.AFTER_COMMIT_SENT_BEFORE_ACK"

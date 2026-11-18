@@ -203,7 +203,7 @@ describe("TC-API-007-001 PATCH refusals before the store (SPEC-110 §13/§16/§2
   });
 
   it("415 UNSUPPORTED_MEDIA_TYPE for text/plain, a missing Content-Type and a non-UTF-8 charset, no write", async () => {
-    const body = '{"display_name":"synthetic name"}';
+    const text = '{"display_name":"synthetic name"}';
     const withType = (type: string) => ({ ...bearer, Origin: WEB, "Content-Type": type });
     const attempts: [string, Record<string, string>][] = [
       ["text/plain", withType("text/plain")],
@@ -211,9 +211,18 @@ describe("TC-API-007-001 PATCH refusals before the store (SPEC-110 §13/§16/§2
       ["iso-8859-1", withType("application/json; charset=iso-8859-1")],
     ];
     for (const [label, headers] of attempts) {
+      // A string body makes the runtime add text/plain; send bytes so a missing Content-Type stays missing.
+      const body = new TextEncoder().encode(text);
+      if (label === "no content type") {
+        const probe = new Request(`http://localhost${PROFILE_PATH}`, {
+          method: "PATCH",
+          headers,
+          body,
+        });
+        expect(probe.headers.get("content-type"), label).toBeNull();
+      }
       const r = selfProfileRig();
       const res = await r.send(PROFILE_PATH, { method: "PATCH", headers, body });
-      // A body sent as a string gets text/plain from the runtime; only the explicit headers matter here.
       expect(res.status, label).toBe(415);
       expect((await errorOf(res)).code, label).toBe("UNSUPPORTED_MEDIA_TYPE");
       expect(r.store.updates, label).toEqual([]);

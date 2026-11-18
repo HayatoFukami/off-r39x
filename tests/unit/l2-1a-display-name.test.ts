@@ -81,10 +81,9 @@ describe("TC-API-007-002 normalizeDisplayName (SPEC-030 §9.2, BR-USR-001, SEC-A
   });
 
   it("an accepted value is already normalized (normalizing it again changes nothing)", () => {
-    for (const [, input, expected] of CASES) {
+    for (const [, , expected] of CASES) {
       if (!expected.ok) continue;
       expect(normalize(expected.value)).toEqual(expected);
-      expect(input === null || typeof input === "string").toBe(true);
     }
   });
 });

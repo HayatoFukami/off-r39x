@@ -25231,7 +25231,7 @@
       "clock_instant": null,
       "concurrency_seed": null,
       "fault_points": ["FP.DB.INSIDE_STATEMENT", "FP.DB.AFTER_COMMIT_SENT_BEFORE_ACK"],
-      "expected_http": [200, 400, 401, 403, 404, 405, 409, 413, 415, 500, 503],
+      "expected_http": [200, 400, 401, 403, 405, 409, 413, 415, 500, 503],
       "expected_domain_postconditions": [
         "GET returns exactly { data: { profile_ref, display_name, updated_at }, meta: { request_id } } for the verified subject only; a NULL display name stays null and is not filled from the directory Email",
         "PATCH normalizes display_name (trim, empty to null, 80 code points) and calls the store once with (verified subject, normalized value); the response is the row the store returned",
@@ -25377,7 +25377,7 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "readCurrentBusinessProfile returns found with the verified subject's public_ref, a NULL display name as null and updated_at truncated to milliseconds, not_found for an unknown subject, and writes nothing",
-        "updateCurrentBusinessProfile returns the RETURNING row; a subject with no row is not_found; an unreachable database is returned as unavailable (read and update) and not thrown; an 81-character name is thrown as SQLSTATE 23514 of ck_business_profiles_display_name and is never classified unavailable"
+        "updateCurrentBusinessProfile returns the RETURNING row; a subject with no row is not_found; an unreachable database (closed port), a saturated pool (max 1, only client held: code-less timeout exceeded when trying to connect) is returned as unavailable (read and update) and not thrown; an 81-character name is thrown as SQLSTATE 23514 of ck_business_profiles_display_name and is never classified unavailable"
       ],
       "expected_db_postconditions": [
         "The update sets display_name and updated_at of the verified subject's row only: updated_at equals the update's transaction_timestamp() (inside the call window, later than the previous value, advanced even when the value is unchanged), and created_at, public_ref, auth_subject and id are unchanged",
@@ -25470,6 +25470,37 @@
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
       "expected_observability": ["http.request.completed", "authorization.decision.completed"],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-API-007-008",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "TST-API-007",
+        "API-AUTH-002",
+        "API-AUTH-004",
+        "DEV-DB-002",
+        "SPEC-110-50",
+        "SPEC-110-51"
+      ],
+      "system_invariant_ids": ["INV-010-08"],
+      "api_operation_ids": ["API-AUTH-002", "API-AUTH-004"],
+      "db_constraint_names": [],
+      "preconditions": "createCurrentProfileRepository over node-postgres pools pointed at local TCP servers that misbehave (closed by the peer right after connect, accepts and never answers, pool used after end); no PostgreSQL; the pool-saturation case is in TC-API-007-005",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": ["FP.DB.BEFORE_TRANSACTION"],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Each case first asserts that the raw pool error has no code and the node-postgres message (Connection terminated unexpectedly, Connection terminated due to connection timeout, Cannot use a pool after calling end on the pool)",
+        "readCurrentBusinessProfile and updateCurrentBusinessProfile then return { status: unavailable } and do not throw"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": true
     }
