@@ -78,6 +78,15 @@ const targetsObject = z.strictObject({
 });
 export type ReviewCaseTargets = z.infer<typeof targetsObject>;
 
+// An explicit undefined means "no target". The parsed output drops the key so that Object.keys and
+// `in` show only real targets, as the public type (which forbids the other keys for EML_*) says.
+function withoutUndefinedTargets(targets: ReviewCaseTargets): ReviewCaseTargets {
+  return Object.fromEntries(
+    Object.entries(targets).filter(([, value]) => value !== undefined),
+  ) as ReviewCaseTargets;
+}
+const parsedTargets = targetsObject.transform(withoutUndefinedTargets);
+
 // SPEC-100 §43 CHECK: at least one target FK is non-null.
 function hasTarget(targets: ReviewCaseTargets): boolean {
   return Object.values(targets).some((value) => value !== undefined);
@@ -120,7 +129,7 @@ export type ReviewCaseDetails = z.infer<typeof detailsSchema>;
 const reviewCaseOpenInputBase = z
   .strictObject({
     reasonCode: reviewReasonCodeSchema,
-    targets: targetsObject,
+    targets: parsedTargets,
     details: detailsSchema,
   })
   .superRefine((input, context) => {
