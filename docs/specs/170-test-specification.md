@@ -1943,7 +1943,7 @@ Generated type declarations、migration SQL、pure config manifestはline covera
 
 **TST-COV-003:** Current DI集合はSPEC-030本文のInvariant定義から取得し、test manifest／Acceptanceとのjoinに欠落があれば不合格とする。新DI追加時も既存の固定番号範囲を根拠に除外しない。`DI-030-013` は `TC-API-004-001〜004` のreal PostgreSQL／Fault／並行性Evidenceで直接証明する。実装未完了や未実行をPassに変換しない。
 
-**TST-COV-004:** Unmounted Operationをcontract caseの分母から外すのは、`SPEC-200` `ACC-GEN-030` のEvidenceがある場合だけである。その場合もUnmounted Operationの404 caseは外さない。`INV-010-*` の§64.1の最小Test Caseは分母から外さない（`TST-TRC-003`）。
+**TST-COV-004:** Operation単位の網羅では、Unmounted Operationのcontract caseを `ACC-GEN-029` の404 caseに置き換える。置き換えには `ACC-GEN-029` のEvidenceがあればよく、`ACC-GEN-030` のEvidenceは要らない。mountしたOperationの分岐を分母から外せるのは、`SPEC-200` `ACC-GEN-031` (a) が認める到達できない分岐だけである。その場合も、既存のfail-closedの規則のcaseと、`INV-010-*` の§64.1の最小Test Caseは外さない（`TST-TRC-003`）。
 
 ---
 
