@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { createPublicRpc } from "@off-r39x/api-contract";
 import {
   AuthFailure,
@@ -20,6 +19,7 @@ import { secureHeaders } from "hono/secure-headers";
 import { actorContext } from "./actor-context.ts";
 import { AUTH_ROUTES, type AuthProxy } from "./auth-proxy.ts";
 import { type ApiEnvironment, ApiFailure } from "./failure.ts";
+import { operationContext, requestContextMiddleware } from "./middleware/request-context.ts";
 import {
   type AppRateLimit,
   createPrincipalRateLimitHooks,
@@ -89,46 +89,7 @@ export function createApp(dependencies: AppDependencies) {
   const origin = new URL(dependencies.webOrigin).origin;
   if (origin !== dependencies.webOrigin) throw new Error("Expected exact Web origin");
   const app = new Hono<ApiEnvironment>();
-  app.use("*", async (c, next) => {
-    const started = Date.now();
-    c.set("requestId", randomUUID());
-    c.set("logger", dependencies.logger);
-    c.set("operationExecutionId", undefined);
-    c.set("operationId", undefined);
-    c.set("rateLimitClass", undefined);
-    c.set("clientIp", undefined);
-    c.set("guardSaturated", undefined);
-    c.set("verificationSlot", undefined);
-    c.set("authSubjectRef", undefined);
-    c.set("authorizationConfirmed", false);
-    c.header("X-Request-Id", c.get("requestId"));
-    c.header("Cache-Control", "no-store");
-    await next();
-    dependencies.logger?.log({
-      event_name: "http.request.completed",
-      level: c.res.status >= 500 ? "ERROR" : "INFO",
-      result: c.res.status < 400 ? "SUCCESS" : c.res.status >= 500 ? "FAILED" : "REJECTED",
-      is_retry: false,
-      request_id: c.get("requestId"),
-      ...operationContext(c),
-      ...actorContext(c),
-      http_method: (["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].includes(
-        c.req.method,
-      )
-        ? c.req.method
-        : "GET") as "GET",
-      http_route: [
-        "/internal/health/live",
-        "/internal/health/ready",
-        "/api/v1/self/principal",
-        ...Object.keys(AUTH_ROUTES).map((path) => `/auth/${path}`),
-      ].includes(c.req.routePath)
-        ? c.req.routePath
-        : "/",
-      http_status: c.res.status,
-      duration_ms: Math.max(0, Date.now() - started),
-    });
-  });
+  app.use("*", requestContextMiddleware(dependencies));
   app.use("*", secureHeaders({ strictTransportSecurity: "max-age=63072000; includeSubDomains" }));
   app.use("/api/v1/*", async (c, next) => {
     if (dependencies.allowedHosts && !dependencies.allowedHosts.includes(new URL(c.req.url).host))
@@ -423,12 +384,4 @@ function securityEvent(
         }
       : {}),
   });
-}
-
-function operationContext(c: import("hono").Context<ApiEnvironment>) {
-  const execution = c.get("operationExecutionId");
-  const operation = c.get("operationId");
-  return execution && operation
-    ? { operation_id: operation, operation_execution_id: execution }
-    : {};
 }

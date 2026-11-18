@@ -3809,7 +3809,9 @@
       "code_paths": [
         "packages/api-contract/src/rpc.ts",
         "apps/api/src/api/app.ts",
-        "apps/api/src/bootstrap/index.ts"
+        "apps/api/src/bootstrap/index.ts",
+        "apps/api/src/api/middleware/request-context.ts",
+        "apps/api/src/api/routes.ts"
       ],
       "test_case_ids": ["TC-RPC-AUDIT-001"],
       "notes": "Foundation audit repair; local synthetic evidence does not assert live-provider or release readiness"
