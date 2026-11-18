@@ -17872,13 +17872,36 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "details accepts only the five REL-REC-008 value kinds with restricted token shapes and keys, and the open input rejects a dedupe key, public reference, opened or resolved time and resolution note."
+        "details accepts only the public reference, money and timestamp kinds of REL-REC-008 with restricted shapes and keys, refuses the state and provider status category kinds until a vocabulary is specified, and the open input rejects a dedupe key, public reference, opened or resolved time and resolution note."
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": true
+    },
+    {
+      "test_case_id": "TC-REVIEW-PORT-004",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["SPEC-100-43", "SPEC-120-43.1"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Synthetic values only; compile-time type assertions checked by typecheck; does not prove persistence or delivery",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The ReviewCaseOpenInput type rejects empty targets and, for the five EML reasons, targets other than order or reservation, so the constraint is visible to a caller at compile time."
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
     },
     {
       "test_case_id": "TC-STRIPE-AUDIT-001",
