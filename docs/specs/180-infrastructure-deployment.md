@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-180
 title: Infrastructure and Deployment Specification
-version: 2.2.1
+version: 2.3.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -1047,6 +1047,7 @@ Releaseごとに `release-manifest.json` を生成する。
   "node_major": 24,
   "api_image_digest": "sha256:...",
   "source_map_bundle_sha256": "<hex>",
+  "mounted_operation_ids": ["API-AUTH-001", "..."],
   "spec_versions": {
     "SPEC-180": "2.0.0"
   }
@@ -1060,6 +1061,10 @@ Cloudflare PagesはEnvironment別buildを許可するが、`git_sha`, `pnpm_lock
 Webのoutput hash / 公開設定hash / Pages project ID / preview deployment ID / production deployment IDを記録する。preview検査後にrebuildせず、同じ保存済みファイルをproductionへ再uploadし、output hash一致を検証する。同一ファイルでもdeployment IDは異なる。
 
 **INF-DEP-002:** Production deploy時に`latest` tagだけを参照しない。digest / immutable deployment IDをrelease evidenceへ保存する。
+
+`mounted_operation_ids` は、当該releaseのHono route registry（`SPEC-110` `API-RLC-001`）に登録した `SPEC-110` のcanonical Operation IDの昇順の配列である。`SPEC-110` のOperationのうちこの配列に含まれないものは、当該releaseではmountされない（登録されない）。mountされないOperationのmethod / pathは、どのrouteにも一致しないpathとして `404 RESOURCE_NOT_FOUND` を返す（`SPEC-110 §21`）。`SPEC-200 §7.5` は、この配列をAcceptanceのOperation集合として参照する（`UCR-RELSCOPE-001`）。
+
+**INF-DEP-006:** `mounted_operation_ids` はbuild時にroute registryから機械的に生成し、手で編集しない。実際に登録したrouteと一致しない場合、またはstagingとProductionで値が異なる場合は、同一releaseのidentity不一致として扱い、Production promotionしない。この配列は実装範囲の記録であり、`SPEC-110` のOperationをCanonicalから外すものではない。
 
 ## 45. Migration sequence
 
@@ -1818,6 +1823,7 @@ SPEC-180は次をすべて満たしたとき受入可能とする。
 52. rate limit configuration不正、store接続不能、`TRUSTED_PROXY_HOPS` 未設定でAPI readinessがfalseになる。
 53. Production promotion前に `INF-RLS-008`（#1 `TRUSTED_PROXY_HOPS` の検証、#3 Redisの実versionとCIのRedis majorの一致、#4 Redisの `maxmemory-policy` / `maxmemory` の設定、#6 Providerのrate / bot protection、#7 Google OAuth callbackの経路）が完了している。Googleログインの無効化・未提供を理由に#7や§18.1の全4方式の互換性gateを省略していない。
 54. rate limitの実Redis Testは、`SPEC-170` `TST-RLM-010` のgroup（G5）で、Pull Requestとmerge commitのgateとして実行される（`INF-TST-004`）。
+55. Release Manifestの `mounted_operation_ids` がbuild時にroute registryから生成され、stagingとProductionで一致する（`INF-DEP-006`）。
 
 ---
 
@@ -1825,7 +1831,7 @@ SPEC-180は次をすべて満たしたとき受入可能とする。
 
 ## 81. 上流仕様変更要求
 
-**なし。**（`UCR-140-003` により本書が受けた変更は §14、§16、§17.1〜§17.2、§26、§28.1〜§28.2、§40、§74.1、§77 に反映済みである。）
+**なし。**（`UCR-140-003` により本書が受けた変更は §14、§16、§17.1〜§17.2、§26、§28.1〜§28.2、§40、§74.1、§77 に反映済みである。`UCR-RELSCOPE-001`（`SPEC-200 §48`）により本書が受けた変更は §44 に反映済みである。）
 
 本仕様は、Infrastructure Ownerとして明示的に委譲されたEnvironment、DB principal、Secret placement、scheduler、health、deployment、Audit access/purge、observability backend、backup / restore、Test gateの具体化だけを行っている。
 
