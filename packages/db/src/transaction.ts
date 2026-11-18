@@ -8,22 +8,15 @@ import {
   TIMEOUTS,
 } from "@off-r39x/reliability";
 import type { Pool, PoolClient } from "pg";
+import {
+  DatabaseUnavailableError,
+  isDatabaseUnavailableCode,
+  sqlState,
+  TransactionDeadlineError,
+} from "./errors.ts";
 import { type DatabaseLogger, databaseLogger, logDatabase } from "./observability.ts";
 
 export type TransactionResult<T> = { status: "committed"; value: T } | { status: "commit_unknown" };
-export class TransactionDeadlineError extends Error {
-  constructor() {
-    super("Database transaction deadline exceeded");
-  }
-}
-export function sqlState(error: unknown): string | undefined {
-  return typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    typeof error.code === "string"
-    ? error.code
-    : undefined;
-}
 function commitAcknowledgementUnknown(error: unknown): boolean {
   const code = sqlState(error);
   // Only an authoritative server SQLSTATE (other than connection/shutdown)
@@ -166,23 +159,7 @@ export async function transaction<T>(
       }
       const timeout = error instanceof TransactionDeadlineError || code === "57014";
       const unavailable =
-        !timeout &&
-        (!client ||
-          discard ||
-          (!!code &&
-            (code.startsWith("08") ||
-              [
-                "57P01",
-                "57P02",
-                "57P03",
-                "ECONNRESET",
-                "ECONNREFUSED",
-                "EPIPE",
-                "ETIMEDOUT",
-                "ENOTFOUND",
-                "EHOSTUNREACH",
-                "ENETUNREACH",
-              ].includes(code))));
+        !timeout && (!client || discard || (!!code && isDatabaseUnavailableCode(code)));
       if (unavailable) discard = true;
       const constraint = code === "23505" || code === "23P01";
       logDatabase(logger, {
@@ -231,7 +208,13 @@ export async function transaction<T>(
       )
         exhausted();
       const policy = isDatabaseRetryable(error) ? RETRY_POLICIES[error.code] : undefined;
-      if (!policy || discard) throw error;
+      if (!policy || discard) {
+        // A connection failure that carries no SQLSTATE / errno is typed so the API layer can answer
+        // 503 instead of treating it as a defect (REL-DB-009). Coded errors are rethrown as they are.
+        if (unavailable && sqlState(error) === undefined)
+          throw new DatabaseUnavailableError({ cause: error });
+        throw error;
+      }
       if (attempt >= policy.maxAttempts) {
         exhausted();
         throw error;
