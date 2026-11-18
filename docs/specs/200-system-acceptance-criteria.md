@@ -1139,7 +1139,7 @@ failure_outcome
 |---|---|---|---|---|---|---|---|
 | `ACC-GEN-009` | Release identity | `INF-DEP-*` | manifest validator | release-manifest hash | staging + Production IDs | Yes | all identity joins equal |
 | `ACC-GEN-029〜031` | Mounted Operation Set | `INF-DEP-006`, `SPEC-110 §21`, `TST-COV-004` | G4 | `mounted_operation_ids` | `ACC-GEN-030` (3)・(4) が必要な条項に限り、§39ではstagingの現在値・既存rowと、API切替前のProductionの現在値・既存row・未処理義務、Productionへ適用する初期値、§40ではProductionの現在値・既存row | Yes | Unmounted Operationの404 / 405 + `NOT_APPLICABLE` 条項のEvidence |
-| `ACC-GEN-032` | Initial data seeding | `INF-SEED-*`, `DB-SEED-*`, `OBS-AUD-014`, `TST-SEED-*` | G2 / G3 / G5 | seeding command result / release evidence | stagingとProductionのseeding結果（区分、public_ref、件数。値を含めない） | Yes | 専用コマンドだけで投入され、0件のときだけ作り、`SUSPENDED` で作られ、Auditが残る |
+| `ACC-GEN-032` | Initial data seeding | `INF-SEED-*`, `DB-SEED-*`, `OBS-AUD-014`, `TST-SEED-*` | G1 / G2 / G3 / G4 / G5 / G6 | seeding command result / release evidence | stagingとProductionのseeding結果（区分、public_ref、件数。値を含めない） | Yes | 専用コマンドだけで投入され、0件のときだけ作り、`SUSPENDED` で作られ、Auditが残る |
 | `ACC-TRC-001` | Spec set completeness | `SPEC-000`, `TST-TRC-*`, `DEV-TRC-*` | manifest validation | spec set hash | none | Yes | no unknown / missing Current rule owner |
 | `ACC-INV-001〜010` | System invariants | `INV-010-01〜10` | §13 exact cases + G3/G4/G5/G6/G8/G10 as applicable | DB/provider config as applicable | same release deployment | Yes | all invariant criteria PASS |
 | `ACC-BIZ-001〜032` | Functional / Domain capability | `FR-*`, `BR-*`, `DI-030-*` | G1/G3/G4/G8 + domain required groups、§15.1の個別Case | feature/current config | staging smoke | Yes | 全Current DIのsemantic coverage + observable outcome PASS |
