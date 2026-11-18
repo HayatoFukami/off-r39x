@@ -161,6 +161,75 @@ function parsesContext(type: NotificationType, context: unknown): boolean {
   return renderContextSchemas[type].safeParse(context).success;
 }
 
+// SPEC-120 §10-§14 and §12.1 "Required render context", item by item and by declared type. These
+// are written out from the spec text and are NOT derived from the implementation. Text inside
+// array items (offering_name / goods_name) is listed in ITEM_TEXT_FIELDS.
+type FieldSpec = {
+  readonly isoUtc: readonly string[];
+  readonly uuid: readonly string[];
+  readonly money: readonly string[];
+  readonly text: readonly string[];
+  readonly nullableText: readonly string[];
+};
+const SPEC_FIELDS: Record<NotificationType, FieldSpec> = {
+  ENTRY_PURCHASE_CONFIRMED: {
+    isoUtc: ["confirmed_at"],
+    uuid: ["order_ref"],
+    money: ["total"],
+    text: ["event_name"],
+    nullableText: [],
+  },
+  KARAOKE_RESERVATION_CONFIRMED: {
+    isoUtc: ["confirmed_at", "usage_start", "usage_end"],
+    uuid: ["order_ref", "reservation_ref"],
+    money: ["total"],
+    text: ["event_name"],
+    nullableText: ["slot_display_name"],
+  },
+  GOODS_PURCHASE_CONFIRMED: {
+    isoUtc: ["confirmed_at"],
+    uuid: ["order_ref"],
+    money: ["total"],
+    text: ["event_name"],
+    nullableText: ["handoff_instructions"],
+  },
+  ENTRY_GOODS_PURCHASE_CONFIRMED: {
+    isoUtc: ["confirmed_at"],
+    uuid: ["order_ref"],
+    money: ["total"],
+    text: ["event_name"],
+    nullableText: ["handoff_instructions"],
+  },
+  KARAOKE_RESERVATION_CANCELED: {
+    isoUtc: ["canceled_at", "usage_start", "usage_end"],
+    uuid: ["reservation_ref"],
+    money: [],
+    text: ["event_name"],
+    nullableText: ["cancellation_reason_label"],
+  },
+  ORDER_REFUND_SUCCEEDED: {
+    isoUtc: ["refunded_at"],
+    uuid: ["order_ref"],
+    money: ["refunded_total"],
+    text: ["event_name"],
+    nullableText: [],
+  },
+};
+// Non-nullable text inside array items (SPEC-120 §10, §12, §12.1): [array item, text item].
+const ITEM_TEXT_FIELDS: Partial<Record<NotificationType, ReadonlyArray<[string, string]>>> = {
+  ENTRY_PURCHASE_CONFIRMED: [["entry_items", "offering_name"]],
+  GOODS_PURCHASE_CONFIRMED: [["goods_items", "goods_name"]],
+  ENTRY_GOODS_PURCHASE_CONFIRMED: [
+    ["entry_items", "offering_name"],
+    ["goods_items", "goods_name"],
+  ],
+};
+
+function scalarSpecKeys(type: NotificationType): string[] {
+  const spec = SPEC_FIELDS[type];
+  return [...spec.isoUtc, ...spec.uuid, ...spec.money, ...spec.text, ...spec.nullableText];
+}
+
 describe("TC-NTF-PORT-001 notification types and template map are exhaustive [EML-TPL-001]", () => {
   // SPEC-120 §9.
   const canonicalTypes = [
@@ -260,6 +329,74 @@ describe("TC-NTF-PORT-002 render_context schemas accept only the SPEC-120 items 
       }
     });
   }
+
+  describe("event_name rejects CR / LF (SEC-EML-006: it is part of the subject)", () => {
+    const subjectInjection = ["A\r\nB", "A\nB", "A\rB"];
+    for (const type of NOTIFICATION_TYPES) {
+      for (const value of subjectInjection) {
+        it(`${type} rejects event_name ${JSON.stringify(value)}`, () => {
+          expect(parsesContext(type, contextWith(type, { event_name: value }))).toBe(false);
+        });
+      }
+      it(`${type} still accepts an ordinary and a non-ASCII event_name`, () => {
+        expect(parsesContext(type, contextWith(type, { event_name: "Synthetic Event" }))).toBe(
+          true,
+        );
+        expect(parsesContext(type, contextWith(type, { event_name: "合成イベント 2027" }))).toBe(
+          true,
+        );
+      });
+    }
+    it("also rejects it inside a full enqueue input", () => {
+      for (const type of NOTIFICATION_TYPES) {
+        const input = enqueueInput(type, {
+          renderContext: contextWith(type, { event_name: "A\r\nBcc: x@example.com" }),
+        });
+        expect(notificationEnqueueInputSchema.safeParse(input).success).toBe(false);
+      }
+    });
+  });
+
+  describe("the spec item table covers every item of the minimal contexts", () => {
+    for (const type of NOTIFICATION_TYPES) {
+      it(`${type} lists every item`, () => {
+        const arrays = Object.keys(CONTEXTS[type]).filter((key) => key.endsWith("_items"));
+        expect([...scalarSpecKeys(type), ...arrays].sort()).toEqual(
+          Object.keys(CONTEXTS[type]).sort(),
+        );
+      });
+    }
+  });
+
+  describe("every text item rejects a non-string value (SPEC-120 §10-§14)", () => {
+    for (const type of NOTIFICATION_TYPES) {
+      for (const key of SPEC_FIELDS[type].text) {
+        for (const value of [123, 0, 123n, true, null, ["x"], { value: "x" }]) {
+          it(`${type}.${key} rejects ${typeof value} ${String(value)}`, () => {
+            expect(parsesContext(type, contextWith(type, { [key]: value }))).toBe(false);
+          });
+        }
+      }
+      for (const key of SPEC_FIELDS[type].nullableText) {
+        for (const value of [123, 0, 123n, true, ["x"], { value: "x" }]) {
+          it(`${type}.${key} rejects ${typeof value} ${String(value)}`, () => {
+            expect(parsesContext(type, contextWith(type, { [key]: value }))).toBe(false);
+          });
+        }
+        it(`${type}.${key} rejects undefined (the item is required, EML-TPL-002)`, () => {
+          expect(parsesContext(type, contextWith(type, { [key]: undefined }))).toBe(false);
+        });
+      }
+      for (const [array, textKey] of ITEM_TEXT_FIELDS[type] ?? []) {
+        for (const value of [123, 123n, true, null]) {
+          it(`${type}.${array}[].${textKey} rejects ${typeof value} ${String(value)}`, () => {
+            const element = { [textKey]: value, quantity: 1 };
+            expect(parsesContext(type, contextWith(type, { [array]: [element] }))).toBe(false);
+          });
+        }
+      }
+    }
+  });
 
   it("accepts nullable items set to a non-empty string", () => {
     expect(
@@ -460,6 +597,64 @@ describe("TC-NTF-PORT-003 wire value boundaries [EML-TPL-002]", () => {
       it(`rejects ${String(value)} (${typeof value})`, () => {
         expect(quantityOf(value)).toBe(false);
       });
+    }
+  });
+
+  describe("every item of every type rejects the wrong wire type (SPEC-120 §10-§14, §12.1)", () => {
+    const wrongIsoUtc: unknown[] = [
+      "2027-01-02T03:04:05.006+09:00",
+      "2027-01-02T03:04:05Z",
+      "2027-02-30T00:00:00.000Z",
+      1798859045006,
+      1798859045006n,
+      null,
+    ];
+    const wrongUuid: unknown[] = [UPPER_REF, "123", 123, 123n, null];
+    const wrongMoney: unknown[] = [
+      { amount: 3500, currency: "JPY" },
+      { amount: 3500n, currency: "JPY" },
+      { amount: "3500", currency: "jpy" },
+      { amount: "3500", currency: 392 },
+      "3500",
+      null,
+    ];
+
+    for (const type of NOTIFICATION_TYPES) {
+      const spec = SPEC_FIELDS[type];
+      for (const key of spec.isoUtc) {
+        for (const value of wrongIsoUtc) {
+          it(`${type}.${key} rejects ${String(value)} (${typeof value})`, () => {
+            expect(parsesContext(type, contextWith(type, { [key]: value }))).toBe(false);
+          });
+        }
+        it(`${type}.${key} accepts the canonical form`, () => {
+          expect(
+            parsesContext(type, contextWith(type, { [key]: "2028-02-29T23:59:59.999Z" })),
+          ).toBe(true);
+        });
+      }
+      for (const key of spec.uuid) {
+        for (const value of wrongUuid) {
+          it(`${type}.${key} rejects ${String(value)} (${typeof value})`, () => {
+            expect(parsesContext(type, contextWith(type, { [key]: value }))).toBe(false);
+          });
+        }
+        it(`${type}.${key} accepts a lowercase UUID`, () => {
+          expect(parsesContext(type, contextWith(type, { [key]: OTHER_REF }))).toBe(true);
+        });
+      }
+      for (const key of spec.money) {
+        wrongMoney.forEach((value, index) => {
+          it(`${type}.${key} rejects the wrong Money shape #${index}`, () => {
+            expect(parsesContext(type, contextWith(type, { [key]: value }))).toBe(false);
+          });
+        });
+        it(`${type}.${key} accepts a decimal-string amount with an uppercase currency`, () => {
+          expect(
+            parsesContext(type, contextWith(type, { [key]: { amount: "0", currency: "JPY" } })),
+          ).toBe(true);
+        });
+      }
     }
   });
 });

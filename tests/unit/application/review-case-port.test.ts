@@ -208,6 +208,20 @@ describe("TC-REVIEW-PORT-002 targets follow SPEC-100 §43 and SPEC-120 §43.1", 
     }
   });
 
+  // Every one of the ten SPEC-100 §43 columns is a positive bigint: a number, zero, a negative
+  // value and a numeric string are each rejected for a non-EML reason code.
+  for (const key of TARGET_KEYS) {
+    for (const bad of [1, 0n, -1n, "1"]) {
+      it(`${key} rejects ${String(bad)} (${typeof bad}) for a non-EML reason`, () => {
+        expect(acceptsTargets("PAY_BINDING_INCONSISTENT", { [key]: bad })).toBe(false);
+        expect(acceptsTargets("PAY_BINDING_INCONSISTENT", { orderId: 1n, [key]: bad })).toBe(false);
+      });
+    }
+    it(`${key} accepts a positive bigint for a non-EML reason`, () => {
+      expect(acceptsTargets("PAY_BINDING_INCONSISTENT", { [key]: 1n })).toBe(true);
+    });
+  }
+
   for (const key of ["orderId", "karaokeReservationId"]) {
     for (const bad of [1, 0n, -1n, "1", 1.5, SYNTHETIC_UUID]) {
       it(`rejects ${key}=${String(bad)} (${typeof bad}); internal ids are positive bigint only`, () => {
