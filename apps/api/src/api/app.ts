@@ -1,37 +1,35 @@
 import { createPublicRpc } from "@off-r39x/api-contract";
 import {
   AuthFailure,
-  type Capability,
   capabilities,
   hasCapability,
   type PrincipalStore,
-  resolvePrincipal,
-  type TokenInspection,
   type TokenVerifier,
 } from "@off-r39x/auth";
 import { TransactionDeadlineError } from "@off-r39x/db";
-import type { createLogger, LogEvent } from "@off-r39x/observability";
+import type { createLogger } from "@off-r39x/observability";
 import { isDatabaseRetryable } from "@off-r39x/reliability";
-import { Hono, type MiddlewareHandler } from "hono";
+import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { TrieRouter } from "hono/router/trie-router";
 import { secureHeaders } from "hono/secure-headers";
 import { actorContext } from "./actor-context.ts";
 import { AUTH_ROUTES, type AuthProxy } from "./auth-proxy.ts";
 import { type ApiEnvironment, ApiFailure } from "./failure.ts";
+import { requirePrincipal, requireVerifiedEmail } from "./middleware/principal.ts";
 import { operationContext, requestContextMiddleware } from "./middleware/request-context.ts";
 import {
   type AppRateLimit,
   createPrincipalRateLimitHooks,
   createRateLimitStageOne,
   createVerificationGate,
-  markAuthorizationConfirmed,
-  type PrincipalRateLimitHooks,
 } from "./rate-limit.ts";
 import { assertMountedAuthRoutes, assertMountedRoutesClassified } from "./routes.ts";
 import { type ErrorCode, errorSchema, errorStatuses } from "./schemas/common.ts";
 
 export { type ApiEnvironment, ApiFailure } from "./failure.ts";
+export { requireCapability } from "./middleware/capability.ts";
+export { requirePrincipal, requireVerifiedEmail } from "./middleware/principal.ts";
 export type { AppRateLimit } from "./rate-limit.ts";
 
 const authErrorCodes = {
@@ -276,112 +274,4 @@ export function createApp(dependencies: AppDependencies) {
   // API-RLC-004: the mounted `/auth/*` routes equal the SPEC-110 §23.1 allowlist (method, path, class).
   assertMountedAuthRoutes(app.routes, Boolean(dependencies.authProxy));
   return app;
-}
-export function requirePrincipal(
-  verifier: TokenVerifier,
-  store: PrincipalStore,
-  hooks?: PrincipalRateLimitHooks,
-): MiddlewareHandler<ApiEnvironment> {
-  return async (c, next) => {
-    let identity: Awaited<ReturnType<TokenVerifier["verify"]>>;
-    // SEC-ABU-033 (a): the structure is checked first and does no cryptographic work.
-    const inspected = verifier.inspect
-      ? verifier.inspect(c.req.header("Authorization"))
-      : inspectBearerFormat(c.req.header("Authorization"));
-    // SEC-ABU-033 (b): a signature is verified only inside its budget; an exhausted one is a 429 that
-    // is not an authentication failure (the token was not judged).
-    const releaseVerification = inspected.ok ? await hooks?.beforeVerification(c) : undefined;
-    try {
-      if (!inspected.ok) throw new AuthFailure("unauthenticated");
-      identity = await verifier.verify(inspected.token);
-      securityEvent(c, "auth.verification.completed");
-    } catch (error) {
-      securityEvent(
-        c,
-        "auth.verification.completed",
-        error instanceof AuthFailure && error.kind === "unavailable"
-          ? "AUTH_SERVICE_UNAVAILABLE"
-          : "AUTHENTICATION_REQUIRED",
-      );
-      // SEC-ABU-021 (5): record the failed structure check / verification for the guard.
-      await hooks?.verificationFailed(c, error);
-      throw error;
-    } finally {
-      releaseVerification?.();
-    }
-    // Stage 2 (SEC-ABU-017): per-subject rules, before the DB-backed Principal resolution.
-    await hooks?.verified(c, identity);
-    try {
-      c.set("principal", await resolvePrincipal(identity, store));
-      securityEvent(c, "auth.business_profile_resolution.completed");
-      securityEvent(c, "authorization.role_resolution.completed");
-    } catch (error) {
-      const kind = error instanceof AuthFailure ? error.kind : "database";
-      securityEvent(
-        c,
-        "auth.business_profile_resolution.completed",
-        kind === "consistency"
-          ? "BUSINESS_PROFILE_INCONSISTENT"
-          : kind === "database"
-            ? "ROLE_RESOLUTION_UNAVAILABLE"
-            : "BUSINESS_PROFILE_UNRESOLVED",
-      );
-      throw error;
-    }
-    await next();
-  };
-}
-/** Plain Bearer format check, for a verifier without its own structure check. */
-function inspectBearerFormat(authorization: string | undefined): TokenInspection {
-  const match = /^Bearer ([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/.exec(
-    authorization ?? "",
-  );
-  return match?.[1] ? { ok: true, token: match[1] } : { ok: false };
-}
-export function requireCapability(capability: Capability): MiddlewareHandler<ApiEnvironment> {
-  return async (c, next) => {
-    if (!c.get("principal") || !hasCapability(c.get("principal"), capability)) {
-      securityEvent(c, "authorization.decision.completed", "CAPABILITY_DENIED");
-      throw new AuthFailure("denied");
-    }
-    securityEvent(c, "authorization.decision.completed");
-    // SEC-ABU-029: Role + Capability passed (step 7); Stage 3 resource rules may now be evaluated.
-    markAuthorizationConfirmed(c);
-    await next();
-  };
-}
-export function requireVerifiedEmail(): MiddlewareHandler<ApiEnvironment> {
-  return async (c, next) => {
-    if (!c.get("principal")) throw new AuthFailure("unauthenticated");
-    if (!c.get("principal").emailVerified) {
-      securityEvent(c, "auth.email_verified_resolution.completed", "EMAIL_VERIFICATION_REQUIRED");
-      throw new AuthFailure("email");
-    }
-    securityEvent(c, "auth.email_verified_resolution.completed");
-    await next();
-  };
-}
-
-function securityEvent(
-  c: import("hono").Context<ApiEnvironment>,
-  event_name: LogEvent["event_name"],
-  error_code?: string,
-): void {
-  c.get("logger")?.log({
-    event_name,
-    level: error_code ? "WARN" : "INFO",
-    result: error_code ? "REJECTED" : "SUCCESS",
-    is_retry: false,
-    request_id: c.get("requestId"),
-    ...operationContext(c),
-    ...actorContext(c),
-    ...(error_code
-      ? {
-          error_code,
-          failure_class: error_code.endsWith("UNAVAILABLE")
-            ? "TEMPORARY_FAILURE"
-            : "SECURITY_FAILURE",
-        }
-      : {}),
-  });
 }

@@ -2949,7 +2949,8 @@
         "packages/db/src/schema-contract.json",
         "apps/api/src/bootstrap/index.ts",
         "packages/api-contract/src/schemas/profile.ts",
-        "packages/api-contract/src/rpc.ts"
+        "packages/api-contract/src/rpc.ts",
+        "apps/api/src/api/middleware/principal.ts"
       ],
       "test_case_ids": [
         "TC-DB-FOUNDATION-004",
@@ -3291,7 +3292,8 @@
         "packages/auth/src/index.ts",
         "packages/api-contract/src/rpc.ts",
         "apps/api/src/api/app.ts",
-        "apps/api/src/bootstrap/index.ts"
+        "apps/api/src/bootstrap/index.ts",
+        "apps/api/src/api/middleware/auth.ts"
       ],
       "test_case_ids": [
         "TC-SEC-AUTH-001-050",
@@ -3342,7 +3344,8 @@
       "code_paths": [
         "packages/auth/src/index.ts",
         "packages/db/src/principals.ts",
-        "apps/api/src/api/app.ts"
+        "apps/api/src/api/app.ts",
+        "apps/api/src/api/middleware/capability.ts"
       ],
       "test_case_ids": ["TC-AR-ROLE-012-050", "TC-DB-ARC-008-050"],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
@@ -3361,32 +3364,50 @@
         "packages/db/src/principals.ts",
         "apps/api/src/bootstrap/index.ts",
         "packages/api-contract/src/schemas/profile.ts",
-        "packages/api-contract/src/rpc.ts"
+        "packages/api-contract/src/rpc.ts",
+        "apps/api/src/api/middleware/principal.ts",
+        "apps/api/src/api/middleware/capability.ts"
       ],
       "test_case_ids": ["TC-SEC-AZ-013-050", "TC-DB-ARC-008-050", "TC-AUTH-AUDIT-004"],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
     },
     {
       "rule_id": "SEC-AUTH-015",
-      "code_paths": ["packages/auth/src/index.ts", "apps/api/src/api/app.ts"],
+      "code_paths": [
+        "packages/auth/src/index.ts",
+        "apps/api/src/api/app.ts",
+        "apps/api/src/api/middleware/principal.ts"
+      ],
       "test_case_ids": ["TC-SEC-AZ-013-050"],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
     },
     {
       "rule_id": "AR-AZ-002",
-      "code_paths": ["packages/auth/src/index.ts", "apps/api/src/api/app.ts"],
+      "code_paths": [
+        "packages/auth/src/index.ts",
+        "apps/api/src/api/app.ts",
+        "apps/api/src/api/middleware/principal.ts"
+      ],
       "test_case_ids": ["TC-SEC-AZ-013-050"],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
     },
     {
       "rule_id": "AR-ROLE-003",
-      "code_paths": ["packages/auth/src/index.ts", "apps/api/src/api/app.ts"],
+      "code_paths": [
+        "packages/auth/src/index.ts",
+        "apps/api/src/api/app.ts",
+        "apps/api/src/api/middleware/capability.ts"
+      ],
       "test_case_ids": ["TC-SEC-AZ-013-050"],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
     },
     {
       "rule_id": "DEV-API-004",
-      "code_paths": ["packages/auth/src/index.ts", "apps/api/src/api/app.ts"],
+      "code_paths": [
+        "packages/auth/src/index.ts",
+        "apps/api/src/api/app.ts",
+        "apps/api/src/api/middleware/principal.ts"
+      ],
       "test_case_ids": ["TC-SEC-AZ-013-050"],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
     },
@@ -3681,13 +3702,27 @@
     },
     {
       "rule_id": "OBS-AUTH-001",
-      "code_paths": ["apps/api/src/api/app.ts", "packages/observability/src/index.ts"],
+      "code_paths": [
+        "apps/api/src/api/app.ts",
+        "packages/observability/src/index.ts",
+        "apps/api/src/api/middleware/auth.ts",
+        "apps/api/src/api/middleware/principal.ts",
+        "apps/api/src/api/middleware/capability.ts",
+        "apps/api/src/api/middleware/request-context.ts"
+      ],
       "test_case_ids": ["TC-OBS-AUDIT-002"],
       "notes": "Foundation audit repair; local synthetic evidence does not assert live-provider or release readiness"
     },
     {
       "rule_id": "OBS-AUTH-002",
-      "code_paths": ["apps/api/src/api/app.ts", "packages/observability/src/index.ts"],
+      "code_paths": [
+        "apps/api/src/api/app.ts",
+        "packages/observability/src/index.ts",
+        "apps/api/src/api/middleware/auth.ts",
+        "apps/api/src/api/middleware/principal.ts",
+        "apps/api/src/api/middleware/capability.ts",
+        "apps/api/src/api/middleware/request-context.ts"
+      ],
       "test_case_ids": ["TC-OBS-AUDIT-002"],
       "notes": "Foundation audit repair; local synthetic evidence does not assert live-provider or release readiness"
     },
@@ -3707,7 +3742,8 @@
       "code_paths": [
         "packages/api-contract/src/rpc.ts",
         "apps/api/src/api/app.ts",
-        "apps/api/src/bootstrap/index.ts"
+        "apps/api/src/bootstrap/index.ts",
+        "apps/api/src/api/middleware/auth.ts"
       ],
       "test_case_ids": ["TC-RPC-AUDIT-001"],
       "notes": "Foundation audit repair; local synthetic evidence does not assert live-provider or release readiness"
@@ -4142,7 +4178,9 @@
       "code_paths": [
         "apps/api/src/api/rate-limit.ts",
         "apps/api/src/api/app.ts",
-        "packages/security/src/rate-limit/limiter.ts"
+        "packages/security/src/rate-limit/limiter.ts",
+        "apps/api/src/api/middleware/auth.ts",
+        "apps/api/src/api/middleware/principal.ts"
       ],
       "test_case_ids": [
         "TC-RLM-004-102",
@@ -4224,7 +4262,8 @@
         "packages/security/src/rate-limit/limiter.ts",
         "apps/api/src/api/rate-limit.ts",
         "apps/api/src/api/app.ts",
-        "packages/auth/src/index.ts"
+        "packages/auth/src/index.ts",
+        "apps/api/src/api/middleware/auth.ts"
       ],
       "test_case_ids": [
         "TC-RLM-005-102",
@@ -4249,7 +4288,8 @@
         "apps/api/src/api/app.ts",
         "packages/auth/src/index.ts",
         "apps/api/src/api/actor-context.ts",
-        "apps/api/src/bootstrap/index.ts"
+        "apps/api/src/bootstrap/index.ts",
+        "apps/api/src/api/middleware/auth.ts"
       ],
       "test_case_ids": [
         "TC-RLM-005-102",
@@ -4754,7 +4794,8 @@
         "packages/security/src/rate-limit/registry.ts",
         "packages/security/src/rate-limit/operations.ts",
         "packages/security/src/rate-limit/keys.ts",
-        "apps/api/src/bootstrap/index.ts"
+        "apps/api/src/bootstrap/index.ts",
+        "apps/api/src/api/middleware/capability.ts"
       ],
       "test_case_ids": [
         "TC-RLM-004-102",
@@ -4902,7 +4943,8 @@
         "apps/api/src/api/rate-limit.ts",
         "apps/api/src/api/app.ts",
         "packages/security/src/rate-limit/limiter.ts",
-        "apps/api/src/bootstrap/index.ts"
+        "apps/api/src/bootstrap/index.ts",
+        "apps/api/src/api/middleware/auth.ts"
       ],
       "test_case_ids": [
         "TC-RLM-005-215",

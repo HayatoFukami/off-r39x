@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { createLogger } from "@off-r39x/observability";
+import type { createLogger, LogEvent } from "@off-r39x/observability";
 import type { Context, MiddlewareHandler } from "hono";
 import { actorContext } from "../actor-context.ts";
 import type { ApiEnvironment } from "../failure.ts";
@@ -49,4 +49,28 @@ export function operationContext(c: Context<ApiEnvironment>) {
   return execution && operation
     ? { operation_id: operation, operation_execution_id: execution }
     : {};
+}
+
+export function securityEvent(
+  c: Context<ApiEnvironment>,
+  event_name: LogEvent["event_name"],
+  error_code?: string,
+): void {
+  c.get("logger")?.log({
+    event_name,
+    level: error_code ? "WARN" : "INFO",
+    result: error_code ? "REJECTED" : "SUCCESS",
+    is_retry: false,
+    request_id: c.get("requestId"),
+    ...operationContext(c),
+    ...actorContext(c),
+    ...(error_code
+      ? {
+          error_code,
+          failure_class: error_code.endsWith("UNAVAILABLE")
+            ? "TEMPORARY_FAILURE"
+            : "SECURITY_FAILURE",
+        }
+      : {}),
+  });
 }
