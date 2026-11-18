@@ -460,9 +460,9 @@ describe("TC-REVIEW-PORT-004 ReviewCaseOpenInput expresses the target constraint
       targets: { orderId: 1n as OrderId, karaokeReservationId: 2n as KaraokeReservationId },
       details,
     };
+    // @ts-expect-error SPEC-120 §43.1: an email reason cannot target a payment binding
     const bad: ReviewCaseOpenInput = {
       reasonCode: "EML_RENDER_CONTEXT_INVALID",
-      // @ts-expect-error SPEC-120 §43.1: an email reason cannot target a payment binding
       targets: { paymentBindingId: 3n as PaymentBindingId },
       details,
     };
@@ -473,9 +473,9 @@ describe("TC-REVIEW-PORT-004 ReviewCaseOpenInput expresses the target constraint
     // A variable, not a literal: excess property checks do not apply, so the type itself must
     // forbid the other target keys.
     const mixed = { orderId: 1n as OrderId, paymentBindingId: 3n as PaymentBindingId };
+    // @ts-expect-error SPEC-120 §43.1: a forbidden target next to an allowed one is still refused
     const input: ReviewCaseOpenInput = {
       reasonCode: "EML_RENDER_CONTEXT_INVALID",
-      // @ts-expect-error SPEC-120 §43.1: a forbidden target next to an allowed one is still refused
       targets: mixed,
       details,
     };

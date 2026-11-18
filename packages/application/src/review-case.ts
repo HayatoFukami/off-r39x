@@ -149,13 +149,19 @@ type AtLeastOne<T> = {
     [Name in Exclude<keyof T, Key>]?: T[Name];
   };
 }[keyof T];
+// SPEC-120 §43.1: an email reason targets an order or a reservation only. Pick alone would just
+// leave the other keys out of the type, so a variable that also holds one of them would still be
+// assignable; each other known key is forbidden explicitly as an optional never.
+type EmailTargets = AtLeastOne<Pick<ReviewCaseTargets, "orderId" | "karaokeReservationId">> & {
+  readonly [Key in Exclude<keyof ReviewCaseTargets, "orderId" | "karaokeReservationId">]?: never;
+};
 type EmailReasonCode = Extract<ReviewReasonCode, `EML_${string}`>;
 type NonEmailReasonCode = Exclude<ReviewReasonCode, EmailReasonCode>;
 
 export type ReviewCaseOpenInput =
   | {
       readonly reasonCode: EmailReasonCode;
-      readonly targets: AtLeastOne<Pick<ReviewCaseTargets, "orderId" | "karaokeReservationId">>;
+      readonly targets: EmailTargets;
       readonly details: ReviewCaseDetails;
     }
   | {
