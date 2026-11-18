@@ -1437,7 +1437,7 @@ describe("TC-DB-005-003 event name and timezone, undecided facts, and the Karaok
       await expectAccepted("events", eventRow({ name: "あ" }), "name of one character");
       await expectRejected(
         "events",
-        eventRow({ name: undefined }),
+        eventRow({ name: undefined, summary: "合成の概要" }),
         "23502",
         "name",
         "name omitted",
