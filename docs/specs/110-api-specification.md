@@ -406,7 +406,7 @@ Transport key replay時は、同じPrincipal + Operation ID + normalized request
 
 Transport idempotencyのreplay記録（以下「記録」）は、業務DBの `app.idempotency_records`（`SPEC-100 §43.1`）だけに保存する。Redisその他のstore、各業務表の列には保存しない。記録は補助であり、重複防止のauthorityではない（`API-IDM-001`、`API-IDM-002`）。
 
-**API-IDM-003:** 記録を作る対象は、§18の「対象」一覧のOperationのうち、`Idempotency-Key` を受けて処理するものとする。Check-inはHeaderを受けても記録を作らない（Ticket consume-onceがCanonicalである。`SPEC-150` `REL-RTY-013`）。Headerを必要としない参照Operation（bulk eligibilityなど）は記録を作らない（`SPEC-140` `SEC-API-029`）。
+**API-IDM-003:** 記録を作る対象は、§18の「対象」一覧のOperation、および `SPEC-120` が `Idempotency-Key` 必須と定めるOperation（`API-ADM-EML-004`、`API-ADM-EML-005`。`SPEC-120 §36.1`）のうち、`Idempotency-Key` を受けて処理するものとする。Check-inはHeaderを受けても記録を作らない（Ticket consume-onceがCanonicalである。`SPEC-150` `REL-RTY-013`）。Headerを必要としない参照Operation（bulk eligibilityなど）は記録を作らない（`SPEC-140` `SEC-API-029`）。
 
 **API-IDM-004:** 記録は、そのOperationで業務更新を**最初にcommitするtransaction**の中で、`SPEC-100 §43.1` `DB-IDM-002` の位置にINSERTし、業務更新と同じcommitで確定する。外部呼出しの前に業務commitを持つOperation（購入開始、`API-CHK-001`、Refund requestなど）ではそのtransaction（transaction A）、外部のlookupを先に行うOperation（§48.5の照合Operationなど）ではlookup後の保存transactionとする。外部呼出しの後のtransactionで重ねて書かない。lookupの結果が不明でmutationをしなかった場合は記録が残らず、同じkeyの再試行で照合を続けられる。INSERTが失敗した場合はそのtransaction全体をrollbackする。失敗がDB障害、またはretry上限を使い切ったretryable error（§50、§51）なら既存の `503 DATABASE_TEMPORARY_FAILURE`（§21）を返す。一意制約の競合（`23505`）は `API-IDM-009` と `DB-IDM-002` に従い、その他の制約違反は §50 に従う。新しいerror code・stateを追加しない。
 
