@@ -149,7 +149,7 @@ describe("TC-REVIEW-PORT-001 reason codes equal the SPEC-150 §43 canonical set 
   });
 });
 
-describe("TC-REVIEW-PORT-002 targets follow SPEC-100 §43 and SPEC-120 §43.1 [REL-REC-007]", () => {
+describe("TC-REVIEW-PORT-002 targets follow SPEC-100 §43 and SPEC-120 §43.1", () => {
   it("lists exactly the ten SPEC-100 §43 target columns", () => {
     expect(TARGET_KEYS).toHaveLength(10);
     expect(EML_REASON_CODES).toHaveLength(5);
