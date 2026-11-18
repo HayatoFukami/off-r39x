@@ -18119,11 +18119,66 @@
       "fault_points": [],
       "expected_http": [200, 204, 401, 403, 404, 503],
       "expected_domain_postconditions": [
-        "Every API response except the relayed /auth/* answer carries a fresh server-generated UUID X-Request-Id, an incoming canonical UUID is not adopted, and the header equals the error/meta request_id and the request_id of every log record of that request; the relayed auth proxy answer carries no X-Request-Id (pinned as observed)"
+        "Every API response except the relayed /auth/* answer carries an X-Request-Id: a fresh server-generated UUID v4 when no valid value is sent, and an incoming canonical UUID (SPEC-110 section 17) is adopted; the header equals the error/meta request_id and the request_id of every log record of that request; the relayed auth proxy answer carries no X-Request-Id (pinned as observed; UCR-110-004 is PROPOSED)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
       "expected_observability": ["http.request.completed", "auth.verification.completed"],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-SEC-API-023-002",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": [
+        "SEC-API-023",
+        "OBS-COR-001",
+        "SPEC-110-17",
+        "SPEC-160-8",
+        "REL-GEN-005"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": ["API-AUTH-001"],
+      "db_constraint_names": [],
+      "preconditions": "Synthetic createApp harness with an in-memory rate limit, a recording logger and a stub auth proxy transport; synthetic request IDs only",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [200, 401, 403, 404, 429],
+      "expected_domain_postconditions": [
+        "A lower-case version 1-8 RFC 9562 UUID sent as X-Request-Id is adopted as the response header, the meta/error request_id and the request_id of every log record; missing, empty, upper-case, nil, max, version 0, wrong-variant, braced, URN, wrong-length, combined and injected values are replaced by a fresh UUID v4 and never written",
+        "Two requests carrying the same adopted request ID are both counted by the rate limit and get different operation_execution_id values; the auth proxy neither forwards the header nor adds it to the relayed answer"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [
+        "The stub auth transport receives no x-request-id header"
+      ],
+      "expected_observability": ["http.request.completed", "auth.verification.completed"],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-SEC-API-023-003",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["SEC-API-023", "OBS-COR-001", "SPEC-110-17"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Pure function call with synthetic strings",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "adoptableRequestId returns the value only for a canonical UUID (SPEC-110 section 17) and undefined for values with line breaks, header injection, padding, other versions or variants, nil, max, braces, URN, upper case or another length; every adopted value passes z.uuid()"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": false
     },
@@ -18200,7 +18255,13 @@
       "test_case_id": "TC-SEC-ABU-017-001",
       "level": "API",
       "suite": "api",
-      "upstream_rule_ids": ["SEC-ABU-017", "SPEC-110-24", "SPEC-110-24.1", "OBS-AUTH-001"],
+      "upstream_rule_ids": [
+        "SEC-ABU-017",
+        "SEC-AUTH-003",
+        "SPEC-110-24",
+        "SPEC-110-24.1",
+        "OBS-AUTH-001"
+      ],
       "system_invariant_ids": [],
       "api_operation_ids": ["API-AUTH-001"],
       "db_constraint_names": [],
@@ -18211,7 +18272,7 @@
       "fault_points": [],
       "expected_http": [200, 401, 403, 429, 503],
       "expected_domain_postconditions": [
-        "For success, missing token, failed verification, Stage 2 rejection, directory failure, unverified email and capability denial, the ordered sequence of Stage 1, verification, Stage 2, Principal resolution, email check, capability decision, handler and completion log equals the sequence recorded before the split"
+        "For success, missing token, failed verification, Stage 2 rejection, directory failure, unverified email and capability denial, the ordered sequence is Stage 1, verification, Stage 2, one directory read, the Email verified check, Business Profile and Role resolution, capability decision, handler and completion log (SPEC-110 section 24 / 24.1); an unverified Email stops before any Business Profile or Role event"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -18224,6 +18285,66 @@
         "ratelimit.decision.completed",
         "http.request.completed"
       ],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-SEC-AUTH-003-001",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": [
+        "SEC-AUTH-003",
+        "AR-AUTH-003",
+        "AR-AUTH-005",
+        "DB-ARC-008",
+        "SPEC-110-24",
+        "SPEC-110-24.1",
+        "SPEC-060-8.3"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": ["API-AUTH-001"],
+      "db_constraint_names": [],
+      "preconditions": "Synthetic createApp harness; the directory/profile/role row returned by a stub store is varied per case; one ordered list of store calls, verification, directory reads and log events",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [200, 401, 403, 409, 503],
+      "expected_domain_postconditions": [
+        "With one directory read, an existing Identity with an unverified Email is refused with 403 EMAIL_VERIFICATION_REQUIRED whether the Business Profile is missing or inconsistent, before any Business Profile or Role event; a missing Identity stays 401, an inconsistent directory row stays 409, a verified Identity without a profile stays 403 AUTHORIZATION_DENIED, and the success events are Email, Business Profile, Role in that order"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "auth.email_verified_resolution.completed",
+        "auth.business_profile_resolution.completed",
+        "authorization.role_resolution.completed",
+        "security.fail_closed.triggered",
+        "http.request.completed"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-SEC-AUTH-003-002",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["SEC-AUTH-003", "AR-AUTH-003", "SPEC-110-24.1"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "resolvePrincipal with a synthetic in-memory store",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "With requireVerifiedEmail the failure kinds are evaluated in the order database, missing Identity, inconsistent directory, unverified Email, missing profile, inconsistent profile or role, with one store call; without the option an unverified Email still yields a Principal with emailVerified false"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": false
     },

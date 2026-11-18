@@ -3,6 +3,9 @@
 // split. Every expected value below was recorded by running the pre-split code; random values
 // (X-Request-Id, operation_execution_id, duration_ms, timestamp) are checked by shape and replaced
 // with a placeholder before the literal comparison. Synthetic data only.
+// Revised after SPEC-110 v2.4.0 (§17 adoption of a canonical incoming X-Request-Id, §24.1 order of
+// the Email verified check): those expectations changed by the specification, not by the split.
+// See the TC-SEC-API-023-001 and TC-SEC-ABU-017-001 titles.
 import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   type ApiEnvironment,
@@ -333,7 +336,7 @@ describe("TC-SEC-API-023-001 X-Request-Id (SEC-API-023, OBS-COR-001, SPEC-110 §
     );
   });
 
-  it("the value differs per request and an incoming canonical UUID is not adopted", async () => {
+  it("the value differs per request without an incoming value, and an incoming canonical UUID is adopted (SPEC-110 §17)", async () => {
     const r = fullRig();
     const first = await r.send("/api/v1/self/principal", { headers: bearer });
     const second = await r.send("/api/v1/self/principal", { headers: bearer });
@@ -341,8 +344,7 @@ describe("TC-SEC-API-023-001 X-Request-Id (SEC-API-023, OBS-COR-001, SPEC-110 §
     const withIncoming = await r.send("/api/v1/self/principal", {
       headers: { ...bearer, "X-Request-Id": INCOMING_REQUEST_ID },
     });
-    expect(withIncoming.headers.get("X-Request-Id")).toMatch(UUID_V4);
-    expect(withIncoming.headers.get("X-Request-Id")).not.toBe(INCOMING_REQUEST_ID);
+    expect(withIncoming.headers.get("X-Request-Id")).toBe(INCOMING_REQUEST_ID);
   });
 
   it("the header equals the error request_id, the meta request_id and every log record of the request", async () => {
@@ -352,9 +354,9 @@ describe("TC-SEC-API-023-001 X-Request-Id (SEC-API-023, OBS-COR-001, SPEC-110 §
     expect(((await ok.json()) as { meta: { request_id: string } }).meta.request_id).toBe(okId);
     expect(success.order.filter((x) => x.startsWith("log:"))).toEqual([
       "log:auth.verification.completed",
+      "log:auth.email_verified_resolution.completed",
       "log:auth.business_profile_resolution.completed",
       "log:authorization.role_resolution.completed",
-      "log:auth.email_verified_resolution.completed",
       "log:http.request.completed",
     ]);
     expect(success.records).toHaveLength(5);
@@ -801,7 +803,7 @@ describe("TC-SEC-ABU-017-001 authentication pipeline order (SEC-ABU-017, SPEC-11
       },
     );
 
-  it("success: Stage 1, verification, Stage 2, directory, email, completion", async () => {
+  it("success: Stage 1, verification, Stage 2, directory, email before the Business Profile, completion", async () => {
     const r = fullRig();
     expect((await get(r)).status).toBe(200);
     expect(r.order).toEqual([
@@ -810,9 +812,9 @@ describe("TC-SEC-ABU-017-001 authentication pipeline order (SEC-ABU-017, SPEC-11
       "log:auth.verification.completed",
       "store:admit",
       "db",
+      "log:auth.email_verified_resolution.completed",
       "log:auth.business_profile_resolution.completed",
       "log:authorization.role_resolution.completed",
-      "log:auth.email_verified_resolution.completed",
       "log:http.request.completed",
     ]);
   });
@@ -873,7 +875,7 @@ describe("TC-SEC-ABU-017-001 authentication pipeline order (SEC-ABU-017, SPEC-11
     ]);
   });
 
-  it("unverified email (403): resolution events come first, then the email refusal", async () => {
+  it("unverified email (403): the email refusal comes before any Business Profile or Role event (SPEC-110 §24.1)", async () => {
     const r = fullRig();
     r.state.emailVerified = false;
     expect((await get(r)).status).toBe(403);
@@ -883,8 +885,6 @@ describe("TC-SEC-ABU-017-001 authentication pipeline order (SEC-ABU-017, SPEC-11
       "log:auth.verification.completed",
       "store:admit",
       "db",
-      "log:auth.business_profile_resolution.completed",
-      "log:authorization.role_resolution.completed",
       "log:auth.email_verified_resolution.completed:EMAIL_VERIFICATION_REQUIRED",
       "log:security.fail_closed.triggered:EMAIL_VERIFICATION_REQUIRED",
       "log:http.request.completed",
@@ -901,9 +901,9 @@ describe("TC-SEC-ABU-017-001 authentication pipeline order (SEC-ABU-017, SPEC-11
       "verify",
       "log:auth.verification.completed",
       "db",
+      "log:auth.email_verified_resolution.completed",
       "log:auth.business_profile_resolution.completed",
       "log:authorization.role_resolution.completed",
-      "log:auth.email_verified_resolution.completed",
       "log:authorization.decision.completed:CAPABILITY_DENIED",
       "log:security.fail_closed.triggered:AUTHORIZATION_DENIED",
       "log:http.request.completed",
@@ -920,9 +920,9 @@ describe("TC-SEC-ABU-017-001 authentication pipeline order (SEC-ABU-017, SPEC-11
       "verify",
       "log:auth.verification.completed",
       "db",
+      "log:auth.email_verified_resolution.completed",
       "log:auth.business_profile_resolution.completed",
       "log:authorization.role_resolution.completed",
-      "log:auth.email_verified_resolution.completed",
       "log:authorization.decision.completed",
       "handler",
       "log:http.request.completed",
