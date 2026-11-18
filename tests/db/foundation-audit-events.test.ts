@@ -289,17 +289,19 @@ describe("TC-OBS-AUD-004-001 app.audit_events catalog (real PostgreSQL 17)", () 
     expect(rows.every((r) => r.indisvalid && r.indisready && r.indislive)).toBe(true);
   });
 
-  it("TC-OBS-AUD-004-001 owner is app_migrator, RLS is off and the journal lists both migrations", async () => {
+  it("TC-OBS-AUD-004-001 owner is app_migrator, RLS is off and the journal starts with 0001_foundation and 0002_audit_events", async () => {
     const table = (
       await admin.query(
         "SELECT pg_get_userbyid(relowner) AS owner, relrowsecurity FROM pg_class WHERE oid = 'app.audit_events'::regclass",
       )
     ).rows[0];
     expect(table).toEqual({ owner: "app_migrator", relrowsecurity: false });
+    // The first two entries only, so that a later migration PR need not edit this line; the full
+    // journal is pinned by TC-DB-ARC-007-004 (same idea as foundation-db.test.ts counting files).
     expect(
-      (await admin.query("SELECT version FROM app.schema_migrations ORDER BY version")).rows.map(
-        (row) => row.version,
-      ),
+      (
+        await admin.query("SELECT version FROM app.schema_migrations ORDER BY version LIMIT 2")
+      ).rows.map((row) => row.version),
     ).toEqual(["0001_foundation", "0002_audit_events"]);
   });
 
