@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-170
 title: Test Specification
-version: 2.4.0
+version: 2.5.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -2057,6 +2057,8 @@ SPEC-170に準拠したTest implementationは、少なくとも次をすべて�
 
 - `UCR-100-001〜003`: `INCORPORATED`（`SPEC-100` §§13.4,14.1,16〜19,24,39,47〜49）
 - `UCR-110-001`: `INCORPORATED`（`SPEC-110` Cart／eligibility／Logo／Orderサマリー契約、§27.2の個別Case）
+- `UCR-110-004`: `INCORPORATED`（`SPEC-110` `API-PUR-ELG-001`・§27。`UCR-RELSCOPE-001` の一部）
+- `UCR-RELSCOPE-001`: `INCORPORATED`（`SPEC-200 §7.5`、`SPEC-180 §44`、本書 §27・§74・§79.1）
 - `UCR-110-003`: `INCORPORATED`（`SPEC-110 §18.1` `API-IDM-003〜010`、`SPEC-100 §43.1` `DB-IDM-001〜003`、本書 §28.1 `TST-IDM-004〜008`のTest）
 - `UCR-130-001〜004/006`: `INCORPORATED`（`SPEC-060` / `SPEC-110` / `SPEC-120` / `SPEC-130`）
 - `UCR-130-005`: `DEFERRED_NONBLOCKING`（`SPEC-100`、speculative indexなし）

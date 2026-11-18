@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-110
 title: API Specification
-version: 2.4.0
+version: 2.5.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -672,7 +672,7 @@ Public responseでは他Customer、Hold owner、Order、Reservation情報を返�
 
 1-hour bucketは`Asia/Tokyo`の`usage_start`で集約し、取得失敗時に`available_count: 0`を返して成功扱いしない。
 
-Karaokeの購入を開始するOperation（`API-PUR-KRK-001`）が、当該releaseの `mounted_operation_ids`（`SPEC-180 §44`）に含まれない場合、`HELD` / `SOLD` の枠を除くSlotは、販売設定の現在値によらず `availability=UNAVAILABLE`、`unavailable_reason=SALES_STOPPED` とする（`API-PUR-ELG-001` と同じ判定。`UCR-110-004`）。
+Karaokeの購入を開始するOperation（`API-PUR-KRK-001`）が、当該releaseのroute registry（`API-RLC-001`）に登録されない場合、`HELD` / `SOLD` の枠を除くSlotは、販売設定の現在値によらず `availability=UNAVAILABLE`、`unavailable_reason=SALES_STOPPED` とする（`API-PUR-ELG-001` と同じ判定。`UCR-110-004`）。
 
 ---
 
@@ -713,7 +713,7 @@ Karaokeの購入を開始するOperation（`API-PUR-KRK-001`）が、当該relea
 - **DB / effects:** read-only snapshotで現在値と本人の有効確保＋確定済み購入を評価する。Order／Allocation／Hold／counter／Profile／idempotency recordを含む業務DB write、row lock、Provider callは行わない。参照OperationなのでIdempotency-Keyは不要で、transport replay recordを作らない。
 - **Response 200:** `{ items: [{ kind, target_ref, purchasable: boolean, reasons: string[], max_purchasable_quantity: nonNegativeInteger }] }`。入力順を保持する。maxは現在のcapacity／在庫／Account残数の最小、Karaokeは0または1。`purchasable` は要求数量がその範囲内かつ全販売条件成立時だけtrue、true時はreasons空配列。
 - **Reasons（この順で重複なく列挙）:** `NOT_PUBLIC_OR_NOT_FOUND`, `SALES_NOT_STARTED`, `SALES_CLOSED`, `SALES_STOPPED`, `SOLD_OUT`, `INSUFFICIENT_QUANTITY`, `PURCHASE_LIMIT_EXCEEDED`, `SLOT_UNAVAILABLE`, `PAYMENT_WINDOW_TOO_SHORT`。非公開／不存在は最初のcodeだけでmax=0とし、非公開情報を返さない。販売停止等で今購入できない場合もmax=0。在庫不足とAccount上限超過は該当理由を区別する。
-- **購入経路がmountされないkind（`UCR-110-004`）:** あるkindの購入を開始できるOperation（ENTRY: `API-PUR-ENTRY-001`／`API-PUR-CART-001`、GOODS: `API-PUR-GDS-001`／`API-PUR-CART-001`、KARAOKE: `API-PUR-KRK-001`）が、当該releaseのRelease Manifestの `mounted_operation_ids`（`SPEC-180 §44`）に1つも含まれない場合、そのkindは販売条件の現在値によらず `purchasable=false`、`max_purchasable_quantity=0` とし、reasonsに `SALES_STOPPED` を含める。非公開／不存在の判定が先にある場合は上記の規則どおり最初のcodeだけを返す。新しいreason・error codeは追加しない。
+- **購入経路がmountされないkind（`UCR-110-004`）:** あるkindの購入を開始できるOperation（ENTRY: `API-PUR-ENTRY-001`／`API-PUR-CART-001`、GOODS: `API-PUR-GDS-001`／`API-PUR-CART-001`、KARAOKE: `API-PUR-KRK-001`）が、当該releaseのroute registry（`API-RLC-001`）に1つも登録されない場合、そのkindは販売条件の現在値によらず `purchasable=false`、`max_purchasable_quantity=0` とし、reasonsに `SALES_STOPPED` を含める。非公開／不存在の判定が先にある場合は上記の規則どおり最初のcodeだけを返す。新しいreason・error codeは追加しない。
 - **Safety / failure:** 本人をClientから指定させず、他者の購入件数／Hold／Order情報を返さない。全Responseは `Cache-Control: private, no-store`。認証失敗は401／403、DB・認証依存の判定不能は既存503であり、一部を購入可能や空結果に偽装しない。
 - **Meaning:** 表示用の瞬時判定で、確保・価格保証・後続購入の認可ではない。購入開始時には必ず再検証する。Guestは公開案内のみを参照し、認証後に本Operationで本人条件を取得する。
 - **Trace:** `FR-CRT-005,007`, `FR-TKT-026`, `FR-KRK-007`, `PG-TKT-001`, `PG-KRK-003`, `PG-GDS-002`, `PG-CRT-001`。
@@ -2462,16 +2462,6 @@ retry count / backoff / queue / operator RunbookはSPEC-150。本書§48.5はSPE
 
 `UCR-140-003` の実装で、段階1の `429` / `503` がCORS処理より前に返るため、Browserが `Retry-After` を読めない問題が見つかった。`SPEC-140` が `SEC-ABU-025`（v2.4.0）で規則を定め、本書は §21 からそれを参照する。API Operation、Capability、状態は追加・変更しない。
 
-### UCR-110-004 — INCORPORATED
-
-- **Status:** `INCORPORATED`。本改訂（v2.4.0）で `API-PUR-ELG-001`（購入経路がmountされないkind）と §27 に反映した。`UCR-RELSCOPE-001`（`SPEC-200 §48`）の一部である。
-- 対象: SPEC-110 `API-PUR-ELG-001`、§27（Karaoke public availability schema）。`API-PUR-CART-001` と §22、§56.1 は変更しない。
-- 現在の仕様: 購入可否の照会と公開availabilityは、販売期間・販売状態・在庫・Purchase Limit・Slotの状態だけで評価し、kindの購入を開始するOperationがreleaseにmountされているかを評価に使わない。
-- 要求する変更: あるkindの購入を開始できるOperationが1つもmountされないreleaseでは、そのkindを `SALES_STOPPED`（購入不可）として評価する。既存のreason・error codeだけを使い、新しい状態・reason・error codeは追加しない。
-- 理由: プロジェクト所有者の明示的指示（2026-11-13、`SPEC-000 §8` の1）に基づく `UCR-RELSCOPE-001`。購入Operationをmountしないreleaseで販売設定が誤って有効になっても、購入できないkindが「購入可能」と表示されない。
-- 変更しない場合の影響: 購入Operationがmountされないkindが購入可能と表示される（購入しようとすると `404`）。
-- 影響を受ける可能性がある仕様書: SPEC-130, SPEC-170, SPEC-180, SPEC-200
-
 ### UCR-110-002 — PARTIALLY INCORPORATED
 
 - **Status:** `PARTIALLY_INCORPORATED`。要求2（許可routeの一覧）は、PR #41 のレビューを受けて §23.1 の許可表（15経路）、§56.1、`API-RLC-004` として本文へ取り込み済みで、現在の契約は本文を正とする。要求1（Google OAuth callbackが `/auth/*` を経由するかの外部確認）は、確認項目を `SPEC-180` §17.2 #7 に追加済み（PR #41 第9回レビュー。確認結果は未取得）で、要求3（経由する場合のClass割当）は確認結果に依存して未解決のまま `PROPOSED` であり、実装契約ではない。確認結果が出るまで、実装は §23.1 の表にない経路・Class割当を追加しない
@@ -2499,3 +2489,13 @@ retry count / backoff / queue / operator RunbookはSPEC-150。本書§48.5はSPE
 - 理由: Transport Idempotencyの記録は補助であり、重複防止の本命はDomain側（`API-IDM-001`、`API-IDM-002`、§52）である。記録を業務DBへ同じtransactionで書けば、「業務はcommitしたが記録がない」「記録だけある」という食い違いが生じず、照合が単純である。`SPEC-180` はRedisをrate limit専用のsupporting infrastructureとして永続化なし・限定された保存値に固定しており（`INF-RLS-003`、`INF-RLS-007`）、replay記録の保存先にするには `SPEC-180` と `SPEC-150` §58.1 の変更が要る。24時間は、仕様に値がないため本UCRが決める値であり（利用者の決定）、`SPEC-150 REL-TMO-001` のPayment Deadline 30分・Karaoke Hold 45分の再送窓を超える長さとして選んだ。外部Providerの保証値は根拠にしていない。応答bodyを保存しないのは、Checkout URLを「Customerが遷移するために必要な期間だけ返す」とする §29 と、PIIの二次コピーを増やさない方針（`SEC-PII-013`）に沿うためである。
 - 変更しない場合の影響: 実装者が保存先・保持期間・保存項目を推測で決め、仕様と乖離する（Redis流用による `SPEC-180` との矛盾、応答bodyの保存によるCheckout URL・個人情報の複製など）。`Idempotency-Key` 必須Operationの「同じkeyの別内容は `409`」を実装・試験できない。
 - 影響を受ける可能性がある仕様書: SPEC-100, SPEC-170（SPEC-120 §36.1、SPEC-160 §11、SPEC-200、SPEC-140、SPEC-150、SPEC-180 は、読んだ結果、変更不要と判断した。SPEC-160 `OBS-COR-005`・`OBS-COR-006` と整合し、SPEC-200 は `ACC-GEN-004` により追加のUCRのstatusをOwner本文で確認する）
+
+### UCR-110-004 — INCORPORATED
+
+- **Status:** `INCORPORATED`。本改訂（v2.5.0）で `API-PUR-ELG-001`（購入経路がmountされないkind）と §27 に反映した。`UCR-RELSCOPE-001`（`SPEC-200 §48`）の一部である。
+- 対象: SPEC-110 `API-PUR-ELG-001`、§27（Karaoke public availability schema）。`API-PUR-CART-001` と §22、§56.1 は変更しない。
+- 現在の仕様: 購入可否の照会と公開availabilityは、販売期間・販売状態・在庫・Purchase Limit・Slotの状態だけで評価し、kindの購入を開始するOperationがreleaseにmountされているかを評価に使わない。
+- 要求する変更: あるkindの購入を開始できるOperationが1つもroute registry（`API-RLC-001`）に登録されない（mountされない）releaseでは、そのkindを `SALES_STOPPED`（購入不可）として評価する。既存のreason・error codeだけを使い、新しい状態・reason・error codeは追加しない。
+- 理由: プロジェクト所有者の明示的指示（2026-11-13、`SPEC-000 §8` の1）に基づく `UCR-RELSCOPE-001`。購入Operationをmountしないreleaseで販売設定が誤って有効になっても、購入できないkindが「購入可能」と表示されない。
+- 変更しない場合の影響: 購入Operationがmountされないkindが購入可能と表示される（購入しようとすると `404`）。
+- 影響を受ける可能性がある仕様書: SPEC-130, SPEC-170, SPEC-180, SPEC-200
