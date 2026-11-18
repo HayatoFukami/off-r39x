@@ -3533,7 +3533,12 @@
         "packages/api-contract/src/schemas/errors.ts",
         "packages/api-contract/src/schemas/common.ts"
       ],
-      "test_case_ids": ["TC-DEV-API-003-050", "TC-SEC-API-023-001"],
+      "test_case_ids": [
+        "TC-DEV-API-003-050",
+        "TC-SEC-API-023-001",
+        "TC-SEC-API-023-002",
+        "TC-SEC-API-023-003"
+      ],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
     },
     {

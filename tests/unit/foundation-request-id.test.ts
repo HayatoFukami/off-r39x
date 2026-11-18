@@ -49,7 +49,7 @@ describe("TC-SEC-API-023-003 adoptableRequestId (SEC-API-023, OBS-COR-001, SPEC-
     const adoptable = await load();
     for (const value of [
       "0000000A-0000-4000-8000-000000000084",
-      V4.toUpperCase(),
+      V1_VARIANT_B.toUpperCase(),
       "00000000-0000-4000-8000-00000000008A",
       "00000000-0000-4000-B000-000000000084",
     ])

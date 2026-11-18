@@ -5,12 +5,23 @@ import { actorContext } from "../actor-context.ts";
 import type { ApiEnvironment } from "../failure.ts";
 import { LOGGED_ROUTE_TEMPLATES } from "../routes.ts";
 
+/**
+ * SPEC-110 §17: a canonical UUID (lower-case, 36 characters, version 1-8, RFC 9562 variant; not nil or
+ * max) is adopted as is. Anything else is dropped (never logged or echoed) and replaced by a generated UUID.
+ */
+const CANONICAL_REQUEST_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+export function adoptableRequestId(value: string | undefined): string | undefined {
+  return value !== undefined && CANONICAL_REQUEST_ID.test(value) ? value : undefined;
+}
+
 export function requestContextMiddleware(dependencies: {
   readonly logger?: ReturnType<typeof createLogger> | undefined;
 }): MiddlewareHandler<ApiEnvironment> {
   return async (c, next) => {
     const started = Date.now();
-    c.set("requestId", randomUUID());
+    c.set("requestId", adoptableRequestId(c.req.header("X-Request-Id")) ?? randomUUID());
     c.set("logger", dependencies.logger);
     c.set("operationExecutionId", undefined);
     c.set("operationId", undefined);
