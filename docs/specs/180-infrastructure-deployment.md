@@ -1825,7 +1825,23 @@ SPEC-180は次をすべて満たしたとき受入可能とする。
 
 ## 81. 上流仕様変更要求
 
-**なし。**（`UCR-140-003` により本書が受けた変更は §14、§16、§17.1〜§17.2、§26、§28.1〜§28.2、§40、§74.1、§77 に反映済みである。）
+`UCR-140-003` により本書が受けた変更は §14、§16、§17.1〜§17.2、§26、§28.1〜§28.2、§40、§74.1、§77 に反映済みである。本書が起票する要求は次の1件である。
+
+### UCR-180-001 — ACCEPTED（本文への反映は同じPull Requestの次のcommit）
+
+- **対象:** SPEC-180（deploy手順、DB principal、Secretの置き場）。`SPEC-100`（初期行の不変条件）、`SPEC-160`（Audit）、`SPEC-170`、`SPEC-200` に及ぶ。
+- **現在の仕様:** `SPEC-110 §46` はEventを参照と更新だけ、`§48.1` はEntry Ticket Offeringを一覧・詳細・更新だけとし、作成のOperationがない。`SPEC-100 §13.1`、`§15.1` は列と制約のみを定める。`SPEC-110` `API-RLC-007` は「Eventは1件だけ」を前提にするが、件数の定めと制約は `SPEC-030`・`SPEC-100` にない。`SPEC-150 §20` は初期Administratorのbootstrapだけをout-of-bandと定め、本書 §70 のbreak-glass対象にも初期データは含まれない。空のDB（staging・本番）にEventとEntry Ticket Offeringの最初の行を作る方法が、どの仕様にもない。
+- **要求する変更:**
+  1. 投入の方法は、専用の運用コマンドとする。migrationにも管理APIにも含めない。コマンドは migration job の一部として、`app_migrator` で、schema readiness checkの後・API deployの前に実行する（本書 §45）。
+  2. 環境ごとの値は、環境別のprotected Environment Secretから渡す。リポジトリには合成値の見本だけを置く。
+  3. 対象が0件のときだけ作り、既存の行を上書きしない。全体を1つのtransactionで行い、再実行しても行を増やさない。
+  4. Entry Ticket Offeringは `SUSPENDED` で作る。販売の開始は既存の `API-ADM-ENT-SALES-003` で行う。
+  5. 実行をAudit Eventとして、投入と同じtransactionで記録する。
+  6. 対象はEventとEntry Ticket Offeringの2つとする。Goods・Karaoke Sales Configuration・Exclusive Scopeは含めず、対象を表で列挙して、後から行を足せる形にする。
+- **理由:** 実装者が推測で投入手段を作ると、後で仕様と食い違う（`SPEC-000 §15.1`）。migrationに実値を入れるとファイルが不変で後から直せず、公開前の会場・価格がリポジトリの履歴に残る。管理APIの追加はOperation・Capability・Rate Limit class・Audit・Testの追加で仕様の変更が最も大きく、1回だけの操作に常設のAPIを残す。運用コマンドは、`SPEC-150 §20` の「通常APIの外の投入」と本書のmigration jobの前例に最も近く、新しいOperation・Capability・状態・DB roleを必要としない。
+- **変更しない場合の影響:** staging・本番の公開API（`API-PUB-001`、`API-PUB-005`）が返す行がなく、stagingの結合確認（公開ページが実APIを使う）ができない。実装者が実値をリポジトリに置く、または手作業のSQLで投入する危険がある。
+- **影響を受ける可能性がある仕様書:** SPEC-100、SPEC-110（`API-RLC-007` の前提の参照のみ）、SPEC-150（`§20` の参照のみ）、SPEC-160、SPEC-170、SPEC-200。
+- **決定（利用者）:** 投入は専用の運用コマンド、値は環境別のprotected Environment Secret、冪等は「対象が0件のときだけ作る」、Auditは残す、Offeringは `SUSPENDED` 固定、実行はmigration jobの `app_migrator`、対象はEventとEntry Ticket Offeringのみ。
 
 本仕様は、Infrastructure Ownerとして明示的に委譲されたEnvironment、DB principal、Secret placement、scheduler、health、deployment、Audit access/purge、observability backend、backup / restore、Test gateの具体化だけを行っている。
 
