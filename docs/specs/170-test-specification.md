@@ -750,6 +750,8 @@ API-ADM-EML-001..005
 
 全canonical routeは上記Operation ID manifestでTestする。method / pathの文字列fallbackは使用しない。
 
+Release Manifestの `mounted_operation_ids`（`SPEC-180 §44`）に含まれるOperationは、上記のとおり100% contract caseを持つ。含まれないOperation（`SPEC-200` §7.5のUnmounted Operation）は、`ACC-GEN-029` の `404 RESOURCE_NOT_FOUND` caseを1件以上持つ（`TST-COV-004`）。
+
 ## 27.1 Newly canonical operation family coverage
 
 次のoperation familyは、それぞれの `SPEC-110` / `SPEC-120` / `SPEC-130` contractに対して、下表のTest assertionを必須とする。API / schema / behaviorの定義はSPEC-170では行わない。
@@ -1927,7 +1929,7 @@ Generated type declarations、migration SQL、pure config manifestはline covera
 - `INV-010-01〜10`: 各1件以上Critical Test、§64のminimum case全部。
 - Current Canonical `DI-030-*` 全件（`DI-030-013`を含む）: 各1件以上。番号範囲を上限にしない。
 - critical `BR-*`: state/invariant groupごとにpositive + negative。
-- Current API Operation ID: 100% contract case。
+- Current API Operation ID: `mounted_operation_ids` に含まれるOperation IDは100% contract case、含まれないOperation IDは `ACC-GEN-029` の404 case（`TST-COV-004`）。
 - API mutation: 100% auth + validation + current-state test。
 - critical API mutation: 100% idempotency / response-loss test。
 - SPEC-100 critical named constraints: 100% real PostgreSQL Test。
@@ -1940,6 +1942,8 @@ Generated type declarations、migration SQL、pure config manifestはline covera
 **TST-COV-002:** Upstream ruleが「documentation-only / external fact」等で直接executeできない場合もmanifestから除外せず、`verification_method=document_review|config_validation|provider_contract`を明示する。
 
 **TST-COV-003:** Current DI集合はSPEC-030本文のInvariant定義から取得し、test manifest／Acceptanceとのjoinに欠落があれば不合格とする。新DI追加時も既存の固定番号範囲を根拠に除外しない。`DI-030-013` は `TC-API-004-001〜004` のreal PostgreSQL／Fault／並行性Evidenceで直接証明する。実装未完了や未実行をPassに変換しない。
+
+**TST-COV-004:** Unmounted Operationをcontract caseの分母から外すのは、`SPEC-200` `ACC-GEN-030` のEvidenceがある場合だけである。その場合もUnmounted Operationの404 caseは外さない。`INV-010-*` の§64.1の最小Test Caseは分母から外さない（`TST-TRC-003`）。
 
 ---
 
@@ -2070,6 +2074,13 @@ Canonical化済みoperationは §27.1／§27.2 のoperation-family Test対象と
 - **Status:** `INCORPORATED`（`SPEC-110 v1.1.0` でOperation ID completeness gapは解消済み）
 - **Canonical evidence:** `SPEC-110 §41 / §46〜§48` の全canonical routeに一意な `API-*` Operation IDが付与され、`API-ADM-READ-001` が1 route 1 ID / 1:1 traceabilityを規定する。`SPEC-160` correlation / Audit Eventは同IDをexactに使用する。
 - **本書側反映:** §3.2、§27、§27.1、Acceptance 43 / 50。
+- **残作業:** なし。
+
+## 79.1 UCR-RELSCOPE-001 — Mounted Operation Set
+
+- **Status:** `INCORPORATED`（`SPEC-200 §48`、`SPEC-180 §44`）
+- **Canonical evidence:** `SPEC-180 §44` のRelease Manifestの `mounted_operation_ids`、`SPEC-200 §7.5` の `ACC-GEN-029〜031`。
+- **本書側反映:** §27、§74、`TST-COV-004`。
 - **残作業:** なし。
 
 ---
