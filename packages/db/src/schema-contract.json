@@ -1,11 +1,44 @@
 {
   "tables": [
+    ["announcements", "r", "app_migrator", false],
     ["audit_events", "r", "app_migrator", false],
     ["business_profiles", "r", "app_migrator", false],
+    ["entry_ticket_offerings", "r", "app_migrator", false],
+    ["events", "r", "app_migrator", false],
+    ["faq_items", "r", "app_migrator", false],
+    ["goods", "r", "app_migrator", false],
+    ["goods_inventory", "r", "app_migrator", false],
+    ["karaoke_sales_configurations", "r", "app_migrator", false],
     ["role_assignments", "r", "app_migrator", false],
-    ["schema_migrations", "r", "app_migrator", false]
+    ["schema_migrations", "r", "app_migrator", false],
+    ["sponsor_logos", "r", "app_migrator", false]
   ],
   "columns": [
+    ["announcements", "id", "bigint", true, "a", "", null],
+    ["announcements", "public_ref", "uuid", true, "", "", "gen_random_uuid()"],
+    ["announcements", "event_id", "bigint", true, "", "", null],
+    ["announcements", "title", "text", true, "", "", null],
+    ["announcements", "body", "text", true, "", "", null],
+    ["announcements", "state", "text", true, "", "", null],
+    ["announcements", "published_at", "timestamp with time zone", false, "", "", null],
+    [
+      "announcements",
+      "created_at",
+      "timestamp with time zone",
+      true,
+      "",
+      "",
+      "transaction_timestamp()"
+    ],
+    [
+      "announcements",
+      "updated_at",
+      "timestamp with time zone",
+      true,
+      "",
+      "",
+      "transaction_timestamp()"
+    ],
     ["audit_events", "id", "bigint", true, "a", "", null],
     ["audit_events", "audit_event_id", "uuid", true, "", "", "gen_random_uuid()"],
     [
@@ -74,6 +107,159 @@
       "",
       "transaction_timestamp()"
     ],
+    ["entry_ticket_offerings", "id", "bigint", true, "a", "", null],
+    ["entry_ticket_offerings", "public_ref", "uuid", true, "", "", "gen_random_uuid()"],
+    ["entry_ticket_offerings", "event_id", "bigint", true, "", "", null],
+    ["entry_ticket_offerings", "name", "text", true, "", "", null],
+    ["entry_ticket_offerings", "description", "text", false, "", "", null],
+    ["entry_ticket_offerings", "unit_amount", "bigint", true, "", "", null],
+    ["entry_ticket_offerings", "currency", "text", true, "", "", null],
+    ["entry_ticket_offerings", "sales_starts_at", "timestamp with time zone", true, "", "", null],
+    ["entry_ticket_offerings", "sales_ends_at", "timestamp with time zone", true, "", "", null],
+    ["entry_ticket_offerings", "sale_control_state", "text", true, "", "", null],
+    ["entry_ticket_offerings", "sales_capacity", "integer", true, "", "", null],
+    ["entry_ticket_offerings", "held_quantity", "integer", true, "", "", "0"],
+    ["entry_ticket_offerings", "committed_quantity", "integer", true, "", "", "0"],
+    ["entry_ticket_offerings", "purchase_limit", "integer", true, "", "", null],
+    ["entry_ticket_offerings", "checkin_opens_at", "timestamp with time zone", false, "", "", null],
+    [
+      "entry_ticket_offerings",
+      "checkin_closes_at",
+      "timestamp with time zone",
+      false,
+      "",
+      "",
+      null
+    ],
+    [
+      "entry_ticket_offerings",
+      "created_at",
+      "timestamp with time zone",
+      true,
+      "",
+      "",
+      "transaction_timestamp()"
+    ],
+    [
+      "entry_ticket_offerings",
+      "updated_at",
+      "timestamp with time zone",
+      true,
+      "",
+      "",
+      "transaction_timestamp()"
+    ],
+    ["events", "id", "bigint", true, "a", "", null],
+    ["events", "public_ref", "uuid", true, "", "", "gen_random_uuid()"],
+    ["events", "name", "text", true, "", "", null],
+    ["events", "summary", "text", false, "", "", null],
+    ["events", "starts_at", "timestamp with time zone", false, "", "", null],
+    ["events", "ends_at", "timestamp with time zone", false, "", "", null],
+    ["events", "business_timezone", "text", true, "", "", "'Asia/Tokyo'::text"],
+    ["events", "venue_name", "text", false, "", "", null],
+    ["events", "venue_details", "text", false, "", "", null],
+    ["events", "access_information", "text", false, "", "", null],
+    ["events", "participant_notices", "text", false, "", "", null],
+    ["events", "created_at", "timestamp with time zone", true, "", "", "transaction_timestamp()"],
+    ["events", "updated_at", "timestamp with time zone", true, "", "", "transaction_timestamp()"],
+    ["faq_items", "id", "bigint", true, "a", "", null],
+    ["faq_items", "public_ref", "uuid", true, "", "", "gen_random_uuid()"],
+    ["faq_items", "event_id", "bigint", true, "", "", null],
+    ["faq_items", "question", "text", true, "", "", null],
+    ["faq_items", "answer", "text", true, "", "", null],
+    ["faq_items", "state", "text", true, "", "", null],
+    ["faq_items", "sort_order", "integer", true, "", "", "0"],
+    ["faq_items", "published_at", "timestamp with time zone", false, "", "", null],
+    [
+      "faq_items",
+      "created_at",
+      "timestamp with time zone",
+      true,
+      "",
+      "",
+      "transaction_timestamp()"
+    ],
+    [
+      "faq_items",
+      "updated_at",
+      "timestamp with time zone",
+      true,
+      "",
+      "",
+      "transaction_timestamp()"
+    ],
+    ["goods", "id", "bigint", true, "a", "", null],
+    ["goods", "public_ref", "uuid", true, "", "", "gen_random_uuid()"],
+    ["goods", "event_id", "bigint", true, "", "", null],
+    ["goods", "name", "text", true, "", "", null],
+    ["goods", "description", "text", false, "", "", null],
+    ["goods", "unit_amount", "bigint", true, "", "", null],
+    ["goods", "currency", "text", true, "", "", null],
+    ["goods", "sales_starts_at", "timestamp with time zone", true, "", "", null],
+    ["goods", "sales_ends_at", "timestamp with time zone", true, "", "", null],
+    ["goods", "sale_control_state", "text", true, "", "", null],
+    ["goods", "purchase_limit", "integer", true, "", "", null],
+    ["goods", "created_at", "timestamp with time zone", true, "", "", "transaction_timestamp()"],
+    ["goods", "updated_at", "timestamp with time zone", true, "", "", "transaction_timestamp()"],
+    ["goods_inventory", "goods_id", "bigint", true, "", "", null],
+    ["goods_inventory", "saleable_capacity", "integer", true, "", "", null],
+    ["goods_inventory", "held_quantity", "integer", true, "", "", "0"],
+    ["goods_inventory", "committed_quantity", "integer", true, "", "", "0"],
+    [
+      "goods_inventory",
+      "updated_at",
+      "timestamp with time zone",
+      true,
+      "",
+      "",
+      "transaction_timestamp()"
+    ],
+    ["karaoke_sales_configurations", "id", "bigint", true, "a", "", null],
+    ["karaoke_sales_configurations", "public_ref", "uuid", true, "", "", "gen_random_uuid()"],
+    ["karaoke_sales_configurations", "event_id", "bigint", true, "", "", null],
+    ["karaoke_sales_configurations", "name", "text", true, "", "", null],
+    ["karaoke_sales_configurations", "unit_amount", "bigint", true, "", "", null],
+    ["karaoke_sales_configurations", "currency", "text", true, "", "", null],
+    [
+      "karaoke_sales_configurations",
+      "sales_starts_at",
+      "timestamp with time zone",
+      true,
+      "",
+      "",
+      null
+    ],
+    [
+      "karaoke_sales_configurations",
+      "sales_ends_at",
+      "timestamp with time zone",
+      true,
+      "",
+      "",
+      null
+    ],
+    ["karaoke_sales_configurations", "sale_control_state", "text", true, "", "", null],
+    ["karaoke_sales_configurations", "purchase_limit", "integer", true, "", "", null],
+    ["karaoke_sales_configurations", "standard_usage_minutes", "smallint", true, "", "", "15"],
+    ["karaoke_sales_configurations", "standard_maintenance_minutes", "smallint", true, "", "", "5"],
+    [
+      "karaoke_sales_configurations",
+      "created_at",
+      "timestamp with time zone",
+      true,
+      "",
+      "",
+      "transaction_timestamp()"
+    ],
+    [
+      "karaoke_sales_configurations",
+      "updated_at",
+      "timestamp with time zone",
+      true,
+      "",
+      "",
+      "transaction_timestamp()"
+    ],
     ["role_assignments", "id", "bigint", true, "a", "", null],
     ["role_assignments", "public_ref", "uuid", true, "", "", "gen_random_uuid()"],
     ["role_assignments", "profile_id", "bigint", true, "", "", null],
@@ -110,9 +296,57 @@
       "",
       "",
       "transaction_timestamp()"
+    ],
+    ["sponsor_logos", "id", "bigint", true, "a", "", null],
+    ["sponsor_logos", "public_ref", "uuid", true, "", "", "gen_random_uuid()"],
+    ["sponsor_logos", "event_id", "bigint", true, "", "", null],
+    ["sponsor_logos", "display_name", "text", true, "", "", null],
+    ["sponsor_logos", "image_url", "text", true, "", "", null],
+    ["sponsor_logos", "link_url", "text", false, "", "", null],
+    ["sponsor_logos", "sort_order", "integer", true, "", "", "0"],
+    ["sponsor_logos", "state", "text", true, "", "", "'DRAFT'::text"],
+    ["sponsor_logos", "published_at", "timestamp with time zone", false, "", "", null],
+    [
+      "sponsor_logos",
+      "created_at",
+      "timestamp with time zone",
+      true,
+      "",
+      "",
+      "transaction_timestamp()"
+    ],
+    [
+      "sponsor_logos",
+      "updated_at",
+      "timestamp with time zone",
+      true,
+      "",
+      "",
+      "transaction_timestamp()"
     ]
   ],
   "indexes": [
+    [
+      "announcements",
+      "CREATE INDEX ix_announcements_event_state_published ON app.announcements USING btree (event_id, state, published_at DESC)",
+      true,
+      true,
+      true
+    ],
+    [
+      "announcements",
+      "CREATE UNIQUE INDEX pk_announcements ON app.announcements USING btree (id)",
+      true,
+      true,
+      true
+    ],
+    [
+      "announcements",
+      "CREATE UNIQUE INDEX uq_announcements_public_ref ON app.announcements USING btree (public_ref)",
+      true,
+      true,
+      true
+    ],
     [
       "audit_events",
       "CREATE INDEX ix_audit_events_actor_time ON app.audit_events USING btree (actor_ref, occurred_at DESC) WHERE (actor_ref IS NOT NULL)",
@@ -198,6 +432,78 @@
       true
     ],
     [
+      "entry_ticket_offerings",
+      "CREATE UNIQUE INDEX pk_entry_ticket_offerings ON app.entry_ticket_offerings USING btree (id)",
+      true,
+      true,
+      true
+    ],
+    [
+      "entry_ticket_offerings",
+      "CREATE UNIQUE INDEX uq_entry_ticket_offerings_public_ref ON app.entry_ticket_offerings USING btree (public_ref)",
+      true,
+      true,
+      true
+    ],
+    ["events", "CREATE UNIQUE INDEX pk_events ON app.events USING btree (id)", true, true, true],
+    [
+      "events",
+      "CREATE UNIQUE INDEX uq_events_public_ref ON app.events USING btree (public_ref)",
+      true,
+      true,
+      true
+    ],
+    [
+      "faq_items",
+      "CREATE INDEX ix_faq_items_event_state_sort ON app.faq_items USING btree (event_id, state, sort_order)",
+      true,
+      true,
+      true
+    ],
+    [
+      "faq_items",
+      "CREATE UNIQUE INDEX pk_faq_items ON app.faq_items USING btree (id)",
+      true,
+      true,
+      true
+    ],
+    [
+      "faq_items",
+      "CREATE UNIQUE INDEX uq_faq_items_public_ref ON app.faq_items USING btree (public_ref)",
+      true,
+      true,
+      true
+    ],
+    ["goods", "CREATE UNIQUE INDEX pk_goods ON app.goods USING btree (id)", true, true, true],
+    [
+      "goods",
+      "CREATE UNIQUE INDEX uq_goods_public_ref ON app.goods USING btree (public_ref)",
+      true,
+      true,
+      true
+    ],
+    [
+      "goods_inventory",
+      "CREATE UNIQUE INDEX pk_goods_inventory ON app.goods_inventory USING btree (goods_id)",
+      true,
+      true,
+      true
+    ],
+    [
+      "karaoke_sales_configurations",
+      "CREATE UNIQUE INDEX pk_karaoke_sales_configurations ON app.karaoke_sales_configurations USING btree (id)",
+      true,
+      true,
+      true
+    ],
+    [
+      "karaoke_sales_configurations",
+      "CREATE UNIQUE INDEX uq_karaoke_sales_configurations_public_ref ON app.karaoke_sales_configurations USING btree (public_ref)",
+      true,
+      true,
+      true
+    ],
+    [
       "role_assignments",
       "CREATE UNIQUE INDEX pk_role_assignments ON app.role_assignments USING btree (id)",
       true,
@@ -224,15 +530,71 @@
       true,
       true,
       true
+    ],
+    [
+      "sponsor_logos",
+      "CREATE INDEX ix_sponsor_logos_event_state_sort ON app.sponsor_logos USING btree (event_id, state, sort_order, public_ref)",
+      true,
+      true,
+      true
+    ],
+    [
+      "sponsor_logos",
+      "CREATE UNIQUE INDEX pk_sponsor_logos ON app.sponsor_logos USING btree (id)",
+      true,
+      true,
+      true
+    ],
+    [
+      "sponsor_logos",
+      "CREATE UNIQUE INDEX uq_sponsor_logos_public_ref ON app.sponsor_logos USING btree (public_ref)",
+      true,
+      true,
+      true
     ]
   ],
   "schemas": [["app", "app_migrator"], ["auth_read", "app_migrator"]],
   "sequences": [
+    ["announcements_id_seq", "bigint", "app_migrator"],
     ["audit_events_id_seq", "bigint", "app_migrator"],
     ["business_profiles_id_seq", "bigint", "app_migrator"],
-    ["role_assignments_id_seq", "bigint", "app_migrator"]
+    ["entry_ticket_offerings_id_seq", "bigint", "app_migrator"],
+    ["events_id_seq", "bigint", "app_migrator"],
+    ["faq_items_id_seq", "bigint", "app_migrator"],
+    ["goods_id_seq", "bigint", "app_migrator"],
+    ["karaoke_sales_configurations_id_seq", "bigint", "app_migrator"],
+    ["role_assignments_id_seq", "bigint", "app_migrator"],
+    ["sponsor_logos_id_seq", "bigint", "app_migrator"]
   ],
   "constraints": [
+    [
+      "announcements",
+      "ck_announcements_state",
+      "c",
+      "CHECK ((state = ANY (ARRAY['DRAFT'::text, 'PUBLISHED'::text, 'ARCHIVED'::text])))",
+      true,
+      false,
+      false
+    ],
+    [
+      "announcements",
+      "fk_announcements_event",
+      "f",
+      "FOREIGN KEY (event_id) REFERENCES app.events(id) ON DELETE RESTRICT",
+      true,
+      false,
+      false
+    ],
+    ["announcements", "pk_announcements", "p", "PRIMARY KEY (id)", true, false, false],
+    [
+      "announcements",
+      "uq_announcements_public_ref",
+      "u",
+      "UNIQUE (public_ref)",
+      true,
+      false,
+      false
+    ],
     [
       "audit_events",
       "ck_audit_events_actor_type",
@@ -301,6 +663,332 @@
     [
       "business_profiles",
       "uq_business_profiles_public_ref",
+      "u",
+      "UNIQUE (public_ref)",
+      true,
+      false,
+      false
+    ],
+    [
+      "entry_ticket_offerings",
+      "ck_entry_ticket_offerings_capacity",
+      "c",
+      "CHECK (((held_quantity + committed_quantity) <= sales_capacity))",
+      true,
+      false,
+      false
+    ],
+    [
+      "entry_ticket_offerings",
+      "ck_entry_ticket_offerings_checkin_window",
+      "c",
+      "CHECK ((checkin_opens_at < checkin_closes_at))",
+      true,
+      false,
+      false
+    ],
+    [
+      "entry_ticket_offerings",
+      "ck_entry_ticket_offerings_committed_quantity",
+      "c",
+      "CHECK ((committed_quantity >= 0))",
+      true,
+      false,
+      false
+    ],
+    [
+      "entry_ticket_offerings",
+      "ck_entry_ticket_offerings_currency",
+      "c",
+      "CHECK (((currency = upper(currency)) AND (currency ~ '^[A-Z]{3}$'::text)))",
+      true,
+      false,
+      false
+    ],
+    [
+      "entry_ticket_offerings",
+      "ck_entry_ticket_offerings_held_quantity",
+      "c",
+      "CHECK ((held_quantity >= 0))",
+      true,
+      false,
+      false
+    ],
+    [
+      "entry_ticket_offerings",
+      "ck_entry_ticket_offerings_purchase_limit",
+      "c",
+      "CHECK ((purchase_limit > 0))",
+      true,
+      false,
+      false
+    ],
+    [
+      "entry_ticket_offerings",
+      "ck_entry_ticket_offerings_sale_control_state",
+      "c",
+      "CHECK ((sale_control_state = ANY (ARRAY['ENABLED'::text, 'SUSPENDED'::text])))",
+      true,
+      false,
+      false
+    ],
+    [
+      "entry_ticket_offerings",
+      "ck_entry_ticket_offerings_sales_capacity",
+      "c",
+      "CHECK ((sales_capacity >= 0))",
+      true,
+      false,
+      false
+    ],
+    [
+      "entry_ticket_offerings",
+      "ck_entry_ticket_offerings_sales_period",
+      "c",
+      "CHECK ((sales_starts_at < sales_ends_at))",
+      true,
+      false,
+      false
+    ],
+    [
+      "entry_ticket_offerings",
+      "ck_entry_ticket_offerings_unit_amount",
+      "c",
+      "CHECK ((unit_amount >= 0))",
+      true,
+      false,
+      false
+    ],
+    [
+      "entry_ticket_offerings",
+      "fk_entry_ticket_offerings_event",
+      "f",
+      "FOREIGN KEY (event_id) REFERENCES app.events(id) ON DELETE RESTRICT",
+      true,
+      false,
+      false
+    ],
+    [
+      "entry_ticket_offerings",
+      "pk_entry_ticket_offerings",
+      "p",
+      "PRIMARY KEY (id)",
+      true,
+      false,
+      false
+    ],
+    [
+      "entry_ticket_offerings",
+      "uq_entry_ticket_offerings_public_ref",
+      "u",
+      "UNIQUE (public_ref)",
+      true,
+      false,
+      false
+    ],
+    [
+      "events",
+      "ck_events_business_timezone",
+      "c",
+      "CHECK ((business_timezone = 'Asia/Tokyo'::text))",
+      true,
+      false,
+      false
+    ],
+    ["events", "ck_events_name", "c", "CHECK ((char_length(name) > 0))", true, false, false],
+    ["events", "ck_events_period", "c", "CHECK ((starts_at < ends_at))", true, false, false],
+    ["events", "pk_events", "p", "PRIMARY KEY (id)", true, false, false],
+    ["events", "uq_events_public_ref", "u", "UNIQUE (public_ref)", true, false, false],
+    [
+      "faq_items",
+      "ck_faq_items_state",
+      "c",
+      "CHECK ((state = ANY (ARRAY['DRAFT'::text, 'PUBLISHED'::text, 'ARCHIVED'::text])))",
+      true,
+      false,
+      false
+    ],
+    [
+      "faq_items",
+      "fk_faq_items_event",
+      "f",
+      "FOREIGN KEY (event_id) REFERENCES app.events(id) ON DELETE RESTRICT",
+      true,
+      false,
+      false
+    ],
+    ["faq_items", "pk_faq_items", "p", "PRIMARY KEY (id)", true, false, false],
+    ["faq_items", "uq_faq_items_public_ref", "u", "UNIQUE (public_ref)", true, false, false],
+    [
+      "goods",
+      "ck_goods_currency",
+      "c",
+      "CHECK (((currency = upper(currency)) AND (currency ~ '^[A-Z]{3}$'::text)))",
+      true,
+      false,
+      false
+    ],
+    ["goods", "ck_goods_purchase_limit", "c", "CHECK ((purchase_limit > 0))", true, false, false],
+    [
+      "goods",
+      "ck_goods_sale_control_state",
+      "c",
+      "CHECK ((sale_control_state = ANY (ARRAY['ENABLED'::text, 'SUSPENDED'::text])))",
+      true,
+      false,
+      false
+    ],
+    [
+      "goods",
+      "ck_goods_sales_period",
+      "c",
+      "CHECK ((sales_starts_at < sales_ends_at))",
+      true,
+      false,
+      false
+    ],
+    ["goods", "ck_goods_unit_amount", "c", "CHECK ((unit_amount >= 0))", true, false, false],
+    [
+      "goods",
+      "fk_goods_event",
+      "f",
+      "FOREIGN KEY (event_id) REFERENCES app.events(id) ON DELETE RESTRICT",
+      true,
+      false,
+      false
+    ],
+    ["goods", "pk_goods", "p", "PRIMARY KEY (id)", true, false, false],
+    ["goods", "uq_goods_public_ref", "u", "UNIQUE (public_ref)", true, false, false],
+    [
+      "goods_inventory",
+      "ck_goods_inventory_capacity",
+      "c",
+      "CHECK (((held_quantity + committed_quantity) <= saleable_capacity))",
+      true,
+      false,
+      false
+    ],
+    [
+      "goods_inventory",
+      "ck_goods_inventory_committed_quantity",
+      "c",
+      "CHECK ((committed_quantity >= 0))",
+      true,
+      false,
+      false
+    ],
+    [
+      "goods_inventory",
+      "ck_goods_inventory_held_quantity",
+      "c",
+      "CHECK ((held_quantity >= 0))",
+      true,
+      false,
+      false
+    ],
+    [
+      "goods_inventory",
+      "ck_goods_inventory_saleable_capacity",
+      "c",
+      "CHECK ((saleable_capacity >= 0))",
+      true,
+      false,
+      false
+    ],
+    [
+      "goods_inventory",
+      "fk_goods_inventory_goods",
+      "f",
+      "FOREIGN KEY (goods_id) REFERENCES app.goods(id) ON DELETE RESTRICT",
+      true,
+      false,
+      false
+    ],
+    ["goods_inventory", "pk_goods_inventory", "p", "PRIMARY KEY (goods_id)", true, false, false],
+    [
+      "karaoke_sales_configurations",
+      "ck_karaoke_sales_configurations_currency",
+      "c",
+      "CHECK (((currency = upper(currency)) AND (currency ~ '^[A-Z]{3}$'::text)))",
+      true,
+      false,
+      false
+    ],
+    [
+      "karaoke_sales_configurations",
+      "ck_karaoke_sales_configurations_purchase_limit",
+      "c",
+      "CHECK ((purchase_limit > 0))",
+      true,
+      false,
+      false
+    ],
+    [
+      "karaoke_sales_configurations",
+      "ck_karaoke_sales_configurations_sale_control_state",
+      "c",
+      "CHECK ((sale_control_state = ANY (ARRAY['ENABLED'::text, 'SUSPENDED'::text])))",
+      true,
+      false,
+      false
+    ],
+    [
+      "karaoke_sales_configurations",
+      "ck_karaoke_sales_configurations_sales_period",
+      "c",
+      "CHECK ((sales_starts_at < sales_ends_at))",
+      true,
+      false,
+      false
+    ],
+    [
+      "karaoke_sales_configurations",
+      "ck_karaoke_sales_configurations_standard_maintenance_minutes",
+      "c",
+      "CHECK ((standard_maintenance_minutes = 5))",
+      true,
+      false,
+      false
+    ],
+    [
+      "karaoke_sales_configurations",
+      "ck_karaoke_sales_configurations_standard_usage_minutes",
+      "c",
+      "CHECK ((standard_usage_minutes = 15))",
+      true,
+      false,
+      false
+    ],
+    [
+      "karaoke_sales_configurations",
+      "ck_karaoke_sales_configurations_unit_amount",
+      "c",
+      "CHECK ((unit_amount >= 0))",
+      true,
+      false,
+      false
+    ],
+    [
+      "karaoke_sales_configurations",
+      "fk_karaoke_sales_configurations_event",
+      "f",
+      "FOREIGN KEY (event_id) REFERENCES app.events(id) ON DELETE RESTRICT",
+      true,
+      false,
+      false
+    ],
+    [
+      "karaoke_sales_configurations",
+      "pk_karaoke_sales_configurations",
+      "p",
+      "PRIMARY KEY (id)",
+      true,
+      false,
+      false
+    ],
+    [
+      "karaoke_sales_configurations",
+      "uq_karaoke_sales_configurations_public_ref",
       "u",
       "UNIQUE (public_ref)",
       true,
@@ -380,6 +1068,71 @@
       false,
       false
     ],
-    ["schema_migrations", "pk_schema_migrations", "p", "PRIMARY KEY (version)", true, false, false]
+    ["schema_migrations", "pk_schema_migrations", "p", "PRIMARY KEY (version)", true, false, false],
+    [
+      "sponsor_logos",
+      "ck_sponsor_logos_display_name",
+      "c",
+      "CHECK (((char_length(display_name) >= 1) AND (char_length(display_name) <= 200)))",
+      true,
+      false,
+      false
+    ],
+    [
+      "sponsor_logos",
+      "ck_sponsor_logos_image_url",
+      "c",
+      "CHECK (((char_length(image_url) >= 1) AND (char_length(image_url) <= 2048)))",
+      true,
+      false,
+      false
+    ],
+    [
+      "sponsor_logos",
+      "ck_sponsor_logos_link_url",
+      "c",
+      "CHECK (((link_url IS NULL) OR ((char_length(link_url) >= 1) AND (char_length(link_url) <= 2048))))",
+      true,
+      false,
+      false
+    ],
+    [
+      "sponsor_logos",
+      "ck_sponsor_logos_published_at",
+      "c",
+      "CHECK (((state <> 'PUBLISHED'::text) OR (published_at IS NOT NULL)))",
+      true,
+      false,
+      false
+    ],
+    [
+      "sponsor_logos",
+      "ck_sponsor_logos_sort_order",
+      "c",
+      "CHECK ((sort_order >= 0))",
+      true,
+      false,
+      false
+    ],
+    [
+      "sponsor_logos",
+      "ck_sponsor_logos_state",
+      "c",
+      "CHECK ((state = ANY (ARRAY['DRAFT'::text, 'PUBLISHED'::text, 'ARCHIVED'::text])))",
+      true,
+      false,
+      false
+    ],
+    [
+      "sponsor_logos",
+      "fk_sponsor_logos_event",
+      "f",
+      "FOREIGN KEY (event_id) REFERENCES app.events(id) ON DELETE RESTRICT",
+      true,
+      false,
+      false
+    ],
+    ["sponsor_logos", "pk_sponsor_logos", "p", "PRIMARY KEY (id)", true, false, false],
+    ["sponsor_logos", "uq_sponsor_logos_public_ref", "u", "UNIQUE (public_ref)", true, false, false]
   ]
 }
