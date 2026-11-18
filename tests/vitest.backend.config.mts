@@ -17,7 +17,10 @@ export default defineConfig({
           test: {
             name: `backend-${level}`,
             environment: "node",
-            include: [`${level}/foundation-*.test.ts`],
+            // DEV-AI-003 (PR-L2-1a): the work-package tests are named `<WP>-<subject>.test.ts`, so every
+            // level except `unit` (which `test:unit` already runs in full under unit/**) takes every
+            // `*.test.ts`. The security Redis exclusion and the db setup file below are unchanged.
+            include: [level === "unit" ? "unit/foundation-*.test.ts" : `${level}/*.test.ts`],
             ...(level === "security" ? { exclude: [REDIS_FILES, "**/node_modules/**"] } : {}),
             retry: 0,
             setupFiles: level === "db" ? ["./harness/db/isolated-database.ts"] : [],
