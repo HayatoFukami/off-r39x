@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-100
 title: Database Design
-version: 2.3.0
+version: 2.3.1
 status: provisional
 depends_on:
   - SPEC-000
@@ -470,7 +470,7 @@ Purpose: Neon Auth IdentityとBusiness Database上の本人 / Ownerの1:1対応�
 | `created_at` | timestamptz | No | server timestamp |
 | `updated_at` | timestamptz | No | server timestamp |
 
-本人編集Fieldは `display_name` のみとする。`SPEC-030` §9.2のtrim／空文字→NULL／制御文字拒否をAPIで行ってから保存し、DBでも上記CHECKでUnicode code pointsの長さを守る。既存rowはNULLで移行でき、Neon Authから氏名・メールを複写しない。氏名・電話・住所・必須onboardingを追加しない。
+本人編集Fieldは `display_name` のみとする。`SPEC-030` §9.2のtrim／空文字→NULL／well-formedでない値（lone surrogate）の拒否／制御文字拒否をAPIで行ってから保存し、DBでも上記CHECKでUnicode code pointsの長さを守る。lone surrogateはUTF-8の `text` に保持できず、DB driverへの送信時にU+FFFDへ置き換わりうるため、DBのCHECKではなくAPIで拒否する。既存rowはNULLで移行でき、Neon Authから氏名・メールを複写しない。氏名・電話・住所・必須onboardingを追加しない。
 
 Neon管理user table（`neon_auth`）へのDB FKは張らない。理由:
 
