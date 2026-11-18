@@ -791,6 +791,23 @@ describe("TC-NTF-PORT-005 enqueue input source conditions and absent items [EML-
         expect(notificationEnqueueInputSchema.safeParse(input).success).toBe(false);
       });
     }
+    // PostgreSQL bigint is signed 64-bit (SPEC-100 §7.1): the upper bound is accepted and the next
+    // value is rejected, so an id that no row can have never reaches the adapter.
+    const MAX_BIGINT_64 = 9223372036854775807n;
+    for (const field of ["recipientProfileId", "sourceOrderId", "sourceReservationId"]) {
+      it(`${field} accepts the bigint upper bound and rejects the value above it`, () => {
+        const parse = (value: bigint) =>
+          notificationEnqueueInputSchema.safeParse(
+            enqueueInput(KARAOKE_CONFIRMED, {
+              sourceOrderId: 20n,
+              sourceReservationId: 30n,
+              [field]: value,
+            }),
+          ).success;
+        expect(parse(MAX_BIGINT_64)).toBe(true);
+        expect(parse(MAX_BIGINT_64 + 1n)).toBe(false);
+      });
+    }
     it("rejects a missing recipientProfileId key", () => {
       const { recipientProfileId: _omitted, ...rest } = enqueueInput(ENTRY);
       expect(notificationEnqueueInputSchema.safeParse(rest).success).toBe(false);

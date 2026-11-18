@@ -1,5 +1,12 @@
-import { REVIEW_REASON_CODES, reviewCaseOpenInputSchema } from "@off-r39x/application/review-case";
-import { describe, expect, it } from "vitest";
+import {
+  type KaraokeReservationId,
+  type OrderId,
+  type PaymentBindingId,
+  REVIEW_REASON_CODES,
+  type ReviewCaseOpenInput,
+  reviewCaseOpenInputSchema,
+} from "@off-r39x/application/review-case";
+import { describe, expect, expectTypeOf, it } from "vitest";
 
 // PR-S0-5 C1: port contract tests for the Consistency Review open input (SPEC-150 §43-§44,
 // SPEC-100 §43, SPEC-120 §43.1). They prove the shape of the input type only. They do NOT prove
@@ -230,6 +237,19 @@ describe("TC-REVIEW-PORT-002 targets follow SPEC-100 §43 and SPEC-120 §43.1", 
     }
   }
 
+  // PostgreSQL bigint is signed 64-bit (SPEC-100 §7.1): the upper bound is accepted and the next
+  // value is rejected for every one of the ten target columns.
+  for (const key of TARGET_KEYS) {
+    it(`${key} accepts the bigint upper bound and rejects the value above it`, () => {
+      expect(acceptsTargets("PAY_BINDING_INCONSISTENT", { [key]: 9223372036854775807n })).toBe(
+        true,
+      );
+      expect(acceptsTargets("PAY_BINDING_INCONSISTENT", { [key]: 9223372036854775808n })).toBe(
+        false,
+      );
+    });
+  }
+
   for (const code of EML_REASON_CODES) {
     describe(code, () => {
       it("accepts orderId only, karaokeReservationId only, and both", () => {
@@ -261,10 +281,8 @@ describe("TC-REVIEW-PORT-002 targets follow SPEC-100 §43 and SPEC-120 §43.1", 
 
 describe("TC-REVIEW-PORT-003 details and top-level items follow the REL-REC-008 allowlist [REL-REC-008]", () => {
   const VALID_DETAILS: Record<string, unknown> = {
-    state: { kind: "state", value: "CONFIRMED" },
     public_ref: { kind: "public_ref", value: SYNTHETIC_UUID },
     money: { kind: "money", amount: "3500", currency: "JPY" },
-    provider_status_category: { kind: "provider_status_category", value: "PERMANENT_FAILURE" },
     timestamp: { kind: "timestamp", value: "2027-01-02T03:04:05.006Z" },
   };
 
@@ -278,11 +296,11 @@ describe("TC-REVIEW-PORT-003 details and top-level items follow the REL-REC-008 
     });
   }
 
-  it("accepts all five kinds together", () => {
+  it("accepts all accepted kinds together", () => {
     expect(acceptsDetails({ ...VALID_DETAILS })).toBe(true);
   });
 
-  describe("rejects values outside the five REL-REC-008 kinds", () => {
+  describe("rejects values outside the accepted REL-REC-008 kinds", () => {
     const outsiders: Array<[string, unknown]> = [
       ["a bare string", "CONFIRMED"],
       ["a bare free-text string", "free text note"],
@@ -290,14 +308,14 @@ describe("TC-REVIEW-PORT-003 details and top-level items follow the REL-REC-008 
       ["a bigint (internal id shape)", 123n],
       ["a boolean", true],
       ["null", null],
-      ["an array", [{ kind: "state", value: "CONFIRMED" }]],
+      ["an array", [{ kind: "public_ref", value: SYNTHETIC_UUID }]],
       ["an object without kind", { value: "CONFIRMED" }],
       ["an unknown kind", { kind: "raw_body", value: "CONFIRMED" }],
       ["a free-text kind", { kind: "note", value: "CONFIRMED" }],
-      ["a nested object", { kind: "state", value: { nested: "CONFIRMED" } }],
-      ["a state with an extra item", { kind: "state", value: "CONFIRMED", note: "x" }],
+      ["a public_ref with an extra item", { kind: "public_ref", value: SYNTHETIC_UUID, note: "x" }],
+      ["a nested object", { kind: "public_ref", value: { nested: SYNTHETIC_UUID } }],
       ["a money with an extra item", { kind: "money", amount: "1", currency: "JPY", note: "x" }],
-      ["a kind with a missing value", { kind: "state" }],
+      ["a kind with a missing value", { kind: "public_ref" }],
     ];
     for (const [label, value] of outsiders) {
       it(`rejects ${label}`, () => {
@@ -306,16 +324,19 @@ describe("TC-REVIEW-PORT-003 details and top-level items follow the REL-REC-008 
     }
   });
 
-  describe("keeps secrets, email addresses and raw QR payloads out of state-like tokens", () => {
+  // SPEC-150 REL-REC-008 names "allowlisted state" and "provider status category", but no owner
+  // defines the vocabulary (UCR U-6). A token shape check cannot tell an allowlisted value from an
+  // unknown one or from a secret made of upper-case letters, digits and "_", so both kinds are
+  // refused whatever the value, until a specification fixes the vocabulary.
+  describe("refuses the state and provider_status_category kinds until a vocabulary is specified", () => {
     for (const kind of ["state", "provider_status_category"]) {
       for (const [label, value] of [
+        ["a well-formed token", "CONFIRMED"],
+        ["an undefined state-shaped token", "UNRECOGNIZED_STATE"],
+        ["a secret-shaped upper-case token", "SK_TEST_SYNTHETIC_0123456789"],
         ["an email address", "user@example.com"],
         ["a raw QR payload", SYNTHETIC_QR],
-        ["a provider secret key shape", "sk_test_synthetic"],
         ["a lowercase token", "confirmed"],
-        ["a token with a dot", "CONFIRMED.V2"],
-        ["a token with a space", "NOT CONFIRMED"],
-        ["a token with a slash", "A/B"],
         ["an empty string", ""],
       ] as const) {
         it(`${kind} rejects ${label}`, () => {
@@ -362,7 +383,7 @@ describe("TC-REVIEW-PORT-003 details and top-level items follow the REL-REC-008 
   describe("details keys", () => {
     it("accepts snake_case lowercase keys up to 64 characters", () => {
       for (const key of ["a", "order_state", "provider_status_2", `a${"b".repeat(63)}`]) {
-        expect(acceptsDetails({ [key]: VALID_DETAILS.state })).toBe(true);
+        expect(acceptsDetails({ [key]: VALID_DETAILS.public_ref })).toBe(true);
       }
     });
     it("rejects uppercase, hyphenated, digit-leading, empty and over-long keys", () => {
@@ -375,7 +396,7 @@ describe("TC-REVIEW-PORT-003 details and top-level items follow the REL-REC-008 
         "a.b",
         `a${"b".repeat(64)}`,
       ]) {
-        expect(acceptsDetails({ [key]: VALID_DETAILS.state })).toBe(false);
+        expect(acceptsDetails({ [key]: VALID_DETAILS.public_ref })).toBe(false);
       }
     });
   });
@@ -398,5 +419,58 @@ describe("TC-REVIEW-PORT-003 details and top-level items follow the REL-REC-008 
         expect(accepts(openInput({ [key]: value }))).toBe(false);
       });
     }
+  });
+});
+
+// The public input type carries the target constraints, so a caller that holds a
+// ReviewCaseOpenInput has already satisfied them at compile time. These assertions are checked by
+// `pnpm typecheck`; vitest does not evaluate them.
+describe("TC-REVIEW-PORT-004 ReviewCaseOpenInput expresses the target constraints in its type [REL-REC-006]", () => {
+  type Details = ReviewCaseOpenInput["details"];
+  const details: Details = {};
+
+  it("accepts an input with at least one target", () => {
+    const input: ReviewCaseOpenInput = {
+      reasonCode: "PAY_BINDING_INCONSISTENT",
+      targets: { paymentBindingId: 3n as PaymentBindingId },
+      details,
+    };
+    expect(input.reasonCode).toBe("PAY_BINDING_INCONSISTENT");
+  });
+
+  it("rejects empty targets and targets that hold only undefined at compile time", () => {
+    // @ts-expect-error SPEC-100 §43 CHECK: at least one target is required
+    const empty: ReviewCaseOpenInput = {
+      reasonCode: "PAY_BINDING_INCONSISTENT",
+      targets: {},
+      details,
+    };
+    // @ts-expect-error an explicitly undefined target is not a target
+    const undef: ReviewCaseOpenInput = {
+      reasonCode: "PAY_BINDING_INCONSISTENT",
+      targets: { orderId: undefined },
+      details,
+    };
+    expect([empty, undef]).toHaveLength(2);
+  });
+
+  it("limits an EML_* reason to order / reservation targets at compile time", () => {
+    const ok: ReviewCaseOpenInput = {
+      reasonCode: "EML_RENDER_CONTEXT_INVALID",
+      targets: { orderId: 1n as OrderId, karaokeReservationId: 2n as KaraokeReservationId },
+      details,
+    };
+    const bad: ReviewCaseOpenInput = {
+      reasonCode: "EML_RENDER_CONTEXT_INVALID",
+      // @ts-expect-error SPEC-120 §43.1: an email reason cannot target a payment binding
+      targets: { paymentBindingId: 3n as PaymentBindingId },
+      details,
+    };
+    expect([ok, bad]).toHaveLength(2);
+  });
+
+  it("keeps the schema output assignable to the public type", () => {
+    const parsed = reviewCaseOpenInputSchema.parse(openInput());
+    expectTypeOf(parsed).toEqualTypeOf<ReviewCaseOpenInput>();
   });
 });
