@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-200
 title: System Acceptance Criteria
-version: 3.0.0
+version: 3.1.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -179,6 +179,12 @@ Admin authoritative read / filterは `SPEC-110` §41 / §48.3 のcanonical Opera
 ### 4.7 Release Operation Set（`UCR-RELSCOPE-001`）
 
 `UCR-RELSCOPE-001` は `INCORPORATED` である。Release Manifestの `mounted_operation_ids`（`SPEC-180 §44`、`INF-DEP-006`）、本書 §7.5、`SPEC-110` `API-PUR-ELG-001`、`SPEC-170 §27` / `§74` に反映済みである。Acceptance Manifestは §7.5 のEvidenceを要求する。
+
+### 4.8 Initial data seeding（`UCR-180-001`）
+
+`UCR-180-001` は、`SPEC-180 §45.3`、`SPEC-100 §13.5`、`SPEC-160 §37`、`SPEC-170 §22.1` へ反映済みの `INCORPORATED` である。反映状態であり、実装済み・Test実行済み・System Acceptance済みの意味ではない。
+
+**ACC-GEN-032:** 初期データの投入は、`ACC-INF-023` のEvidenceを要求する。投入手段の仮実装（migrationへのINSERT、Business APIの追加、手作業のSQL、実値のrepository配置）はFAILとする。
 
 ---
 
@@ -999,6 +1005,8 @@ Pagesは静的SPAのみとしNode server runtimeを持たない。Node majorはC
 
 **ACC-INF-022:** active Critical/High condition、readiness failure、schema mismatch、Critical smoke failure等、Current `SPEC-180`がrelease acceptanceを停止すると定義したconditionが存在する間はSystem Acceptanceしない。
 
+**ACC-INF-023:** 初期データ（EventとEntry Ticket Offering）が、専用の運用コマンドだけで、migration jobの `app_migrator` により、schema readiness checkの後・API deployの前に、stagingとproductionへ投入されている。入力は環境別のprotected Environment Secretから渡り、実値がsource・log・artifact・release evidenceに出ない。対象が0件のときだけ作り、再実行で行が増えず、運用で変更した値を巻き戻さず、Offeringは `SUSPENDED` で作られ、作成した行ごとのAudit Eventが残る。Business APIにEvent・Offeringの作成経路がない（`SPEC-180 INF-SEED-001〜006`、`SPEC-100 DB-SEED-001〜007`、`SPEC-160 OBS-AUD-014`、`TST-SEED-001〜006`）。
+
 ---
 
 # Part XVII — SPEC-190 Development Guideline Acceptance
@@ -1131,6 +1139,7 @@ failure_outcome
 |---|---|---|---|---|---|---|---|
 | `ACC-GEN-009` | Release identity | `INF-DEP-*` | manifest validator | release-manifest hash | staging + Production IDs | Yes | all identity joins equal |
 | `ACC-GEN-029〜031` | Mounted Operation Set | `INF-DEP-006`, `SPEC-110 §21`, `TST-COV-004` | G4 | `mounted_operation_ids` | `ACC-GEN-030` (3)・(4) が必要な条項に限り、§39ではstagingの現在値・既存rowと、API切替前のProductionの現在値・既存row・未処理義務、Productionへ適用する初期値、§40ではProductionの現在値・既存row | Yes | Unmounted Operationの404 / 405 + `NOT_APPLICABLE` 条項のEvidence |
+| `ACC-GEN-032` | Initial data seeding | `INF-SEED-*`, `DB-SEED-*`, `OBS-AUD-014`, `TST-SEED-*` | G1 / G2 / G3 / G4 / G5 / G6 | seeding command result / release evidence | stagingとProductionのseeding結果（区分、public_ref、件数。値を含めない） | Yes | 専用コマンドだけで投入され、0件のときだけ作り、`SUSPENDED` で作られ、Auditが残る |
 | `ACC-TRC-001` | Spec set completeness | `SPEC-000`, `TST-TRC-*`, `DEV-TRC-*` | manifest validation | spec set hash | none | Yes | no unknown / missing Current rule owner |
 | `ACC-INV-001〜010` | System invariants | `INV-010-01〜10` | §13 exact cases + G3/G4/G5/G6/G8/G10 as applicable | DB/provider config as applicable | same release deployment | Yes | all invariant criteria PASS |
 | `ACC-BIZ-001〜032` | Functional / Domain capability | `FR-*`, `BR-*`, `DI-030-*` | G1/G3/G4/G8 + domain required groups、§15.1の個別Case | feature/current config | staging smoke | Yes | 全Current DIのsemantic coverage + observable outcome PASS |
@@ -1146,7 +1155,7 @@ failure_outcome
 | `ACC-REL-001〜012` | Reliability / Recovery | `REL-*` | G6/G10 | policy registry / scheduler config | worker readiness / scheduler evidence | Yes | timeout/retry/unknown/recovery converge safely |
 | `ACC-OBS-001〜013` | Observability / Audit | `OBS-*` | G7 + DB atomicity cases | dashboard/alert/retention config | Better Stack / independent alert / purge evidence | Yes | schema/correlation/redaction/audit PASS |
 | `ACC-TST-001〜013` | Test evidence | `TST-*`, `TC-*` | G1〜G10 required | runner retry/quarantine manifest | staging gate evidence | Yes | group policy + semantic coverage PASS |
-| `ACC-INF-002〜022` | Infrastructure / deployment | `INF-*` | infra validation + required suites | env / identity / backup / health config | staging + Production deployment | Yes | Current INF contract PASS |
+| `ACC-INF-002〜023` | Infrastructure / deployment | `INF-*` | infra validation + required suites | env / identity / backup / health config | staging + Production deployment | Yes | Current INF contract PASS |
 | `ACC-DEV-001〜016` | Development guideline | `DEV-*` | static + required test groups | tsconfig/import/secret/traceability | completion evidence | Yes | self-verification all required PASS |
 | `ACC-RELSE-001〜004` | Production acceptance boundary | `INF-DEP-*`, `INF-TST-*` | required release suite | approval / backup / config drift | Production post-deploy | Yes | phase distinction + final evidence complete |
 
