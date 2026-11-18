@@ -16935,7 +16935,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "Applied migrations are immutable: 0001 and 0002 equal their committed bytes and 0003 creates only the eight new tables, so older code keeps working"
+        "Applied migrations are immutable: 0001 and 0002 equal their committed bytes, and 0003 statically creates only the eight new tables and changes no existing object; whether an old build stays ready after 0003 is not asserted here"
       ],
       "expected_db_postconditions": [
         "The journal lists 0001_foundation, 0002_audit_events and 0003_public_content_sales once each with the source hashes of the bundled files, and a second runMigrations leaves it unchanged",

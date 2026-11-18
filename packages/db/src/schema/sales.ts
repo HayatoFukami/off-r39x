@@ -64,7 +64,7 @@ export const entryTicketOfferings = app.table(
     check("ck_entry_ticket_offerings_committed_quantity", sql`${t.committedQuantity} >= 0`),
     check(
       "ck_entry_ticket_offerings_capacity",
-      sql`${t.heldQuantity} + ${t.committedQuantity} <= ${t.salesCapacity}`,
+      sql`${t.heldQuantity}::bigint + ${t.committedQuantity} <= ${t.salesCapacity}`,
     ),
     check(
       "ck_entry_ticket_offerings_checkin_window",

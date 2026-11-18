@@ -91,7 +91,12 @@ export const announcements = app.table(
       foreignColumns: [events.id],
     }).onDelete("restrict"),
     check("ck_announcements_state", sql`${t.state} IN ('DRAFT','PUBLISHED','ARCHIVED')`),
-    index("ix_announcements_event_state_published").on(t.eventId, t.state, t.publishedAt.desc()),
+    // Drizzle's default is NULLS LAST; PostgreSQL's default for DESC (and migration 0003) is NULLS FIRST.
+    index("ix_announcements_event_state_published").on(
+      t.eventId,
+      t.state,
+      t.publishedAt.desc().nullsFirst(),
+    ),
   ],
 );
 

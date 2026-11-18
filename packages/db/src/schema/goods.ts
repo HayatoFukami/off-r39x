@@ -31,7 +31,7 @@ export const goodsInventory = app.table(
     check("ck_goods_inventory_committed_quantity", sql`${t.committedQuantity} >= 0`),
     check(
       "ck_goods_inventory_capacity",
-      sql`${t.heldQuantity} + ${t.committedQuantity} <= ${t.saleableCapacity}`,
+      sql`${t.heldQuantity}::bigint + ${t.committedQuantity} <= ${t.saleableCapacity}`,
     ),
   ],
 );

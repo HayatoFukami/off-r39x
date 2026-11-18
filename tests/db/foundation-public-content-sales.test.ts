@@ -315,7 +315,7 @@ const GOLDEN_TABLES: GoldenTable[] = [
       ck("ck_entry_ticket_offerings_committed_quantity", "CHECK ((committed_quantity >= 0))"),
       ck(
         "ck_entry_ticket_offerings_capacity",
-        "CHECK (((held_quantity + committed_quantity) <= sales_capacity))",
+        "CHECK ((((held_quantity)::bigint + committed_quantity) <= sales_capacity))",
       ),
       ck(
         "ck_entry_ticket_offerings_checkin_window",
@@ -402,7 +402,7 @@ const GOLDEN_TABLES: GoldenTable[] = [
       ck("ck_goods_inventory_committed_quantity", "CHECK ((committed_quantity >= 0))"),
       ck(
         "ck_goods_inventory_capacity",
-        "CHECK (((held_quantity + committed_quantity) <= saleable_capacity))",
+        "CHECK ((((held_quantity)::bigint + committed_quantity) <= saleable_capacity))",
       ),
     ],
     indexes: [pkIndex("goods_inventory", "goods_id")],
@@ -598,7 +598,7 @@ describe("TC-DB-ARC-007-004 migration 0003 and the catalog of the eight tables (
     const third = identities.find((i) => i.name === "0003_public_content_sales.sql");
     expect(third, "0003_public_content_sales.sql exists").toBeDefined();
 
-    // Static evidence that old code keeps working: nothing outside the eight new tables is touched.
+    // Static evidence only: nothing outside the eight new tables is touched (not a readiness check of an old build).
     const sqlText = (third?.sql ?? "")
       .split(/\r?\n/)
       .map((line) => line.replace(/--.*$/, ""))
@@ -1339,6 +1339,8 @@ async function createAttempt(
   }
 }
 
+const INT_MAX = 2147483647;
+
 async function capacityBoundaries(target: CapacityTarget) {
   await inRolledBackTransaction(async () => {
     const eventId = await insertRow("events", eventRow());
@@ -1348,6 +1350,8 @@ async function capacityBoundaries(target: CapacityTarget) {
       [10, 0, 10],
       [10, 10, 0],
       [1, 1, 0],
+      [INT_MAX, INT_MAX, 0],
+      [INT_MAX, 0, INT_MAX],
     ] as const) {
       expect(
         await createAttempt(target, eventId, capacity, held, committed),
@@ -1360,6 +1364,10 @@ async function capacityBoundaries(target: CapacityTarget) {
       [10, 11, 0],
       [0, 1, 0],
       [0, 0, 1],
+      // held + committed exceeds the integer maximum: refused by the CHECK in bigint, not by an overflow (22003).
+      [INT_MAX, INT_MAX, 1],
+      [INT_MAX, 1, INT_MAX],
+      [INT_MAX, INT_MAX, INT_MAX],
     ] as const) {
       expectViolation(
         await createAttempt(target, eventId, capacity, held, committed),
@@ -1412,12 +1420,34 @@ async function capacityUpdates(target: CapacityTarget) {
   await expectNothingCommitted();
 }
 
+// A full row at the integer maximum: one more unit is a capacity violation (23514), not an integer overflow.
+async function capacityAtIntegerMaximum(target: CapacityTarget) {
+  await inRolledBackTransaction(async () => {
+    const eventId = await insertRow("events", eventRow());
+    const id = await target.create(eventId, INT_MAX, INT_MAX, 0);
+    const full = { capacity: INT_MAX, held: INT_MAX, committed: 0 };
+    for (const set of ["committed_quantity = 1", "committed_quantity = committed_quantity + 1"]) {
+      expectViolation(
+        await attempt(`UPDATE app.${target.table} SET ${set} WHERE ${target.key} = $1`, [id]),
+        "23514",
+        target.constraint,
+        set,
+      );
+      expect(await counters(target, id), `${set}: values unchanged`).toEqual(full);
+    }
+  });
+  await expectNothingCommitted();
+}
+
 describe("TC-DB-005-002 held + committed <= sales_capacity on app.entry_ticket_offerings (real PostgreSQL 17)", () => {
   it("TC-DB-005-002 (capacity, held, committed): (10, 4, 6) is accepted and (10, 5, 6) is rejected with 23514 by name", () =>
     capacityBoundaries(entryCapacity));
 
   it("TC-DB-005-002 a full offering refuses every UPDATE that would oversell and keeps its values; moving held to committed is accepted", () =>
     capacityUpdates(entryCapacity));
+
+  it("TC-DB-005-002 at held = sales_capacity = 2147483647 one more committed unit is refused by the capacity CHECK (23514), not by an integer overflow", () =>
+    capacityAtIntegerMaximum(entryCapacity));
 });
 
 describe("TC-DB-GDS-003-001 held + committed <= saleable_capacity on app.goods_inventory (real PostgreSQL 17)", () => {
@@ -1426,6 +1456,9 @@ describe("TC-DB-GDS-003-001 held + committed <= saleable_capacity on app.goods_i
 
   it("TC-DB-GDS-003-001 a full inventory row refuses every UPDATE that would oversell and keeps its values; moving held to committed is accepted", () =>
     capacityUpdates(goodsCapacity));
+
+  it("TC-DB-GDS-003-001 at held = saleable_capacity = 2147483647 one more committed unit is refused by the capacity CHECK (23514), not by an integer overflow", () =>
+    capacityAtIntegerMaximum(goodsCapacity));
 });
 
 // ---- TC-DB-005-003 ------------------------------------------------------------------------------
@@ -1903,6 +1936,53 @@ describe("TC-SEC-DB-001-001 runtime privileges on the eight tables (real Postgre
       );
       for (const role of ["app_email_runtime", "app_reconciliation_runtime", "app_runtime"]) {
         expect(await tablePrivileges(role, table), `${role} ${table}`).toEqual(only([]));
+      }
+    }
+  });
+
+  it("TC-SEC-DB-001-001 no column of the eight tables has an ACL of its own, and has_column_privilege of every role equals the table-level grants", async () => {
+    const withAcl = (
+      await admin.query(
+        `SELECT c.relname || '.' || a.attname AS column_name
+           FROM pg_attribute a
+           JOIN pg_class c ON c.oid = a.attrelid
+           JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = 'app' AND c.relname = ANY($1) AND a.attnum > 0
+            AND NOT a.attisdropped AND a.attacl IS NOT NULL`,
+        [[...TABLES]],
+      )
+    ).rows;
+    expect(withAcl, "columns with a column-level ACL").toEqual([]);
+    const COLUMN_PRIVILEGES = ["SELECT", "INSERT", "UPDATE", "REFERENCES"] as const;
+    for (const table of TABLES) {
+      const columns = (
+        await admin.query(
+          `SELECT a.attname FROM pg_attribute a
+            WHERE a.attrelid = $1::regclass AND a.attnum > 0 AND NOT a.attisdropped
+            ORDER BY a.attnum`,
+          [`app.${table}`],
+        )
+      ).rows.map((row) => row.attname as string);
+      expect(columns.length, `${table} has columns`).toBeGreaterThan(0);
+      for (const role of ROLES) {
+        const granted = role === "app_api_runtime" ? (API_GRANTS[table] ?? []) : [];
+        for (const column of columns) {
+          const actual: string[] = [];
+          for (const privilege of COLUMN_PRIVILEGES) {
+            const allowed = (
+              await admin.query("SELECT has_column_privilege($1, $2, $3, $4) AS allowed", [
+                role,
+                `app.${table}`,
+                column,
+                privilege,
+              ])
+            ).rows[0].allowed as boolean;
+            if (allowed) actual.push(privilege);
+          }
+          expect(actual, `${role} ${table}.${column}`).toEqual(
+            COLUMN_PRIVILEGES.filter((privilege) => granted.includes(privilege)),
+          );
+        }
       }
     }
   });

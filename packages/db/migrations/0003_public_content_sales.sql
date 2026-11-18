@@ -93,6 +93,8 @@ CREATE TABLE app.sponsor_logos (
 -- SPEC-100 §15.1 entry_ticket_offerings. SPEC-100 §9: amounts are bigint >= 0, currency is 3 upper-case letters,
 -- purchase_limit > 0. DB-STA-002: Sale Control State allows ENABLED / SUSPENDED only. BR-SAL-003: start before end.
 -- DI-030-004 / SPEC-100 §19: held + committed <= sales_capacity is the last defence against overselling.
+-- The sum is taken in bigint (also for goods_inventory): two integer counters near 2147483647 must be refused by the
+-- CHECK (23514, named), not by an integer overflow (22003) raised while evaluating it.
 CREATE TABLE app.entry_ticket_offerings (
  id bigint GENERATED ALWAYS AS IDENTITY,
  public_ref uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -123,7 +125,7 @@ CREATE TABLE app.entry_ticket_offerings (
  CONSTRAINT ck_entry_ticket_offerings_sales_capacity CHECK (sales_capacity >= 0),
  CONSTRAINT ck_entry_ticket_offerings_held_quantity CHECK (held_quantity >= 0),
  CONSTRAINT ck_entry_ticket_offerings_committed_quantity CHECK (committed_quantity >= 0),
- CONSTRAINT ck_entry_ticket_offerings_capacity CHECK (held_quantity + committed_quantity <= sales_capacity),
+ CONSTRAINT ck_entry_ticket_offerings_capacity CHECK (held_quantity::bigint + committed_quantity <= sales_capacity),
  CONSTRAINT ck_entry_ticket_offerings_checkin_window CHECK (checkin_opens_at < checkin_closes_at)
 );
 
@@ -195,7 +197,7 @@ CREATE TABLE app.goods_inventory (
  CONSTRAINT ck_goods_inventory_saleable_capacity CHECK (saleable_capacity >= 0),
  CONSTRAINT ck_goods_inventory_held_quantity CHECK (held_quantity >= 0),
  CONSTRAINT ck_goods_inventory_committed_quantity CHECK (committed_quantity >= 0),
- CONSTRAINT ck_goods_inventory_capacity CHECK (held_quantity + committed_quantity <= saleable_capacity)
+ CONSTRAINT ck_goods_inventory_capacity CHECK (held_quantity::bigint + committed_quantity <= saleable_capacity)
 );
 
 -- SPEC-100 §13 / §45 indexes for the public read order. DB-IDX-001: no index repeats a PK / UNIQUE column list.

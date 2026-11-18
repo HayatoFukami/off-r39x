@@ -2904,7 +2904,8 @@
       "code_paths": [
         "packages/db/migrations/0003_public_content_sales.sql",
         "packages/db/src/schema/public-content.ts",
-        "packages/db/src/schema/sales.ts"
+        "packages/db/src/schema/sales.ts",
+        "packages/db/src/schema/goods.ts"
       ],
       "test_case_ids": ["TC-DB-TIM-001-001", "TC-DB-ARC-007-004"],
       "notes": "implementation mapping only: every time column of the public content and sales tables is timestamptz"

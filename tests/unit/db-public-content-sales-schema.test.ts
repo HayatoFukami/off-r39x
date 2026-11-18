@@ -40,7 +40,7 @@ interface DrizzleNamedColumns {
 }
 interface DrizzleIndexColumn {
   name: string;
-  indexConfig?: { order?: string };
+  indexConfig?: { order?: string; nulls?: string };
 }
 interface DrizzleIndex {
   config: {
@@ -422,8 +422,8 @@ const GOLDEN_TABLES: GoldenTable[] = [
       ),
       check(
         "ck_entry_ticket_offerings_capacity",
-        "CHECK (((held_quantity + committed_quantity) <= sales_capacity))",
-        "held_quantity + committed_quantity <= sales_capacity",
+        "CHECK ((((held_quantity)::bigint + committed_quantity) <= sales_capacity))",
+        "held_quantity::bigint + committed_quantity <= sales_capacity",
       ),
       check(
         "ck_entry_ticket_offerings_checkin_window",
@@ -531,8 +531,8 @@ const GOLDEN_TABLES: GoldenTable[] = [
       ),
       check(
         "ck_goods_inventory_capacity",
-        "CHECK (((held_quantity + committed_quantity) <= saleable_capacity))",
-        "held_quantity + committed_quantity <= saleable_capacity",
+        "CHECK ((((held_quantity)::bigint + committed_quantity) <= saleable_capacity))",
+        "held_quantity::bigint + committed_quantity <= saleable_capacity",
       ),
     ],
     indexes: [pkIndex("goods_inventory", "goods_id")],
@@ -848,6 +848,8 @@ for (const golden of GOLDEN_TABLES) {
       expect(reference?.foreignColumns.map((c) => c.name)).toEqual(["id"]);
       expect(reference?.foreignTable).toBe(schemaModule[foreign.table]);
       expect(fk?.onDelete).toBe("restrict");
+      // An omitted ON UPDATE is PostgreSQL's NO ACTION, which pg_get_constraintdef leaves out of the contract.
+      expect(fk?.onUpdate ?? "no action", `${foreign.name} ON UPDATE`).toBe("no action");
       // The same relation as the contract's pg_get_constraintdef (DB-FK-002: never CASCADE).
       const definition = contractRows(table).constraints.find(
         ([, name]) => name === foreign.name,
@@ -872,8 +874,19 @@ for (const golden of GOLDEN_TABLES) {
           `${entry.name} columns`,
         ).toEqual(entry.declared);
         // Rendered the PostgreSQL way, the declaration is the contract's definition.
+        // NULLS FIRST / LAST is shown only where it differs from the default (ASC: NULLS LAST, DESC: NULLS FIRST).
         const columns = (index?.config.columns ?? [])
-          .map((c) => `${c.name}${c.indexConfig?.order === "desc" ? " DESC" : ""}`)
+          .map((c) => {
+            const desc = c.indexConfig?.order === "desc";
+            const nulls = c.indexConfig?.nulls;
+            const nullsText =
+              desc && nulls === "last"
+                ? " NULLS LAST"
+                : !desc && nulls === "first"
+                  ? " NULLS FIRST"
+                  : "";
+            return `${c.name}${desc ? " DESC" : ""}${nullsText}`;
+          })
           .join(", ");
         const contractDefinition = contractRows(table).indexes.find(([, d]) =>
           d.startsWith(`CREATE INDEX ${entry.name} `),

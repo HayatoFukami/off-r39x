@@ -673,7 +673,7 @@
       "entry_ticket_offerings",
       "ck_entry_ticket_offerings_capacity",
       "c",
-      "CHECK (((held_quantity + committed_quantity) <= sales_capacity))",
+      "CHECK ((((held_quantity)::bigint + committed_quantity) <= sales_capacity))",
       true,
       false,
       false
@@ -863,7 +863,7 @@
       "goods_inventory",
       "ck_goods_inventory_capacity",
       "c",
-      "CHECK (((held_quantity + committed_quantity) <= saleable_capacity))",
+      "CHECK ((((held_quantity)::bigint + committed_quantity) <= saleable_capacity))",
       true,
       false,
       false
