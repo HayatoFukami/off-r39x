@@ -25228,7 +25228,8 @@
       "expected_domain_postconditions": [
         "errorRetryable equals the SPEC-110 section 21 Retryable column in errorStatuses order; the 24 codes with a fixed Retryable reject the opposite value and the two conditional codes accept both booleans",
         "STATE_CONFLICT alone accepts details null or a strict item_failures of 1 to 50 entries ({ kind ENTRY|GOODS, target_ref lowercase UUID, reasons }) with reasons non-empty, unique and in API-PUR-ELG-001 order and no repeated (kind, target_ref); every other code accepts details null only",
-        "Extra keys, unknown reasons and kinds, uppercase or non-UUID target_ref, and field or item_failures details on other codes are rejected; the parsed code type equals ErrorCode"
+        "Extra keys, unknown reasons and kinds, uppercase or non-UUID target_ref, and field or item_failures details on other codes are rejected; the parsed code type equals ErrorCode",
+        "The type of details is fixed per code by the type system: ErrorDetails of SOLD_OUT is null and a ServiceResult rejected with SOLD_OUT and item_failures does not compile"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -25293,6 +25294,7 @@
       "upstream_rule_ids": [
         "SEC-ERR-001",
         "SEC-API-022",
+        "SEC-ABU-007",
         "DEV-API-003",
         "SPEC-110-17",
         "SPEC-110-20",
@@ -25413,7 +25415,7 @@
       "expected_http": [500, 503],
       "expected_domain_postconditions": [
         "Connection-class SQLSTATE, Node connection errno and DatabaseUnavailableError answer 503 DATABASE_TEMPORARY_FAILURE with retryable true, details null and no SQLSTATE, errno or message in the body",
-        "A plain Error without SQLSTATE answers 500 INTERNAL_ERROR; 57014 stays 500 INTERNAL_ERROR in this change (S0-3a G-a5 A)"
+        "A plain Error without SQLSTATE answers 500 INTERNAL_ERROR; 57014 stays 500 INTERNAL_ERROR in this change"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],

@@ -1,6 +1,13 @@
-import { type ErrorCode, errorRetryable, errorSchema } from "@off-r39x/api-contract";
+import {
+  type ErrorCode,
+  type ErrorDetails,
+  errorRetryable,
+  errorSchema,
+  type ItemFailure,
+} from "@off-r39x/api-contract";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import type { z } from "zod";
+import type { ServiceResult } from "../../apps/api/src/api/services/result.ts";
 
 // PR-S0-3a C1: the error envelope schema is a discriminated union on `code` (SPEC-110 section 16),
 // each variant fixing `retryable` (section 21 Retryable column) and `details` (section 20 / 21,
@@ -12,7 +19,7 @@ const TARGET_A = "00000000-0000-4000-8000-00000000000a";
 const TARGET_B = "00000000-0000-4000-8000-00000000000b";
 const TARGET_A_UPPER = "00000000-0000-4000-8000-00000000000A";
 
-// SPEC-110 section 21, in table order. "conditional" is the table's 条件付き (S0-3a G-a1 B).
+// SPEC-110 section 21, in table order. "conditional" is the table's 条件付き (SPEC-110 section 21).
 const SPEC_RETRYABLE: [ErrorCode, boolean | "conditional"][] = [
   ["MALFORMED_REQUEST", false],
   ["VALIDATION_FAILED", false],
@@ -105,7 +112,7 @@ describe("TC-DEV-API-003-002 errorSchema variants, retryable and details allowli
     expect(passes(envelope(code, !retryable))).toBe(false);
   });
 
-  it.each(CONDITIONAL)("%s: a conditional code accepts both boolean values (G-a1 B)", (code) => {
+  it.each(CONDITIONAL)("%s: a conditional code accepts both boolean values", (code) => {
     expect(passes(envelope(code, true))).toBe(true);
     expect(passes(envelope(code, false))).toBe(true);
   });
@@ -260,5 +267,22 @@ describe("TC-DEV-API-003-002 errorSchema variants, retryable and details allowli
 
   it("types: the code type of a parsed error equals ErrorCode (compile-time only)", () => {
     expectTypeOf<z.infer<typeof errorSchema>["error"]["code"]>().toEqualTypeOf<ErrorCode>();
+  });
+
+  it("types: details is fixed per code, and a service cannot reject SOLD_OUT with details", () => {
+    expectTypeOf<ErrorDetails<"SOLD_OUT">>().toEqualTypeOf<null>();
+    expectTypeOf<ErrorDetails<"STATE_CONFLICT">>().toEqualTypeOf<null | {
+      item_failures: ItemFailure[];
+    }>();
+    const accepted: ServiceResult<null> = { kind: "rejected", code: "SOLD_OUT" };
+    const failures: ItemFailure[] = [];
+    const rejected: ServiceResult<null> = {
+      kind: "rejected",
+      code: "SOLD_OUT",
+      // @ts-expect-error SOLD_OUT details is null only (SEC-ERR-002)
+      details: { item_failures: failures },
+    };
+    void accepted;
+    void rejected;
   });
 });

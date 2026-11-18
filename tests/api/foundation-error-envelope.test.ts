@@ -65,7 +65,7 @@ function expectEnvelope(response: Response, text: string, code: ErrorCode, label
 const loadRespond = () => import("../../apps/api/src/api/respond.ts");
 
 // SPEC-110 section 21: the codes whose Retryable column is Yes. The two 条件付き codes
-// (AUTHENTICATION_REQUIRED, INTERNAL_ERROR) resolve to false in a produced response (S0-3a G-a1 B).
+// (AUTHENTICATION_REQUIRED, INTERNAL_ERROR) resolve to false in a produced response (SPEC-110 section 21).
 const RETRYABLE_CODES: ReadonlySet<ErrorCode> = new Set<ErrorCode>([
   "RATE_LIMIT_EXCEEDED",
   "STRIPE_TEMPORARY_FAILURE",
@@ -95,7 +95,7 @@ describe("TC-SEC-ERR-001-001 every ApiFailure code produces the section 21 envel
     const response = await app.request("/api/v1/test/failure");
     const { text, error } = await readError(response);
     expectEnvelope(response, text, code);
-    // retryable is decided by the code (section 21); a conditional code resolves to false (G-a1 B).
+    // retryable is decided by the code (section 21); a conditional code resolves to false.
     expect(error.retryable).toBe(RETRYABLE_CODES.has(code));
     expect(error.details).toBeNull();
     expect(error.message).toBe(code === "RESOURCE_NOT_FOUND" ? NOT_FOUND_MESSAGE : FIXED_MESSAGE);
@@ -409,7 +409,7 @@ describe("TC-REL-DB-009-002 database availability failures are 503, never a leak
     expect(logged[0]?.http_status).toBe(500);
   });
 
-  it("a statement timeout (57014) stays 500 INTERNAL_ERROR in this PR (S0-3a G-a5 A)", async () => {
+  it("a statement timeout (57014) stays 500 INTERNAL_ERROR in this PR", async () => {
     const { response, text, error, logged } = await call("statement_timeout");
     expectEnvelope(response, text, "INTERNAL_ERROR");
     expect(error).toMatchObject({ retryable: false, details: null });

@@ -213,11 +213,8 @@ describe("TC-DEV-API-003-001 error table and envelope schemas", () => {
 
   // S0-3a: errorSchema.error is a discriminated union on `code` (SPEC-110 section 16), one variant per
   // code. The code list is read from each variant's literal discriminator, in variant order.
-  function variantCodes(): unknown[] {
-    const union = errorSchema.shape.error as unknown as {
-      options: { shape: { code: { value: unknown } } }[];
-    };
-    return union.options.map((variant) => variant.shape.code.value);
+  function variantCodes(): string[] {
+    return errorSchema.shape.error.options.map((variant) => variant.shape.code.value);
   }
 
   it("derives the errorSchema variants from the same ordered list", () => {

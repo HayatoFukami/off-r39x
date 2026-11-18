@@ -90,7 +90,7 @@ interface SchemaContract {
 }
 const contract = JSON.parse(readFileSync(contractUrl, "utf8")) as SchemaContract;
 
-// S0-3a C3 (approved in ref/planning/20261119-s0-3a-envelopes.md) added three runtime exports:
+// The error classification added in S0-3a adds three runtime exports:
 // classifyDatabaseError, DatabaseUnavailableError and isDatabaseUnavailableCode (13 -> 16).
 const EXPECTED_ROOT_EXPORTS = [
   "DatabaseUnavailableError",
