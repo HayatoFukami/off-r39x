@@ -29,12 +29,15 @@ export type ApiEnvironment = {
 };
 
 export class ApiFailure extends Error {
+  readonly retryAfterSeconds: number | undefined;
   constructor(
     readonly code: ErrorCode,
-    readonly statusOverride?: 400 | 413,
-    /** Only for RATE_LIMIT_EXCEEDED: the integer-second Retry-After value (SEC-ABU-007). */
-    readonly retryAfterSeconds?: number,
+    options: {
+      /** Only for RATE_LIMIT_EXCEEDED: the integer-second Retry-After value (SEC-ABU-007). */
+      readonly retryAfterSeconds?: number;
+    } = {},
   ) {
     super(code);
+    this.retryAfterSeconds = options.retryAfterSeconds;
   }
 }

@@ -16,6 +16,8 @@ import {
 } from "./errors.ts";
 import { type DatabaseLogger, databaseLogger, logDatabase } from "./observability.ts";
 
+// Kept importable from this module for existing deep imports; the definitions live in errors.ts.
+export { sqlState, TransactionDeadlineError };
 export type TransactionResult<T> = { status: "committed"; value: T } | { status: "commit_unknown" };
 function commitAcknowledgementUnknown(error: unknown): boolean {
   const code = sqlState(error);
