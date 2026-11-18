@@ -158,12 +158,13 @@ const CASES: readonly Case[] = [
     order: EMAIL_REFUSED,
   },
   {
-    name: "4 verified Email, no Business Profile: still AUTHORIZATION_DENIED (no Email event: it is emitted on the success path only)",
+    name: "4 verified Email, no Business Profile: still AUTHORIZATION_DENIED (the Email success is recorded before the refusal)",
     row: () => ({ directory: directory(true), profile: null, roles: [] }),
     status: 403,
     code: "AUTHORIZATION_DENIED",
     order: [
       ...PREFIX,
+      "log:auth.email_verified_resolution.completed",
       "log:auth.business_profile_resolution.completed:BUSINESS_PROFILE_UNRESOLVED",
       "log:security.fail_closed.triggered:AUTHORIZATION_DENIED",
       "log:http.request.completed",
@@ -229,6 +230,7 @@ const CASES: readonly Case[] = [
     code: "CONSISTENCY_REVIEW_REQUIRED",
     order: [
       ...PREFIX,
+      "log:auth.email_verified_resolution.completed",
       "log:auth.business_profile_resolution.completed:BUSINESS_PROFILE_INCONSISTENT",
       "log:security.fail_closed.triggered:CONSISTENCY_REVIEW_REQUIRED",
       "log:http.request.completed",
@@ -241,6 +243,7 @@ const CASES: readonly Case[] = [
     code: "CONSISTENCY_REVIEW_REQUIRED",
     order: [
       ...PREFIX,
+      "log:auth.email_verified_resolution.completed",
       "log:auth.business_profile_resolution.completed:BUSINESS_PROFILE_INCONSISTENT",
       "log:security.fail_closed.triggered:CONSISTENCY_REVIEW_REQUIRED",
       "log:http.request.completed",
@@ -286,6 +289,26 @@ describe("TC-SEC-AUTH-003-001 the Email verified check comes from the directory 
         r.records.filter((x) => x.event_name === "auth.email_verified_resolution.completed"),
         c.name,
       ).toHaveLength(1);
+    }
+  });
+
+  it("a verified Email is recorded once, before a later Business Profile or Role refusal", async () => {
+    for (const c of CASES.filter((x) => x.name.startsWith("4 ") || /^7[bc] /.test(x.name))) {
+      const r = rig(c.row);
+      await r.get();
+      const events = r.records.map((x) => String(x.event_name));
+      expect(
+        events.filter((e) => e === "auth.email_verified_resolution.completed"),
+        c.name,
+      ).toHaveLength(1);
+      expect(
+        r.records.find((x) => x.event_name === "auth.email_verified_resolution.completed")
+          ?.error_code,
+        c.name,
+      ).toBeUndefined();
+      expect(events.indexOf("auth.email_verified_resolution.completed"), c.name).toBeLessThan(
+        events.indexOf("auth.business_profile_resolution.completed"),
+      );
     }
   });
 

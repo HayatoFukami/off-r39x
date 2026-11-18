@@ -168,6 +168,49 @@ describe("TC-SEC-AUTH-003-002 resolvePrincipal evaluates the Email verified chec
     });
   });
 
+  describe("onEmailVerified (the Email decision is reported when it is made)", () => {
+    const outcomes = async (row: PrincipalRecord | Error, requireVerifiedEmail: boolean) => {
+      let called = 0;
+      const kind = await failureOf(
+        resolve(identity, store(row).store, {
+          requireVerifiedEmail,
+          onEmailVerified: () => {
+            called += 1;
+          },
+        }),
+      );
+      return { kind, called };
+    };
+
+    it("is called once for a verified Email, also when the Business Profile or a Role then refuses", async () => {
+      for (const c of ROWS.filter(
+        (x) => ["ok", "denied"].includes(x.kind) || /^7[bcd] /.test(x.name),
+      ))
+        expect(await outcomes(c.row, true), c.name).toEqual({
+          kind: c.kind === "ok" ? "none" : c.kind,
+          called: 1,
+        });
+    });
+
+    it("is not called when the Email is unverified, or when the Identity or the directory row fails first", async () => {
+      for (const c of ROWS.filter(
+        (x) =>
+          x.kind === "email" ||
+          x.kind === "unauthenticated" ||
+          x.kind === "database" ||
+          /^6[abc]? /.test(x.name),
+      ))
+        expect((await outcomes(c.row, true)).called, c.name).toBe(0);
+    });
+
+    it("is not called when the Email is not required", async () => {
+      expect(
+        (await outcomes({ directory: directory(true), profile: profile(), roles: [] }, false))
+          .called,
+      ).toBe(0);
+    });
+  });
+
   describe("without the option (existing callers)", () => {
     it("an unverified Email still yields a Principal with emailVerified false", async () => {
       const s = store({ directory: directory(false), profile: profile(), roles: [] });

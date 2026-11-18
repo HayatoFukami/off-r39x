@@ -30,8 +30,14 @@ async function resolveRequestPrincipal(
   store: PrincipalStore,
 ): Promise<void> {
   try {
-    c.set("principal", await resolvePrincipal(identity, store, { requireVerifiedEmail: true }));
-    securityEvent(c, "auth.email_verified_resolution.completed");
+    c.set(
+      "principal",
+      await resolvePrincipal(identity, store, {
+        requireVerifiedEmail: true,
+        // The Email decision is recorded when it is made (step 3), whatever step 5 then decides.
+        onEmailVerified: () => securityEvent(c, "auth.email_verified_resolution.completed"),
+      }),
+    );
     securityEvent(c, "auth.business_profile_resolution.completed");
     securityEvent(c, "authorization.role_resolution.completed");
   } catch (error) {
@@ -59,7 +65,7 @@ export function requireVerifiedEmail(): MiddlewareHandler<ApiEnvironment> {
       securityEvent(c, "auth.email_verified_resolution.completed", "EMAIL_VERIFICATION_REQUIRED");
       throw new AuthFailure("email");
     }
-    // The success event is emitted once by requirePrincipal (resolveRequestPrincipal).
+    // The success event is emitted once by requirePrincipal (resolveRequestPrincipal, onEmailVerified).
     await next();
   };
 }
