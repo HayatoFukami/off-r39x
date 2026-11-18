@@ -44,6 +44,13 @@ export const positiveInteger = z.int().min(1).max(2147483647);
 // EML-TPL-002: required text is never filled with an empty string.
 export const requiredText = z.string().min(1);
 
+// SEC-EML-006: event_name becomes part of the email subject, so a CR or LF would allow header
+// injection. Non-empty like requiredText; the check never echoes the value.
+export const singleLineText = z
+  .string()
+  .min(1)
+  .regex(/^[^\r\n]+$/);
+
 // SPEC-100 §7.1: Internal IDs are bigint identities. The brand keeps an Order ID from being passed
 // where a Reservation ID is expected. A `number` is never accepted.
 function internalId<Name extends string>() {

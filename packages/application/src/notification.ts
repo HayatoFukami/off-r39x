@@ -9,6 +9,7 @@ import {
   orderId,
   positiveInteger,
   requiredText,
+  singleLineText,
 } from "./wire-values.ts";
 
 export type {
@@ -62,14 +63,15 @@ export const NOTIFICATION_TEMPLATES: {
 
 // SPEC-120 §10-§14 and §17.1 (event_name). Keys are the stored JSON names, so they stay snake_case.
 // app_base_url is not stored (§17.1). There is no slot for an email address, a Secret, an internal
-// ID or a raw QR payload (§46).
+// ID or a raw QR payload (§46). event_name is part of the subject, so it refuses CR / LF
+// (SEC-EML-006); the other text items never reach the subject.
 const entryItem = z.strictObject({ offering_name: requiredText, quantity: positiveInteger });
 const goodsItem = z.strictObject({ goods_name: requiredText, quantity: positiveInteger });
 const entryItems = z.array(entryItem).min(1);
 const goodsItems = z.array(goodsItem).min(1);
 
 const entryPurchaseContext = z.strictObject({
-  event_name: requiredText,
+  event_name: singleLineText,
   order_ref: lowerUuid,
   confirmed_at: isoUtc,
   total: money,
@@ -77,7 +79,7 @@ const entryPurchaseContext = z.strictObject({
 });
 
 const karaokeConfirmedContext = z.strictObject({
-  event_name: requiredText,
+  event_name: singleLineText,
   order_ref: lowerUuid,
   reservation_ref: lowerUuid,
   confirmed_at: isoUtc,
@@ -88,7 +90,7 @@ const karaokeConfirmedContext = z.strictObject({
 });
 
 const goodsPurchaseContext = z.strictObject({
-  event_name: requiredText,
+  event_name: singleLineText,
   order_ref: lowerUuid,
   confirmed_at: isoUtc,
   total: money,
@@ -98,7 +100,7 @@ const goodsPurchaseContext = z.strictObject({
 
 // SPEC-120 §12.1: both item arrays are required, so one side missing is rejected.
 const entryGoodsPurchaseContext = z.strictObject({
-  event_name: requiredText,
+  event_name: singleLineText,
   order_ref: lowerUuid,
   confirmed_at: isoUtc,
   total: money,
@@ -110,7 +112,7 @@ const entryGoodsPurchaseContext = z.strictObject({
 // SPEC-120 §13 allows only a label generated from a server-side allowlist, and no such allowlist
 // is specified yet. Until it is, only null is accepted (approved D-5).
 const karaokeCanceledContext = z.strictObject({
-  event_name: requiredText,
+  event_name: singleLineText,
   reservation_ref: lowerUuid,
   canceled_at: isoUtc,
   usage_start: isoUtc,
@@ -119,7 +121,7 @@ const karaokeCanceledContext = z.strictObject({
 });
 
 const orderRefundContext = z.strictObject({
-  event_name: requiredText,
+  event_name: singleLineText,
   order_ref: lowerUuid,
   refunded_at: isoUtc,
   refunded_total: money,

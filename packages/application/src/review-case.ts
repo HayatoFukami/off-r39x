@@ -91,9 +91,13 @@ function hasOnlyOrderOrReservation(targets: ReviewCaseTargets): boolean {
 }
 
 // SPEC-150 §44 REL-REC-008: details hold only allowlisted state, public refs, amount / currency,
-// provider status category and timestamps. Numbers, booleans, free text and nested values have no
-// slot, so an Internal ID, a raw body, a Secret, an email address or a raw QR payload cannot be
-// stored. Upper-case tokens cannot contain "@", "." or lower-case letters.
+// provider status category and timestamps.
+// What the structure prevents: an email address ("@" and "." do not match a token or a key), free
+// text and lower-case or mixed-case Secrets in a value (tokens are upper-case only), a
+// numeric Internal ID (number and boolean values have no slot), and nested values or a raw body.
+// What it does not prevent, and the caller must not pass: an Internal ID or other digits embedded
+// in a token value or in a key (e.g. ORDER_123), and a Secret made only of upper-case letters,
+// digits and "_" (it matches the token pattern).
 const detailToken = z.string().regex(/^[A-Z][A-Z0-9_]{0,63}$/);
 
 const detailValue = z.discriminatedUnion("kind", [
