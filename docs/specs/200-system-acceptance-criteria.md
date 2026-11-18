@@ -1395,7 +1395,33 @@ Acceptance artifact / CI artifact / release noteは次を含めてはならな�
 
 ## 48. 新規Upstream Change Request
 
-本書から新規UCRは発行しない。
+本書は `UCR-RELSCOPE-001` を次のとおり記録する。この他に、本書から新規UCRは発行しない。
+
+### UCR-RELSCOPE-001 — PROPOSED
+
+- **Status:** `PROPOSED`。対象Canonical Ownerの本文へ反映するまで、Canonical behaviorではない（`ACC-GEN-003`）。
+- 対象: `SPEC-200`（§1、§4、§7.5の新設、§37 `ACC-TRC-008`、§15 `ACC-BIZ-026`、§39、§40、§45、§47、§48）、`SPEC-180`（§44、§81）、`SPEC-110`（`API-PUR-ELG-001`、§27、§66）、`SPEC-170`（§27、§74、§79）。
+- 現在の仕様: Current Canonical `FR-*` の未実装を「今回releaseの対象外」としてSystem Acceptanceから除外しない（`ACC-BIZ-026`）。`NOT_APPLICABLE` は、Current Canonical behaviorが当該releaseに存在しないことをRule IDで証明できるcriterionにだけ許可し、Current mandatory `FR-*`、`INV-*`、`SEC-*`、required infrastructure gateへ使用しない（`ACC-TRC-008`）。全canonical Operation IDに100%のcontract caseを要求する（`ACC-API-001` / `ACC-API-002`、`SPEC-170 §74`）。releaseが提供するOperationの集合を記録する場所は、`SPEC-180 §44` のRelease Manifestにない。購入可否の照会（`API-PUR-ELG-001`）は、kindの購入を開始するOperationの有無を評価に使わない。
+- 要求する変更:
+  1. `SPEC-180 §44` のRelease Manifestに、route registryから機械的に生成する `mounted_operation_ids` を加える（`INF-DEP-006`）。
+  2. `SPEC-200 §7.5` を新設し、mountされていないOperation（Unmounted Operation）への Request が `404 RESOURCE_NOT_FOUND`（`SPEC-110 §21`）を返しDomain stateを変更しないことをG4で証明する（`ACC-GEN-029`）。
+  3. criterion、またはcriterion内でUnmounted Operationを前提とする条項だけを、Evidenceを示せる場合に `NOT_APPLICABLE` とできる（`ACC-GEN-030`）。`ACC-TRC-008` と `ACC-BIZ-026` をこれに合わせて改訂する。`INV-*`、`SEC-*`、`DB-*`、required infrastructure gate、mountしたOperationのcontractには使わない。final statusは `ACCEPTED` / `REJECTED` のまま変えない。
+  4. `SPEC-170 §27` / `§74` のOperation coverageを、`mounted_operation_ids` のOperation IDは100% contract case、それ以外は404 caseに改める（`TST-COV-004`）。
+  5. `SPEC-110` の `API-PUR-ELG-001`（と公開availability）は、あるkindの購入を開始できるOperationが1つもmountされていない場合、そのkindを販売条件の現在値によらず `SALES_STOPPED` として評価する。新しいerror code・reason・状態は追加しない（`UCR-110-004`）。
+- 理由: プロジェクト所有者の明示的指示（2026-11-13、`SPEC-000 §8` の1）。Goods / Karaokeの `SPEC-100` の全表を作り、公開読取と購入可否の照会を提供し、Karaokeの販売設定を `SUSPENDED` に保ち、Karaokeの購入・予約・入場・管理とGoodsの受け渡し・管理のOperationをmountしないreleaseを、第三のfinal statusや仕様本文の段階表現なしに受入判定できるようにする。2026-11-18の決定: Goodsの購入開始は `API-PUR-CART-001` で実装し（`DI-030-013` を除外しない）、`API-PUR-GDS-001` はmountしない。
+- 変更しない場合の影響: 最終判定は必ず `REJECTED` になる（`ACC-BIZ-026`、`ACC-API-001` / `ACC-API-002`、`ACC-TST-013`、`ACC-BIZ-014` / `019` / `020` / `022`、`ACC-KRK-*`、`ACC-GDS-*`）。Production promotionの可否も、§39 の merge gate / staging gate に100%網羅が含まれるかの解釈に依存する。
+- 影響を受ける可能性がある仕様書: `SPEC-110`, `SPEC-130`, `SPEC-150`, `SPEC-170`, `SPEC-180`, `SPEC-200`
+
+**決定時点のmountしないOperation（履歴）。** 次は2026-11-18の決定時点の一覧であり、履歴の記録である。契約ではなく、releaseごとの実際の集合はRelease Manifestの `mounted_operation_ids` だけが示す。`SPEC-110` の他のOperationはmountする。
+
+| 区分 | Operation ID |
+|---|---|
+| Karaoke購入・本人向け・入場 | `API-PUR-KRK-001`、`API-KRK-SELF-001〜003`、`API-STF-CHK-002` |
+| Karaoke管理 | `API-ADM-KRK-001〜011`、`API-ADM-KRK-SALES-001〜003` |
+| Goods購入（単品）・本人向け・受け渡し | `API-PUR-GDS-001`、`API-GDS-SELF-001〜002`、`API-STF-GDS-001〜002` |
+| Goods管理・受け渡し管理 | `API-ADM-GDS-001〜005`、`API-ADM-HOF-001〜003` |
+
+合計32本。Goodsの購入開始は `API-PUR-CART-001` がmountされるため、Goodsの在庫確保・確定・解放・複合Orderの返金は通常のAcceptance対象である。
 
 本書は `UCR-130-001〜004/006`, `UCR-150-001〜002`, `UCR-170-001` をCanonical化済みとしてAcceptance Manifestで`INCORPORATED`に分類し、対応するcanonical operation familyのE2E Evidenceを要求する。`UCR-130-005`（Operational query index）のみ `DEFERRED_NONBLOCKING` として継承し、speculative indexをAcceptance必須依存にしない。
 
