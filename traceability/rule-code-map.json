@@ -3375,6 +3375,12 @@
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
     },
     {
+      "rule_id": "SEC-AUTH-003",
+      "code_paths": ["packages/auth/src/index.ts", "apps/api/src/api/middleware/principal.ts"],
+      "test_case_ids": ["TC-SEC-AUTH-003-001", "TC-SEC-AUTH-003-002"],
+      "notes": "Email verified check from the restricted directory view, before Business Profile resolution (SPEC-110 section 24.1)"
+    },
+    {
       "rule_id": "SEC-AUTH-015",
       "code_paths": [
         "packages/auth/src/index.ts",

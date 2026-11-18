@@ -23,26 +23,32 @@ export function requirePrincipal(
     await next();
   };
 }
+/** SPEC-110 §24 step 3 (Email verified check) before step 5 (Business Profile), SPEC-110 §24.1. */
 async function resolveRequestPrincipal(
   c: Context<ApiEnvironment>,
   identity: VerifiedIdentity,
   store: PrincipalStore,
 ): Promise<void> {
   try {
-    c.set("principal", await resolvePrincipal(identity, store));
+    c.set("principal", await resolvePrincipal(identity, store, { requireVerifiedEmail: true }));
+    securityEvent(c, "auth.email_verified_resolution.completed");
     securityEvent(c, "auth.business_profile_resolution.completed");
     securityEvent(c, "authorization.role_resolution.completed");
   } catch (error) {
     const kind = error instanceof AuthFailure ? error.kind : "database";
-    securityEvent(
-      c,
-      "auth.business_profile_resolution.completed",
-      kind === "consistency"
-        ? "BUSINESS_PROFILE_INCONSISTENT"
-        : kind === "database"
-          ? "ROLE_RESOLUTION_UNAVAILABLE"
-          : "BUSINESS_PROFILE_UNRESOLVED",
-    );
+    if (kind === "email") {
+      securityEvent(c, "auth.email_verified_resolution.completed", "EMAIL_VERIFICATION_REQUIRED");
+    } else {
+      securityEvent(
+        c,
+        "auth.business_profile_resolution.completed",
+        kind === "consistency"
+          ? "BUSINESS_PROFILE_INCONSISTENT"
+          : kind === "database"
+            ? "ROLE_RESOLUTION_UNAVAILABLE"
+            : "BUSINESS_PROFILE_UNRESOLVED",
+      );
+    }
     throw error;
   }
 }
@@ -53,7 +59,7 @@ export function requireVerifiedEmail(): MiddlewareHandler<ApiEnvironment> {
       securityEvent(c, "auth.email_verified_resolution.completed", "EMAIL_VERIFICATION_REQUIRED");
       throw new AuthFailure("email");
     }
-    securityEvent(c, "auth.email_verified_resolution.completed");
+    // The success event is emitted once by requirePrincipal (resolveRequestPrincipal).
     await next();
   };
 }

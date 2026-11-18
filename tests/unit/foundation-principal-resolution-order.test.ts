@@ -1,12 +1,10 @@
 // PR-S0-1b addendum T2: resolvePrincipal decides in the order of SPEC-110 §24 / §24.1 (v2.4.0):
 // directory read failure, missing Identity, inconsistent directory row, unverified Email (step 3),
 // then the Business Profile and the Role Assignments (step 5), from one store call (DB-ARC-008,
-// SEC-AUTH-003, AR-AUTH-003). Synthetic data only. The optional third argument is called through a
-// widened signature so that this file type-checks before the implementation adds it.
+// SEC-AUTH-003, AR-AUTH-003). Synthetic data only.
 import { describe, expect, it } from "vitest";
 import {
   AuthFailure,
-  type Principal,
   type PrincipalRecord,
   type PrincipalStore,
   resolvePrincipal,
@@ -17,12 +15,7 @@ const OTHER_SUBJECT = "00000000-0000-4000-8000-0000000000b2";
 const PROFILE_REF = "00000000-0000-4000-8000-0000000000b3";
 const identity = { subject: SUBJECT };
 
-type Resolve = (
-  identity: { readonly subject: string },
-  store: PrincipalStore,
-  options?: { readonly requireVerifiedEmail?: boolean },
-) => Promise<Principal>;
-const resolve = resolvePrincipal as unknown as Resolve;
+const resolve = resolvePrincipal;
 
 const directory = (emailVerified: boolean, authSubject = SUBJECT) => ({
   authSubject,

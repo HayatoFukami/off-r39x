@@ -285,6 +285,7 @@ export interface PrincipalStore {
 export async function resolvePrincipal(
   identity: VerifiedIdentity,
   store: PrincipalStore,
+  options: { readonly requireVerifiedEmail?: boolean } = {},
 ): Promise<Principal> {
   let row: PrincipalRecord;
   try {
@@ -292,13 +293,20 @@ export async function resolvePrincipal(
   } catch {
     throw new AuthFailure("database");
   }
+  // SPEC-110 §24 step 3 (SPEC-110 §24.1, SPEC-060 §8.3, SEC-AUTH-003): the Identity and its verified
+  // state come from the directory view, before the Business Profile (step 5) is looked at.
   if (!row.directory) throw new AuthFailure("unauthenticated");
-  if (!row.profile) throw new AuthFailure("denied");
   if (
     row.directory.authSubject !== identity.subject ||
+    typeof row.directory.emailVerified !== "boolean"
+  )
+    throw new AuthFailure("consistency");
+  if (options.requireVerifiedEmail && !row.directory.emailVerified) throw new AuthFailure("email");
+  // Step 5: the Business Profile, then the Role Assignments.
+  if (!row.profile) throw new AuthFailure("denied");
+  if (
     row.profile.authSubject !== identity.subject ||
     !z.uuid().safeParse(row.profile.publicRef).success ||
-    typeof row.directory.emailVerified !== "boolean" ||
     row.roles.some((role) => role !== "STAFF" && role !== "ADMINISTRATOR")
   )
     throw new AuthFailure("consistency");
