@@ -2043,7 +2043,7 @@ Canonical化済みのRecovery command（`API-ADM-REC-003〜007`）は、本書�
 - **UCR-RLM-IMPL-001:** `r39x_rate_limit_store_duration_seconds` のbucket境界が §41 に未定義だった。store deadline（250 ms、`SPEC-150` §9）以内に収まる境界として、§41 に `0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25` 秒を追加した。
 - **UCR-RLM-IMPL-002:** §24.1 の `result` が共通 `result` enum と対応していなかった。`rejected` を `REJECTED`、`store_unavailable` を `FAILED` に対応させ、区別を `error_code` で行うと定めた。
 
-`SPEC-110` §17（v2.4.0。`UCR-110-005`）が incoming `X-Request-Id` の採用を必須にしたため、本改訂（v2.2.1）で §8 の記述を揃えた。本書の §8 は従来からWeb / API logの相関を求めており、相関の要件は変えていない。
+`SPEC-110` §17（v2.6.0。`UCR-110-006`）が incoming `X-Request-Id` の採用を必須にしたため、本改訂（v2.2.1）で §8 の記述を揃えた。本書の §8 は従来からWeb / API logの相関を求めており、相関の要件は変えていない。
 
 ---
 

@@ -18119,7 +18119,7 @@
       "fault_points": [],
       "expected_http": [200, 204, 401, 403, 404, 503],
       "expected_domain_postconditions": [
-        "Every API response except the relayed /auth/* answer carries an X-Request-Id: a fresh server-generated UUID v4 when no valid value is sent, and an incoming canonical UUID (SPEC-110 section 17) is adopted; the header equals the error/meta request_id and the request_id of every log record of that request; the relayed auth proxy answer carries no X-Request-Id (pinned as observed; UCR-110-004 is PROPOSED)"
+        "Every API response except the relayed /auth/* answer carries an X-Request-Id: a fresh server-generated UUID v4 when no valid value is sent, and an incoming canonical UUID (SPEC-110 section 17) is adopted; the header equals the error/meta request_id and the request_id of every log record of that request; the relayed auth proxy answer carries no X-Request-Id (pinned as observed; UCR-110-005 is PROPOSED)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],

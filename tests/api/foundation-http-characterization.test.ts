@@ -3,7 +3,7 @@
 // split. Every expected value below was recorded by running the pre-split code; random values
 // (X-Request-Id, operation_execution_id, duration_ms, timestamp) are checked by shape and replaced
 // with a placeholder before the literal comparison. Synthetic data only.
-// Revised after SPEC-110 v2.4.0 (§17 adoption of a canonical incoming X-Request-Id, §24.1 order of
+// Revised after SPEC-110 v2.6.0 (§17 adoption of a canonical incoming X-Request-Id, §24.1 order of
 // the Email verified check): those expectations changed by the specification, not by the split.
 // See the TC-SEC-API-023-001 and TC-SEC-ABU-017-001 titles.
 import { describe, expect, expectTypeOf, it } from "vitest";

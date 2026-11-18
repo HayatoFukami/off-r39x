@@ -1,8 +1,8 @@
 // PR-S0-1b addendum T1: an incoming X-Request-Id that is a canonical UUID is adopted (SPEC-110 §17,
-// v2.4.0; UCR-110-005). Anything else is dropped, replaced by a server-generated UUID v4 and never
+// v2.6.0; UCR-110-006). Anything else is dropped, replaced by a server-generated UUID v4 and never
 // written to a log or a response. request_id is correlation only (SEC-API-023, OBS-COR-001,
 // REL-GEN-005). Synthetic data only. The relayed /auth/* answer keeps carrying no X-Request-Id
-// (UCR-110-004 is PROPOSED and not an implementation contract).
+// (UCR-110-005 is PROPOSED and not an implementation contract).
 import { describe, expect, it } from "vitest";
 import { createApp } from "../../apps/api/src/api/app.ts";
 import { createAuthProxy } from "../../apps/api/src/api/auth-proxy.ts";
@@ -244,7 +244,7 @@ describe("TC-SEC-API-023-002 an incoming canonical X-Request-Id is adopted; anyt
   });
 
   describe("the auth proxy (/auth/*)", () => {
-    it("logs the adopted value, neither forwards the header upstream nor adds it to the relayed answer (UCR-110-004 is PROPOSED)", async () => {
+    it("logs the adopted value, neither forwards the header upstream nor adds it to the relayed answer (UCR-110-005 is PROPOSED)", async () => {
       const r = rig();
       const res = await r.send(`${API}/auth/get-session`, {
         Origin: WEB,

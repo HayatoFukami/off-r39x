@@ -1,6 +1,6 @@
 // PR-S0-1b addendum T2: the Email verified check (SPEC-110 §24 step 3) is decided from the directory
 // view (SPEC-100 §5.1, DB-ARC-008) before the Business Profile is resolved (step 5), with one
-// directory read (SPEC-110 §24.1, v2.4.0; UCR-110-006; SEC-AUTH-003, AR-AUTH-003, AR-AUTH-005). The
+// directory read (SPEC-110 §24.1, v2.6.0; UCR-110-007; SEC-AUTH-003, AR-AUTH-003, AR-AUTH-005). The
 // stub store returns one row per case; store calls, verification, directory reads and log events are
 // recorded in one ordered list. Synthetic data only.
 import { generateKeyPair, SignJWT } from "jose";

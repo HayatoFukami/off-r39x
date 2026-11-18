@@ -1,4 +1,4 @@
-// PR-S0-1b addendum T2: resolvePrincipal decides in the order of SPEC-110 §24 / §24.1 (v2.4.0):
+// PR-S0-1b addendum T2: resolvePrincipal decides in the order of SPEC-110 §24 / §24.1 (v2.6.0):
 // directory read failure, missing Identity, inconsistent directory row, unverified Email (step 3),
 // then the Business Profile and the Role Assignments (step 5), from one store call (DB-ARC-008,
 // SEC-AUTH-003, AR-AUTH-003). Synthetic data only.

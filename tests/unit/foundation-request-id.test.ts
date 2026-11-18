@@ -1,5 +1,5 @@
 // PR-S0-1b addendum T1: adoptableRequestId (apps/api/src/api/middleware/request-context.ts) decides
-// whether an incoming X-Request-Id is a canonical UUID (SPEC-110 §17, v2.4.0). Synthetic data only.
+// whether an incoming X-Request-Id is a canonical UUID (SPEC-110 §17, v2.6.0). Synthetic data only.
 // The function is read through a dynamic import so that this file type-checks before the export
 // exists (the implementation commit adds it); a missing export fails the first test.
 import { describe, expect, it } from "vitest";
