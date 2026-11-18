@@ -17644,6 +17644,7 @@
       "suite": "unit",
       "upstream_rule_ids": [
         "EML-TPL-002",
+        "SEC-EML-006",
         "TST-EML-002",
         "SPEC-120-10",
         "SPEC-120-11",
