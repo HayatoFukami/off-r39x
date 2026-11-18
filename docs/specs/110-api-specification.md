@@ -2440,3 +2440,18 @@ retry count / backoff / queue / operator RunbookはSPEC-150。本書§48.5はSPE
 - 理由: callbackが定義のないpathになる、または `auth_form_proxy` / `public_read` の低いIP上限を共有すると、共有NATの会場Wi-Fiで来場者がGoogleログインを完了できなくなる。また、許可routeの一覧が仕様にないと、routeの追加・削除がClass割当と対応づけて検証されない（`API-RLC-001`）。
 - 変更しない場合の影響: Googleログインの完了が共有IPの上限に阻まれる、または実装がallowlistを独自に拡張して仕様と乖離する。全4認証方式が必須であるため、外部事実の確認（上記1）が済むまでProduction promotionできない（`SPEC-180` `INF-RLS-008`）。
 - 影響を受ける可能性がある仕様書: SPEC-140, SPEC-170, SPEC-180
+
+### UCR-110-003 — PROPOSED
+
+- **Status:** `PROPOSED`（`SPEC-110` と `SPEC-100` の本文には未反映。本記録は実装契約ではない。Canonical Ownerが本文へ取り込むまで、実装はTransport Idempotencyのreplay記録の表・列・保持期間を追加しない）
+- 対象: SPEC-110 §18（Transport idempotency input）、§51、§52。`SPEC-100`（Transport Idempotencyのreplay記録の物理設計）、`SPEC-170` §28。
+- 現在の仕様: §18 は、同じPrincipal + Operation ID + normalized request fingerprint + 同じkeyなら同じtransport resultを返してよく、同じkeyで別内容なら `409 IDEMPOTENCY_KEY_REUSED` とする。`API-IDM-001` は、記録が失われてもDomain Business Cause / DB unique relationで重複を防げることを要求し、`SPEC-170` §28 項目5 / `TST-IDM-003` は「idempotency persistence」の障害を試験対象にする。しかし、この記録を**どこに保存するか、何を保存するか、いつまで保持するか、保存に失敗したときと処理中に同じkeyが来たときに何を返すか**は、`SPEC-100`（全表と §48 のtransaction一覧）、`SPEC-110`、`SPEC-140`、`SPEC-150`、`SPEC-160` §11（fingerprintは相関専用で判定に使わない。`OBS-COR-005`）、`SPEC-180`（Redisはrate limit専用で、永続化なし、保存値はHMAC hash済みkeyと時刻だけ。`INF-RLS-003`、`INF-RLS-007`）のいずれにも定義がない。
+- 要求する変更:
+  1. **保存先:** 業務DBの新表 `app.idempotency_records`（`SPEC-100`）とする。業務の最初のcommitと同じtransactionで1行を書き、Redisや業務表ごとの列は使わない。`SPEC-180` の基盤・Secret・runtime roleの権限は変えない。
+  2. **保存項目:** Principal（Business Profile）、Operation ID、`Idempotency-Key` のdigest、正規化したrequestのdigest、結果を再構成するための参照、作成時刻、期限だけを保存する。raw key、応答body、Checkout URL、Stripe Session ID、個人情報、QRを保存しない。replay時は参照から**現在の状態で応答を作り直す**。
+  3. **保持期間と削除:** 作成から24時間とする。期限後は「記録なし」と同じに扱い、同じkeyの再利用は新しい要求として行を上書きする。物理削除（purge）の関数・job・roleは追加しない。
+  4. **保存に失敗したとき:** 記録は業務transactionと同じなので全体をrollbackし、既存の `503 DATABASE_TEMPORARY_FAILURE` を返す。記録が期限切れ・喪失している場合は新しい要求として扱い、Domain Business Cause / DB uniqueが重複を防ぐ。新しいエラーコード・状態は追加しない。
+  5. **処理中に同じkeyが来たとき:** 記録のUNIQUEで直列化し、先のtransactionのcommit後に、requestのdigestが同じなら既存結果へ収束、違えば `409 IDEMPOTENCY_KEY_REUSED` とする。先がrollbackなら後の要求が初回になる。「処理中」を示す新しいエラーコード・状態は追加しない。
+- 理由: Transport Idempotencyの記録は補助であり、重複防止の本命はDomain側（`API-IDM-001`、`API-IDM-002`、§52）である。記録を業務DBへ同じtransactionで書けば、「業務はcommitしたが記録がない」「記録だけある」という食い違いが生じず、照合が単純である。`SPEC-180` はRedisをrate limit専用のsupporting infrastructureとして永続化なし・限定された保存値に固定しており（`INF-RLS-003`、`INF-RLS-007`）、replay記録の保存先にするには `SPEC-180` と `SPEC-150` §58.1 の変更が要る。応答bodyを保存しないのは、Checkout URLを「Customerが遷移するために必要な期間だけ返す」とする §29 と、PIIの二次コピーを増やさない方針（`SEC-PII-013`）に沿うためである。
+- 変更しない場合の影響: 実装者が保存先・保持期間・保存項目を推測で決め、仕様と乖離する（Redis流用による `SPEC-180` との矛盾、応答bodyの保存によるCheckout URL・個人情報の複製など）。`Idempotency-Key` 必須Operationの「同じkeyの別内容は `409`」を実装・試験できない。
+- 影響を受ける可能性がある仕様書: SPEC-100, SPEC-170（SPEC-160 §11、SPEC-200 は参照の追随のみ。SPEC-140、SPEC-150、SPEC-180 は変更しない）
