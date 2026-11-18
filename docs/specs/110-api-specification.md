@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-110
 title: API Specification
-version: 2.5.0
+version: 2.6.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -363,10 +363,11 @@ Discriminated unionを次に使用する。
 
 全requestに `request_id` を付与する。
 
-- incoming `X-Request-Id` がcanonical UUIDなら採用してよい。
-- 無効 / 欠落ならserver生成UUIDを使用する。
-- response header `X-Request-Id` とJSON error `request_id`を一致させる。
-- Request IDをDomain idempotency keyにしない。
+- incoming `X-Request-Id` の値がcanonical UUIDなら、その値を `request_id` として採用する（`SPEC-160` §8 のWeb / API相関）。
+- canonical UUIDは、RFC 9562のUUIDを16進数字の小文字で表した36文字の文字列（8-4-4-4-12）で、version桁が `1`〜`8`、variant桁が `8`、`9`、`a`、`b` のいずれかであるものとする。nil UUID（全桁 `0`）とmax UUID（全桁 `f`）は含まない。大文字を含む値は正規化せず、canonical UUIDとして扱わない。
+- 欠落、空、canonical UUIDでない値（複数のheader値を連結した値、括弧・URN prefixなどを含む値、長さが異なる値を含む）は無効とし、server生成UUID（version 4）を使用する。無効な値をlog、response、Audit Eventへ記録しない。
+- response header `X-Request-Id`、JSON errorの `request_id`、成功responseの `meta.request_id` を一致させる。
+- `request_id` は相関専用である。同じ値を持つ複数のrequestも別のrequestとして処理し、Domain idempotency key、Transport Idempotency、rate limitの記録、Business Causeに使用しない（`SPEC-140` `SEC-API-023`、`SPEC-160` `OBS-COR-001`）。
 
 ## 18. Transport idempotency input
 
@@ -580,7 +581,7 @@ rate limit（`SPEC-140` Part XIII）は上記の番号付き手順に次の位�
 | 購入開始（`API-PUR-CART-001`、`API-PUR-ENTRY-001`、`API-PUR-GDS-001`、`API-PUR-KRK-001`）のみ。手順5の後の `purchase.start` の確認（§28。owner relationを持たないため手順6に相当する確認はなく、認可確認はこのCapabilityの確認である）の成功後、段階3の前 | 読取り専用の購入可否の事前確認（`API-PUR-ELG-001` と同じ判定。書込み・lockなし）。`purchase.start` の確認より前の手順（認証、メール確認、Business Profile解決）または `purchase.start` の確認で拒否されたrequestは、事前確認にも段階3にも到達しない。全対象が購入可能な場合だけ段階3を評価し、1つでも不可なら段階3を評価せず手順8のTransactionへ進む（`SEC-ABU-029`） |
 | 手順6（owner relation）、手順7（Role + Capability）、または購入開始の `purchase.start` の確認の成功後、手順8の前（段階3） | resource key、QR digest、target resource / target profileを、そのkeyの導出に必要な入力の構文検証後に評価する（`SEC-ABU-029`。参照は `API-RLC-006` / `API-RLC-007`）。owner relationを持つself operationでは、手順6のowner-safeな取得が存在確認を兼ね、存在しない・他人の対象は段階3に到達しない。Staff / Admin operationでは、対象の存在確認（手順8以降の照会）より前に評価する（`API-ADM-ROL-003` だけは、対象profileを読取り専用の照会で解決した後）。複数Itemを持つ `API-PUR-CART-001` は、全Itemのdistinctな参照を1回のatomic評価に含める。手順6 / 7が失敗した（`403` / `404`）requestは、段階3のcounterに記録しない。段階3を通過した後に手順8以降で `404` / `409` 等になったrequestは、段階3のcounterを消費したままになる |
 
-**段階2とDB accessの境界:** 段階2が使うAuth Subject識別子は、手順2で検証済みのtokenのclaimから得る値であり、DB accessを必要としない。手順4の「Auth Subject取得」は、この検証済みの識別子を確定する非DBの手順である。DBを参照する最初の手順は手順5（Business Profile resolution）である。実装は、token検証とAuth Subject取得（DBなし）を、Principal / Business Profileの解決（DBあり）から分離し、段階2を両者の間に置く。token検証と同じ処理の中でPrincipalをDBで解決する構成のままでは、DB accessの前にrate limitを評価できないため、実装は段階2を置ける形に分離しなければならない。
+**段階2とDB accessの境界:** 段階2が使うAuth Subject識別子は、手順2で検証済みのtokenのclaimから得る値であり、DB accessを必要としない。手順4の「Auth Subject取得」は、この検証済みの識別子を確定する非DBの手順であり、手順3はこの識別子で照会する。DBを参照する最初の手順は手順3（Email verified check）である。手順3は、Identityの存在と確認済み状態を `SPEC-100` §5.1 の限定ビューの現在状態から判定し、JWTのEmail / verified claimに依存しない（§23、`SPEC-060` §8.3、`SPEC-140` `SEC-AUTH-003`）。手順3と手順5（Business Profile resolution）は同じ1回の読取りで取得してよいが、判定は手順3を手順5より先に行う。Identityが存在しEmailが未確認の場合は、Business Profileの有無・整合性を判定せず `403 EMAIL_VERIFICATION_REQUIRED` とする。実装は、token検証とAuth Subject取得（DBなし）を、Email verified checkとPrincipal / Business Profileの解決（DBあり）から分離し、段階2を両者の間に置く。token検証と同じ処理の中でPrincipalをDBで解決する構成のままでは、DB accessの前にrate limitを評価できないため、実装は段階2を置ける形に分離しなければならない。
 
 **段階3と認可確認:** 段階3は、手順5〜7のDB accessの後に評価する。手順5〜7のDB accessは、段階2のsubject ruleで上限が掛かるため、未認可のrequestが無制限にDBへ到達することはない。手順6 / 7（認可確認）が `403` / `404` で終わったrequestは、共有resourceのcounter（正規の管理者・Staff・所有者の枠）を消費しない。認可確認を通過した後に手順8以降で `404` / `409` 等で終わったrequestは、段階3のcounterを消費している（`SPEC-140` `SEC-ABU-013`）。段階3が `429` の場合は、手順8（Domain precondition）とmutationへ進まない。
 
@@ -2499,3 +2500,35 @@ retry count / backoff / queue / operator RunbookはSPEC-150。本書§48.5はSPE
 - 理由: プロジェクト所有者の明示的指示（2026-11-13、`SPEC-000 §8` の1）に基づく `UCR-RELSCOPE-001`。購入Operationをmountしないreleaseで販売設定が誤って有効になっても、購入できないkindが「購入可能」と表示されない。
 - 変更しない場合の影響: 購入Operationがmountされないkindが購入可能と表示される（購入しようとすると `404`）。
 - 影響を受ける可能性がある仕様書: SPEC-130, SPEC-170, SPEC-180, SPEC-200
+
+### UCR-110-005 — PROPOSED
+
+- **Status:** `PROPOSED`。本文（§17、§23.1）と `SPEC-140` は未変更であり、実装契約ではない。現行実装は `/auth/*` の中継応答に `X-Request-Id` と `Access-Control-Expose-Headers` を付けない（段階1・段階1b・body読取り上限の `429` / `503` には `SEC-ABU-025` どおり付ける）。本UCRが本文へ取り込まれるまで、実装はこの挙動を変えない。
+- 対象: SPEC-110 §17（Request correlation ID）、§23.1（Neon Auth transport proxy）。CORS headerの値は `SPEC-140` §30 / `SEC-ABU-025` の範囲である。
+- 現在の仕様: §17 は全requestへの `request_id` の付与と、response header `X-Request-Id` とJSON error `request_id` の一致を求める。§23.1 は `/auth/*` を `/api/v1` のBusiness response envelopeを持たない中継とし、Provider protocolのbody / status / Cookie / redirect / error semanticsを保持し、`SPEC-140` のOrigin / CSRF / CORS / no-storeを適用するとする。中継応答（Providerの応答を中継したもの、中継が生成する `400` / `403` / `404` / `405` / `415` / `503`、preflightの `204`）に `X-Request-Id` を付けるか、exactなWeb originへの応答に `Access-Control-Expose-Headers` を付けるかは、§17、§23.1、`SPEC-140` のいずれにも明記がない。`SEC-ABU-025` は段階1・段階1b・body読取り上限の `429` / `503` だけを対象とし、`/auth/*` ではそれらに `Access-Control-Allow-Credentials: true` と `Access-Control-Expose-Headers: X-Request-Id, Retry-After` を付ける。
+- 要求する変更: 次のどちらかを §23.1 に明記し、CORS headerの値を `SPEC-140` §30 に反映する。
+  1. 案A（推奨）: `/auth/*` の中継応答（中継が生成するエラー応答とpreflightを含む）にも、そのrequestの `request_id`（§17）を `X-Request-Id` として付ける。exactなWeb originへの応答には `Access-Control-Expose-Headers: X-Request-Id, Retry-After` を付ける。bodyとstatusはProvider semanticsのままとし、中継のエラーbodyへ `request_id` を追加しない（Business response envelopeにしない）。`X-Request-Id` をProviderへforwardしない。
+  2. 案B: 中継応答には `X-Request-Id` と `Access-Control-Expose-Headers` を付けないことを明記し、§17 のresponse headerの規則の対象から `/auth/*` の中継応答（段階1等の `429` / `503` を除く）を除く。
+- 理由: 認証（Sign-in、Email確認、Magic Linkなど）は利用者からの問い合わせが多い経路であり、応答の `X-Request-Id` から完了ログ（`http.request.completed`、`http_route` は `/auth/<path>`）を特定できれば調査できる（`SPEC-160` §8、`SPEC-140` `SEC-PII-008`）。Providerの `429` の `Retry-After` は中継されるが、exposeされないためBrowserのSDKは読めず、段階1の `429`（exposeされる）と挙動が分かれる。明記がないまま実装が付ける・付けないを決めると、§17 の「全request」と §23.1 の「Provider semanticsの保持」のどちらを優先するかが実装ごとに分かれる。
+- 変更しない場合の影響: `/auth/*` の中継応答とAPIのログをBrowser側から相関できず、認証障害の調査がIPと時刻の突き合わせに依存する。Providerの `429` の `Retry-After` をBrowserが読めない。§17 の適用範囲が不定のまま残る。
+- 影響を受ける可能性がある仕様書: SPEC-140, SPEC-160, SPEC-170
+
+### UCR-110-006 — INCORPORATED
+
+- **Status:** `INCORPORATED`。本改訂（v2.6.0）で §17 へ反映した（プロジェクト所有者の決定。`SPEC-000` §8）。`SPEC-160` §8（v2.2.1）の記述を揃えた。新しいerror code・state・Capability・Operationは追加していない。
+- 対象: SPEC-110 §17。`SPEC-160` §8 に関連する。
+- 現在の仕様（改訂前）: §17 は、incoming `X-Request-Id` がcanonical UUIDなら「採用してよい」としており、canonical UUIDの定義がなかった。`SPEC-160` §8 は、Webが有効な既存UUIDを引き継ぐか新規UUIDを生成して `X-Request-Id` としてforwardし、同じ論理HTTP chainのWeb / API logを同じ `request_id` で相関可能にすることを求める。APIが受信値を採用しない実装はこの相関を満たせない。
+- 要求する変更: §17 を「採用する」に改め、canonical UUID（小文字、RFC 9562のversion 1〜8とvariant、nil / maxを除く）と、無効な値を生成値で置き換えて記録しないこと、同じ値のrequestも別のrequestとして扱い相関以外に使わないことを明記する。
+- 理由: `SPEC-160` §8 の相関要件を満たすため。canonical UUIDを固定長の16進とhyphenに限ることで、log / responseへの注入を防ぎ、log schema・response schema・Audit Eventの `request_id` の形式と一致させる。`request_id` は相関専用であり（`SPEC-140` `SEC-API-023`、`SPEC-160` `OBS-COR-001`、`SPEC-150` `REL-GEN-005`）、Clientが値を選べても認可・冪等性・rate limitの判定は変わらない。
+- 変更しない場合の影響: Webが送った `X-Request-Id` とAPIのlogの `request_id` が一致せず、`SPEC-160` §8 の相関が成り立たない。実装ごとに採用の有無と有効な値の範囲が分かれる。
+- 影響を受ける可能性がある仕様書: SPEC-160, SPEC-170
+
+### UCR-110-007 — INCORPORATED
+
+- **Status:** `INCORPORATED`。本改訂（v2.6.0）で §24.1「段階2とDB accessの境界」へ反映した（プロジェクト所有者の決定。§23 に準拠させる）。§24 の手順1〜9の番号と順序、段階1〜3の位置は変えていない。新しいerror code・state・Capability・Operationは追加していない。
+- 対象: SPEC-110 §24.1。§23、§24、`SPEC-060` §8.3 / §18、`SPEC-140` `SEC-AUTH-003`、`SPEC-100` §5.1 に関連する。
+- 現在の仕様（改訂前）: §24 は手順3（Email verified check）を手順5（Business Profile resolution）の前に置き、§23・`SPEC-060` §8.3・`SEC-AUTH-003` は、手順3の確認済み状態を `SPEC-100` §5.1 の限定ビュー（DB）の現在状態から得て、JWTの古いclaimに依存しないとする。一方 §24.1 は「DBを参照する最初の手順は手順5」としており、手順3がDBを参照することと矛盾していた。
+- 要求する変更: §24.1 の当該段落を、DBを参照する最初の手順が手順3であること、手順3と手順5を同じ1回の読取りで取得してよいが判定は手順3を先に行うこと、Email未確認のIdentityはBusiness Profileを判定せず `403 EMAIL_VERIFICATION_REQUIRED` とすることに改める。
+- 理由: 上流 `SPEC-060` §18（Identity検証 → Email確認 → Business Profile）と §8.3、および `API-AUTH-003`（Business Profileがない状態でEmail確認済みを要求する）と整合させるため。手順3をDBより前に置くためにJWTのclaimで判定すると §23 と `AR-AUTH-005` に反し、手順5の後に置くとEmail未確認でBusiness Profileのない利用者へ `403 AUTHORIZATION_DENIED` を返してEmail確認へ誘導できない。
+- 変更しない場合の影響: 実装が §23 と §24 のどちらかに反する。Email未確認の利用者に返るerror codeが、Business Profileの有無で変わる。
+- 影響を受ける可能性がある仕様書: SPEC-060, SPEC-140, SPEC-170（いずれも本文の変更は不要。`SEC-ABU-017` の段階2は引き続きDB accessの前にある）

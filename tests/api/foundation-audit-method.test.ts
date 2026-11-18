@@ -212,13 +212,22 @@ it("TC-RPC-AUDIT-001 public Hono RPC type is the mounted canonical principal rou
     .filter((e) => e.request_id === body.meta.request_id);
   expect(events.length).toBeGreaterThan(1);
   expect(events.every((e) => e.operation_id === "API-AUTH-001")).toBe(true);
-  // Before current DB roles resolve, verification must not claim an admin Actor.
+  // Before current DB roles resolve, verification must not claim an admin Actor. The Email decision
+  // (SPEC-110 §24 step 3) is recorded when it is made, after the Identity is verified and before the
+  // Roles are resolved, so it is an authenticated user and not yet an administrator.
   expect(events.find((e) => e.event_name === "auth.verification.completed").actor_type).toBe(
     "GUEST",
   );
   expect(
+    events.find((e) => e.event_name === "auth.email_verified_resolution.completed").actor_type,
+  ).toBe("AUTHENTICATED_USER");
+  expect(
     events
-      .filter((e) => e.event_name !== "auth.verification.completed")
+      .filter(
+        (e) =>
+          e.event_name !== "auth.verification.completed" &&
+          e.event_name !== "auth.email_verified_resolution.completed",
+      )
       .every((e) => e.actor_type === "ADMINISTRATOR"),
   ).toBe(true);
   expect(new Set(events.map((e) => e.operation_execution_id)).size).toBe(1);
