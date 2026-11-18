@@ -6,7 +6,7 @@
 -- transaction_timestamp(); updated_at is maintained by the repository, not by a trigger.
 -- DB-ID-003 / SPEC-100 §7: internal bigint identity id, uuid public_ref (UNIQUE); foreign keys use the internal id.
 
--- SPEC-100 §13.1 events. No state column: an Event is a single configured row (BR-EVT-001).
+-- SPEC-100 §13.1 events. The SPEC-100 §13.1 column list has no state column.
 -- BR-EVT-001: facts not yet confirmed stay NULL. SPEC-100 §8.3: business_timezone is Asia/Tokyo only.
 CREATE TABLE app.events (
  id bigint GENERATED ALWAYS AS IDENTITY,

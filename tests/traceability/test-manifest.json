@@ -17309,12 +17309,7 @@
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
-      "fault_points": [
-        "runtime_insert_attempt",
-        "runtime_update_attempt",
-        "runtime_delete_attempt",
-        "runtime_select_attempt"
-      ],
+      "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
         "Only the API role has any privilege on the eight tables, no role can DELETE or TRUNCATE, and the workers hold nothing"

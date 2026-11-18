@@ -2019,10 +2019,9 @@ describe("TC-SEC-DB-001-001 runtime privileges on the eight tables (real Postgre
           "inventory update",
         ).toBe(1);
         for (const table of TABLES) {
-          expect(
-            (await api.query(`SELECT 1 FROM app.${table}`)).rowCount,
-            `${table} select`,
-          ).toBeGreaterThanOrEqual(0);
+          expect((await api.query(`SELECT 1 FROM app.${table}`)).rowCount, `${table} select`).toBe(
+            1,
+          );
         }
       } finally {
         await api.query("ROLLBACK");
