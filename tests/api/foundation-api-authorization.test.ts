@@ -165,13 +165,19 @@ it("TC-SEC-AZ-013-050 HTTP authorization uses current DB roles/email, never JWT 
   authFailed = false;
   expect((await get("malformed")).status).toBe(401);
   expect(reads).toBe(5);
-  const saved = record;
+  // The cases below isolate the directory, Profile and Role checks of a verified Identity: an
+  // unverified Email is refused first (SPEC-110 §24.1), so the fixture is verified again here.
+  const saved = { ...record, directory: { authSubject: subject, emailVerified: true } };
   record = { ...saved, directory: null };
   expect((await get()).status).toBe(401);
   record = { ...saved, profile: null };
-  expect((await get()).status).toBe(403);
+  response = await get();
+  expect(response.status).toBe(403);
+  expect((await response.json()).error.code).toBe("AUTHORIZATION_DENIED");
   record = { ...saved, roles: ["CUSTOMER"] };
-  expect((await get()).status).toBe(409);
+  response = await get();
+  expect(response.status).toBe(409);
+  expect((await response.json()).error.code).toBe("CONSISTENCY_REVIEW_REQUIRED");
   expect(logs.some((line) => JSON.parse(line).event_name === "http.request.completed")).toBe(true);
   expect(logs.join("")).not.toContain(token);
   expect(logs.join("")).not.toContain("secret SQL");

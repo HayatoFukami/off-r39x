@@ -105,6 +105,13 @@ assertAuthAllowlist(
   })),
 );
 
+/** SPEC-160 §15 `http_route`: the bounded route templates a completion log may carry (anything else is "/"). Derived from the registry, so registering a route (DEV-RLM-005) is the only step. */
+export const LOGGED_ROUTE_TEMPLATES: ReadonlySet<string> = new Set([
+  "/internal/health/live",
+  "/internal/health/ready",
+  ...ROUTES.map((route) => route.path),
+]);
+
 export interface RouteClassification {
   readonly classId: RouteClassId;
   readonly operationId: string | null;
