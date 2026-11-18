@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-160
 title: Observability and Audit Log
-version: 2.2.1
+version: 2.3.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -251,6 +251,7 @@ RECON.QR_KEY_MIGRATION
 RECOVERY.AUTOMATIC
 RECOVERY.MANUAL
 RECOVERY.ADMIN_BOOTSTRAP
+PROVISION.INITIAL_DATA_SEED
 ```
 
 **OBS-COR-002:** internal keyはAPI contractを新設するものではない。Metric / Logでbounded operationを識別するためだけに使用する。
@@ -536,7 +537,7 @@ INFRASTRUCTURE_OPERATOR
 - `SYSTEM_WORKER`: bounded worker role (`email-worker`, `recovery-worker`等)。instance hostnameをactor identityにしない
 - `SCHEDULED_RECONCILIATION`: bounded reconciliation key
 - `EXTERNAL_PROVIDER`: `STRIPE` または `RESEND`。Provider webhookを人間Actorとして扱わない
-- `INFRASTRUCTURE_OPERATOR`: emergency bootstrap等、`SPEC-150` が認めるout-of-band operationだけ。deployment環境が提供するstable non-secret audit subjectを使用し、個人Email等を直接入れない
+- `INFRASTRUCTURE_OPERATOR`: emergency bootstrap等、`SPEC-150` が認めるout-of-band operationと、初期データの投入（`SPEC-180 §45.3`、`OBS-AUD-014`）だけ。deployment環境が提供するstable non-secret audit subjectを使用し、個人Email等を直接入れない
 
 **OBS-COR-010:** Role / CapabilityはActor Typeの名前だけから推測せず、Audit Eventでは実際に評価されたRole / Capabilityを別fieldへ保存する。
 
@@ -564,6 +565,7 @@ EMAIL_DELIVERY_ATTEMPT
 ROLE_ASSIGNMENT
 CONSISTENCY_REVIEW
 PUBLIC_CONTENT
+ENTRY_TICKET_OFFERING
 SECURITY_CONFIGURATION
 WEBHOOK_RECEIPT
 ```
@@ -1091,7 +1093,7 @@ UNKNOWN
 | `actor_ref` | text | Yes | safe Public Reference / safe operator ref / fingerprint only |
 | `effective_role` | text | Yes | `STAFF\|ADMINISTRATOR` only when evaluated |
 | `capability` | text | Yes | upstream canonical capability only |
-| `operation_id` | text | No | existing API Operation ID or bounded internal recovery key |
+| `operation_id` | text | No | existing API Operation ID or §9.1 bounded internal key |
 | `operation_execution_id` | uuid | No | one execution instance |
 | `target_type` | text | Yes | §20 registry |
 | `target_ref` | text | Yes | Public Reference / safe logical ref |
@@ -1179,6 +1181,7 @@ Canonical safe change summary:
 | Goods Handoff | `PENDING -> COMPLETED`, quantity, Goods Item ref |
 | Check-in | Ticket state transition and check-in purpose/outcome only |
 | Public Content | Publication State and changed field names; body content not copied |
+| Initial data seeding | created Event / Offering public ref, changed field names（値は含めない）, Offering `after_state=SUSPENDED` |
 | Notification retry/cancel | Notification Domain State, Job Processing State, Attempt number/snapshot revision; Email absent |
 | Consistency Review recovery | Case reason code, unresolved/resolved state, related public refs |
 | Slot mutation | state/time field names, old/new safe timestamps where relevant |
@@ -1252,7 +1255,7 @@ The following MUST be auditable for success, authenticated rejection, and import
 | Entry Check-in | Entry Ticket | Staff actor, outcome, check-in ref if available |
 | Karaoke Check-in | Karaoke Ticket | Staff actor, outcome, time-window result |
 | Public Content publish/archive | Public Content | Publication State before/after |
-| Entry Ticket Offering sales config mutation (`API-ADM-ENT-SALES-003`) | Offering | actor role/capability `entry_sales.manage`, changed field names, before/after capacity safe counters, result |
+| Entry Ticket Offering sales config mutation (`API-ADM-ENT-SALES-003`) | Offering（`target_type=ENTRY_TICKET_OFFERING`。Eventの更新（`API-ADM-CNT-002`）は `PUBLIC_CONTENT`。初期データの作成と同じ型で追跡する） | actor role/capability `entry_sales.manage`, changed field names, before/after capacity safe counters, result |
 | Karaoke Sales Configuration mutation (`API-ADM-KRK-SALES-003`) | Sales Configuration | actor role/capability `karaoke_sales.manage`, changed field names, result |
 | Administrative Handoff Completion (`API-ADM-HOF-003`) | Goods Handoff / Goods Order Item | `goods_handoff.manage` actor（`goods_handoff.execute` と区別）, Handoff ref / Goods Item ref, before/after safe state, result, Customer PII最小化 |
 | explicit recovery command (`API-ADM-REC-003〜007`) | exact target（Checkout Attempt / Order / Refund / Notification / Consistency Case） | exact Operation ID, Business Cause / provider reference category, same-key preservation, result / unknown classification, post-verification |
@@ -1262,6 +1265,7 @@ The following MUST be auditable for success, authenticated rejection, and import
 | automatic repair that changes Business state | repaired target + Case when present | `SYSTEM_WORKER`, Recovery Execution ID, recovery kind, post-verification result |
 | explicit `recovery.exception.execute` | exact target | exact recovery command, never generic |
 | emergency Administrator bootstrap/recovery | target Profile / Role Assignment | Infrastructure operator ref, active admin count before/after |
+| initial data seeding（`SPEC-180 §45.3`。作成した行ごと） | Event（`PUBLIC_CONTENT`）/ Entry Ticket Offering（`ENTRY_TICKET_OFFERING`） | Infrastructure operator ref, `operation_id=PROVISION.INITIAL_DATA_SEED`, changed field names, Offeringの `after_state=SUSPENDED`, result |
 | security-sensitive configuration operation owned by this system | Security Configuration | changed setting names only, never secret values |
 
 Canonical化済みの `API-ADM-REC-003〜007`、`API-ADM-HOF-003`、`API-ADM-ENT-SALES-003` / `API-ADM-KRK-SALES-003` は上表のrequired Audit targetであり、今後Canonical Ownerへ追加される明示Recovery command / Admin mutationにも同じcontractを適用する。一方、`API-ADM-HOF-001` / `API-ADM-HOF-002` はAdmin authoritative readでありrequired Audit targetではない（§3.1 / `OBS-AUD-013`）。
@@ -1273,6 +1277,8 @@ Canonical化済みの `API-ADM-REC-003〜007`、`API-ADM-HOF-003`、`API-ADM-ENT
 **OBS-AUD-012:** `API-ADM-ENT-SALES-003` / `API-ADM-KRK-SALES-003` / `API-ADM-HOF-003` / `API-ADM-REC-003〜007` は success / authenticated rejection / important failure を、exact Operation ID、actor role/capability、target Public Reference、request correlation、business/result classification でAudit可能にする。secret、raw QR、raw provider body、full Email、Internal IDを含めない。
 
 **OBS-AUD-013:** `API-ADM-HOF-001` / `API-ADM-HOF-002` はAdmin authoritative read / filterであり、required Audit targetではない。server-side queryとしてoperation-level Application Log / Metric / correlation（`request_id`、`operation_id`、`operation_execution_id`、actor、`result`）だけをemitし、Audit Eventを要求しない。このreadにAudit Eventを要求または生成してはならない。secret、raw QR、raw provider body、full Email、Internal IDを含めない。
+
+**OBS-AUD-014:** 初期データの投入（`SPEC-180 §45.3`、`SPEC-100 §13.5`）は、作成した行ごとに1件のAudit Eventを、投入と同じtransactionで記録する。`audit_event_type=BUSINESS_EFFECT`、`actor_type=INFRASTRUCTURE_OPERATOR`（`actor_ref` はdeployment環境が提供する固定のnon-secret subject）、`operation_id=PROVISION.INITIAL_DATA_SEED`（§9.1 のbounded internal key。API Operation IDではない）、`audit_result=COMMITTED`、`precondition_result=PASSED`、`target_ref` は作成した行のPublic Referenceとする。`changed_fields` は作成時に値を持つ項目名だけで、値を `safe_change_summary` へ入れない。`NOOP` はApplication Logだけにする（`OBS-AUD-009` のno-op checkと同じ）。`FAILED`（rollbackを確認できた失敗）は全体をrollbackして対象の行が残らないため、§37 の「安全にactor / targetを識別できる」対象がなく、Audit Eventを作らない（Audit insertの失敗は投入全体をrollbackする。§36、`DB-SEED-005`）。`UNKNOWN_RESULT`（`SPEC-180` `INF-SEED-004`。COMMIT送信後、acknowledgement受領前の接続断で、再照合もできなかった場合）では、COMMITが成立していれば行とAudit Eventが残りうる。残ったAudit Eventは、コマンドが削除・修復せず、再実行の再照合（`DB-SEED-002`）が `operation_execution_id` で参照する。`UNKNOWN_RESULT` に対してAudit Eventを追加で作らず、`reliability.unknown_result.opened`（§22、`OBS-DB-004`）のApplication Logだけを出す。Application Logの共通項目と、コマンドの結果からlogの `result` への対応は `SPEC-180` `INF-SEED-005` に従う（§15）。名称・日時・会場・価格・入力の値を、Audit Eventに入れない。対象を追加する場合（`SPEC-100 §13.5`）は、`INF-SEED-003`、本Rule、§37 の対象も同時に改訂する。
 
 ## 38. Audit data access
 
@@ -2035,6 +2041,8 @@ Implementation MUST satisfy all of the following.
 - `UCR-130-001〜004/006`、`UCR-150-001〜002` はCanonical化済みであり、`UCR-130-005` のみ未反映として存在しないoperationを発明していない。
 
 Canonical化済みのRecovery command（`API-ADM-REC-003〜007`）は、本書の `OBS-AUD-011`、`OBS-AUD-012`、`OBS-REC-*`、Correlation、Metric、Alert contractをそのexact Operation IDへ適用する。SPEC-160側でgeneric Recovery APIを追加しない。
+
+`UCR-180-001`（初期データの投入）に伴い、本改訂（v2.3.0）で §9.1（internal key `PROVISION.INITIAL_DATA_SEED`）、§19.1（`INFRASTRUCTURE_OPERATOR` の許可範囲の変更）、§20（registryへ `ENTRY_TICKET_OFFERING` を追加）、§33.1（`operation_id` の記述）、§35、§37、`OBS-AUD-014` を変更・追加した。Event・Offeringの作成Operationは追加せず、`audit_event_type`・`actor_type`・`audit_result` は既存のallowlistの値だけを使う。
 
 `UCR-140-003`（共有rate limit）に伴い、本改訂（v2.2.0）で §24.1（event `ratelimit.decision.completed`）、§40（allowed label `class_id`）、§42（`r39x_rate_limit_decisions_total` / `r39x_rate_limit_store_duration_seconds`）、§47（`OBS-ALT-041`、`OBS-ALT-042`。PR #41 第5回・第7回レビューで追加）と §42 の `r39x_rate_limit_store_ready`（`instance` label付き）を追加した。`SPEC-140` Part XIII と `SPEC-150` §58.1 の意味を観測する追加であり、rate limitのstate / API / Capabilityを追加・変更しない。
 

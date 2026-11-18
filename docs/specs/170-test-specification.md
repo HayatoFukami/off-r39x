@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-170
 title: Test Specification
-version: 2.6.0
+version: 2.7.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -147,6 +147,7 @@ Business DatabaseはOrder / Ticket / Reservation / Goods / Check-in / Notificati
 | `TST-EML-*` | Notification / Resend |
 | `TST-SEC-*` | Security |
 | `TST-RLM-*` | Rate limit |
+| `TST-SEED-*` | Initial data seeding |
 | `TST-REL-*` | Reliability / retry / unknown result |
 | `TST-REC-*` | Reconciliation / recovery |
 | `TST-OBS-*` | Log / Metric / Alert / Audit Event |
@@ -617,6 +618,22 @@ Migration Testは空DBから全migrationを順番に適用し、次をassertす�
 8. supported previous released schema fixtureからforward migrationしてhistorical rowを失わない。
 
 **TST-DB-003:** Down migrationをProduction rollback authorityとして要求しない。Deployment rollbackのschema compatibilityは`SPEC-180`が定義する。
+
+### 22.1 Initial data seeding（`SPEC-100 §13.5`、`SPEC-180 §45.3`）
+
+初期データの投入のTestは、実PostgreSQLで行う。fake storeやmockのDBで、transaction・advisory lock・CHECKを代替しない。Test Case IDとmanifestへの登録は、実装のWork Planが `SPEC-190` に従って行う。入力は合成値だけを使い（`DB-SEED-006`）、実在の会場名・日時・価格・個人情報を使わない。
+
+**TST-SEED-001:** 作成をTestする（G3。(3) はG4）。(1) 空のDB（Event 0件、Offering 0件）で `CREATED` となり、Eventが1件、Offeringが入力の件数だけできること。(2) 作成した行の `business_timezone` が `Asia/Tokyo`、`sale_control_state` が `SUSPENDED`、`held_quantity` / `committed_quantity` が0、`public_ref` がDB生成で、入力になかったnullableな項目が `NULL` のままであること（推測値を入れない。`DB-SEED-003`）。(3) 投入後に公開API（`API-PUB-001`、`API-PUB-005`）が作成した行を返すこと。(4) 入力が `sale_control_state`、counter、ID、`public_ref`、`business_timezone` を含む場合に拒否されること。
+
+**TST-SEED-002:** 冪等をTestする（G3 / G6）。(1) 2回目の実行が `NOOP` で、行数・値・`updated_at` が変わらないこと。(2) 運用で変更した値（Eventの `name`、Offeringの `unit_amount` や `sale_control_state`）が、再実行で巻き戻らないこと。(3) Eventが1件でOfferingが0件のとき、Offeringだけが作られること。Offeringが1件以上あるとき、入力の件数が多くても足りない分を補わず、`NOOP` になること。(4) Eventが2件以上のとき、`FAILED` となり、行を作らず・更新しないこと。(5) 同時にN個のコマンドを実行（barrier付き）しても、作成が1回分だけになること（`DB-SEED-002`）。
+
+**TST-SEED-003:** 失敗とrollbackをTestする（G3 / G6）。(1) 入力の検証の失敗（未知のkey、CHECKに反する値、Offeringの1件だけが不正）で `FAILED` となり、Event・Offeringのどちらも残らないこと。(2) `FP.AUDIT.INSERT_FAILURE` でAudit Eventの挿入を失敗させ、投入全体がrollbackされて `FAILED` になること。(3) DB commitの応答喪失（Fault Point `FP.DB.AFTER_COMMIT_SENT_BEFORE_ACK`）の場合は `TST-SEED-006` で行う。(4) `FAILED` のとき、コマンドが成功を示さず、deploymentを進めないこと（終了codeが非ゼロで、`UNKNOWN_RESULT` の終了codeと異なること。`CREATED` と `NOOP` は終了code 0で、結果の区分で区別できること。`INF-SEED-004`）。(5) 判定の順序: 作成する行がないとき（`NOOP`）は入力を読まず・検証せず、入力が未設定または不正でも `NOOP` になること。作成する行があるのに入力が未設定または不正なときは `FAILED` になり、行を作らないこと。lockを件数の判定より前に取得すること（`DB-SEED-002`、`INF-SEED-004`）。
+
+**TST-SEED-004:** AuditをTestする（G3）。(1) 作成した行ごとに1件のAudit Eventが、投入と同じtransactionで記録されること。`audit_event_type=BUSINESS_EFFECT`、`actor_type=INFRASTRUCTURE_OPERATOR`、`operation_id=PROVISION.INITIAL_DATA_SEED`、`audit_result=COMMITTED`、`target_type` が `PUBLIC_CONTENT`（Event）または `ENTRY_TICKET_OFFERING`、`target_ref` が作成した行の `public_ref` であること。(2) `NOOP` と、rollbackを確認できた `FAILED` ではAudit Eventが増えないこと（`UNKNOWN_RESULT` は `TST-SEED-006`）。(3) `changed_fields` が項目名だけで、名称・日時・会場・価格・入力の値がAudit Eventの全columnに含まれないこと（`OBS-AUD-014`）。
+
+**TST-SEED-005:** 実値の混入と権限をTestする（G1 / G2 / G5）。(1) リポジトリの入力の見本が合成値だけ（予約済みdomain、架空の名称）で、secret scanを通ること。(2) コマンドのlog・標準出力・release evidenceに、入力の値とDB connection stringが含まれず、業務固有の項目は結果の区分・`public_ref`・件数・実行identity・Audit Event IDだけであること。共通log項目（`timestamp`、`event_name`、`service=RECOVERY`、`environment`、`operation_id=PROVISION.INITIAL_DATA_SEED`、`operation_execution_id`、`result`、`failure_class`、`schema_version`）が出て、結果とlogの対応（`CREATED`→`SUCCESS`、`NOOP`→`NOOP`、`FAILED`→`FAILED`、`UNKNOWN_RESULT`→`PENDING` + `failure_class=UNKNOWN_RESULT`）が `INF-SEED-005` どおりであること。raw exception messageを含まないこと。(3) migration（`packages/db/migrations/`）にEventとOfferingのINSERTが含まれないこと。(4) コマンドが対象の2表と `app.audit_events` のINSERT、および判定に必要なSELECT以外のDML・DDL・GRANTを発行しないこと。runtime principal（`app_api_runtime` など）からは投入できないこと。(5) `SPEC-110` にEvent・Offeringの作成Operationがなく、Business APIにその経路が公開されていないこと。
+
+**TST-SEED-006:** COMMITの結果不明をTestする（G3 / G6）。Fault Point `FP.DB.AFTER_COMMIT_SENT_BEFORE_ACK` でacknowledgementを失わせ、新しい接続での再照合（`DB-SEED-002`）を検証する。再照合がlockを取得してからSELECTし、作る予定だった行を基準にすること（既存のEventだけを成功の根拠にしないこと）を含める。(1) COMMITが成立していた場合: この実行のAudit Eventを確認して `CREATED`（終了code 0）となり、行とAudit Eventが1回分だけで重複しないこと。(2) 他の実行が作成済みで、この実行のAudit Eventがない場合: `NOOP`（終了code 0）となり、行を変更しないこと。(3) COMMITが成立していなかった場合: 作る予定だった行もAudit Eventもないことを確認し、retry budget内で同じ手順を再試行して `CREATED` となること。(3-1) Event既存でOfferingだけを作る実行のCOMMITが成立していなかった場合: Eventだけが存在していても `NOOP` とせず、Offeringが0件であることから未commitと判断して再試行し、Offeringが作られること。(3-2) 元の接続がlockを保持してCOMMITを処理している間に再照合が始まる場合: 再照合のlock取得が待たされ、元のtransactionの終了後にcommit済みの行とAudit Eventを確認して `CREATED` となること（未commitと誤認しないこと）。(4) 再照合も接続障害・lock待ちの超過で失敗する場合: `UNKNOWN_RESULT` となり、`FAILED` の終了codeと異なる非ゼロの終了codeで終了し、deploymentが進まず、COMMIT済みの行とAudit Eventが削除・修復されずに残り、追加のAudit EventとConsistency Review Caseを作らず、`reliability.unknown_result.opened` と `result=PENDING`・`failure_class=UNKNOWN_RESULT` のlogが出ること。(5) (4) の後で接続を回復して同じコマンドを再実行すると、COMMIT済みなら `NOOP`、未commitなら `CREATED` となり、行が重複しないこと。
 
 ## 23. Constraint Test
 
@@ -2052,6 +2069,7 @@ SPEC-170に準拠したTest implementationは、少なくとも次をすべて�
 53. rate limitのcounting（sliding window log）、atomic評価、TTL、keyの内容、memory満杯を実RedisでTestし、fake storeで代替していない（`TST-RLM-001〜002`）。
 54. rate limit storeの障害（接続不能、timeout、memory満杯、script実行エラー、短絡）で `503 TEMPORARY_UNAVAILABLE` のFail Closedになり、unlimitedやprocess-local counterへ切り替わらない（`TST-RLM-003`）。
 55. rate limitの評価順、対象外route、Authentication-failure guard（署名検証枠と同時検証slotを含む）、設定検証、Operation→class割当と段階3のresource参照、Client IP導出、観測をTestし、各Testが `TST-RLM-010` のgroupで実行される（`TST-RLM-004〜010`）。
+56. 初期データの投入（EventとEntry Ticket Offering）の作成、冪等（0件のときだけ作る。既存を上書きしない）、失敗時のrollback、Audit、実値の非混入と権限を、実PostgreSQLでTestする（`TST-SEED-001〜006`）。
 
 ---
 
@@ -2073,6 +2091,7 @@ SPEC-170に準拠したTest implementationは、少なくとも次をすべて�
 - `UCR-140-002`: `INCORPORATED`（`SPEC-110` §21の405 / 415、`SPEC-140` `SEC-API-022`、§26のTest）
 - `UCR-140-003`: `INCORPORATED`（`SPEC-140` Part XIII / `SEC-API-030`、`SPEC-110` §21 / §24.1 / §56.1、`SPEC-150` §58.1、`SPEC-160` §24.1 / §42 / `OBS-ALT-041〜042`、`SPEC-180` §17.1〜§17.2 / §28.1〜§28.2、§47.1のTest）
 - `UCR-170-001`: `INCORPORATED`（`SPEC-110 §41 / §46〜§48` のOperation ID completeness gap解消）
+- `UCR-180-001`: `INCORPORATED`（`SPEC-180 §45.3` `INF-SEED-001〜006`、`SPEC-100 §13.5` `DB-SEED-001〜007`、`SPEC-160 §37` `OBS-AUD-014`、本書 §22.1 `TST-SEED-001〜006`のTest）
 
 Canonical化済みoperationは §27.1／§27.2 のoperation-family Test対象とし、上記既知UCRのうち `UCR-130-005` のみ未反映として期待値を先取りしない。反映済みoperationへTest Caseを追加し、存在しないoperationを発明しない。新たなUCRはOwner本文への反映状況を個別確認し、自動的にINCORPORATEDと推定しない。
 
