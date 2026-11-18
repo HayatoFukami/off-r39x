@@ -11,6 +11,8 @@ bigint-mode tables; reviewed SQL lives in `migrations/`.
   Helpers return a fresh column builder per call and never hide a Domain State
   column. Constraints and their explicit names stay in each table definition.
 - `src/schema/identity.ts`: `business_profiles` and `role_assignments`.
+- `src/schema/audit.ts`: `audit_events` (SPEC-160 §33). Append-only; `app_api_runtime` has INSERT only.
+- `src/audit-events.ts`: caller-transaction Audit writer (INSERT only, no RETURNING, no retry, per-operation change specs).
 - `src/schema/index.ts`: the barrel. It re-exports `app` and the tables by name,
   unchanged, and exports no helper (`DEV-DB-001`). To add a table, put it in the
   file for its table domain (`SPEC-100 §55`) and add a named export to `index.ts`.
@@ -80,7 +82,8 @@ The principal repository is read-only, returns lossless string IDs and never
 provisions profiles. `transaction` returns `commit_unknown` rather than replaying
 an unacknowledged commit. Its callback must never call external providers.
 
-Audit storage, provider mapping, credential issuance, deployment DB metadata,
+The audit retention purge function and audit reader identity (SPEC-180 §22.6–22.7, §62),
+provider mapping, credential issuance, deployment DB metadata,
 business write repositories, and production provider evidence are intentionally
 not supplied by this foundation. Readiness is an infrastructure check, not proof
 that deferred business services are production-ready.

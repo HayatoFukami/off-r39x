@@ -16566,9 +16566,9 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "@off-r39x/db/schema exports exactly app, businessProfiles and roleAssignments with no helper leaking through the barrel",
+        "@off-r39x/db/schema exports exactly app, auditEvents, businessProfiles and roleAssignments with no helper leaking through the barrel",
         "The app schema object and both tables use the schema name app",
-        "@off-r39x/db root exports exactly the 12 runtime names and does not export the schema"
+        "@off-r39x/db root exports exactly the 13 runtime names and does not export the schema"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -16597,6 +16597,254 @@
         "The four CHECK definitions in schema-contract.json (ck_business_profiles_display_name, ck_role_assignments_role, ck_role_assignments_state, ck_role_assignments_revocation) equal the pinned pg_get_constraintdef strings exactly by name, so a contract-only edit of a function, operator, boolean connective or literal fails",
         "bigint IDs and foreign key columns use lossless bigint mode (PgBigInt64)",
         "Three role_assignments foreign keys reference business_profiles(id) with ON DELETE RESTRICT; ux_role_assignments_profile_role_active is a partial unique index on (profile_id, role) whose predicate equals the golden state = 'ACTIVE' and the contract; the contract's full pg_get_indexdef string for that index equals the pinned golden exactly"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-OBS-AUD-004-001",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "OBS-AUD-004",
+        "SPEC-160-33.1",
+        "DB-ARC-007",
+        "DB-TIM-002",
+        "DB-MIG-002"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [
+        "pk_audit_events",
+        "uq_audit_events_audit_event_id",
+        "ck_audit_events_audit_event_type",
+        "ck_audit_events_actor_type",
+        "ck_audit_events_precondition_result",
+        "ck_audit_events_audit_result"
+      ],
+      "preconditions": "Independent real PG17 database with every migration applied by app_migrator; the catalog goldens are written by hand from SPEC-160 section 33.1 and are not derived from schema-contract.json",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The Audit table is the append-only storage owned by SPEC-160 section 33; no Domain State is renamed or copied"
+      ],
+      "expected_db_postconditions": [
+        "app.audit_events has exactly the 30 columns of SPEC-160 section 33.1 in order with the specified types, NOT NULL, identity always on id and defaults gen_random_uuid(), transaction_timestamp(), '{}'::text[] and '{}'::jsonb",
+        "Exactly six named constraints (primary key, unique audit_event_id and four allowlist CHECKs) and exactly nine valid indexes with the specified columns, DESC order and partial predicates",
+        "The table is owned by app_migrator with row level security off, and the migration journal lists 0001_foundation and 0002_audit_events",
+        "The live catalog equals the release schema contract (requiredCatalog), checked directly and not only through readiness"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-OBS-AUD-004-002",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "SPEC-160-32",
+        "SPEC-160-19",
+        "SPEC-160-33.1",
+        "OBS-AUD-003",
+        "DB-STA-002",
+        "DB-ARC-007"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [
+        "ck_audit_events_audit_event_type",
+        "ck_audit_events_actor_type",
+        "ck_audit_events_precondition_result",
+        "ck_audit_events_audit_result"
+      ],
+      "preconditions": "Independent real PG17 database; administrator connection inside BEGIN / ROLLBACK using the smallest legal row (the six NOT NULL columns without a default)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Audit result is not a Domain State; the allowlists hold only the SPEC-160 section 32 and section 19 values"
+      ],
+      "expected_db_postconditions": [
+        "Every allowed value of audit_event_type (6), actor_type (8), precondition_result (4) and audit_result (8) is accepted",
+        "An empty string, a lowercase allowed value, an allowed value with a suffix and UNKNOWN_VALUE are rejected with SQLSTATE 23514 naming ck_audit_events_<column>",
+        "Omitting any of the six NOT NULL columns without a default fails with SQLSTATE 23502",
+        "No audit row is committed by this case"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DB-009-001",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "TST-DB-009",
+        "OBS-AUD-004",
+        "INF-AUD-001",
+        "SPEC-160-33.2",
+        "SEC-DB-001"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Independent real PG17 database; app_api_runtime, app_email_runtime and app_reconciliation_runtime log in through createDatabase; the administrator reads the catalog and rows",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "runtime_update_attempt",
+        "runtime_delete_attempt",
+        "runtime_select_attempt"
+      ],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Runtime roles can only append Audit rows; there is no correction path through UPDATE, DELETE, TRUNCATE or SELECT"
+      ],
+      "expected_db_postconditions": [
+        "has_table_privilege: app_api_runtime has INSERT only; app_email_runtime, app_reconciliation_runtime and app_runtime have none; the ACL has no PUBLIC entry and names only the owner and app_api_runtime INSERT",
+        "No role has USAGE, SELECT or UPDATE on app.audit_events_id_seq",
+        "app_api_runtime INSERT without RETURNING succeeds (rowCount 1) while INSERT RETURNING, SELECT, UPDATE, DELETE and TRUNCATE fail with SQLSTATE 42501",
+        "app_email_runtime and app_reconciliation_runtime INSERT fails with SQLSTATE 42501; after the refusals the inserted row is unchanged"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DB-008-001",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "TST-DB-008",
+        "TST-OBS-003",
+        "OBS-AUD-007",
+        "SPEC-160-36.1",
+        "DEV-OBS-005"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": ["ck_audit_events_audit_event_type"],
+      "preconditions": "Independent real PG17 database; app_api_runtime transaction() callback writes a synthetic business_profiles row and then calls insertAuditEvent; the audit failure is injected by REVOKE INSERT in the test only (FP.AUDIT.INSERT_FAILURE)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "FP.AUDIT.INSERT_FAILURE",
+        "audit_writer_validation_failure",
+        "audit_check_violation"
+      ],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "A failed Audit insert never leaves the business write behind, and transaction() returns no success value for it"
+      ],
+      "expected_db_postconditions": [
+        "Success: one profile row and one audit row commit and the audit occurred_at and created_at equal the profile created_at (one transaction_timestamp())",
+        "Refused INSERT privilege: the callback rejects with SQLSTATE 42501, runs exactly once (no retry), and leaves no profile and no audit row; the privilege is restored afterwards",
+        "Writer validation failure: the rejection message omits the input and leaves no profile and no audit row",
+        "CHECK violation: SQLSTATE 23514 naming ck_audit_events_audit_event_type and no profile row"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "No Application Log substitutes the audit row; transaction failure is the only signal"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-OBS-AUD-006-001",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "OBS-AUD-006",
+        "OBS-AUD-008",
+        "SPEC-160-35",
+        "SPEC-160-19.1",
+        "SPEC-160-33.1",
+        "TST-UNT-003",
+        "TST-UNT-001"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Fake pg client records the statement and parameters; Email, URL and raw QR shaped negatives are assembled at run time for the reference columns, and Secret shaped values are checked only as unknown input properties; no database connection; DB constraints are not claimed here",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": ["db_error_propagation"],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Invalid actor_ref per actor_type, unsafe reference text (Email, URL, raw QR and other values with a dot, slash, at sign or whitespace; the format cannot tell a Secret without such characters, which stays the caller's duty under SPEC-160 section 12), non UUID, bad fingerprint, reason_code, capability and non allowlisted enum values are refused before any statement is sent, and the error message omits the input",
+        "A change is accepted only when issued by a per-operation change spec (enum, public reference, count or integer values) and only for the operation IDs that spec was defined for; forged, copied or plain objects, a change issued for another operation, free text and out-of-spec keys, states, fields and values are refused",
+        "operation_id accepts only a SPEC-110 API-* Operation ID or one of the 21 SPEC-160 section 9.1 internal keys (for example RECOVERY.ADMIN_BOOTSTRAP); free labels, reference-like values and unknown keys are refused",
+        "An accepted event sends exactly one bound INSERT into app.audit_events with no RETURNING, BEGIN or COMMIT, no timestamp and no generated id",
+        "A database error is rethrown as the same object after a single attempt, with no retry (writer level only for OBS-AUD-008; no Provider flow is exercised)",
+        "Unsafe change input is also a compile time error, checked by pnpm typecheck"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-OBS-AUD-006-002",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": ["OBS-AUD-006", "OBS-AUD-007", "SPEC-160-33.1", "DB-TIM-002"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Independent real PG17 database; app_api_runtime (no SELECT privilege) writes two events inside one transaction(): all 23 input fields with a synthetic change, and the six required fields only",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Only fields allowed by the change spec reach safe_change_summary; no row dump is stored"
+      ],
+      "expected_db_postconditions": [
+        "Every column of the fully populated row equals its input, changed_fields is {state} and safe_change_summary equals the allowed JSON object with only string and number values",
+        "The minimal row has null before_state and after_state, an empty changed_fields and an empty safe_change_summary",
+        "audit_event_id is a database generated v4 UUID, distinct per row, and occurred_at equals created_at within one transaction_timestamp()"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DB-ARC-007-002",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["DB-ARC-007", "DEV-DB-006", "SPEC-160-33.1"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Static Drizzle declaration check of app.audit_events against the reviewed schema-contract.json and hand written SPEC-160 goldens; not a database execution test; DB enforcement is TC-OBS-AUD-004-001/002 on real PostgreSQL 17",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The Drizzle declaration of audit_events equals schema-contract.json in column order, name, NOT NULL, identity and default presence, with the char(32) to character(32) mapping stated in the test",
+        "The five defaults, the four allowlist CHECK expressions (exact text and value order) and the contract CHECK definitions equal the pinned goldens, and the CHECK literals equal the exported allowlist constants",
+        "Seven declared ix_audit_events_* indexes carry the golden columns, DESC order and five IS NOT NULL partial predicates, and all nine contract index definitions equal the pinned golden strings",
+        "id is lossless bigint (PgBigInt64); the writer only allowlists (effective role, provider, failure class, target type) equal the hand written SPEC values"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],

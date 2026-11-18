@@ -11,6 +11,7 @@ import {
   transaction,
   withWorkerAdvisoryLock,
 } from "../../packages/db/src/index.ts";
+import { migrationIdentities } from "../../packages/db/src/migrations.ts";
 import { startCommitAcknowledgementDropProxy } from "../harness/db/commit-proxy.ts";
 import { installSyntheticDirectory, prepareFoundationDatabase } from "../harness/db/foundation.ts";
 
@@ -43,8 +44,9 @@ describe("PostgreSQL 17 foundation (real database)", () => {
       ).rows[0];
       expect(row.id).toBe("9007199254740993");
       await client.query("ROLLBACK");
+      // One journal row per migration source file, so a later migration PR need not edit this line.
       expect((await client.query("SELECT count(*) FROM app.schema_migrations")).rows[0].count).toBe(
-        "1",
+        String((await migrationIdentities()).length),
       );
       const sql = await readFile(
         new URL("../../packages/db/migrations/0001_foundation.sql", import.meta.url),

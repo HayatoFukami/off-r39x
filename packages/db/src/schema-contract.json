@@ -1,10 +1,57 @@
 {
   "tables": [
+    ["audit_events", "r", "app_migrator", false],
     ["business_profiles", "r", "app_migrator", false],
     ["role_assignments", "r", "app_migrator", false],
     ["schema_migrations", "r", "app_migrator", false]
   ],
   "columns": [
+    ["audit_events", "id", "bigint", true, "a", "", null],
+    ["audit_events", "audit_event_id", "uuid", true, "", "", "gen_random_uuid()"],
+    [
+      "audit_events",
+      "occurred_at",
+      "timestamp with time zone",
+      true,
+      "",
+      "",
+      "transaction_timestamp()"
+    ],
+    ["audit_events", "audit_event_type", "text", true, "", "", null],
+    ["audit_events", "actor_type", "text", true, "", "", null],
+    ["audit_events", "actor_ref", "text", false, "", "", null],
+    ["audit_events", "effective_role", "text", false, "", "", null],
+    ["audit_events", "capability", "text", false, "", "", null],
+    ["audit_events", "operation_id", "text", true, "", "", null],
+    ["audit_events", "operation_execution_id", "uuid", true, "", "", null],
+    ["audit_events", "target_type", "text", false, "", "", null],
+    ["audit_events", "target_ref", "text", false, "", "", null],
+    ["audit_events", "request_id", "uuid", false, "", "", null],
+    ["audit_events", "business_cause_ref", "text", false, "", "", null],
+    ["audit_events", "transport_idempotency_fp", "character(32)", false, "", "", null],
+    ["audit_events", "provider", "text", false, "", "", null],
+    ["audit_events", "provider_event_ref", "text", false, "", "", null],
+    ["audit_events", "provider_object_ref", "text", false, "", "", null],
+    ["audit_events", "provider_idempotency_fp", "character(32)", false, "", "", null],
+    ["audit_events", "precondition_result", "text", true, "", "", null],
+    ["audit_events", "audit_result", "text", true, "", "", null],
+    ["audit_events", "failure_class", "text", false, "", "", null],
+    ["audit_events", "reason_code", "text", false, "", "", null],
+    ["audit_events", "before_state", "text", false, "", "", null],
+    ["audit_events", "after_state", "text", false, "", "", null],
+    ["audit_events", "changed_fields", "text[]", true, "", "", "'{}'::text[]"],
+    ["audit_events", "safe_change_summary", "jsonb", true, "", "", "'{}'::jsonb"],
+    ["audit_events", "consistency_review_ref", "uuid", false, "", "", null],
+    ["audit_events", "recovery_execution_id", "uuid", false, "", "", null],
+    [
+      "audit_events",
+      "created_at",
+      "timestamp with time zone",
+      true,
+      "",
+      "",
+      "transaction_timestamp()"
+    ],
     ["business_profiles", "id", "bigint", true, "a", "", null],
     ["business_profiles", "public_ref", "uuid", true, "", "", "gen_random_uuid()"],
     ["business_profiles", "auth_subject", "uuid", true, "", "", null],
@@ -67,6 +114,69 @@
   ],
   "indexes": [
     [
+      "audit_events",
+      "CREATE INDEX ix_audit_events_actor_time ON app.audit_events USING btree (actor_ref, occurred_at DESC) WHERE (actor_ref IS NOT NULL)",
+      true,
+      true,
+      true
+    ],
+    [
+      "audit_events",
+      "CREATE INDEX ix_audit_events_occurred_at ON app.audit_events USING btree (occurred_at DESC)",
+      true,
+      true,
+      true
+    ],
+    [
+      "audit_events",
+      "CREATE INDEX ix_audit_events_operation_time ON app.audit_events USING btree (operation_id, occurred_at DESC)",
+      true,
+      true,
+      true
+    ],
+    [
+      "audit_events",
+      "CREATE INDEX ix_audit_events_recovery ON app.audit_events USING btree (recovery_execution_id) WHERE (recovery_execution_id IS NOT NULL)",
+      true,
+      true,
+      true
+    ],
+    [
+      "audit_events",
+      "CREATE INDEX ix_audit_events_request ON app.audit_events USING btree (request_id) WHERE (request_id IS NOT NULL)",
+      true,
+      true,
+      true
+    ],
+    [
+      "audit_events",
+      "CREATE INDEX ix_audit_events_review ON app.audit_events USING btree (consistency_review_ref) WHERE (consistency_review_ref IS NOT NULL)",
+      true,
+      true,
+      true
+    ],
+    [
+      "audit_events",
+      "CREATE INDEX ix_audit_events_target_time ON app.audit_events USING btree (target_type, target_ref, occurred_at DESC) WHERE (target_ref IS NOT NULL)",
+      true,
+      true,
+      true
+    ],
+    [
+      "audit_events",
+      "CREATE UNIQUE INDEX pk_audit_events ON app.audit_events USING btree (id)",
+      true,
+      true,
+      true
+    ],
+    [
+      "audit_events",
+      "CREATE UNIQUE INDEX uq_audit_events_audit_event_id ON app.audit_events USING btree (audit_event_id)",
+      true,
+      true,
+      true
+    ],
+    [
       "business_profiles",
       "CREATE UNIQUE INDEX pk_business_profiles ON app.business_profiles USING btree (id)",
       true,
@@ -118,10 +228,57 @@
   ],
   "schemas": [["app", "app_migrator"], ["auth_read", "app_migrator"]],
   "sequences": [
+    ["audit_events_id_seq", "bigint", "app_migrator"],
     ["business_profiles_id_seq", "bigint", "app_migrator"],
     ["role_assignments_id_seq", "bigint", "app_migrator"]
   ],
   "constraints": [
+    [
+      "audit_events",
+      "ck_audit_events_actor_type",
+      "c",
+      "CHECK ((actor_type = ANY (ARRAY['GUEST'::text, 'AUTHENTICATED_USER'::text, 'STAFF'::text, 'ADMINISTRATOR'::text, 'SYSTEM_WORKER'::text, 'SCHEDULED_RECONCILIATION'::text, 'EXTERNAL_PROVIDER'::text, 'INFRASTRUCTURE_OPERATOR'::text])))",
+      true,
+      false,
+      false
+    ],
+    [
+      "audit_events",
+      "ck_audit_events_audit_event_type",
+      "c",
+      "CHECK ((audit_event_type = ANY (ARRAY['PRIVILEGED_OPERATION'::text, 'PRIVILEGED_OPERATION_DENIED'::text, 'BUSINESS_EFFECT'::text, 'RECOVERY_EXECUTION'::text, 'SECURITY_SENSITIVE_OPERATION'::text, 'EMERGENCY_ADMIN_RECOVERY'::text])))",
+      true,
+      false,
+      false
+    ],
+    [
+      "audit_events",
+      "ck_audit_events_audit_result",
+      "c",
+      "CHECK ((audit_result = ANY (ARRAY['REQUESTED'::text, 'AUTHORIZED'::text, 'REJECTED'::text, 'COMMITTED'::text, 'NOOP'::text, 'PENDING'::text, 'UNKNOWN'::text, 'FAILED'::text])))",
+      true,
+      false,
+      false
+    ],
+    [
+      "audit_events",
+      "ck_audit_events_precondition_result",
+      "c",
+      "CHECK ((precondition_result = ANY (ARRAY['PASSED'::text, 'FAILED'::text, 'NOT_APPLICABLE'::text, 'UNKNOWN'::text])))",
+      true,
+      false,
+      false
+    ],
+    ["audit_events", "pk_audit_events", "p", "PRIMARY KEY (id)", true, false, false],
+    [
+      "audit_events",
+      "uq_audit_events_audit_event_id",
+      "u",
+      "UNIQUE (audit_event_id)",
+      true,
+      false,
+      false
+    ],
     [
       "business_profiles",
       "ck_business_profiles_display_name",

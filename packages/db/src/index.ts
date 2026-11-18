@@ -1,3 +1,5 @@
+export type { AuditChange, AuditEventInput } from "./audit-events.ts";
+export { insertAuditEvent } from "./audit-events.ts";
 export type { DatabaseOptions } from "./database.ts";
 export { createDatabase } from "./database.ts";
 export type { DirectorySourceMapping } from "./directory.ts";
