@@ -3531,6 +3531,45 @@
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
     },
     {
+      "rule_id": "EML-GEN-003",
+      "code_paths": [
+        "packages/application/src/notification.ts",
+        "packages/application/src/uuid-v5.ts"
+      ],
+      "test_case_ids": ["TC-NTF-PORT-005", "TC-NTF-PORT-006", "TC-NTF-PORT-007"],
+      "notes": "Port input and UUIDv5 business_cause_key derivation only; persistence is PR-L1-1c"
+    },
+    {
+      "rule_id": "EML-TPL-001",
+      "code_paths": ["packages/application/src/notification.ts"],
+      "test_case_ids": ["TC-NTF-PORT-001"],
+      "notes": "Exhaustive notification type to template id/version map"
+    },
+    {
+      "rule_id": "EML-TPL-002",
+      "code_paths": [
+        "packages/application/src/notification.ts",
+        "packages/application/src/wire-values.ts"
+      ],
+      "test_case_ids": ["TC-NTF-PORT-002", "TC-NTF-PORT-003"],
+      "notes": "render_context Zod schemas; rendering itself is not implemented"
+    },
+    {
+      "rule_id": "EML-IDM-003",
+      "code_paths": ["packages/application/src/notification.ts"],
+      "test_case_ids": ["TC-NTF-PORT-007"],
+      "notes": "Business Cause derived from source only, never from transport keys"
+    },
+    {
+      "rule_id": "REL-REC-008",
+      "code_paths": [
+        "packages/application/src/review-case.ts",
+        "packages/application/src/wire-values.ts"
+      ],
+      "test_case_ids": ["TC-REVIEW-PORT-003"],
+      "notes": "details value-kind allowlist"
+    },
+    {
       "rule_id": "DEV-REL-007",
       "code_paths": [
         "packages/application/src/worker.ts",
