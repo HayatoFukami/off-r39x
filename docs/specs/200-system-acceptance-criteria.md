@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-200
 title: System Acceptance Criteria
-version: 2.1.0
+version: 3.0.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -55,7 +55,7 @@ related_specs:
 
 **SPEC-200の責務は「何を実装するか」を追加することではなく、既存Canonical Ruleを満たしたことを、同一releaseに紐づく再現可能なEvidenceでどのように判定するかを固定すること**である。
 
-本書はMVP、Step1、Step2、初期リリース等でAcceptanceを分断しない。長期運用される完成システムを対象とする。
+本書はMVP、Step1、Step2、初期リリース等でAcceptanceを分断しない。長期運用される完成システムを対象とする。releaseがmountするOperationの集合（§7.5）は、Acceptanceの段階ではなく、各releaseのRelease Manifestが持つ属性である。
 
 ---
 
@@ -176,6 +176,10 @@ Admin authoritative read / filterは `SPEC-110` §41 / §48.3 のcanonical Opera
 
 `UCR-130-005`（Operational query index）のみ `DEFERRED_NONBLOCKING` として残し、speculative indexをAcceptanceの必須依存にしない。
 
+### 4.7 Release Operation Set（`UCR-RELSCOPE-001`）
+
+`UCR-RELSCOPE-001` は `INCORPORATED` である。Release Manifestの `mounted_operation_ids`（`SPEC-180 §44`、`INF-DEP-006`）、本書 §7.5、`SPEC-110` `API-PUR-ELG-001`、`SPEC-170 §27` / `§74` に反映済みである。Acceptance Manifestは §7.5 のEvidenceを要求する。
+
 ---
 
 # Part I — System Acceptance Model
@@ -275,6 +279,16 @@ Spec Version Setには次を含める。
 ### 7.4 Build artifact
 
 **ACC-INF-001:** Railway API / Email Worker / Reconciliation WorkerのProduction artifactは `SPEC-180` が定義するimmutable digest / deployment identityで識別し、`latest` 等のmutable aliasだけをEvidenceにしない。
+
+### 7.5 Mounted Operation Set
+
+Acceptance ManifestはRelease Manifestの `mounted_operation_ids`（`SPEC-180 §44`）を参照し、複製しない。`SPEC-110` のcanonical Operation IDのうち `mounted_operation_ids` に含まれないものをUnmounted Operationと呼ぶ。Unmounted OperationもCurrent Canonicalのままであり、`SPEC-110` から外れない。当該Operationをmountしたreleaseでは、全件がAcceptanceの対象になる。
+
+**ACC-GEN-029:** Unmounted Operationのmethod / pathへのRequestは、当該releaseで `SPEC-110 §21` の「どのrouteにも一致しないpath」として `404 RESOURCE_NOT_FOUND` を返し、Domain stateを変更しない。これをG4 Evidenceで証明する。成功、空の結果、別のOperationへの転送、固定のエラーに変換しない。同じpathに別のmethodがmountされている場合の `405` は `SPEC-110 §21` に従い、期待値をそのmethodごとに定める。
+
+**ACC-GEN-030:** criterion、またはcriterion内でUnmounted Operationを前提とする条項（clause）は、次の3つのEvidenceをすべて示せる場合に限り `NOT_APPLICABLE` とできる。(1) 条項の成立に必要なOperation IDと、`mounted_operation_ids` の差。(2) 条項が前提とするBusiness entityを作るmounted Operationの経路が存在しないことのG4 Evidence、またはそのentityを作れる経路がある場合は、(3) の条件。(3) Unmounted Operationでしか変更できない販売設定（Sale Control等）の現在値が、当該entityの作成を許さない値であること（Productionの現在値をDeploy後のEvidenceにする）。Acceptance Manifestは `NOT_APPLICABLE` とした条項ごとに、`acceptance_id`、条項、Unmounted Operation ID、(1)〜(3) のEvidence参照を記録する。条項が `NOT_APPLICABLE` でも、criterionの残りの条項は通常どおり判定する。
+
+**ACC-GEN-031:** `ACC-GEN-030` は `INV-*`、`SEC-*`、`DB-*`、required infrastructure gate、mountしたOperationのcontractには適用しない。ただし、Unmounted Operationでしか作られないentity（Hold等）だけを対象とするworker / reconciliation jobの配置条項（`ACC-INF-009`）には適用できる。scheduler、health、migration等の他のgateには適用しない。`INV-010-*` に対応するcriterionは、`SPEC-170 §64.1` の最小Test Caseを `NOT_APPLICABLE` にしない（`TST-TRC-003`）。`ACC-GEN-012〜014` のfinal statusは `ACCEPTED` / `REJECTED` のままであり、第三のstatusを導入しない。
 
 ---
 
@@ -532,7 +546,7 @@ Acceptance Manifest、Release Manifest、最終gate summary、approval reference
 
 **ACC-BIZ-025:** 未反映UCR（`UCR-130-005`）またはfuture proposalだけに存在するendpoint / capabilityを仮実装してBusiness CapabilityをPassにしない。Canonical化済みoperation familyは対応する `SPEC-110` Operation IDのEvidenceで判定する。
 
-**ACC-BIZ-026:** Current Canonical `FR-*` の未実装を「今回releaseの対象外」としてSystem Acceptanceから除外しない。完成システムAcceptanceではmandatory Current Requirementは全件対象である。
+**ACC-BIZ-026:** Current Canonical `FR-*` の未実装を「今回releaseの対象外」としてSystem Acceptanceから除外しない。完成システムAcceptanceではmandatory Current Requirementは全件対象である。除外できるのは `ACC-GEN-030` を満たす条項だけであり、その `FR-*` はCurrent Canonicalのまま残る。
 
 ### 15.1 修正契約の個別Acceptance接続
 
@@ -943,7 +957,7 @@ Pagesは静的SPAのみとしNode server runtimeを持たない。Node majorはC
 
 **ACC-INF-008:** Railway API / Email Worker / Reconciliation WorkerがCurrent health/readiness contractをPassし、new deployment activation前にrequired readinessを満たす。
 
-**ACC-INF-009:** scheduler wiringはCurrent `REL-*` cadenceと`INF-WRK-*` topologyをそのまま使用し、feature都合でworker / reconciliationを省略しない。
+**ACC-INF-009:** scheduler wiringはCurrent `REL-*` cadenceと`INF-WRK-*` topologyをそのまま使用し、feature都合でworker / reconciliationを省略しない。`ACC-GEN-031` が認める条項（Unmounted Operationでしか作られないentityだけを対象とするworker / reconciliation job）を除く。
 
 ---
 
@@ -1107,7 +1121,7 @@ failure_outcome
 
 **ACC-TRC-007:** Acceptance Matrixで`blocking=true`のrowは、必要Evidenceが0件またはmissingの場合にPassへdefaultしない。
 
-**ACC-TRC-008:** `NOT_APPLICABLE`はCurrent Canonical behaviorが当該releaseに存在しないことをRule IDで証明できるcriterionだけに許可する。Current mandatory `FR-*`, `INV-*`, `SEC-*`, required infrastructure gateへ使用しない。
+**ACC-TRC-008:** `NOT_APPLICABLE`はCurrent Canonical behaviorが当該releaseに存在しないことをRule IDで証明できるcriterion、または `ACC-GEN-030` を満たす条項だけに許可する。それ以外のCurrent mandatory `FR-*`, `INV-*`, `SEC-*`, `DB-*`, required infrastructure gate、mountしたOperationのcontractへは使用しない（`ACC-GEN-031`）。
 
 ---
 
@@ -1116,6 +1130,7 @@ failure_outcome
 | Acceptance ID | Capability / invariant | Canonical Rule IDs | Required Test Cases / Groups | Required config evidence | Required deployment evidence | Blocking | Pass condition |
 |---|---|---|---|---|---|---|---|
 | `ACC-GEN-009` | Release identity | `INF-DEP-*` | manifest validator | release-manifest hash | staging + Production IDs | Yes | all identity joins equal |
+| `ACC-GEN-029〜031` | Mounted Operation Set | `INF-DEP-006`, `SPEC-110 §21`, `TST-COV-004` | G4 | `mounted_operation_ids` | staging + Production（Sale Controlの現在値） | Yes | Unmounted Operationの404 + `NOT_APPLICABLE` 条項のEvidence |
 | `ACC-TRC-001` | Spec set completeness | `SPEC-000`, `TST-TRC-*`, `DEV-TRC-*` | manifest validation | spec set hash | none | Yes | no unknown / missing Current rule owner |
 | `ACC-INV-001〜010` | System invariants | `INV-010-01〜10` | §13 exact cases + G3/G4/G5/G6/G8/G10 as applicable | DB/provider config as applicable | same release deployment | Yes | all invariant criteria PASS |
 | `ACC-BIZ-001〜032` | Functional / Domain capability | `FR-*`, `BR-*`, `DI-030-*` | G1/G3/G4/G8 + domain required groups、§15.1の個別Case | feature/current config | staging smoke | Yes | 全Current DIのsemantic coverage + observable outcome PASS |
@@ -1154,6 +1169,7 @@ Production promotionを許可するには、少なくとも次をすべて満た
 9. Production backup freshness / recovery pointがCurrent `SPEC-180` requirementを満たす。
 10. required approval actor referenceがある。
 11. open UCRがCurrent mandatory Acceptanceを成立不能にしていない。
+12. `ACC-GEN-029` の404 Evidenceと、`ACC-GEN-030` を適用した全条項の根拠Evidenceがある。
 
 **ACC-RELSE-005:** 1項目でも満たさない場合 `production_promotion_allowed=false` とする。
 
@@ -1175,6 +1191,7 @@ ACCEPTED :=
   AND critical_test_retry_count == 0
   AND critical_quarantine_count == 0
   AND no_acceptance_blocking_open_ucr
+  AND all_not_applicable_clauses_have_ACC_GEN_030_evidence
   AND all_evidence_identity_matches_release
 ```
 
@@ -1298,7 +1315,7 @@ NON_BLOCKING_CLARIFICATION
 
 **ACC-TRC-010:** `CURRENT_REQUIREMENT_BLOCKED`が1件でも未解消ならfinal System Acceptanceは`REJECTED`である。
 
-**ACC-TRC-011:** `UCR-130-005` は `NON_BLOCKING_CLARIFICATION`（`DEFERRED_NONBLOCKING`）として記録し、Acceptanceをblockingしない。`UCR-130-001〜004/006`, `UCR-150-001〜002`, `UCR-170-001` は `INCORPORATED` としてopen listから除外し、対応canonical contractのEvidenceで判定する。
+**ACC-TRC-011:** `UCR-130-005` は `NON_BLOCKING_CLARIFICATION`（`DEFERRED_NONBLOCKING`）として記録し、Acceptanceをblockingしない。`UCR-130-001〜004/006`, `UCR-150-001〜002`, `UCR-170-001`, `UCR-RELSCOPE-001` は `INCORPORATED` としてopen listから除外し、対応canonical contractのEvidenceで判定する。
 
 ---
 
@@ -1380,7 +1397,7 @@ Acceptance artifact / CI artifact / release noteは次を含めてはならな�
 48. `UCR-170-001` は `SPEC-110` のOperation ID付与によりINCORPORATEDであり、全canonical operationがOperation IDベースのEvidenceを持つ。
 49. Current requirementをcanonical contractで満たし、deferred `UCR-130-005` をAcceptanceの必須依存にしない。
 50. Canonical Owner / `depends_on` /情報源優先順位 / UCRを守る。
-51. 長期運用される完成システムを対象とする。
+51. 長期運用される完成システムを対象とする。`NOT_APPLICABLE` は省略ではなく、Unmounted Operationを前提とする条項の不存在をEvidenceで証明したものに限る（`ACC-GEN-030`）。
 52. MVP / Step1 / Step2等を理由にSecurity / Payment / DB / QR / Reliability / Observability / Audit / Test / Infrastructure / Backup / Development traceability acceptanceを省略しない。
 53. 正式仕様として判断を保留する未確定表現を残さない。
 54. Sales management operation familyは `entry_sales.manage` / `karaoke_sales.manage` と `API-ADM-ENT-SALES-001〜003` / `API-ADM-KRK-SALES-001〜003` のE2E Evidenceで受入れる。
@@ -1388,6 +1405,7 @@ Acceptance artifact / CI artifact / release noteは次を含めてはならな�
 56. Admin authoritative read / filterは `SPEC-110 §41 / §48.3` のOperation ID / allowlist / canonical sortのEvidenceで受入れる。
 57. Manual recoveryは `API-ADM-REC-003〜007` と `SPEC-130 §41.5` wiringのEvidenceで受入れ、generic recoveryをPassとしない。
 58. `INV-010-01〜10` 全てがE2E acceptance evidenceへtraceされ、critical invariantがUnit mock / E2E単独で代替されない。
+59. Release Manifestの `mounted_operation_ids` と、Unmounted Operationの404 Evidence、`NOT_APPLICABLE` 条項のEvidenceが、§7.5 のとおり記録される。
 
 ---
 
@@ -1397,15 +1415,15 @@ Acceptance artifact / CI artifact / release noteは次を含めてはならな�
 
 本書は `UCR-RELSCOPE-001` を次のとおり記録する。この他に、本書から新規UCRは発行しない。
 
-### UCR-RELSCOPE-001 — PROPOSED
+### UCR-RELSCOPE-001 — INCORPORATED
 
-- **Status:** `PROPOSED`。対象Canonical Ownerの本文へ反映するまで、Canonical behaviorではない（`ACC-GEN-003`）。
+- **Status:** `INCORPORATED`。`SPEC-180 §44`（`INF-DEP-006`）、本書 §7.5（`ACC-GEN-029〜031`）、`SPEC-110` `API-PUR-ELG-001`（`UCR-110-004`）、`SPEC-170 §27` / `§74`（`TST-COV-004`）へ反映済みである。
 - 対象: `SPEC-200`（§1、§4、§7.5の新設、§37 `ACC-TRC-008`、§15 `ACC-BIZ-026`、§39、§40、§45、§47、§48）、`SPEC-180`（§44、§81）、`SPEC-110`（`API-PUR-ELG-001`、§27、§66）、`SPEC-170`（§27、§74、§79）。
 - 現在の仕様: Current Canonical `FR-*` の未実装を「今回releaseの対象外」としてSystem Acceptanceから除外しない（`ACC-BIZ-026`）。`NOT_APPLICABLE` は、Current Canonical behaviorが当該releaseに存在しないことをRule IDで証明できるcriterionにだけ許可し、Current mandatory `FR-*`、`INV-*`、`SEC-*`、required infrastructure gateへ使用しない（`ACC-TRC-008`）。全canonical Operation IDに100%のcontract caseを要求する（`ACC-API-001` / `ACC-API-002`、`SPEC-170 §74`）。releaseが提供するOperationの集合を記録する場所は、`SPEC-180 §44` のRelease Manifestにない。購入可否の照会（`API-PUR-ELG-001`）は、kindの購入を開始するOperationの有無を評価に使わない。
 - 要求する変更:
   1. `SPEC-180 §44` のRelease Manifestに、route registryから機械的に生成する `mounted_operation_ids` を加える（`INF-DEP-006`）。
   2. `SPEC-200 §7.5` を新設し、mountされていないOperation（Unmounted Operation）への Request が `404 RESOURCE_NOT_FOUND`（`SPEC-110 §21`）を返しDomain stateを変更しないことをG4で証明する（`ACC-GEN-029`）。
-  3. criterion、またはcriterion内でUnmounted Operationを前提とする条項だけを、Evidenceを示せる場合に `NOT_APPLICABLE` とできる（`ACC-GEN-030`）。`ACC-TRC-008` と `ACC-BIZ-026` をこれに合わせて改訂する。`INV-*`、`SEC-*`、`DB-*`、required infrastructure gate、mountしたOperationのcontractには使わない。final statusは `ACCEPTED` / `REJECTED` のまま変えない。
+  3. criterion、またはcriterion内でUnmounted Operationを前提とする条項だけを、Evidenceを示せる場合に `NOT_APPLICABLE` とできる（`ACC-GEN-030`）。`ACC-TRC-008` と `ACC-BIZ-026` をこれに合わせて改訂する。`INV-*`、`SEC-*`、`DB-*`、required infrastructure gate、mountしたOperationのcontractには使わない。final statusは `ACCEPTED` / `REJECTED` のまま変えない（`ACC-GEN-031`）。
   4. `SPEC-170 §27` / `§74` のOperation coverageを、`mounted_operation_ids` のOperation IDは100% contract case、それ以外は404 caseに改める（`TST-COV-004`）。
   5. `SPEC-110` の `API-PUR-ELG-001`（と公開availability）は、あるkindの購入を開始できるOperationが1つもmountされていない場合、そのkindを販売条件の現在値によらず `SALES_STOPPED` として評価する。新しいerror code・reason・状態は追加しない（`UCR-110-004`）。
 - 理由: プロジェクト所有者の明示的指示（2026-11-13、`SPEC-000 §8` の1）。Goods / Karaokeの `SPEC-100` の全表を作り、公開読取と購入可否の照会を提供し、Karaokeの販売設定を `SUSPENDED` に保ち、Karaokeの購入・予約・入場・管理とGoodsの受け渡し・管理のOperationをmountしないreleaseを、第三のfinal statusや仕様本文の段階表現なしに受入判定できるようにする。2026-11-18の決定: Goodsの購入開始は `API-PUR-CART-001` で実装し（`DI-030-013` を除外しない）、`API-PUR-GDS-001` はmountしない。
