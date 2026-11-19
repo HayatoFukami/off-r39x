@@ -26846,6 +26846,234 @@
         "Reading through a validateQuery instance that did not run for the request is 500 INTERNAL_ERROR, never another schema's data"
       ],
       "critical": true
+    },
+    {
+      "test_case_id": "TC-API-IDM-011-001",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "API-IDM-011",
+        "SPEC-110-18",
+        "API-IDM-005",
+        "DEV-API-007",
+        "OBS-COR-005"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Pure functions parseIdempotencyKey and keyDigest called directly; synthetic keys only",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Accepts 16..128 characters made only of 0x20..0x7E and returns the value unchanged (no trim); rejects missing, 15, 129, non-ASCII, control characters (HTAB, NUL, US), DEL and 0x80 with a result that carries no reason",
+        "keyDigest is a 32 byte SHA-256 of the value (case sensitive, no trim) that differs from the HMAC correlation fingerprint and takes no secret"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-API-IDM-005-001",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["API-IDM-005", "TST-IDM-004", "SPEC-110-18", "DEV-TS-009"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Pure functions requestDigest and canonicalRequestJson fed with Zod-validated requests; synthetic values only",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Same digest across JSON key order, whitespace, an omitted default, a Public Reference case difference and 1 versus 1.0 / -0 versus 0; different digest for a different value, array order, note case, omitted versus null, params versus body placement, query and body null versus {}",
+        "The canonical text equals a hand-written oracle (keys by UTF-16 code unit, no whitespace, JSON.stringify scalars) and the digest is its SHA-256; the function takes no headers"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-API-IDM-005-002",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["API-IDM-005", "SEC-ERR-003", "DEV-TS-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "requestDigest fed with values that JSON cannot represent, each carrying a synthetic marker",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Every such value (undefined body, NaN, Infinity, bigint, Date, Map, class instance, function, symbol, cycle, hole, getter, toJSON, non-string params) throws a fixed message that does not contain the value"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DEV-API-007-001",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["DEV-API-007", "API-IDM-011", "API-IDM-003", "SPEC-110-18"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "TRANSPORT_IDEMPOTENCY_OPERATIONS and the factory; the expected set is written from SPEC-110 section 18 v2.9.0 and SPEC-120 section 36.1",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The set is exactly the 42 target Operations (including API-ADM-KRK-007, no duplicate); check-in, API-AUTH-003/004, the eligibility reference, GET Operations and the webhook are excluded; the factory throws a fixed message for a non-target Operation and a non-target ID is a type error"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-API-IDM-011-002",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": [
+        "API-IDM-011",
+        "SPEC-110-61-47",
+        "SPEC-110-18",
+        "SPEC-110-21",
+        "SPEC-110-24",
+        "SEC-ERR-001",
+        "SEC-ERR-002"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Harness-only route with a Principal and an Operation ID set by test middleware, validateJson and requireTransportIdempotency; harness-only routes on a test app (not in the production route table), synthetic values only; no DB or Redis",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [200, 400, 401, 403, 415],
+      "expected_domain_postconditions": [
+        "A missing, empty, short, long, non-ASCII or HTAB-containing key answers 400 VALIDATION_FAILED with details null and no handler run; 16, 128 and UUID keys reach the handler with the SHA-256 of the value in the context; surrounding spaces are removed by HTTP parsing; two header fields are validated and hashed as one concatenated value (separator not asserted)",
+        "Authentication and authorization failures (401, 403) win over a missing key; against a body, media-type or malformed-JSON failure either failure is acceptable and the handler never runs"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "http.request.completed is logged once with a status that matches the response and shows no raw key, digest or marker"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-API-IDM-005-003",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["API-IDM-005", "TST-IDM-002", "SEC-API-023", "DEV-API-006"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Harness-only route as TC-API-IDM-011-002; harness-only routes on a test app (not in the production route table), synthetic values only; no DB or Redis",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [200],
+      "expected_domain_postconditions": [
+        "Body order and spaces, X-Request-Id, Authorization and an uppercase path reference change neither digest; another key changes only the key digest; another quantity changes only the request digest; the context has four members and no request id or raw key"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "http.request.completed is logged once with a status that matches the response and shows no raw key, digest or marker"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DEV-API-007-002",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": [
+        "DEV-API-007",
+        "SPEC-110-24",
+        "SEC-ERR-001",
+        "SEC-ERR-003",
+        "DEV-TS-013"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Harness-only routes with a missing Principal, a missing or mismatched Operation ID, and a normalize that throws or returns an unrepresentable value; harness-only routes on a test app (not in the production route table), synthetic values only; no DB or Redis",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "missing_principal",
+        "operation_id_mismatch",
+        "normalize_exception",
+        "non_json_value"
+      ],
+      "expected_http": [500],
+      "expected_domain_postconditions": [
+        "Each case answers 500 INTERNAL_ERROR (retryable false, details null) without running the handler, even with no header (not 400); a database-like error is not 503; no body, header or log line contains the marker, the code or ZodError; one completion log with http_status 500"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "http.request.completed is logged once with a status that matches the response and shows no raw key, digest or marker"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-SEC-ERR-001-002",
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": [
+        "SEC-ERR-001",
+        "SEC-ERR-002",
+        "SEC-ERR-003",
+        "OBS-COR-005",
+        "OBS-COR-006",
+        "DEV-API-006",
+        "SPEC-160-11"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Harness-only routes; an accepted key, a 129-character key, a key with DEL, and a normalize that throws the request body, all containing a synthetic marker; harness-only routes on a test app (not in the production route table), synthetic values only; no DB or Redis",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": ["synthetic_exception"],
+      "expected_http": [200, 400, 500],
+      "expected_domain_postconditions": [
+        "No response body, response header or log line contains the raw key, the marker, or the key digest or request digest in hex (both cases), base64 or base64url; the handler context holds no raw key; the completion log keeps the key set of an ordinary route"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "http.request.completed is logged once with a status that matches the response and shows no raw key, digest or marker"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
     }
   ]
 }
