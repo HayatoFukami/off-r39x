@@ -8,6 +8,7 @@ export type ApiEnvironment = {
     requestId: string;
     principal: Principal;
     validatedJson: unknown;
+    validatedQuery: unknown;
     logger: ReturnType<typeof createLogger> | undefined;
     operationExecutionId: string | undefined;
     /** Set by the rate limit Stage 1 middleware from the route registry (SEC-ABU-017). */

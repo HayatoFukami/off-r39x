@@ -3582,7 +3582,8 @@
         "packages/api-contract/src/rpc.ts",
         "apps/api/src/api/app.ts",
         "apps/api/src/bootstrap/index.ts",
-        "apps/api/src/api/respond.ts"
+        "apps/api/src/api/respond.ts",
+        "packages/api-contract/src/schemas/list.ts"
       ],
       "test_case_ids": [
         "TC-DEV-API-003-050",
@@ -3592,6 +3593,7 @@
         "TC-DEV-API-003-002",
         "TC-DEV-API-003-003",
         "TC-DEV-API-003-004",
+        "TC-DEV-API-003-005",
         "TC-DEV-API-002-001"
       ],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
@@ -5367,9 +5369,52 @@
     },
     {
       "rule_id": "SEC-ERR-002",
-      "code_paths": ["packages/api-contract/src/schemas/errors.ts", "apps/api/src/api/respond.ts"],
-      "test_case_ids": ["TC-DEV-API-003-002", "TC-DEV-API-003-004"],
+      "code_paths": [
+        "packages/api-contract/src/schemas/errors.ts",
+        "apps/api/src/api/respond.ts",
+        "apps/api/src/api/middleware/query.ts"
+      ],
+      "test_case_ids": ["TC-DEV-API-003-002", "TC-DEV-API-003-004", "TC-API-QRY-001-002"],
       "notes": "Backend foundation only; no business Operation uses this yet"
+    },
+    {
+      "rule_id": "API-QRY-001",
+      "code_paths": [
+        "packages/api-contract/src/schemas/list.ts",
+        "apps/api/src/api/middleware/query.ts"
+      ],
+      "test_case_ids": ["TC-API-QRY-001-001", "TC-API-QRY-001-002"],
+      "notes": "Strict list query (pageQuery of SPEC-110 section 48.3); unknown query is 400 VALIDATION_FAILED. No list Operation is mounted yet"
+    },
+    {
+      "rule_id": "API-QRY-002",
+      "code_paths": ["packages/api-contract/src/schemas/list.ts"],
+      "test_case_ids": ["TC-API-QRY-002-001"],
+      "notes": "Builder refuses sort/order_by/offset/page; modes are Operation enums"
+    },
+    {
+      "rule_id": "API-QRY-004",
+      "code_paths": ["apps/api/src/api/pagination.ts", "packages/api-contract/src/schemas/list.ts"],
+      "test_case_ids": [
+        "TC-API-QRY-004-001",
+        "TC-API-QRY-004-002",
+        "TC-API-QRY-004-003",
+        "TC-API-QRY-004-004",
+        "TC-API-QRY-001-002"
+      ],
+      "notes": "Signed opaque cursor bound to Operation, mode and filters; key injected by caller (secret placement pending UCR)"
+    },
+    {
+      "rule_id": "SEC-API-018",
+      "code_paths": ["packages/api-contract/src/schemas/list.ts", "apps/api/src/api/pagination.ts"],
+      "test_case_ids": ["TC-API-QRY-001-001", "TC-API-QRY-002-001", "TC-API-QRY-004-003"],
+      "notes": "Allowlisted filter/sort only"
+    },
+    {
+      "rule_id": "SEC-DEP-007",
+      "code_paths": ["apps/api/src/api/pagination.ts"],
+      "test_case_ids": ["TC-API-QRY-004-002", "TC-API-QRY-004-004"],
+      "notes": "HMAC-SHA-256 via node:crypto, timingSafeEqual"
     },
     {
       "rule_id": "SEC-ERR-003",
