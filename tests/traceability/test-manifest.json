@@ -25896,11 +25896,15 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "Fake pool with an injected connect() failure, a discarded connection, or a COMMIT failure; no real PostgreSQL",
+      "preconditions": "Fake pool with an injected connect() failure, a discarded connection, a query rejected without a SQLSTATE, or a COMMIT failure; no real PostgreSQL",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
-      "fault_points": ["pool_connect_failure", "connection_error_event"],
+      "fault_points": [
+        "pool_connect_failure",
+        "connection_error_event",
+        "query_rejection_without_sqlstate"
+      ],
       "expected_http": null,
       "expected_domain_postconditions": [
         "A codeless pool connect failure or a codeless failure on a discarded connection rejects with DatabaseUnavailableError carrying the original as cause and a fixed message; the callback does not run for a connect failure; no retry is scheduled",
@@ -25908,7 +25912,8 @@
         "An error that carries a connection SQLSTATE (08006), at query or connect, is rethrown as it is, and a codeless error from a healthy connection stays the callback's own error",
         "An errno (ECONNRESET, EPIPE, EAI_AGAIN, ECONNREFUSED, ETIMEDOUT) thrown by the callback itself on a healthy connection is rethrown as the identical original error, not DatabaseUnavailableError; db.availability.failed is not logged, ROLLBACK is issued, the healthy connection is released normally (not discarded) and no retry is scheduled",
         "connectAttempts() counts every connect() call whether or not a connect hook is given",
-        "A five-letter Node errno (EBADF, EPERM, EBUSY, EPIPE) is never taken for a SQLSTATE: a COMMIT failing with it returns commit_unknown without ROLLBACK and discards the connection, and a query failing with it after a reported connection loss rejects with DatabaseUnavailableError carrying the original as cause"
+        "A five-letter Node errno (EBADF, EPERM, EBUSY, EPIPE) is never taken for a SQLSTATE: a COMMIT failing with it returns commit_unknown without ROLLBACK and discards the connection, and a query failing with it after a reported connection loss rejects with DatabaseUnavailableError carrying the original as cause",
+        "A query of the transaction (BEGIN, SET LOCAL or a query on the callback client) that the driver rejects with no code or with a Node errno outside the connect list (EBADF, EPERM), with no connection error or end event, rejects with DatabaseUnavailableError carrying the original as cause; no ROLLBACK is sent and the connection is discarded; a codeless error the callback throws after a successful query stays its own error and the connection is released normally"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],

@@ -505,6 +505,86 @@ describe("TC-REL-DB-009-001 transaction() types a codeless connection failure", 
     },
   );
 
+  // PR #66 review round 7: the verdict must not depend on the connection's error/end event having
+  // arrived first. A query of this transaction that the driver rejects without any SQLSTATE (no code,
+  // or a Node errno outside the connect list) means no server answer was received, so it is typed as
+  // unavailable on its own; the connection is discarded and no ROLLBACK is sent on it.
+  it.each([
+    ["no code", () => new Error(MARKER)],
+    ["errno EBADF", () => syntheticSqlstateError("EBADF", MARKER)],
+    ["errno EPERM", () => syntheticSqlstateError("EPERM", MARKER)],
+  ] as const)(
+    "(i) a query rejected with %s and no connection event is a DatabaseUnavailableError",
+    async (_label, make) => {
+      const cause = make();
+      const fake = createFakePool(({ sql }) => (sql === PROBE ? cause : undefined));
+      const { logger, count, lines } = collector();
+      const error = await settle(
+        transaction(
+          fake.pool,
+          async (client) => {
+            await client.query(PROBE);
+          },
+          { logger, queryName: "unavailable.query.codeless" },
+        ),
+      );
+      expect(error).toBeInstanceOf(DatabaseUnavailableError);
+      expect((error as DatabaseUnavailableError).cause).toBe(cause);
+      expect((error as Error).message).not.toContain(MARKER);
+      expect(count("db.availability.failed")).toBe(1);
+      expect(count("db.transaction.retry_scheduled")).toBe(0);
+      expect(fake.connectAttempts()).toBe(1);
+      expect(fake.clients[0]?.queries).not.toContain("ROLLBACK");
+      expect(fake.clients[0]?.releases).toEqual([true]);
+      for (const line of lines) expect(JSON.parse(line)).not.toHaveProperty("sqlstate");
+    },
+  );
+
+  it.each(["BEGIN ISOLATION LEVEL READ COMMITTED", "SET LOCAL"])(
+    "(i2) a codeless rejection of the transaction's own %s query is a DatabaseUnavailableError",
+    async (prefix) => {
+      const cause = new Error(MARKER);
+      const fake = createFakePool(({ sql }) => (sql.startsWith(prefix) ? cause : undefined));
+      const { logger, count } = collector();
+      let calls = 0;
+      const error = await settle(
+        transaction(
+          fake.pool,
+          async () => {
+            calls++;
+          },
+          { logger, queryName: "unavailable.control.codeless" },
+        ),
+      );
+      expect(error).toBeInstanceOf(DatabaseUnavailableError);
+      expect((error as DatabaseUnavailableError).cause).toBe(cause);
+      expect(calls).toBe(0);
+      expect(count("db.availability.failed")).toBe(1);
+      expect(fake.clients[0]?.releases).toEqual([true]);
+    },
+  );
+
+  // The callback's own throw stays outside that rule even when it follows a successful query.
+  it("(i3) a codeless error thrown by the callback after a successful query is rethrown unchanged", async () => {
+    const fake = createFakePool();
+    const { logger, count } = collector();
+    const original = new Error("synthetic-abort");
+    const error = await settle(
+      transaction(
+        fake.pool,
+        async (client) => {
+          await client.query(PROBE);
+          throw original;
+        },
+        { logger, queryName: "unavailable.application.after_query" },
+      ),
+    );
+    expect(error).toBe(original);
+    expect(count("db.availability.failed")).toBe(0);
+    expect(fake.clients[0]?.queries).toContain("ROLLBACK");
+    expect(fake.clients[0]?.releases).not.toContain(true);
+  });
+
   it("DatabaseUnavailableError has a fixed message, a name, and the original as cause", () => {
     const cause = new Error(MARKER);
     const error = new DatabaseUnavailableError({ cause });

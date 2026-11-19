@@ -215,12 +215,16 @@ export async function transaction<T>(
       const timeout = error instanceof TransactionDeadlineError || code === "57014";
       // Unavailability is judged by origin, not by the discard flag (the deadline timer sets it too):
       // the connection reported loss, or a database operation (connect, transaction control, a query
-      // on the callback's client) raised a connect failure or an unavailable-class code. An errno or
-      // codeless error thrown by the callback's own code on a healthy connection is not unavailable.
+      // on the callback's client) raised a connect failure, an unavailable-class code, or an error
+      // without a server SQLSTATE (no code or a Node errno). The last case does not wait for the
+      // connection's error/end event: a driver rejection that carries no SQLSTATE means no server
+      // answer was received, so it is unavailable on its own. An errno or codeless error thrown by
+      // the callback's own code on a healthy connection is not unavailable.
       const dbRaised = isMarkable(error) && dbOriginated.has(error);
       const unavailable =
         !timeout &&
-        (connectionLost || ((!client || (!!code && isDatabaseUnavailableCode(code))) && dbRaised));
+        (connectionLost ||
+          (dbRaised && (!client || !isSqlstate(code) || isDatabaseUnavailableCode(code))));
       if (unavailable) discard = true;
       const constraint = code === "23505" || code === "23P01";
       logDatabase(logger, {
