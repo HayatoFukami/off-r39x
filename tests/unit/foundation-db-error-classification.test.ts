@@ -352,6 +352,9 @@ describe("TC-REL-DB-009-001 transaction() types a codeless connection failure", 
 
   // PR #66 review round 2: an errno thrown by the callback itself on a healthy connection is not
   // proof that the database failed (it may come from a provider call), so it is rethrown unchanged.
+  // PR #66 review round 3: it is also not logged as db.availability.failed and does not discard the
+  // healthy connection: same handling as (d). ROLLBACK is issued and the connection is released
+  // normally (release(true) would be a discard).
   it.each(["ECONNRESET", "EPIPE", "EAI_AGAIN", "ECONNREFUSED", "ETIMEDOUT"])(
     "(f) errno %s thrown by the callback itself on a healthy connection is rethrown unchanged",
     async (code) => {
@@ -373,7 +376,10 @@ describe("TC-REL-DB-009-001 transaction() types a codeless connection failure", 
       expect(error).not.toBeInstanceOf(DatabaseUnavailableError);
       expect(calls).toBe(1);
       expect(fake.connectAttempts()).toBe(1);
-      expect(count("db.availability.failed")).toBe(1);
+      expect(count("db.availability.failed")).toBe(0);
+      expect(fake.clients[0]?.queries).toContain("ROLLBACK");
+      expect(fake.clients[0]?.releases).not.toContain(true);
+      expect(fake.clients[0]?.releases).toHaveLength(1);
       expect(count("db.transaction.retry_scheduled")).toBe(0);
     },
   );

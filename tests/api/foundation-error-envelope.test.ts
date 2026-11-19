@@ -41,7 +41,7 @@ function rig() {
     records().filter(
       (record) => record.event_name === "http.request.completed" && record.request_id === requestId,
     );
-  return { app, lines, records, completions };
+  return { app, lines, records, completions, logger };
 }
 async function readError(response: Response): Promise<{ text: string; error: Json }> {
   const text = await response.text();
@@ -77,6 +77,9 @@ const RETRYABLE_CODES: ReadonlySet<ErrorCode> = new Set<ErrorCode>([
 
 const dataSchema = z.strictObject({ name: z.string() });
 const transformSchema = z.strictObject({ count: z.string().transform((v) => Number(v)) });
+// PR #66 review round 3: a schema whose parsed output is undefined would drop `data` from the JSON
+// body (SPEC-110 section 19 requires data), so it must fail closed as 500.
+const undefinedOutputSchema = z.string().transform((): undefined => undefined);
 
 describe("TC-SEC-ERR-001-001 every ApiFailure code produces the section 21 envelope", () => {
   const codes = (Object.keys(errorStatuses) as ErrorCode[]).filter(
@@ -220,6 +223,9 @@ describe("TC-DEV-API-003-003 the success envelope is built in one place and vali
     app.get("/api/v1/test/respond/transform", (c) =>
       respond(c, { kind: "success", status: 200, data: { count: "3" } }, transformSchema),
     );
+    app.get("/api/v1/test/success/undefined-output", (c) =>
+      successResponse(c, undefinedOutputSchema, "synthetic-undefined-marker"),
+    );
     app.get("/api/v1/test/respond/extra", (c) =>
       respond(
         c,
@@ -261,6 +267,17 @@ describe("TC-DEV-API-003-003 the success envelope is built in one place and vali
       expect(body.meta).toEqual({ request_id: response.headers.get("X-Request-Id") });
     },
   );
+
+  it("successResponse: parsed data that is undefined is 500 INTERNAL_ERROR (details null), never a 200 without data", async () => {
+    const path = "/api/v1/test/success/undefined-output";
+    const { app, lines } = await routes();
+    const response = await app.request(path);
+    const { text, error } = await readError(response);
+    expectEnvelope(response, text, "INTERNAL_ERROR", path);
+    expect(error).toMatchObject({ retryable: false, details: null, message: FIXED_MESSAGE });
+    expect(text).not.toContain("synthetic-undefined-marker");
+    expect(lines.join("\n")).not.toContain("synthetic-undefined-marker");
+  });
 
   it.each([
     "/api/v1/test/success/extra",
@@ -385,6 +402,24 @@ describe("TC-DEV-API-003-004 respond() maps a service result to the section 20 /
     },
   );
 
+  it("(m) a success whose parsed data is undefined is 500 INTERNAL_ERROR, details null, never a 200 without data", async () => {
+    const { respond } = await loadRespond();
+    const { app, lines } = rig();
+    app.get("/api/v1/test/result-undefined", (c) =>
+      respond(
+        c,
+        { kind: "success", status: 200, data: "synthetic-undefined-marker" },
+        undefinedOutputSchema,
+      ),
+    );
+    const response = await app.request("/api/v1/test/result-undefined");
+    const { text, error } = await readError(response);
+    expectEnvelope(response, text, "INTERNAL_ERROR", "m");
+    expect(error).toMatchObject({ retryable: false, details: null, message: FIXED_MESSAGE });
+    expect(text).not.toContain("synthetic-undefined-marker");
+    expect(lines.join("\n")).not.toContain("synthetic-undefined-marker");
+  });
+
   it("(f) a temporary Stripe failure is 424 and retryable", async () => {
     const { response, text, error } = await call("f");
     expectEnvelope(response, text, "STRIPE_TEMPORARY_FAILURE");
@@ -473,7 +508,7 @@ describe("TC-REL-DB-009-002 database availability failures are 503, never a leak
   describe("through transaction() on a fake pool", () => {
     const PROBE = "SELECT synthetic_probe";
     async function callTx(mode: "query" | "own") {
-      const { app, completions, lines } = rig();
+      const { app, completions, lines, logger } = rig();
       const original = Object.assign(new Error(MARKER), { code: "ECONNRESET" });
       const fake = createFakePool(({ sql }) =>
         mode === "query" && sql === PROBE ? original : undefined,
@@ -485,7 +520,7 @@ describe("TC-REL-DB-009-002 database availability failures are 503, never a leak
             if (mode === "query") await client.query(PROBE);
             else throw original;
           },
-          { queryName: "test.tx.errno" },
+          { logger, queryName: "test.tx.errno" },
         );
         return c.json({ ok: true });
       });
@@ -516,6 +551,11 @@ describe("TC-REL-DB-009-002 database availability failures are 503, never a leak
       }
       expect(logged).toHaveLength(1);
       expect(logged[0]?.http_status).toBe(500);
+      // PR #66 review round 3: the callback's own errno is not a database failure, so it is not
+      // logged as an availability failure.
+      expect(
+        lines.filter((line) => (JSON.parse(line) as Json).event_name === "db.availability.failed"),
+      ).toHaveLength(0);
     });
   });
 

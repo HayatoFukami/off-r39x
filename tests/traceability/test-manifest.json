@@ -17684,7 +17684,8 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "Fail closed within the canonical boundary; no unintended business mutation",
-        "An errno (ECONNRESET, EPIPE) thrown by the callback itself is rethrown unchanged with one db.availability.failed log and no retry"
+        "An errno (ECONNRESET, EPIPE) raised by the callback client's query() is a DatabaseUnavailableError with the original as cause, no private message, one attempt and one db.availability.failed log without sqlstate",
+        "An errno (ECONNRESET, EPIPE) thrown by the callback's own code is rethrown unchanged, with one attempt and no db.availability.failed log"
       ],
       "expected_db_postconditions": [
         "A throwing logger leaves one committed row and a committed result"
@@ -25280,13 +25281,13 @@
         "A codeless pool connect failure or a codeless failure on a discarded connection rejects with DatabaseUnavailableError carrying the original as cause and a fixed message; the callback does not run for a connect failure; no retry is scheduled",
         "A connect or query failure that carries only a Node errno (ECONNRESET, ECONNREFUSED, EPIPE, ETIMEDOUT, ENOTFOUND, EHOSTUNREACH, ENETUNREACH, EAI_AGAIN) rejects with DatabaseUnavailableError carrying the original as cause",
         "An error that carries a connection SQLSTATE (08006), at query or connect, is rethrown as it is, and a codeless error from a healthy connection stays the callback's own error",
-        "An errno (ECONNRESET, EPIPE, EAI_AGAIN, ECONNREFUSED, ETIMEDOUT) thrown by the callback itself on a healthy connection is rethrown as the identical original error, not DatabaseUnavailableError; db.availability.failed is logged once and no retry is scheduled",
+        "An errno (ECONNRESET, EPIPE, EAI_AGAIN, ECONNREFUSED, ETIMEDOUT) thrown by the callback itself on a healthy connection is rethrown as the identical original error, not DatabaseUnavailableError; db.availability.failed is not logged, ROLLBACK is issued, the healthy connection is released normally (not discarded) and no retry is scheduled",
         "connectAttempts() counts every connect() call whether or not a connect hook is given"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
       "expected_observability": [
-        "db.availability.failed is logged once; db.transaction.retry_scheduled is not logged"
+        "db.availability.failed is logged once for a DB-originated connection failure and not at all for a callback's own error; db.transaction.retry_scheduled is not logged"
       ],
       "sensitivity_class": "synthetic",
       "critical": true
@@ -25363,7 +25364,8 @@
       "expected_domain_postconditions": [
         "Matching data answers 200 or 201 with exactly { data, meta: { request_id } } and meta.request_id equal to X-Request-Id",
         "Data that does not match the schema answers 500 INTERNAL_ERROR with details null and neither the body nor the log contains the data values",
-        "successResponse and respond accept the schema input type and send the parsed output (a transform runs: input count \"3\" is sent as the number 3)"
+        "successResponse and respond accept the schema input type and send the parsed output (a transform runs: input count \"3\" is sent as the number 3)",
+        "successResponse with parsed data that is undefined (a transform to undefined) answers 500 INTERNAL_ERROR with details null instead of a 200 or 201 without data, and the input value is not echoed"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -25398,7 +25400,8 @@
         "STATE_CONFLICT with valid item_failures answers 409 with the details unchanged; without details it answers details null",
         "item_failures details are accepted only when the operationId is API-PUR-CART-001; under another operationId or none the same details answer 500 INTERNAL_ERROR with details null and no echo of the code, target_ref or reasons",
         "Details with an unknown reason, an extra key, or on a code that allows none answer 500 INTERNAL_ERROR with details null and no echo of the input or the original code",
-        "A temporary Stripe failure answers 424 retryable; commit_unknown answers 503 DATABASE_TEMPORARY_FAILURE retryable; exactly one response per request"
+        "A temporary Stripe failure answers 424 retryable; commit_unknown answers 503 DATABASE_TEMPORARY_FAILURE retryable; exactly one response per request",
+        "A success result whose parsed data is undefined answers 500 INTERNAL_ERROR with details null instead of a 200 without data, and the input value is not echoed"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -25423,7 +25426,7 @@
       "expected_domain_postconditions": [
         "Connection-class SQLSTATE (08006, 57P01) and DatabaseUnavailableError answer 503 DATABASE_TEMPORARY_FAILURE with retryable true, details null and no SQLSTATE or message in the body",
         "A bare Node errno (ECONNRESET, EAI_AGAIN) thrown by a handler answers 500 INTERNAL_ERROR with no errno or message in the body, since SPEC-110 section 51 makes only a database connection failure a 503",
-        "Through transaction() on a fake pool, an errno from the callback's client.query() answers 503 DATABASE_TEMPORARY_FAILURE and an errno thrown by the callback itself answers 500 INTERNAL_ERROR; neither the errno nor the marker appears in the body or the logs",
+        "Through transaction() on a fake pool, an errno from the callback's client.query() answers 503 DATABASE_TEMPORARY_FAILURE and an errno thrown by the callback itself answers 500 INTERNAL_ERROR and is not logged as db.availability.failed; neither the errno nor the marker appears in the body or the logs",
         "A plain Error without SQLSTATE answers 500 INTERNAL_ERROR; 57014 stays 500 INTERNAL_ERROR in this change"
       ],
       "expected_db_postconditions": [],
