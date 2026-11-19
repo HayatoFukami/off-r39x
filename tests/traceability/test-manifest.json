@@ -25365,7 +25365,9 @@
         "Matching data answers 200 or 201 with exactly { data, meta: { request_id } } and meta.request_id equal to X-Request-Id",
         "Data that does not match the schema answers 500 INTERNAL_ERROR with details null and neither the body nor the log contains the data values",
         "successResponse and respond accept the schema input type and send the parsed output (a transform runs: input count \"3\" is sent as the number 3)",
-        "successResponse with parsed data that is undefined (a transform to undefined) answers 500 INTERNAL_ERROR with details null instead of a 200 or 201 without data, and the input value is not echoed"
+        "successResponse with parsed data that is undefined (a transform to undefined) answers 500 INTERNAL_ERROR with details null instead of a 200 or 201 without data, and the input value is not echoed",
+        "successResponse sends data only when the parsed data is losslessly JSON-representable (null, boolean, string, finite number, array of JSON values, plain object whose properties are JSON values or undefined); a top-level symbol, function, bigint, NaN, Infinity, Date or Map, a symbol property, an undefined array element or a bigint array element answers 500 INTERNAL_ERROR with details null and no echo of the value",
+        "An object with an undefined optional property, null, an empty array and nested plain objects stay 200 with data present (an undefined property is simply absent in JSON)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -25401,7 +25403,8 @@
         "item_failures details are accepted only when the operationId is API-PUR-CART-001; under another operationId or none the same details answer 500 INTERNAL_ERROR with details null and no echo of the code, target_ref or reasons",
         "Details with an unknown reason, an extra key, or on a code that allows none answer 500 INTERNAL_ERROR with details null and no echo of the input or the original code",
         "A temporary Stripe failure answers 424 retryable; commit_unknown answers 503 DATABASE_TEMPORARY_FAILURE retryable; exactly one response per request",
-        "A success result whose parsed data is undefined answers 500 INTERNAL_ERROR with details null instead of a 200 without data, and the input value is not echoed"
+        "A success result whose parsed data is undefined answers 500 INTERNAL_ERROR with details null instead of a 200 without data, and the input value is not echoed",
+        "A success result whose parsed data is not JSON-representable (a top-level symbol, or an object with a symbol property) answers 500 INTERNAL_ERROR with details null and no echo; a plain object with an undefined optional property stays 201 with data present"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],

@@ -80,6 +80,38 @@ const transformSchema = z.strictObject({ count: z.string().transform((v) => Numb
 // PR #66 review round 3: a schema whose parsed output is undefined would drop `data` from the JSON
 // body (SPEC-110 section 19 requires data), so it must fail closed as 500.
 const undefinedOutputSchema = z.string().transform((): undefined => undefined);
+// PR #66 review round 4: parsed data must be losslessly representable as JSON (SPEC-110 section 19).
+// Allowed: null, boolean, string, finite number, array of JSON values (no undefined element), plain
+// object (prototype Object.prototype or null) whose properties are JSON values or undefined (an
+// omitted optional). Anything else is a producer defect: 500 INTERNAL_ERROR, nothing echoed.
+const MARKER_NESTED = "synthetic-nested-marker";
+const unrepresentable: readonly (readonly [string, () => unknown])[] = [
+  ["top-level symbol", () => Symbol("synthetic")],
+  ["top-level function", () => () => 1],
+  ["top-level bigint", () => 9007199254740993n],
+  ["top-level NaN", () => Number.NaN],
+  ["top-level Infinity", () => Number.POSITIVE_INFINITY],
+  ["top-level Date", () => new Date(0)],
+  ["top-level Map", () => new Map([["k", 1]])],
+  ["symbol property in an object", () => ({ label: MARKER_NESTED, bad: Symbol("synthetic") })],
+  ["undefined array element", () => [MARKER_NESTED, undefined]],
+  ["bigint array element", () => [MARKER_NESTED, 1n]],
+];
+const representable: readonly (readonly [string, () => unknown, unknown])[] = [
+  [
+    "object with an undefined optional property (key absent in JSON)",
+    () => ({ label: "synthetic", optional: undefined }),
+    { label: "synthetic" },
+  ],
+  ["null", () => null, null],
+  ["empty array", () => [], []],
+  [
+    "nested plain objects and arrays",
+    () => ({ a: { b: [1, "two", true, null, { c: 0 }] }, n: Object.create(null) }),
+    { a: { b: [1, "two", true, null, { c: 0 }] }, n: {} },
+  ],
+];
+const jsonOutputSchema = (make: () => unknown) => z.string().transform(make);
 
 describe("TC-SEC-ERR-001-001 every ApiFailure code produces the section 21 envelope", () => {
   const codes = (Object.keys(errorStatuses) as ErrorCode[]).filter(
@@ -279,6 +311,43 @@ describe("TC-DEV-API-003-003 the success envelope is built in one place and vali
     expect(lines.join("\n")).not.toContain("synthetic-undefined-marker");
   });
 
+  it.each(unrepresentable)(
+    "successResponse: parsed data that is not JSON-representable (%s) is 500 INTERNAL_ERROR, details null, never a 200 without data",
+    async (_label, make) => {
+      const { successResponse } = await loadRespond();
+      const { app, lines } = rig();
+      app.get("/api/v1/test/success/json", (c) =>
+        successResponse(c, jsonOutputSchema(make), "synthetic-input-marker"),
+      );
+      const response = await app.request("/api/v1/test/success/json");
+      const { text, error } = await readError(response);
+      expectEnvelope(response, text, "INTERNAL_ERROR", _label);
+      expect(error).toMatchObject({ retryable: false, details: null, message: FIXED_MESSAGE });
+      expect(Object.keys(JSON.parse(text) as Json)).toEqual(["error"]);
+      for (const leaked of [MARKER_NESTED, "synthetic-input-marker", "9007199254740993"]) {
+        expect(text, leaked).not.toContain(leaked);
+        expect(lines.join("\n"), leaked).not.toContain(leaked);
+      }
+    },
+  );
+
+  it.each(representable)(
+    "successResponse: parsed data that is JSON-representable (%s) stays 200 with data present",
+    async (_label, make, expected) => {
+      const { successResponse } = await loadRespond();
+      const { app } = rig();
+      app.get("/api/v1/test/success/json", (c) =>
+        successResponse(c, jsonOutputSchema(make), "synthetic-input-marker"),
+      );
+      const response = await app.request("/api/v1/test/success/json");
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as Json;
+      expect(Object.keys(body).sort()).toEqual(["data", "meta"]);
+      expect(body.data).toEqual(expected);
+      expect(body.meta).toEqual({ request_id: response.headers.get("X-Request-Id") });
+    },
+  );
+
   it.each([
     "/api/v1/test/success/extra",
     "/api/v1/test/success/wrong-type",
@@ -418,6 +487,47 @@ describe("TC-DEV-API-003-004 respond() maps a service result to the section 20 /
     expect(error).toMatchObject({ retryable: false, details: null, message: FIXED_MESSAGE });
     expect(text).not.toContain("synthetic-undefined-marker");
     expect(lines.join("\n")).not.toContain("synthetic-undefined-marker");
+  });
+
+  it.each(
+    unrepresentable.filter(
+      ([label]) => label === "top-level symbol" || label === "symbol property in an object",
+    ),
+  )(
+    "(n) a success whose parsed data is not JSON-representable (%s) is 500 INTERNAL_ERROR, details null",
+    async (label, make) => {
+      const { respond } = await loadRespond();
+      const { app, lines } = rig();
+      app.get("/api/v1/test/result-json", (c) =>
+        respond(
+          c,
+          { kind: "success", status: 201, data: "synthetic-input-marker" },
+          jsonOutputSchema(make),
+        ),
+      );
+      const response = await app.request("/api/v1/test/result-json");
+      const { text, error } = await readError(response);
+      expectEnvelope(response, text, "INTERNAL_ERROR", label);
+      expect(error).toMatchObject({ retryable: false, details: null, message: FIXED_MESSAGE });
+      for (const leaked of [MARKER_NESTED, "synthetic-input-marker"]) {
+        expect(text, leaked).not.toContain(leaked);
+        expect(lines.join("\n"), leaked).not.toContain(leaked);
+      }
+    },
+  );
+
+  it("(o) a success whose parsed data is a JSON-representable object with an undefined optional stays 201 with data", async () => {
+    const { respond } = await loadRespond();
+    const { app } = rig();
+    const make = representable[0]?.[1] as () => unknown;
+    app.get("/api/v1/test/result-json-ok", (c) =>
+      respond(c, { kind: "success", status: 201, data: "synthetic" }, jsonOutputSchema(make)),
+    );
+    const response = await app.request("/api/v1/test/result-json-ok");
+    expect(response.status).toBe(201);
+    const body = (await response.json()) as Json;
+    expect(body.data).toEqual({ label: "synthetic" });
+    expect(body.meta).toEqual({ request_id: response.headers.get("X-Request-Id") });
   });
 
   it("(f) a temporary Stripe failure is 424 and retryable", async () => {
