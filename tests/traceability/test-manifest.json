@@ -25593,7 +25593,8 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "updateCurrentProfileRequestSchema accepts { display_name: string | null } only; an empty object, wrong types, non-object bodies, a parsed __proto__ key and every unknown field (profile_ref, auth_subject, role, roles, owner, profile_id, user_id, email, name, updated_at, public_ref, id, capabilities) are rejected",
-        "currentProfileSchema is strict (profile_ref UUID, display_name nullable but required, updated_at YYYY-MM-DDTHH:mm:ss.sssZ); an extra auth_subject, id or email, a missing display_name and updated_at without milliseconds, with an offset or with microseconds are rejected"
+        "currentProfileSchema is strict (profile_ref UUID, display_name nullable but required, updated_at YYYY-MM-DDTHH:mm:ss.sssZ); an extra auth_subject, id or email, a missing display_name and updated_at without milliseconds, with an offset or with microseconds are rejected",
+        "updated_at must be a real UTC instant (SPEC-110 §10): nonexistent days (2026-02-30, 2026-02-29, 2026-04-31, 1900-02-29), months 13 and 00, days 00 and 32, hours 24 and 25, minute 60, second 60, a lowercase z and a space instead of T are rejected, through currentProfileSchema and through its updated_at field schema; 2024-02-29T23:59:59.999Z, 2000-02-29T00:00:00.000Z, 2026-12-31T23:59:59.999Z, 2026-01-01T00:00:00.000Z and Date#toISOString output are accepted"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -25794,6 +25795,36 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": true
+    },
+    {
+      "test_case_id": "TC-API-007-009",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "TST-API-007",
+        "API-AUTH-004",
+        "DEV-API-002",
+        "SPEC-110-15",
+        "SPEC-110-16"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": ["API-AUTH-004"],
+      "db_constraint_names": [],
+      "preconditions": "Compile-time only: hc<AppType> from @off-r39x/api-contract inside a function that is never called; enforced by pnpm typecheck of the tests workspace; no network",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The public RPC type of PATCH /api/v1/self/profile carries the JSON input { display_name: string | null }: InferRequestType<...$patch>[json] equals it",
+        "$patch accepts { display_name: string } and { display_name: null }; an omitted body, an empty object and a non-string display_name are type errors"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
     }
   ]
 }

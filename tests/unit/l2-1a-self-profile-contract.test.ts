@@ -99,6 +99,51 @@ describe("TC-API-007-003 request and response schemas (DEV-API-003, SPEC-110 §8
     );
   });
 
+  // SPEC-110 §10: the value must be a real UTC instant, not only the right shape. Checked through
+  // currentProfileSchema and through its updated_at field schema (isoUtcTimestampSchema is not part of
+  // the package surface).
+  const updatedAtSchema = currentProfileSchema.shape.updated_at;
+  const impossibleTimestamps: [string, string][] = [
+    ["a nonexistent day 2026-02-30", "2026-02-30T00:00:00.000Z"],
+    ["2026-02-29 in a common year", "2026-02-29T00:00:00.000Z"],
+    ["2026-04-31", "2026-04-31T00:00:00.000Z"],
+    ["month 13", "2026-13-01T00:00:00.000Z"],
+    ["month 00", "2026-00-10T00:00:00.000Z"],
+    ["day 00", "2026-01-00T00:00:00.000Z"],
+    ["day 32", "2026-01-32T00:00:00.000Z"],
+    ["1900-02-29 (divisible by 100, not by 400)", "1900-02-29T00:00:00.000Z"],
+    ["hour 24", "2026-01-01T24:00:00.000Z"],
+    ["hour 25", "2026-01-01T25:00:00.000Z"],
+    ["minute 60", "2026-01-01T23:60:00.000Z"],
+    ["second 60", "2026-01-01T23:59:60.000Z"],
+    ["a lowercase z", "2026-01-01T00:00:00.000z"],
+    ["a space instead of T", "2026-01-01 00:00:00.000Z"],
+  ];
+  it.each(impossibleTimestamps)(
+    "response rejects updated_at %s (SPEC-110 §10)",
+    (_label, value) => {
+      expect(currentProfileSchema.safeParse({ ...validProfile, updated_at: value }).success).toBe(
+        false,
+      );
+      expect(updatedAtSchema.safeParse(value).success).toBe(false);
+    },
+  );
+
+  const validTimestamps: [string, string][] = [
+    ["a leap day", "2024-02-29T23:59:59.999Z"],
+    ["2000-02-29 (divisible by 400)", "2000-02-29T00:00:00.000Z"],
+    ["the last instant of a year", "2026-12-31T23:59:59.999Z"],
+    ["the first instant of a year", "2026-01-01T00:00:00.000Z"],
+    ["Date#toISOString output", new Date(Date.UTC(2026, 10, 19, 12, 34, 56, 789)).toISOString()],
+    ["Date#toISOString of the epoch", new Date(0).toISOString()],
+  ];
+  it.each(validTimestamps)("response accepts updated_at %s (SPEC-110 §10)", (_label, value) => {
+    const parsed = currentProfileSchema.safeParse({ ...validProfile, updated_at: value });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.updated_at).toBe(value);
+    expect(updatedAtSchema.safeParse(value).success).toBe(true);
+  });
+
   it("response keeps nullable and optional apart: display_name omitted fails (SPEC-110 §8)", () => {
     const { display_name: _omitted, ...withoutName } = validProfile;
     expect(currentProfileSchema.safeParse(withoutName).success).toBe(false);

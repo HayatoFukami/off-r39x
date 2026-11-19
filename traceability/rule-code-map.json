@@ -5144,7 +5144,8 @@
         "TC-API-007-005",
         "TC-API-007-006",
         "TC-API-007-007",
-        "TC-API-007-008"
+        "TC-API-007-008",
+        "TC-API-007-009"
       ],
       "notes": "implementation mapping only: PR-L2-1a self Profile read and update; synthetic evidence, G8 (production-like E2E) not executed"
     },
