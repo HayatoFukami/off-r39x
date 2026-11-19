@@ -1,5 +1,6 @@
 import { Pool } from "pg";
 import { expect, it } from "vitest";
+import { DatabaseUnavailableError } from "../../packages/db/src/errors.ts";
 import { transaction } from "../../packages/db/src/transaction.ts";
 import { createLogger } from "../../packages/observability/src/index.ts";
 import { startCommitAcknowledgementDropProxy } from "../harness/db/commit-proxy.ts";
@@ -89,6 +90,37 @@ it("TC-OBS-AUDIT-001 real DB retry, constraint, unavailability and unknown COMMI
         expect.objectContaining({ sqlstate: code }),
       );
     }
+    // PR #66 review round 3: an errno counts as a database transport failure only when a database
+    // operation raised it. Simulate the driver failing a query by making the client's query()
+    // reject (the cast is only for the replacement's signature; the pg overloads cannot be
+    // satisfied by a bare rejecting function).
+    for (const code of ["ECONNRESET", "EPIPE"]) {
+      let attempts = 0;
+      const original = Object.assign(new Error("synthetic-private-value"), { code });
+      const failure = await transaction(
+        pool,
+        async (c) => {
+          attempts++;
+          c.query = (() => Promise.reject(original)) as typeof c.query;
+          await c.query("SELECT 1");
+        },
+        { logger, queryName: "foundation.native_transport" },
+      ).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      expect(failure).toBeInstanceOf(DatabaseUnavailableError);
+      expect((failure as DatabaseUnavailableError).cause).toBe(original);
+      expect((failure as Error).message).not.toContain("synthetic-private-value");
+      expect(attempts).toBe(1);
+    }
+    const nativeEvents = lines
+      .map((x) => JSON.parse(x))
+      .filter((e) => e.query_name === "foundation.native_transport");
+    expect(nativeEvents.filter((e) => e.event_name === "db.availability.failed")).toHaveLength(2);
+    expect(nativeEvents.every((e) => e.sqlstate === undefined)).toBe(true);
+    // An errno thrown by the callback's own code (a healthy connection) is rethrown unchanged and is
+    // not an availability failure.
     for (const code of ["ECONNRESET", "EPIPE"]) {
       let attempts = 0;
       await expect(
@@ -98,16 +130,15 @@ it("TC-OBS-AUDIT-001 real DB retry, constraint, unavailability and unknown COMMI
             attempts++;
             throw Object.assign(new Error("synthetic-private-value"), { code });
           },
-          { logger, queryName: "foundation.native_transport" },
+          { logger, queryName: "foundation.callback_errno" },
         ),
       ).rejects.toMatchObject({ code });
       expect(attempts).toBe(1);
     }
-    const nativeEvents = lines
+    const callbackEvents = lines
       .map((x) => JSON.parse(x))
-      .filter((e) => e.query_name === "foundation.native_transport");
-    expect(nativeEvents.filter((e) => e.event_name === "db.availability.failed")).toHaveLength(2);
-    expect(nativeEvents.every((e) => e.sqlstate === undefined)).toBe(true);
+      .filter((e) => e.query_name === "foundation.callback_errno");
+    expect(callbackEvents.filter((e) => e.event_name === "db.availability.failed")).toHaveLength(0);
     const proxy = await startCommitAcknowledgementDropProxy(new URL(url));
     const failing = new Pool({ connectionString: proxy.url, ssl: false, max: 1 });
     try {

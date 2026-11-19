@@ -4,6 +4,14 @@ export type { DatabaseOptions } from "./database.ts";
 export { createDatabase } from "./database.ts";
 export type { DirectorySourceMapping } from "./directory.ts";
 export { installIdentityDirectory } from "./directory.ts";
+export type { DatabaseErrorClass } from "./errors.ts";
+export {
+  classifyDatabaseError,
+  DatabaseUnavailableError,
+  isDatabaseUnavailableCode,
+  sqlState,
+  TransactionDeadlineError,
+} from "./errors.ts";
 export {
   computeMigrationSetHash,
   installBaselineRoles,
@@ -15,12 +23,7 @@ export { createPrincipalRepository } from "./principals.ts";
 export type { DatabaseReadiness, ReadinessExpectations } from "./readiness.ts";
 export { checkReadiness } from "./readiness.ts";
 export type { TransactionResult } from "./transaction.ts";
-export {
-  sqlState,
-  TransactionDeadlineError,
-  transaction,
-  withWorkerAdvisoryLock,
-} from "./transaction.ts";
+export { transaction, withWorkerAdvisoryLock } from "./transaction.ts";
 export type {
   CurrentBusinessProfile,
   CurrentProfileRead,

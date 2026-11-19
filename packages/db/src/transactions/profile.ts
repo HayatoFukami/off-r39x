@@ -4,6 +4,7 @@
 // (AR-OWN-006, DB-ID-002); there is no INSERT path (Profile provisioning is API-AUTH-003).
 import { isDatabaseRetryable } from "@off-r39x/reliability";
 import type { Pool } from "pg";
+import { DatabaseUnavailableError } from "../errors.ts";
 import { sqlState, TransactionDeadlineError, transaction } from "../transaction.ts";
 
 export type CurrentBusinessProfile = {
@@ -41,6 +42,10 @@ const POOL_CONNECTION_MESSAGE =
  * syntax/privilege (`42xxx`) errors are implementation defects and must surface as errors.
  */
 function isUnavailable(error: unknown): boolean {
+  // transaction() types a DB-originated connection failure without a SQLSTATE (errno, pool connect
+  // timeout, dropped connection) as DatabaseUnavailableError with a fixed message (REL-DB-009), so
+  // the message test below cannot see it on the update path.
+  if (error instanceof DatabaseUnavailableError) return true;
   if (error instanceof TransactionDeadlineError || isDatabaseRetryable(error)) return true;
   const code = sqlState(error);
   if (code) {

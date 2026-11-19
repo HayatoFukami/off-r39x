@@ -2,7 +2,7 @@
 
 - 作成日: 2026-11-17（v2）
 - 位置づけ: **仕様ではない**（正式仕様は `docs/specs/`。食い違ったら仕様が正）。[全体スケジュール](release-schedule.md) の各作業を、**誰が・どの順で・何をもって完了とするか**に落とした手順書。
-- 関連: [メール Provider の変更（Resend → ZeptoMail）](mail-provider-zeptomail.md)
+- 関連: [メール Provider の変更（Resend → ZeptoMail）](mail-provider-zeptomail.md)、[staging での外部事実の確認（#42・#45）](staging-checks-42-45.md)
 - 書かないもの: Secret の値、実在のメールアドレス、口座・本人確認情報、実際のドメイン名・会場名・価格。これらはリポジトリに置かない（`AGENTS.md §5`、`SPEC-180 §69`）。ドメインの例は `example.com`。
 
 ---
@@ -183,6 +183,8 @@ pnpm secret-scan --build-dir dist --require-build
 | 6   | **ZeptoMail staging の Agent を準備**し、Neon Auth の SMTP を設定（`neon neon-auth config email-provider update` または管理画面）。送信テスト                                                                                           | 確認メール・Email OTP・Magic Link が合成の受信先に届く（S-2）                                          |
 | 7   | **S-0: Webhook の検証用受信先を準備**（業務 API とは別。使い捨ての HTTPS の受信口で、staging の Agent の Webhook にだけ登録する）。raw body と header を記録でき、個人情報を伏せて保存。公開インターネットから到達でき、HTTP 200 を返す | **Webhook の Verify（疎通確認）が 200 になる。** W2 末まで（S-5・S-6 の前提）                          |
 
+順 2 のうち #42・#45 の確認手順と合否の基準は [staging-checks-42-45.md](staging-checks-42-45.md) にある（#43・#44 は対象外）。
+
 ### 3.2 W2〜W3: ZeptoMail の技術確認（M-SPK）
 
 staging の Agent と**合成の宛先**だけを使う。**Webhook の spike（S-5・S-6）は、W2 に用意する検証用受信先（S-0）にだけ登録し、業務 API には登録しない**（業務 API の受信口は W6 以降。運営者の手順 §1.2 の 10a / 10b）。結果は spike の記録（日付、環境、確認した値の範囲。Secret と実在のアドレスは書かない）にまとめ、**W3 末（12/4）に担当1へ渡す。** 確認項目と合格基準は [mail-provider-zeptomail.md §4](mail-provider-zeptomail.md)（S-0〜S-9）。特に次の 3 点が判断を左右する。
@@ -281,3 +283,5 @@ Secret でない識別子は、起動時の環境 identity 検証（`EXPECTED_*`
 | ドメイン                    | ホスト名の一覧（Web、API / Auth、staging）、更新期限                                                                                     |
 | Cloudflare / Railway / Neon | プロジェクト名と ID、Access の対象、保護の検証結果                                                                                       |
 | 決定                        | D-2、D-3、R-7、M-1〜M-6 の決定日と選択                                                                                                   |
+
+Railway ingress と Redis の外部事実（#42・#45）の記録項目（`TRUSTED_PROXY_HOPS` の値と `X-Forwarded-For` の扱い、`maxmemory` の値と根拠、確認日と deployment ID）と、書かない値は [staging-checks-42-45.md](staging-checks-42-45.md) の §8 を参照。記録先は各 Issue。

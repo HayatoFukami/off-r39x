@@ -123,11 +123,14 @@ function buildApp(
 }
 
 describe("TC-DEV-API-002-001 public surface of @off-r39x/api-contract", () => {
-  it("exports exactly the seven runtime values", async () => {
+  // S0-3a adds errorRetryable (SPEC-110 section 21 Retryable column); L2-1a adds the two profile
+  // schemas. The five earlier values are unchanged.
+  it("exports exactly the eight runtime values", async () => {
     const surface = await import("@off-r39x/api-contract");
     expect(Object.keys(surface).sort()).toEqual([
       "createPublicRpc",
       "currentProfileSchema",
+      "errorRetryable",
       "errorSchema",
       "errorStatuses",
       "principalNavigationSchema",
@@ -276,11 +279,15 @@ describe("TC-DEV-API-003-001 error table and envelope schemas", () => {
     expect(errorStatuses.STRIPE_TEMPORARY_FAILURE).toBe(424);
   });
 
-  it("derives the errorSchema code enum from the same ordered list", () => {
-    expect(errorSchema.shape.error.shape.code.options).toEqual(
-      EXPECTED_ERROR_STATUSES.map(([code]) => code),
-    );
-    expect(errorSchema.shape.error.shape.code.options).toEqual(Object.keys(errorStatuses));
+  // S0-3a: errorSchema.error is a discriminated union on `code` (SPEC-110 section 16), one variant per
+  // code. The code list is read from each variant's literal discriminator, in variant order.
+  function variantCodes(): string[] {
+    return errorSchema.shape.error.options.map((variant) => variant.shape.code.value);
+  }
+
+  it("derives the errorSchema variants from the same ordered list", () => {
+    expect(variantCodes()).toEqual(EXPECTED_ERROR_STATUSES.map(([code]) => code));
+    expect(variantCodes()).toEqual(Object.keys(errorStatuses));
   });
 
   const errorCases: [string, Record<string, unknown>, ParseSummary][] = [
@@ -293,7 +300,9 @@ describe("TC-DEV-API-003-001 error table and envelope schemas", () => {
     [
       "unknown code",
       errorEnvelope({ code: "NOT_A_CODE" }),
-      { success: false, issues: [["invalid_value", ["error", "code"]]] },
+      // S0-3a: discriminated union change. Zod 4 reports "no matching discriminator" as an
+      // invalid_union issue at the discriminator path instead of the enum's invalid_value.
+      { success: false, issues: [["invalid_union", ["error", "code"]]] },
     ],
     [
       "extra key in error",
@@ -325,7 +334,9 @@ describe("TC-DEV-API-003-001 error table and envelope schemas", () => {
           details: null,
         },
       },
-      { success: false, issues: [["invalid_type", ["error", "retryable"]]] },
+      // S0-3a: discriminated union change. METHOD_NOT_ALLOWED fixes retryable to the literal false
+      // (SPEC-110 section 21), so a missing value is an invalid_value, not the boolean's invalid_type.
+      { success: false, issues: [["invalid_value", ["error", "retryable"]]] },
     ],
   ];
 

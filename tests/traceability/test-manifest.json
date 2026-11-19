@@ -16566,9 +16566,9 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "@off-r39x/db/schema exports exactly app, auditEvents, businessProfiles and roleAssignments with no helper leaking through the barrel",
+        "@off-r39x/db/schema exports exactly app and the eleven table declarations (announcements, auditEvents, businessProfiles, entryTicketOfferings, events, faqItems, goods, goodsInventory, karaokeSalesConfigurations, roleAssignments, sponsorLogos) with no helper leaking through the barrel",
         "The app schema object and both tables use the schema name app",
-        "@off-r39x/db root exports exactly the 14 runtime names (including createCurrentProfileRepository) and does not export the schema"
+        "@off-r39x/db root exports exactly the 17 runtime names (including createCurrentProfileRepository from PR-L2-1a and classifyDatabaseError, DatabaseUnavailableError and isDatabaseUnavailableCode from PR-S0-3a) and does not export the schema"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -16637,7 +16637,7 @@
       "expected_db_postconditions": [
         "app.audit_events has exactly the 30 columns of SPEC-160 section 33.1 in order with the specified types, NOT NULL, identity always on id and defaults gen_random_uuid(), transaction_timestamp(), '{}'::text[] and '{}'::jsonb",
         "Exactly six named constraints (primary key, unique audit_event_id and four allowlist CHECKs) and exactly nine valid indexes with the specified columns, DESC order and partial predicates",
-        "The table is owned by app_migrator with row level security off, and the migration journal lists 0001_foundation and 0002_audit_events",
+        "The table is owned by app_migrator with row level security off, and the migration journal starts with 0001_foundation and 0002_audit_events",
         "The live catalog equals the release schema contract (requiredCatalog), checked directly and not only through readiness"
       ],
       "expected_provider_postconditions": [],
@@ -16851,6 +16851,480 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": false
+    },
+    {
+      "test_case_id": "TC-DB-ARC-007-003",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "DB-ARC-007",
+        "DB-STA-001",
+        "DB-STA-002",
+        "DB-TIM-001",
+        "DB-MIG-002",
+        "DEV-DB-001",
+        "DEV-DB-006",
+        "SPEC-100-13.1",
+        "SPEC-100-13.2",
+        "SPEC-100-13.3",
+        "SPEC-100-13.4",
+        "SPEC-100-15.1",
+        "SPEC-100-15.2",
+        "SPEC-100-15.3",
+        "SPEC-100-38"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Static Drizzle declaration check of the eight public content and sales tables against the reviewed schema-contract.json and hand written SPEC-100 goldens; not a database execution test; DB enforcement is TC-DB-ARC-007-004 and the other DB cases on real PostgreSQL 17",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "For each of events, faq_items, announcements, sponsor_logos, entry_ticket_offerings, karaoke_sales_configurations, goods and goods_inventory the Drizzle table name, schema app, column order, SQL type, NOT NULL, identity always (none on goods_inventory) and default expressions equal the hand written golden and schema-contract.json",
+        "The CHECK expressions equal the golden text exactly and match the contract definitions by column, literal, number and NULL test; constraint counts per table are 5, 4, 4, 9, 13, 10, 8 and 6, all named",
+        "Foreign keys reference events(id) or goods(id) with ON DELETE RESTRICT; the three section 13 indexes carry the golden columns and the published_at DESC order and equal the contract pg_get_indexdef strings",
+        "Every bigint column (id, event_id, unit_amount, goods_id) is lossless PgBigInt64; contract rows of the eight tables and the seven identity sequences equal the golden"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-DB-ARC-007-004",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "DB-ARC-007",
+        "DB-TIM-001",
+        "DB-TIM-002",
+        "DB-ID-003",
+        "DB-IDX-001",
+        "DB-MIG-003",
+        "DEV-DB-013",
+        "SPEC-170-22",
+        "SPEC-100-59"
+      ],
+      "system_invariant_ids": ["INV-010-10"],
+      "api_operation_ids": [],
+      "db_constraint_names": [
+        "pk_events",
+        "uq_events_public_ref",
+        "pk_faq_items",
+        "uq_faq_items_public_ref",
+        "pk_announcements",
+        "uq_announcements_public_ref",
+        "pk_sponsor_logos",
+        "uq_sponsor_logos_public_ref",
+        "pk_entry_ticket_offerings",
+        "uq_entry_ticket_offerings_public_ref",
+        "pk_karaoke_sales_configurations",
+        "uq_karaoke_sales_configurations_public_ref",
+        "pk_goods",
+        "uq_goods_public_ref",
+        "pk_goods_inventory"
+      ],
+      "preconditions": "Independent real PG17 database with every migration applied by app_migrator; the catalog and constraint goldens are written by hand from SPEC-100 and are not derived from schema-contract.json or the migration; administrator connection inside BEGIN / ROLLBACK, one savepoint per attempt, synthetic data only",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Applied migrations are immutable: 0001 and 0002 equal their committed bytes, and 0003 statically creates only the eight new tables and changes no existing object; whether an old build stays ready after 0003 is not asserted here"
+      ],
+      "expected_db_postconditions": [
+        "The journal lists 0001_foundation, 0002_audit_events and 0003_public_content_sales once each with the source hashes of the bundled files, and a second runMigrations leaves it unchanged",
+        "The eight tables have exactly 93 columns in attnum order with the specified types, NOT NULL, identity always on id (none on goods_inventory) and the defaults gen_random_uuid(), transaction_timestamp(), Asia/Tokyo, DRAFT, 0, 15 and 5",
+        "Exactly 59 named constraints and 18 valid indexes equal the golden definitions; only the three SPEC-100 section 13 indexes exist besides PK and UNIQUE",
+        "Every table is owned by app_migrator with row level security off, there are seven identity sequences and no time column is timestamp without time zone",
+        "The live catalog equals the release schema contract (requiredCatalog), checked directly and not only through readiness, and lists all eight tables",
+        "public_ref is a database generated v4 UUID; a duplicate public_ref is 23505 uq_<table>_public_ref, a duplicate id is 23505 pk_<table>, and an explicit id without OVERRIDING SYSTEM VALUE is refused (428C9)"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DB-STA-002-001",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "DB-STA-001",
+        "DB-STA-002",
+        "SPEC-100-10",
+        "BR-EVT-002",
+        "BR-EVT-005",
+        "BR-SAL-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [
+        "ck_faq_items_state",
+        "ck_announcements_state",
+        "ck_sponsor_logos_state",
+        "ck_entry_ticket_offerings_sale_control_state",
+        "ck_karaoke_sales_configurations_sale_control_state",
+        "ck_goods_sale_control_state"
+      ],
+      "preconditions": "Independent real PG17 database with every migration applied by app_migrator; the catalog and constraint goldens are written by hand from SPEC-100 and are not derived from schema-contract.json or the migration; administrator connection inside BEGIN / ROLLBACK, one savepoint per attempt, synthetic data only",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The CHECK constraints allow only the upstream Publication States (DRAFT, PUBLISHED, ARCHIVED) and Sale Control States (ENABLED, SUSPENDED); no other Domain State is stored and no transition rule is placed in the database"
+      ],
+      "expected_db_postconditions": [
+        "faq_items, announcements and sponsor_logos accept all three Publication States and reject an empty string, a lowercase value, a value with a suffix, ENABLED and UNKNOWN_VALUE with SQLSTATE 23514 naming ck_<table>_state",
+        "entry_ticket_offerings, karaoke_sales_configurations and goods accept ENABLED and SUSPENDED and reject an empty string, a lowercase value, DRAFT and SALES_STOPPED with SQLSTATE 23514 naming ck_<table>_sale_control_state",
+        "sponsor_logos.state defaults to DRAFT; an omitted or NULL state on faq_items, announcements and the sales tables fails with SQLSTATE 23502",
+        "No row is committed by this case"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-DB-TIM-001-001",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "DB-TIM-001",
+        "DB-TIM-002",
+        "SPEC-100-8.4",
+        "SPEC-100-13.1",
+        "SPEC-100-15.1",
+        "BR-SAL-003",
+        "BR-EVT-001"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [
+        "ck_events_period",
+        "ck_entry_ticket_offerings_sales_period",
+        "ck_karaoke_sales_configurations_sales_period",
+        "ck_goods_sales_period",
+        "ck_entry_ticket_offerings_checkin_window"
+      ],
+      "preconditions": "Independent real PG17 database with every migration applied by app_migrator; the catalog and constraint goldens are written by hand from SPEC-100 and are not derived from schema-contract.json or the migration; administrator connection inside BEGIN / ROLLBACK, one savepoint per attempt, synthetic data only",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Periods are half open instants of timestamptz; an undecided external fact stays NULL"
+      ],
+      "expected_db_postconditions": [
+        "events: starts_at < ends_at (one microsecond apart) is accepted; equal and reversed values are 23514 ck_events_period; one or both NULL are accepted",
+        "entry_ticket_offerings, karaoke_sales_configurations and goods: a one microsecond sales period is accepted; equal and reversed values are 23514 ck_<table>_sales_period; an omitted sales_starts_at or sales_ends_at is 23502",
+        "The entry check-in window follows the same rule (ck_entry_ticket_offerings_checkin_window) and may be NULL",
+        "created_at and updated_at (updated_at only on goods_inventory) default to transaction_timestamp() of the inserting transaction on all eight tables"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-DB-005-001",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "TST-DB-005",
+        "SPEC-100-9",
+        "SPEC-100-15.1",
+        "SPEC-100-15.2",
+        "SPEC-100-15.3",
+        "SPEC-100-38",
+        "BR-SAL-001"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [
+        "ck_entry_ticket_offerings_unit_amount",
+        "ck_entry_ticket_offerings_currency",
+        "ck_entry_ticket_offerings_purchase_limit",
+        "ck_karaoke_sales_configurations_unit_amount",
+        "ck_karaoke_sales_configurations_currency",
+        "ck_karaoke_sales_configurations_purchase_limit",
+        "ck_goods_unit_amount",
+        "ck_goods_currency",
+        "ck_goods_purchase_limit",
+        "ck_entry_ticket_offerings_sales_capacity",
+        "ck_entry_ticket_offerings_held_quantity",
+        "ck_entry_ticket_offerings_committed_quantity",
+        "ck_entry_ticket_offerings_capacity",
+        "ck_goods_inventory_saleable_capacity",
+        "ck_goods_inventory_held_quantity",
+        "ck_goods_inventory_committed_quantity",
+        "ck_goods_inventory_capacity"
+      ],
+      "preconditions": "Independent real PG17 database with every migration applied by app_migrator; the catalog and constraint goldens are written by hand from SPEC-100 and are not derived from schema-contract.json or the migration; administrator connection inside BEGIN / ROLLBACK, one savepoint per attempt, synthetic data only; a value that breaks two constraints at once (a negative capacity also breaks the capacity CHECK) is isolated by dropping the sibling constraint inside the rolled back transaction",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Money is a non negative bigint with a three letter upper case currency; quantities are integers"
+      ],
+      "expected_db_postconditions": [
+        "Per sales table: unit_amount 0 and a value above 2^53 are accepted and -1 is 23514 ck_<table>_unit_amount; currency JPY is accepted and jpy, Jpy, JP, JPYY, JP1 and an empty string are 23514 ck_<table>_currency; purchase_limit 1 is accepted and 0 and -1 are 23514 ck_<table>_purchase_limit; a value beyond the integer range is 22003",
+        "entry_ticket_offerings and goods_inventory: capacity 0 is accepted; held_quantity and committed_quantity of -1 are 23514 on their own CHECK; omitted counters default to 0",
+        "capacity of -1 is 23514 and, with the capacity CHECK dropped in a rolled back transaction, names ck_..._sales_capacity (entry) or ck_..._saleable_capacity (inventory); an omitted required column is 23502",
+        "No row is committed by this case"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-DB-005-002",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "DI-030-004",
+        "SPEC-100-19",
+        "SPEC-100-15.1",
+        "BR-TKT-002",
+        "BR-SAL-008",
+        "TST-DB-005"
+      ],
+      "system_invariant_ids": ["INV-010-10"],
+      "api_operation_ids": [],
+      "db_constraint_names": ["ck_entry_ticket_offerings_capacity"],
+      "preconditions": "Independent real PG17 database with every migration applied by app_migrator; the catalog and constraint goldens are written by hand from SPEC-100 and are not derived from schema-contract.json or the migration; administrator connection inside BEGIN / ROLLBACK, one savepoint per attempt, synthetic data only",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The Entry capacity counter never exceeds the sales capacity even if the application is wrong (final defence of SPEC-100 section 19)"
+      ],
+      "expected_db_postconditions": [
+        "Rows with (capacity, held, committed) of (10, 4, 6), (0, 0, 0), (10, 0, 10), (10, 10, 0) and (1, 1, 0) are accepted; (10, 5, 6), (10, 0, 11), (10, 11, 0), (0, 1, 0) and (0, 0, 1) are 23514 ck_entry_ticket_offerings_capacity",
+        "On a full offering, held + 1, committed + 1 and sales_capacity = 9 are each rejected with 23514 by the same name and the row keeps (10, 4, 6)",
+        "Moving one unit from held to committed in a single UPDATE and releasing one unit are accepted; holding one more unit is accepted and holding two is rejected",
+        "No row is committed by this case"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DB-005-003",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "TST-DB-005",
+        "SPEC-100-13.1",
+        "SPEC-100-8.3",
+        "SPEC-100-15.2",
+        "BR-KRK-001",
+        "BR-EVT-001"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [
+        "ck_events_name",
+        "ck_events_business_timezone",
+        "ck_karaoke_sales_configurations_standard_usage_minutes",
+        "ck_karaoke_sales_configurations_standard_maintenance_minutes"
+      ],
+      "preconditions": "Independent real PG17 database with every migration applied by app_migrator; the catalog and constraint goldens are written by hand from SPEC-100 and are not derived from schema-contract.json or the migration; administrator connection inside BEGIN / ROLLBACK, one savepoint per attempt, synthetic data only",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Undecided external Event facts stay NULL; the Karaoke standard is 15 minutes of use and 5 minutes of maintenance and is not changed by configuration"
+      ],
+      "expected_db_postconditions": [
+        "events.name of one character is accepted and an empty name is 23514 ck_events_name; business_timezone defaults to Asia/Tokyo and UTC, asia/tokyo, a trailing space and an empty string are 23514 ck_events_business_timezone; NULL is 23502",
+        "An event inserted with only a name stores NULL for summary, starts_at, ends_at, venue_name, venue_details, access_information and participant_notices",
+        "karaoke_sales_configurations default to 15 and 5 minutes; 14 and 16 are 23514 on the usage CHECK, 4 and 6 are 23514 on the maintenance CHECK, and a value beyond the smallint range is 22003",
+        "No row is committed by this case"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-DB-SAL-002-001",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": ["DB-SAL-002", "BR-EVT-005", "SPEC-100-13.4"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [
+        "ck_sponsor_logos_display_name",
+        "ck_sponsor_logos_image_url",
+        "ck_sponsor_logos_link_url",
+        "ck_sponsor_logos_sort_order",
+        "ck_sponsor_logos_published_at"
+      ],
+      "preconditions": "Independent real PG17 database with every migration applied by app_migrator; the catalog and constraint goldens are written by hand from SPEC-100 and are not derived from schema-contract.json or the migration; administrator connection inside BEGIN / ROLLBACK, one savepoint per attempt, synthetic data only",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "A Sponsor Logo has a required display name; URL format and origin are validated by the API, not by the database"
+      ],
+      "expected_db_postconditions": [
+        "display_name: an empty string is 23514 ck_sponsor_logos_display_name; 1 character and 200 multibyte (and astral) characters are accepted; 201 are rejected, so characters are counted as code points",
+        "image_url: an empty string and 2049 characters are 23514 ck_sponsor_logos_image_url; 2048 characters are accepted; link_url may be NULL or 1 to 2048 characters and an empty string or 2049 characters are 23514 ck_sponsor_logos_link_url",
+        "sort_order defaults to 0, 0 is accepted and -1 is 23514 ck_sponsor_logos_sort_order",
+        "PUBLISHED with a NULL or omitted published_at is 23514 ck_sponsor_logos_published_at, also as an UPDATE of a DRAFT row that stays DRAFT; PUBLISHED with a value is accepted; DRAFT and ARCHIVED accept published_at present or absent",
+        "No row is committed by this case"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-DB-GDS-001-001",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": ["DB-GDS-001", "SPEC-100-38"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": ["pk_goods_inventory", "fk_goods_inventory_goods"],
+      "preconditions": "Independent real PG17 database with every migration applied by app_migrator; the catalog and constraint goldens are written by hand from SPEC-100 and are not derived from schema-contract.json or the migration; administrator connection inside BEGIN / ROLLBACK, one savepoint per attempt, synthetic data only; a Goods without an inventory row is not rejected by any DB constraint, and creating both in the same transaction is the duty of the creation path (a later PR)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "A Goods has at most one inventory row, keyed by goods_id, and a Goods with inventory is never deleted"
+      ],
+      "expected_db_postconditions": [
+        "A second inventory row for the same goods_id is 23505 pk_goods_inventory and the first row stays alone",
+        "An absent goods_id is 23503 fk_goods_inventory_goods and an omitted goods_id is 23502",
+        "Deleting a Goods that has an inventory row is 23503 fk_goods_inventory_goods and both rows remain",
+        "No row is committed by this case"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-DB-GDS-003-001",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": ["DB-GDS-003", "DI-030-006", "BR-GDS-003", "SPEC-100-38"],
+      "system_invariant_ids": ["INV-010-10"],
+      "api_operation_ids": [],
+      "db_constraint_names": ["ck_goods_inventory_capacity"],
+      "preconditions": "Independent real PG17 database with every migration applied by app_migrator; the catalog and constraint goldens are written by hand from SPEC-100 and are not derived from schema-contract.json or the migration; administrator connection inside BEGIN / ROLLBACK, one savepoint per attempt, synthetic data only",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Goods inventory never exceeds the saleable capacity even if the application is wrong"
+      ],
+      "expected_db_postconditions": [
+        "Rows with (saleable_capacity, held, committed) of (10, 4, 6), (0, 0, 0), (10, 0, 10), (10, 10, 0) and (1, 1, 0) are accepted; (10, 5, 6), (10, 0, 11), (10, 11, 0), (0, 1, 0) and (0, 0, 1) are 23514 ck_goods_inventory_capacity",
+        "On a full row, held + 1, committed + 1 and saleable_capacity = 9 are each rejected with 23514 by the same name and the row keeps (10, 4, 6)",
+        "Moving one unit from held to committed in a single UPDATE and releasing one unit are accepted; holding one more unit is accepted and holding two is rejected",
+        "No row is committed by this case"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DB-FK-002-001",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": ["DB-FK-002", "DB-FK-004", "DB-ID-003", "SPEC-100-11"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [
+        "fk_faq_items_event",
+        "fk_announcements_event",
+        "fk_sponsor_logos_event",
+        "fk_entry_ticket_offerings_event",
+        "fk_karaoke_sales_configurations_event",
+        "fk_goods_event",
+        "fk_goods_inventory_goods"
+      ],
+      "preconditions": "Independent real PG17 database with every migration applied by app_migrator; the catalog and constraint goldens are written by hand from SPEC-100 and are not derived from schema-contract.json or the migration; administrator connection inside BEGIN / ROLLBACK, one savepoint per attempt, synthetic data only",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Deleting an Event never cascades into sales configuration or content, and no delete of a referenced parent loses a child"
+      ],
+      "expected_db_postconditions": [
+        "The seven foreign keys of the eight tables (six to events, fk_goods_inventory_goods to goods) are ON DELETE RESTRICT and ON UPDATE NO ACTION and name the expected parent",
+        "An absent event_id is 23503 fk_<table>_event and an omitted event_id is 23502 on faq_items, announcements, sponsor_logos, entry_ticket_offerings, karaoke_sales_configurations and goods",
+        "Deleting an event that has a child row in any of the six tables is 23503 fk_<table>_event and the event and the child both remain",
+        "No row is committed by this case"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-SEC-DB-001-001",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "SEC-DB-001",
+        "SEC-DB-003",
+        "INF-DB-005",
+        "SPEC-140-39",
+        "SPEC-180-22.2",
+        "SPEC-100-53",
+        "DB-FK-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Independent real PG17 database; app_api_runtime, app_email_runtime and app_reconciliation_runtime log in through createDatabase; the administrator reads the catalog, seeds and removes the synthetic rows the runtime roles act on, and the expected privilege table is the approved one (goods and karaoke_sales_configurations are SELECT only for the API)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Only the API role has any privilege on the eight tables, no role can DELETE or TRUNCATE, and the workers hold nothing"
+      ],
+      "expected_db_postconditions": [
+        "has_table_privilege for the four roles over SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER and MAINTAIN equals the approved table: faq_items, announcements and sponsor_logos SELECT, INSERT, UPDATE; events, entry_ticket_offerings and goods_inventory SELECT, UPDATE; goods and karaoke_sales_configurations SELECT; app_email_runtime, app_reconciliation_runtime and app_runtime hold none",
+        "The ACL of each table has no PUBLIC entry and names only the owner and the approved app_api_runtime grants; no role has any privilege on the seven identity sequences",
+        "app_api_runtime INSERT and UPDATE on the content tables and UPDATE on events, offerings and inventory succeed inside a transaction that is rolled back; INSERT on the five other tables is 42501, UPDATE on goods and karaoke_sales_configurations is 42501, and DELETE and TRUNCATE on all eight tables are 42501",
+        "app_email_runtime and app_reconciliation_runtime SELECT, UPDATE, DELETE and INSERT are 42501 on every table; after every refusal the rows are unchanged"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
     },
     {
       "test_case_id": "TC-DEV-SEC-004-020",
@@ -17100,7 +17574,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "@off-r39x/api-contract exports exactly createPublicRpc, currentProfileSchema, errorSchema, errorStatuses, principalNavigationSchema, successSchema and updateCurrentProfileRequestSchema at runtime (PR-L2-1a added the two profile schemas)",
+        "@off-r39x/api-contract exports exactly createPublicRpc, currentProfileSchema, errorRetryable, errorSchema, errorStatuses, principalNavigationSchema, successSchema and updateCurrentProfileRequestSchema at runtime (PR-L2-1a added the two profile schemas, PR-S0-3a added errorRetryable)",
         "ErrorCode, PrincipalNavigation, CurrentProfile, UpdateCurrentProfileRequest and AppType keep their compile-time shapes, including the hc client members self.principal.$get, self.profile.$get and self.profile.$patch (enforced by pnpm typecheck)",
         "createPublicRpc registers only GET /api/v1/self/principal, GET /api/v1/self/profile and PATCH /api/v1/self/profile (guard, body validator and handler entries) and answers them with the data/meta envelope built from the injected principal, profile and request ID; a principal or profile with an extra key, or a profile updated_at without milliseconds, is rejected by the strict schema with 500; POST and PUT on the profile path and other paths are not registered"
       ],
@@ -17131,8 +17605,8 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "errorStatuses keeps the 26 codes in order with their HTTP statuses, including METHOD_NOT_ALLOWED 405 and UNSUPPORTED_MEDIA_TYPE 415, and errorSchema's code enum equals that list",
-        "errorSchema, successSchema and principalNavigationSchema accept and reject the same fixed inputs with the same parsed data and issue codes/paths as before the file split"
+        "errorStatuses keeps the 26 codes in order with their HTTP statuses, including METHOD_NOT_ALLOWED 405 and UNSUPPORTED_MEDIA_TYPE 415, and errorSchema's discriminated-union variants carry those codes in the same order",
+        "errorSchema, successSchema and principalNavigationSchema accept and reject the fixed inputs with the same parsed data and issue codes/paths as before, except that an unknown code is an invalid_union at the code path and a missing retryable is an invalid_value (S0-3a discriminated union, SPEC-110 section 16)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -17971,7 +18445,9 @@
       ],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "Fail closed within the canonical boundary; no unintended business mutation"
+        "Fail closed within the canonical boundary; no unintended business mutation",
+        "An errno (ECONNRESET, EPIPE) raised by the callback client's query() is a DatabaseUnavailableError with the original as cause, no private message, one attempt and one db.availability.failed log without sqlstate",
+        "An errno (ECONNRESET, EPIPE) thrown by the callback's own code is rethrown unchanged, with one attempt and no db.availability.failed log"
       ],
       "expected_db_postconditions": [
         "A throwing logger leaves one committed row and a committed result"
@@ -18088,7 +18564,7 @@
       "test_case_id": "TC-HTTP-AUDIT-004",
       "level": "API",
       "suite": "api",
-      "upstream_rule_ids": ["REL-DB-011"],
+      "upstream_rule_ids": ["REL-DB-011", "DEV-API-010", "SEC-API-020"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -25652,7 +26128,8 @@
         "AR-OWN-006",
         "SPEC-100-14.1",
         "SPEC-110-50",
-        "SPEC-110-51"
+        "SPEC-110-51",
+        "REL-DB-009"
       ],
       "system_invariant_ids": ["INV-010-08"],
       "api_operation_ids": [],
@@ -25775,7 +26252,8 @@
         "API-AUTH-004",
         "DEV-DB-002",
         "SPEC-110-50",
-        "SPEC-110-51"
+        "SPEC-110-51",
+        "REL-DB-009"
       ],
       "system_invariant_ids": ["INV-010-08"],
       "api_operation_ids": ["API-AUTH-002", "API-AUTH-004"],
@@ -25825,6 +26303,339 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": false
+    },
+    {
+      "test_case_id": "TC-DEV-API-003-002",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "DEV-API-003",
+        "SEC-ERR-002",
+        "SEC-ERR-001",
+        "SPEC-110-16",
+        "SPEC-110-20",
+        "SPEC-110-21",
+        "SPEC-110-28"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Static import of @off-r39x/api-contract by package name; synthetic UUIDs only; no network, database or environment variables",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "errorRetryable equals the SPEC-110 section 21 Retryable column in errorStatuses order; the 24 codes with a fixed Retryable reject the opposite value and the two conditional codes accept both booleans",
+        "STATE_CONFLICT alone accepts details null or a strict item_failures of 1 to 50 entries ({ kind ENTRY|GOODS, target_ref lowercase UUID, reasons }) with reasons non-empty, unique and in API-PUR-ELG-001 order and no repeated (kind, target_ref); every other code accepts details null only",
+        "Extra keys, unknown reasons and kinds, uppercase or non-UUID target_ref, and field or item_failures details on other codes are rejected; the parsed code type equals ErrorCode",
+        "The type of details is fixed per code by the type system: ErrorDetails of SOLD_OUT is null and a ServiceResult rejected with SOLD_OUT and item_failures does not compile"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DEV-API-010-001",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["DEV-API-010", "REL-DB-002", "TST-DB-005", "DEV-DB-007", "SPEC-110-50"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Synthetic error objects and a table whose resolve callbacks are counted; classification logic only, not evidence of what PostgreSQL returns (TST-UNT-001)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "classifyDatabaseError maps 40001/40P01/55P03 to retryable, a transaction deadline to deadline, SQLSTATE 08xxx/57P01-57P03 and DatabaseUnavailableError to unavailable and a bare Node errno (including EAI_AGAIN) to other, 57014 to statement_timeout, 23505/23P01/23503/23514 to constraint (name only when a string) and everything else to other",
+        "resolveConstraintViolation calls the table's resolve exactly once and returns its result unchanged only for a registered name with a matching SQLSTATE; every other error is rethrown as the same reference with resolve not called; a resolve failure propagates; the original operation is never re-run"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-REL-DB-009-001",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["REL-DB-009", "DEV-DB-007", "REL-DB-001", "REL-DB-006"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Fake pool with an injected connect() failure, a discarded connection, a query rejected without a SQLSTATE, or a COMMIT failure; no real PostgreSQL",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "pool_connect_failure",
+        "connection_error_event",
+        "query_rejection_without_sqlstate"
+      ],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "A codeless pool connect failure or a codeless failure on a discarded connection rejects with DatabaseUnavailableError carrying the original as cause and a fixed message; the callback does not run for a connect failure; no retry is scheduled",
+        "A connect or query failure that carries only a Node errno (ECONNRESET, ECONNREFUSED, EPIPE, ETIMEDOUT, ENOTFOUND, EHOSTUNREACH, ENETUNREACH, EAI_AGAIN) rejects with DatabaseUnavailableError carrying the original as cause",
+        "An error that carries a connection SQLSTATE (08006), at query or connect, is rethrown as it is, and a codeless error from a healthy connection stays the callback's own error",
+        "An errno (ECONNRESET, EPIPE, EAI_AGAIN, ECONNREFUSED, ETIMEDOUT) thrown by the callback itself on a healthy connection is rethrown as the identical original error, not DatabaseUnavailableError; db.availability.failed is not logged, ROLLBACK is issued, the healthy connection is released normally (not discarded) and no retry is scheduled",
+        "connectAttempts() counts every connect() call whether or not a connect hook is given",
+        "A five-letter Node errno (EBADF, EPERM, EBUSY, EPIPE) is never taken for a SQLSTATE: a COMMIT failing with it returns commit_unknown without ROLLBACK and discards the connection, and a query failing with it after a reported connection loss rejects with DatabaseUnavailableError carrying the original as cause",
+        "A query of the transaction (BEGIN, SET LOCAL or a query on the callback client) that the driver rejects with no code or with a Node errno outside the connect list (EBADF, EPERM), with no connection error or end event, rejects with DatabaseUnavailableError carrying the original as cause; no ROLLBACK is sent and the connection is discarded; a codeless error the callback throws after a successful query stays its own error and the connection is released normally"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "db.availability.failed is logged once for a DB-originated connection failure and not at all for a callback's own error; db.transaction.retry_scheduled is not logged",
+        "reliability.unknown_result.opened is logged once for a COMMIT failing with a five-letter errno, and no log line carries a five-letter errno as sqlstate"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-SEC-ERR-001-001",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": [
+        "SEC-ERR-001",
+        "SEC-API-022",
+        "SEC-ABU-007",
+        "DEV-API-003",
+        "SPEC-110-17",
+        "SPEC-110-20",
+        "SPEC-110-21"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Harness-only routes on a test app throw ApiFailure for each code; known path hit with PUT for METHOD_NOT_ALLOWED; no DB or Redis",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [400, 401, 403, 404, 405, 409, 410, 413, 415, 422, 424, 429, 500, 503],
+      "expected_domain_postconditions": [
+        "Each of the 26 codes answers with its section 21 status, a body that passes errorSchema, retryable from errorRetryable (conditional resolves to false), details null, one of two fixed messages, error.request_id equal to X-Request-Id and Cache-Control no-store",
+        "RATE_LIMIT_EXCEEDED carries an integer Retry-After of at least 1 (0 rounds up to 1); METHOD_NOT_ALLOWED alone carries Allow"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": ["http.request.completed is recorded for each response"],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-SEC-API-022-002",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["SEC-API-022", "SPEC-110-21"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Literal path, parameterized path, multi-method path and an unknown path hit with PUT, DELETE and others; harness routes only",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [404, 405],
+      "expected_domain_postconditions": [
+        "A known path answers 405 METHOD_NOT_ALLOWED with Allow listing its methods in ascending order (GET adds HEAD) and retryable false; an unknown path answers 404 RESOURCE_NOT_FOUND for every method without Allow; neither is converted to 401, 403 or 409"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": ["http.request.completed is recorded for each response"],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DEV-API-003-003",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["DEV-API-003", "SPEC-110-19", "SPEC-110-17", "SEC-ERR-001"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Harness-only routes call successResponse and respond with matching, extra-key and wrong-type data",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [200, 201, 500],
+      "expected_domain_postconditions": [
+        "Matching data answers 200 or 201 with exactly { data, meta: { request_id } } and meta.request_id equal to X-Request-Id",
+        "Data that does not match the schema answers 500 INTERNAL_ERROR with details null and neither the body nor the log contains the data values",
+        "successResponse and respond accept the schema input type and send the parsed output (a transform runs: input count \"3\" is sent as the number 3)",
+        "successResponse with parsed data that is undefined (a transform to undefined) answers 500 INTERNAL_ERROR with details null instead of a 200 or 201 without data, and the input value is not echoed",
+        "successResponse sends data only when the parsed data is losslessly JSON-representable (null, boolean, string, finite number, array of JSON values, plain object whose properties are JSON values or undefined); a top-level symbol, function, bigint, NaN, Infinity, Date or Map, a symbol property, an undefined array element or a bigint array element answers 500 INTERNAL_ERROR with details null and no echo of the value",
+        "An array carrying an own enumerable non-index key (an extra property, or an own toJSON function) is not losslessly representable: it answers 500 INTERNAL_ERROR with details null and neither the body nor the log contains the extra or replacement values, while an ordinary array of elements stays 200",
+        "An object with an undefined optional property, null, an empty array and nested plain objects stay 200 with data present (an undefined property is simply absent in JSON)",
+        "The sent data is a JSON-only copy built during validation, so the check and the bytes agree: a plain object (top-level, nested or null-prototype) with a non-enumerable toJSON, an array with a non-enumerable index or a non-enumerable extra key, and an object with an enumerable getter answer 500 INTERNAL_ERROR with details null and neither the body nor the log contains the values",
+        "An object with an own string-valued toJSON key stays 200 with the key sent as data, and a non-enumerable own property is not sent (as in JSON); each property is read once, so a Proxy whose value changes on every get is sent with the first value and is not re-read after the check",
+        "Data whose reported prototype chain revisits an object or does not reach null within the bound (a Proxy whose getPrototypeOf returns itself, top-level, nested or wrapping an array, or returns a fresh object each time) answers 500 INTERNAL_ERROR with details null without hanging; the walk stops after fewer than 100 getPrototypeOf calls and neither the body nor the log contains the data values"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "http.request.completed is recorded with the response status and no data values"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DEV-API-003-004",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": [
+        "SEC-ERR-001",
+        "SEC-ERR-002",
+        "DEV-API-011",
+        "SPEC-110-20",
+        "SPEC-110-28",
+        "REL-DB-006",
+        "DEV-API-003"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Harness-only route returns rejected, temporary and commit_unknown service results through respond(), including invalid details",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [409, 424, 500, 503],
+      "expected_domain_postconditions": [
+        "STATE_CONFLICT with valid item_failures answers 409 with the details unchanged; without details it answers details null",
+        "item_failures details are accepted only when the operationId is API-PUR-CART-001; under another operationId or none the same details answer 500 INTERNAL_ERROR with details null and no echo of the code, target_ref or reasons",
+        "Details with an unknown reason, an extra key, or on a code that allows none answer 500 INTERNAL_ERROR with details null and no echo of the input or the original code",
+        "A temporary Stripe failure answers 424 retryable; commit_unknown answers 503 DATABASE_TEMPORARY_FAILURE retryable; exactly one response per request",
+        "A success result whose parsed data is undefined answers 500 INTERNAL_ERROR with details null instead of a 200 without data, and the input value is not echoed",
+        "A success result whose parsed data is not JSON-representable (a top-level symbol, or an object with a symbol property) answers 500 INTERNAL_ERROR with details null and no echo; a plain object with an undefined optional property stays 201 with data present",
+        "A success result whose parsed data is an object with a non-enumerable toJSON answers 500 INTERNAL_ERROR with details null and no echo instead of a 201 without data"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": ["http.request.completed is recorded with the response status"],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-REL-DB-009-002",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": ["REL-DB-009", "SEC-API-020", "SPEC-110-51"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Harness-only route throws 08006, 57P01, ECONNRESET, EAI_AGAIN, DatabaseUnavailableError, a plain Error and 57014",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": ["synthetic_exception"],
+      "expected_http": [500, 503],
+      "expected_domain_postconditions": [
+        "Connection-class SQLSTATE (08006, 57P01) and DatabaseUnavailableError answer 503 DATABASE_TEMPORARY_FAILURE with retryable true, details null and no SQLSTATE or message in the body",
+        "A bare Node errno (ECONNRESET, EAI_AGAIN) thrown by a handler answers 500 INTERNAL_ERROR with no errno or message in the body, since SPEC-110 section 51 makes only a database connection failure a 503",
+        "Through transaction() on a fake pool, an errno from the callback's client.query() answers 503 DATABASE_TEMPORARY_FAILURE and an errno thrown by the callback itself answers 500 INTERNAL_ERROR and is not logged as db.availability.failed; neither the errno nor the marker appears in the body or the logs",
+        "A plain Error without SQLSTATE answers 500 INTERNAL_ERROR; 57014 stays 500 INTERNAL_ERROR in this change"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "http.request.completed is recorded once with http_status equal to the response status"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DEV-API-011-001",
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": [
+        "DEV-API-011",
+        "SEC-ERR-001",
+        "SEC-ERR-003",
+        "SEC-API-020",
+        "OBS-LOG-005"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Harness-only routes throw synthetic Errors carrying markers, pg-style fields, bigint properties, a ZodError and a nested cause; synthetic markers only",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": ["synthetic_exception"],
+      "expected_http": [500],
+      "expected_domain_postconditions": [
+        "Every unclassified exception answers the exact fixed INTERNAL_ERROR envelope; neither the body, the headers nor any log line contains the markers, constraint or table names, SQLSTATE, internal ids, stack frames or file paths"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "http.request.completed keeps its fixed key set and shows no marker or stack"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DEV-API-010-002",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": ["DEV-API-010", "REL-DB-002", "TST-DB-004", "TST-DB-005", "DB-ARC-007"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [
+        "uq_constraint_probe_key",
+        "ux_constraint_probe_active_slot",
+        "ex_constraint_probe_during",
+        "fk_constraint_probe_parent",
+        "ck_constraint_probe_qty"
+      ],
+      "preconditions": "Real PostgreSQL17 disposable database; synthetic probe table with constraints uq_constraint_probe_key, ux_constraint_probe_active_slot, ex_constraint_probe_during, fk_constraint_probe_parent and ck_constraint_probe_qty (names are synthetic)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The callback runs once per violation; classifyDatabaseError returns constraint with the real SQLSTATE and constraint name; a registered name settles through resolve once (existing row, or SLOT_UNAVAILABLE) and an unregistered CHECK violation is rethrown"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "db.constraint_loser.completed is recorded for the unique, partial unique and exclusion violations (pre-classification recording, existing behavior)"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-REL-DB-009-003",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": ["REL-DB-009", "DEV-DB-007"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real PostgreSQL17; test-only pool with max 1 and a short connectionTimeoutMillis whose only client is held by the test",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": ["pool_acquire_timeout"],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "transaction() rejects with DatabaseUnavailableError whose cause is the pool's codeless acquisition error, the callback does not run, and it succeeds again once the client is released"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": ["db.availability.failed is logged once"],
+      "sensitivity_class": "synthetic",
+      "critical": true
     }
   ]
 }
