@@ -36,13 +36,19 @@ function build() {
       page: { next_cursor: null, has_more: false },
     });
   });
-  const get = (query: string) =>
-    app.request(`/api/v1/test/list${query}`, { headers: { Origin: "https://web.example.test" } });
-  return { get, handled, lines };
+  const requestIds: string[] = [];
+  const get = async (query: string) => {
+    const res = await app.request(`/api/v1/test/list${query}`, {
+      headers: { Origin: "https://web.example.test" },
+    });
+    requestIds.push(res.headers.get("X-Request-Id") ?? "");
+    return res;
+  };
+  return { get, handled, lines, requestIds };
 }
 
 it("TC-API-QRY-001-002 list query: unknown, duplicate, out-of-range and tampered input is 400 VALIDATION_FAILED before the handler", async () => {
-  const { get, handled, lines } = build();
+  const { get, handled, lines, requestIds } = build();
 
   const first = await get("");
   expect(first.status).toBe(200);
@@ -91,16 +97,20 @@ it("TC-API-QRY-001-002 list query: unknown, duplicate, out-of-range and tampered
   expect(ok.status).toBe(200);
   expect(handled).toEqual([{ limit: 30, position: { keys: [TIMESTAMP], publicRef: REF } }]);
 
-  // (e) SPEC-160-15: no captured log line carries the query, a cursor or a query value.
-  // The app currently emits no http.request.completed line, so this can be vacuous; it still pins
-  // that nothing logged (now or later) carries query data.
+  // (e) SPEC-160-15: every request has one http.request.completed line (matched by request_id),
+  // and no logged line carries the query, a cursor or a query value.
+  expect(requestIds.length).toBe(bad.length + 2);
+  const records = lines.map((line) => JSON.parse(line) as Record<string, unknown>);
+  for (const id of requestIds) {
+    const done = records.filter(
+      (r) => r.event_name === "http.request.completed" && r.request_id === id,
+    );
+    expect(done, id).toHaveLength(1);
+    expect(String(done[0]?.http_route)).not.toContain("?");
+  }
   for (const line of lines) {
     for (const secret of [good, tampered, "foo", "created_at", "?"]) {
       expect(line).not.toContain(secret);
     }
   }
-  const completed = lines
-    .map((line) => JSON.parse(line))
-    .filter((entry) => entry.event === "http.request.completed");
-  for (const entry of completed) expect(String(entry.http_route)).not.toContain("?");
 });
