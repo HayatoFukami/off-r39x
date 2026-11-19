@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { defineListCursor } from "../../apps/api/src/api/pagination.ts";
+import { defineListCursor, listCursorBinding } from "../../apps/api/src/api/pagination.ts";
 import { type SyntheticCursorKey, syntheticCursorKey } from "../harness/pagination.ts";
 
 // PR-S0-3b C1: signed opaque list cursor (SPEC-110 section 12 / 9, API-QRY-004, SEC-DEP-007). The
@@ -220,8 +220,29 @@ describe("TC-API-QRY-004-003 a cursor is bound to key, version, Operation, mode,
     });
   });
 
-  // limit is not part of the binding (plan A-3): a caller passes the Zod-validated query without
-  // limit and cursor, so changing limit between pages keeps the same cursor usable.
+  // limit is not part of the binding (plan A-3): listCursorBinding drops limit and cursor from the
+  // Zod-validated query, so changing limit between pages keeps the same cursor usable.
+  it("listCursorBinding drops limit and cursor, adds the scope and rejects a colliding scope", () => {
+    const page1 = { limit: 10, state: "CONFIRMED", order: "CREATED_DESC" };
+    const scope = { profile_ref: "00000000-0000-4000-8000-0000000000b1" };
+    const issued = cursor.encode(K1, P, listCursorBinding(page1, scope));
+    const page2 = { ...page1, limit: 50, cursor: issued };
+    expect(listCursorBinding(page2, scope)).toEqual({ ...bound, ...scope });
+    expect(cursor.decode(K1, issued, listCursorBinding(page2, scope))).toEqual({
+      ok: true,
+      position: P,
+    });
+    expect(
+      cursor.decode(
+        K1,
+        issued,
+        listCursorBinding(page2, { profile_ref: "00000000-0000-4000-8000-0000000000b2" }),
+      ),
+    ).toEqual({ ok: false });
+    expect(cursor.decode(K1, issued, listCursorBinding(page2))).toEqual({ ok: false });
+    expect(() => listCursorBinding(page1, { state: "CANCELED" })).toThrow();
+    expect(() => listCursorBinding({ limit: 10, state: ["CONFIRMED"] })).toThrow();
+  });
 });
 
 describe("TC-API-QRY-004-004 an invalid signing key fails closed", () => {

@@ -115,7 +115,43 @@ export function defineListCursor<K extends z.ZodType<readonly CursorScalar[]>>(d
   };
 }
 
-/** Undefined for the first page; a rejected cursor is a 400 VALIDATION_FAILED (no reason is given). */
+/**
+ * The binding a list Operation passes to encode / decode (API-QRY-004): the Zod-validated query with
+ * `limit` and `cursor` removed (limit may change between pages, plan A-3), plus the server-derived
+ * scope, for example the caller's Business Profile ref on a self list (plan A-4). Build it with this
+ * function rather than by hand, and use the same query and scope for the next page's cursor. A scope
+ * name that is also a query field, or a value that is not a string, number or boolean, is a
+ * programming error and throws.
+ */
+export function listCursorBinding(
+  query: Readonly<{ limit: number; cursor?: string | undefined }> &
+    Readonly<Record<string, unknown>>,
+  scope: CursorBinding = {},
+): CursorBinding {
+  const binding: Record<string, string | number | boolean | undefined> = {};
+  for (const [name, value] of Object.entries(query)) {
+    if (name === "limit" || name === "cursor") continue;
+    if (
+      value !== undefined &&
+      typeof value !== "string" &&
+      typeof value !== "number" &&
+      typeof value !== "boolean"
+    )
+      throw new Error("Unsupported cursor binding value");
+    binding[name] = value;
+  }
+  for (const [name, value] of Object.entries(scope)) {
+    if (Object.hasOwn(binding, name)) throw new Error("Cursor scope collides with a query field");
+    binding[name] = value;
+  }
+  return binding;
+}
+
+/**
+ * Low-level read: the caller supplies the binding. List handlers use readListCursor instead, so the
+ * binding is always built by listCursorBinding. Undefined for the first page; a rejected cursor is a
+ * 400 VALIDATION_FAILED (no reason is given).
+ */
 export function readCursor<K extends z.ZodType<readonly CursorScalar[]>>(
   definition: ReturnType<typeof defineListCursor<K>>,
   cursorKey: CursorKey,
@@ -126,4 +162,19 @@ export function readCursor<K extends z.ZodType<readonly CursorScalar[]>>(
   const result = definition.decode(cursorKey, token, binding);
   if (!result.ok) throw new ApiFailure("VALIDATION_FAILED");
   return result.position;
+}
+
+/**
+ * Reads the cursor of a validated list query (the `validatedQuery` of validateQuery) with the binding
+ * from listCursorBinding(query, scope). Undefined for the first page; a rejected cursor is a 400
+ * VALIDATION_FAILED.
+ */
+export function readListCursor<K extends z.ZodType<readonly CursorScalar[]>>(
+  definition: ReturnType<typeof defineListCursor<K>>,
+  cursorKey: CursorKey,
+  query: Readonly<{ limit: number; cursor?: string | undefined }> &
+    Readonly<Record<string, unknown>>,
+  scope: CursorBinding = {},
+) {
+  return readCursor(definition, cursorKey, query.cursor, listCursorBinding(query, scope));
 }

@@ -26783,7 +26783,8 @@
       "preconditions": "Synthetic 32-byte cursor keys from tests/harness/pagination.ts; no environment variables, network, database or Redis",
       "expected_domain_postconditions": [
         "A different key, key version, Operation, filter, mode or scope decodes to { ok: false }, including a binding that drops only the filter and keeps the mode",
-        "Binding key order and undefined values do not matter; limit is not part of the binding"
+        "Binding key order and undefined values do not matter; limit is not part of the binding",
+        "listCursorBinding drops limit and cursor from the validated query and adds the server-derived scope (a cursor issued with limit 10 decodes with limit 50; another or a missing scope decodes to { ok: false }); a scope name that is a query field, or a non-scalar value, throws"
       ],
       "critical": true
     },
@@ -26841,7 +26842,8 @@
       "expected_domain_postconditions": [
         "No query is 200 with page { next_cursor: null, has_more: false } and the handler sees limit 30",
         "Unknown (including nameless ?=x), duplicate, out-of-range, empty or tampered cursor, filter-mismatched cursor and a cursor sent without its filter are 400 VALIDATION_FAILED, retryable false, details null, request_id equal to X-Request-Id, no-store, handler not run, and the body echoes no cursor or query value",
-        "A valid cursor is 200 and the handler receives the decoded position"
+        "A valid cursor is 200 and the handler receives the decoded position, reading the query through the same validateQuery instance, typed from its schema (no cast), and readListCursor",
+        "Reading through a validateQuery instance that did not run for the request is 500 INTERNAL_ERROR, never another schema's data"
       ],
       "critical": true
     }
