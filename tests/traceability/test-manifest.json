@@ -17100,9 +17100,9 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "@off-r39x/api-contract exports exactly createPublicRpc, currentProfileSchema, errorSchema, errorStatuses, principalNavigationSchema, successSchema and updateCurrentProfileRequestSchema at runtime (PR-L2-1a added the two profile schemas)",
-        "ErrorCode, PrincipalNavigation, CurrentProfile, UpdateCurrentProfileRequest and AppType keep their compile-time shapes, including the hc client members self.principal.$get, self.profile.$get and self.profile.$patch (enforced by pnpm typecheck)",
-        "createPublicRpc registers only GET /api/v1/self/principal, GET /api/v1/self/profile and PATCH /api/v1/self/profile (guard, body validator and handler entries) and answers them with the data/meta envelope built from the injected principal, profile and request ID; a principal or profile with an extra key, or a profile updated_at without milliseconds, is rejected by the strict schema with 500; POST and PUT on the profile path and other paths are not registered"
+        "@off-r39x/api-contract exports exactly createPublicRpc, currentProfileSchema, errorSchema, errorStatuses, principalNavigationSchema, provisionCurrentProfileRequestSchema, successSchema and updateCurrentProfileRequestSchema at runtime (PR-L2-1a added the two profile schemas, PR-L2-1b the provision request schema)",
+        "ErrorCode, PrincipalNavigation, CurrentProfile, UpdateCurrentProfileRequest and AppType keep their compile-time shapes, including the hc client members self.principal.$get, self.profile.$get, self.profile.$patch and self.profile.provision.$post (enforced by pnpm typecheck)",
+        "createPublicRpc registers only GET /api/v1/self/principal, GET /api/v1/self/profile, PATCH /api/v1/self/profile and POST /api/v1/self/profile/provision (guard, body validator and handler entries) and answers them with the data/meta envelope built from the injected principal, profile and request ID (provision: 201 when created, 200 otherwise); a principal or profile with an extra key, or a profile updated_at without milliseconds, is rejected by the strict schema with 500; POST and PUT on the profile path, GET and PATCH on the provision path and other paths are not registered"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -18522,7 +18522,7 @@
       "suite": "api",
       "upstream_rule_ids": ["TST-OBS-001", "SPEC-160-15", "OBS-LOG-006"],
       "system_invariant_ids": [],
-      "api_operation_ids": ["API-AUTH-001", "API-AUTH-002", "API-AUTH-004"],
+      "api_operation_ids": ["API-AUTH-001", "API-AUTH-002", "API-AUTH-003", "API-AUTH-004"],
       "db_constraint_names": [],
       "preconditions": "Synthetic full harness with a recording logger; all SPEC-110 section 23.1 auth routes through a stub transport",
       "fixture_ids": [],
@@ -18531,7 +18531,7 @@
       "fault_points": [],
       "expected_http": [200, 400, 401, 404, 405, 503],
       "expected_domain_postconditions": [
-        "Each request emits exactly one http.request.completed record, last; http_route is one of the 19 registered templates (2 health, the principal route, the profile route and 15 auth routes) or '/' otherwise, with the recorded key set, method, status, level and result"
+        "Each request emits exactly one http.request.completed record, last; http_route is one of the 20 registered templates (2 health, the principal route, the profile route, the profile provision route and 15 auth routes) or '/' otherwise, with the recorded key set, method, status, level and result"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -18642,7 +18642,7 @@
       "suite": "api",
       "upstream_rule_ids": ["DEV-API-002", "DEV-RLM-005", "SPEC-110-14", "SPEC-110-15"],
       "system_invariant_ids": [],
-      "api_operation_ids": ["API-AUTH-001", "API-AUTH-002", "API-AUTH-004"],
+      "api_operation_ids": ["API-AUTH-001", "API-AUTH-002", "API-AUTH-003", "API-AUTH-004"],
       "db_constraint_names": [],
       "preconditions": "Static import of apps/api/src/api/app.ts; minimal createApp and createApp with a stub auth proxy and in-memory rate limit",
       "fixture_ids": [],
@@ -18652,7 +18652,7 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "app.ts exports exactly ApiFailure, createApp, requireCapability, requirePrincipal and requireVerifiedEmail at runtime and keeps its type exports",
-        "The ordered (method, path) list of createApp().routes for both configurations equals the list recorded before the split plus the PR-L2-1a profile entries (GET guard and handler, PATCH guard, body validator and handler); no public, staff, admin or webhook path and no self path other than /api/v1/self/principal and /api/v1/self/profile is mounted"
+        "The ordered (method, path) list of createApp().routes for both configurations equals the list recorded before the split plus the PR-L2-1a profile entries (GET guard and handler, PATCH guard, body validator and handler) and the PR-L2-1b provision entries (POST guard, body validator and handler); no public, staff, admin or webhook path and no self path other than /api/v1/self/principal, /api/v1/self/profile and /api/v1/self/profile/provision is mounted"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -25819,6 +25819,423 @@
       "expected_domain_postconditions": [
         "The public RPC type of PATCH /api/v1/self/profile carries the JSON input { display_name: string | null }: InferRequestType<...$patch>[json] equals it",
         "$patch accepts { display_name: string } and { display_name: null }; an omitted body, an empty object and a non-string display_name are type errors"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-DB-AUTH-001-001",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": [
+        "DB-AUTH-001",
+        "API-AUTH-003",
+        "AR-ID-004",
+        "AR-ID-001",
+        "AR-ID-002",
+        "SPEC-110-19",
+        "SPEC-110-21",
+        "SPEC-110-51",
+        "SPEC-110-13",
+        "SPEC-110-16",
+        "SPEC-110-24",
+        "SPEC-110-24.1",
+        "SEC-API-022",
+        "API-IDM-003",
+        "AR-ID-006",
+        "REL-AUTH-005"
+      ],
+      "system_invariant_ids": [
+        "INV-010-08"
+      ],
+      "api_operation_ids": [
+        "API-AUTH-003"
+      ],
+      "db_constraint_names": [],
+      "preconditions": "createApp with a stub Principal store, a recording CurrentProfileStore (AppDependencies.profiles) with DI fault injection and the in-memory rate limit; synthetic subjects and refs only; no database (G4 slice; the real PostgreSQL slice is TC-DB-AUTH-001-004/005/006). The success data has the shape of API-AUTH-002, a decision of the project owner recorded as UCR-110-010 (to be incorporated into SPEC-110 by a separate specification PR)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "FP.DB.INSIDE_STATEMENT",
+        "FP.DB.AFTER_COMMIT_SENT_BEFORE_ACK"
+      ],
+      "expected_http": [
+        200,
+        201,
+        400,
+        401,
+        404,
+        405,
+        413,
+        415,
+        500,
+        503
+      ],
+      "expected_domain_postconditions": [
+        "201 for a verified subject without a Profile and 200 for an existing one (Role holders included), with { data: { profile_ref, display_name, updated_at }, meta: { request_id } }; a new Profile has display_name null and the data never carries the Email or Auth Subject; the store is called once with the verified subject, also for a Profile that exists",
+        "The second request is 200 with the first request's profile_ref; Idempotency-Key is ignored (the store is called twice, 201 then 200); an unknown query is ignored and the token's subject is used",
+        "Unknown fields, display_name, null, array, string and boolean bodies are 400 VALIDATION_FAILED; empty, broken and duplicate-key JSON is 400 MALFORMED_REQUEST; non-JSON media types are 415; more than 64 KiB is 413; none of them provisions, and body validation follows authentication (no token with a bad body is 401 without a Principal read)",
+        "GET, PUT, PATCH and DELETE on the path are 405 with Allow: POST; POST /api/v1/self/profile keeps Allow: GET, HEAD, PATCH",
+        "Store unavailable is 503 DATABASE_TEMPORARY_FAILURE (retryable); commit_unknown is 503 and the resend is 200 with the same profile_ref and one row; a throwing store and an empty reselect are 500 INTERNAL_ERROR (not retryable); without the profiles dependency it is 503 TEMPORARY_UNAVAILABLE before the Principal store",
+        "The completion log carries operation_id API-AUTH-003, http_route /api/v1/self/profile/provision, http_method POST and the status; there is no authorization.decision.completed (no Capability) and no BUSINESS_PROFILE_UNRESOLVED rejection for a request that proceeds without a Profile"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "http.request.completed",
+        "auth.email_verified_resolution.completed"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DB-AUTH-001-002",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "DB-AUTH-001",
+        "API-AUTH-003",
+        "API-RLC-001",
+        "API-RLC-002",
+        "API-RLC-005",
+        "SEC-ABU-017",
+        "SEC-API-029",
+        "DEV-RLM-005",
+        "DEV-API-003",
+        "SPEC-110-54"
+      ],
+      "system_invariant_ids": [
+        "INV-010-08"
+      ],
+      "api_operation_ids": [
+        "API-AUTH-003"
+      ],
+      "db_constraint_names": [],
+      "preconditions": "Static import of @off-r39x/api-contract, apps/api/src/api/routes.ts and @off-r39x/security; synthetic values; no network, database or environment variables",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "provisionCurrentProfileRequestSchema accepts {} only; every unknown field (display_name, profile_ref, auth_subject, role, roles, email), a parsed __proto__ key, null, arrays, strings, numbers and undefined are rejected",
+        "ROUTES holds POST /api/v1/self/profile/provision as API-AUTH-003 / profile_mutation once, without resource references; assertRouteRegistry passes; classifyRequest maps POST to profile_mutation / API-AUTH-003 and leaves GET, HEAD, PUT, PATCH and DELETE unclassified; LOGGED_ROUTE_TEMPLATES carries the path once"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DB-AUTH-001-003",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "DB-AUTH-001",
+        "API-AUTH-003",
+        "AR-ID-001",
+        "AR-ID-006",
+        "SEC-AUTH-003",
+        "SPEC-110-24",
+        "SPEC-110-24.1",
+        "SPEC-060-8.3"
+      ],
+      "system_invariant_ids": [
+        "INV-010-08"
+      ],
+      "api_operation_ids": [
+        "API-AUTH-003"
+      ],
+      "db_constraint_names": [],
+      "preconditions": "Static import of @off-r39x/auth; an in-memory PrincipalStore; synthetic subjects only; no network, database or environment variables",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "resolveProvisioningPrincipal and resolvePrincipal give the same result for every row except a verified Email without a Profile: no directory row is unauthenticated, a directory row of another subject or a non-boolean verified state is consistency, an unverified Email is email whatever the Profile, a Profile of another subject, an invalid public reference or an unknown role is consistency, a store failure is database, a consistent Profile (no role, STAFF, ADMINISTRATOR) gives the same Principal; each makes one store call",
+        "A verified Email without a Profile is denied for resolvePrincipal and { profile: missing, subject } for the provisioning resolver; no Profile with a Role row is consistency (fail closed)",
+        "onEmailVerified is called once when the Email check passes, before the Profile decision, by both functions, and not for an unverified Email, a missing directory row or a store failure; the Email check cannot be switched off (no requireVerifiedEmail option in the type, a runtime false is ignored)"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DB-AUTH-001-004",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "DB-AUTH-001",
+        "API-AUTH-003",
+        "AR-ID-004",
+        "AR-ID-005",
+        "REL-AUTH-005",
+        "TST-GEN-004",
+        "DEV-DB-002",
+        "DEV-DB-003",
+        "SPEC-030-9.2",
+        "SPEC-100-14.1",
+        "SPEC-110-50",
+        "SPEC-110-51"
+      ],
+      "system_invariant_ids": [
+        "INV-010-08"
+      ],
+      "api_operation_ids": [],
+      "db_constraint_names": [
+        "uq_business_profiles_auth_subject"
+      ],
+      "preconditions": "Real PostgreSQL 17 (TEST_DATABASE_URL, TEST_DATABASE_CA, own database per file); migrations applied; fixture rows committed by the setup identity; the repository runs as app_api_runtime over verified TLS; fails, never skips, without the settings",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "FP.DB.BEFORE_TRANSACTION"
+      ],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "provisionCurrentBusinessProfile returns created for a subject without a row and existing for a row that is there (a name and an old updated_at returned as is, a Role holder included); a subject that is not a UUID throws without touching the database",
+        "A saturated pool (max 1), a closed pool and a lock wait that outlasts the 55P03 retry budget are returned as unavailable and not thrown"
+      ],
+      "expected_db_postconditions": [
+        "The created row has auth_subject = the subject, display_name NULL, a lowercase UUID public_ref and created_at = updated_at inside the call window (the DB defaults, not a client value); the returned publicRef and updatedAt (milliseconds) equal the row; the row count rises by one and every other row is unchanged in every column; role_assignments are not touched",
+        "A repeated call leaves every column, updated_at included, and the row count unchanged; unavailable cases leave no row, and after the holder's ROLLBACK there is no partial row"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DB-AUTH-001-005",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "DB-AUTH-001",
+        "API-AUTH-003",
+        "AR-ID-004",
+        "REL-AUTH-004",
+        "TST-CON-001",
+        "TST-CON-002",
+        "TST-CON-003",
+        "TST-GEN-004"
+      ],
+      "system_invariant_ids": [
+        "INV-010-08"
+      ],
+      "api_operation_ids": [],
+      "db_constraint_names": [
+        "uq_business_profiles_auth_subject"
+      ],
+      "preconditions": "Real PostgreSQL 17 (own database per file); a pg.Pool of app_api_runtime over verified TLS sized N + 1 in the test only; a setup session holds an uncommitted INSERT of the subject's row; N provisions start together and the test waits until pg_stat_activity shows N runtime backends in a Lock wait before it releases the holder (no sleep); N = 2 binary race and N = 20 hot contention; fails, never skips, without the settings",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "FP.DB.BEFORE_TRANSACTION"
+      ],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Holder ROLLBACK: exactly one created, the others existing, all with the same publicRef; holder COMMIT: no created and every call existing with the holder's public_ref; no call is unavailable, commit_unknown or thrown (no 23505 exposed)"
+      ],
+      "expected_db_postconditions": [
+        "The subject has exactly one row, the table gains one row and every other row is unchanged in every column; after a rollback the surviving row is not the holder's"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DB-AUTH-001-006",
+      "level": "Integration",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "DB-AUTH-001",
+        "API-AUTH-003",
+        "AR-ID-001",
+        "AR-ID-002",
+        "AR-ID-004",
+        "AR-ID-005",
+        "SEC-AUTH-003",
+        "DEV-API-005",
+        "SPEC-030-9.2",
+        "SPEC-100-14.1",
+        "TST-GEN-004"
+      ],
+      "system_invariant_ids": [
+        "INV-010-08"
+      ],
+      "api_operation_ids": [
+        "API-AUTH-003",
+        "API-AUTH-002"
+      ],
+      "db_constraint_names": [
+        "uq_business_profiles_auth_subject"
+      ],
+      "preconditions": "Real PostgreSQL 17 with the synthetic Identity directory view; signed EdDSA JWT verified by createTokenVerifier; createPrincipalRepository and createCurrentProfileRepository on app_api_runtime; fresh in-memory rate limit per app; subjects A (Profile), C (Email unverified), D (verified, no Profile), E (no directory row), F (ACTIVE ADMINISTRATOR), G (a new subject with A's Email), H (HTTP race); fails, never skips, without the settings",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [
+        200,
+        201,
+        400,
+        401,
+        403
+      ],
+      "expected_domain_postconditions": [
+        "D is 201 with display_name null and no directory Email in the response, then GET /api/v1/self/profile and /api/v1/self/principal show the same profile_ref and a second POST is 200 with the same data; C is 403 EMAIL_VERIFICATION_REQUIRED, E is 401 AUTHENTICATION_REQUIRED, A and the ADMINISTRATOR F are 200 with their own values",
+        "G is 201 with a profile_ref different from A's; a body with another person's auth_subject and profile_ref plus a role claim is 400 VALIDATION_FAILED; a role claim in the token gives D no Role; two simultaneous POSTs of H are one 201 and one 200 with the same data"
+      ],
+      "expected_db_postconditions": [
+        "D gets exactly one row (display_name NULL, public_ref = the returned profile_ref) and a repeat changes nothing; C and E get no row; A and F rows and F's role_assignments are unchanged; G's creation leaves A's row unchanged (no re-pointing by Email); refusals leave every row unchanged; H has one row"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DB-AUTH-001-007",
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": [
+        "DB-AUTH-001",
+        "API-AUTH-003",
+        "API-AUTH-004",
+        "AR-ID-001",
+        "AR-ID-002",
+        "AR-AZ-002",
+        "SEC-AUTH-003",
+        "SEC-API-029",
+        "DEV-API-004",
+        "SPEC-110-24",
+        "SPEC-110-24.1",
+        "SEC-ABU-017",
+        "SEC-ABU-019",
+        "SEC-ABU-020",
+        "API-RLC-001",
+        "OBS-AUTH-001",
+        "SPEC-160-49.1"
+      ],
+      "system_invariant_ids": [
+        "INV-010-08"
+      ],
+      "api_operation_ids": [
+        "API-AUTH-003",
+        "API-AUTH-004",
+        "API-AUTH-002"
+      ],
+      "db_constraint_names": [],
+      "preconditions": "createApp with a stub Principal store, a recording CurrentProfileStore, the in-memory rate limit and DI fault injection (FP.RATELIMIT.*, FP.DB.*); synthetic subjects, refs, token and Email only; no database. The parity partner is PATCH /api/v1/self/profile (same mutation, same profile_mutation class, same guard front half)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "FP.RATELIMIT.STORE_UNAVAILABLE",
+        "FP.DB.INSIDE_STATEMENT",
+        "FP.DB.AFTER_COMMIT_SENT_BEFORE_ACK"
+      ],
+      "expected_http": [
+        201,
+        400,
+        401,
+        403,
+        404,
+        409,
+        429,
+        500,
+        503
+      ],
+      "expected_domain_postconditions": [
+        "Parity: for no token, an invalid token, no directory row, a directory row of another subject, a non-boolean emailVerified, an unverified Email with and without a Profile, a Principal store failure, a Profile of another subject, an invalid public reference, an unknown role, a rate limit store failure, no Origin, a mismatched Origin and Sec-Fetch-Site cross-site, POST provision and PATCH give the same status, error code, security events (name, reason code, result), guard counter and Principal reads, and neither the store's update nor its provision is called; GET /api/v1/self/profile agrees on status and code for the directory, Email, inconsistency and database rows",
+        "The single difference is a verified Email without a Profile: PATCH and GET are 403 AUTHORIZATION_DENIED, provision is 201",
+        "Bodies with profile_ref, auth_subject, role, roles, owner, capabilities, display_name or __proto__ are 400 and provision nothing; no query, header or path segment names another person (the token's subject is used; a path segment is 404)",
+        "The 4th provision within 10 s is 429 RATE_LIMIT_EXCEEDED with an integer Retry-After and a Stage 2 rejection stops before the Principal read; no log line or response carries an Email, a raw Auth Subject or a token"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "http.request.completed",
+        "auth.email_verified_resolution.completed",
+        "auth.business_profile_resolution.completed"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DB-AUTH-001-008",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "DB-AUTH-001",
+        "API-AUTH-003",
+        "REL-AUTH-005",
+        "DEV-DB-002",
+        "SPEC-110-50",
+        "SPEC-110-51"
+      ],
+      "system_invariant_ids": [
+        "INV-010-08"
+      ],
+      "api_operation_ids": [
+        "API-AUTH-003"
+      ],
+      "db_constraint_names": [],
+      "preconditions": "createCurrentProfileRepository over node-postgres pools pointed at local TCP servers that misbehave (closed by the peer right after connect, accepts and never answers, pool used after end); no PostgreSQL. EAI_AGAIN (Issue #69) is not covered and is fixed for read, update and provision together in #69",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "FP.DB.BEFORE_TRANSACTION"
+      ],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Each case first asserts that the raw pool error has no code and the node-postgres message (Connection terminated unexpectedly, Connection terminated due to connection timeout, Cannot use a pool after calling end on the pool)",
+        "provisionCurrentBusinessProfile then returns { status: unavailable } and does not throw"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DB-AUTH-001-009",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "DB-AUTH-001",
+        "API-AUTH-003",
+        "DEV-API-002",
+        "SPEC-110-15",
+        "SPEC-110-16"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [
+        "API-AUTH-003"
+      ],
+      "db_constraint_names": [],
+      "preconditions": "Compile-time only: hc<AppType> from @off-r39x/api-contract inside a function that is never called; enforced by pnpm typecheck of the tests workspace; no network",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The public RPC type of POST /api/v1/self/profile/provision carries the JSON input {} (InferRequestType<...$post>[json]) and the response data equals CurrentProfile",
+        "$post accepts { json: {} }; an omitted body and unknown keys (display_name, auth_subject) are type errors"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],

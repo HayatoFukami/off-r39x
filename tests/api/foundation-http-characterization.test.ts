@@ -10,6 +10,9 @@
 // /api/v1/self/profile are new registered routes, so the http_route list (TC-TST-OBS-001-001) and the
 // mounted route list (TC-DEV-API-002-002) gain them. Those expectations changed by the specification;
 // every other recorded value is untouched.
+// Revised again for PR-L2-1b (API-AUTH-003, SPEC-110 §25): POST /api/v1/self/profile/provision is a new
+// registered route (20 http_route templates; its guard, body validator and handler entries). Those
+// expectations changed by the specification, not by the implementation.
 import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   type ApiEnvironment,
@@ -574,12 +577,13 @@ describe("TC-TST-OBS-001-001 completion log and http_route (TST-OBS-001, SPEC-16
     ["POST", "email-otp/send-verification-otp"],
     ["POST", "email-otp/verify-email"],
   ];
-  /** The 19 values http_route may take; anything else is logged as "/". */
+  /** The 20 values http_route may take; anything else is logged as "/". */
   const ALLOWED_ROUTES = [
     "/internal/health/live",
     "/internal/health/ready",
     "/api/v1/self/principal",
     "/api/v1/self/profile",
+    "/api/v1/self/profile/provision",
     "/auth/get-session",
     "/auth/token",
     "/auth/verify-email",
@@ -665,6 +669,18 @@ describe("TC-TST-OBS-001-001 completion log and http_route (TST-OBS-001, SPEC-16
         "/api/v1/self/profile",
         200,
       ),
+      make(
+        "4d profile provision 200",
+        "/api/v1/self/profile/provision",
+        {
+          method: "POST",
+          headers: withOrigin({ ...bearer, "content-type": "application/json" }),
+          body: "{}",
+        },
+        "POST",
+        "/api/v1/self/profile/provision",
+        200,
+      ),
       ...AUTH_ROUTES.map(([method, path]) =>
         make(
           `auth ${method} ${path}`,
@@ -710,7 +726,7 @@ describe("TC-TST-OBS-001-001 completion log and http_route (TST-OBS-001, SPEC-16
       if (row.route !== "/") seenRoutes.add(row.route);
     }
     expect([...seenRoutes].sort()).toEqual([...ALLOWED_ROUTES].sort());
-    expect(ALLOWED_ROUTES).toHaveLength(19);
+    expect(ALLOWED_ROUTES).toHaveLength(20);
   });
 
   it("a route added after createApp is not in the registry and is logged as '/'", async () => {
@@ -983,6 +999,10 @@ describe("TC-DEV-API-002-002 route table and public surface of app.ts (DEV-API-0
     ["PATCH", "/api/v1/self/profile"],
     ["PATCH", "/api/v1/self/profile"],
     ["PATCH", "/api/v1/self/profile"],
+    // API-AUTH-003 (guard + body validator + handler).
+    ["POST", "/api/v1/self/profile/provision"],
+    ["POST", "/api/v1/self/profile/provision"],
+    ["POST", "/api/v1/self/profile/provision"],
   ];
   const HEALTH = [
     ["GET", "/internal/health/live"],
@@ -1045,7 +1065,11 @@ describe("TC-DEV-API-002-002 route table and public surface of app.ts (DEV-API-0
         ])
           expect(path.startsWith(prefix), path).toBe(false);
         if (path.startsWith("/api/v1/self/"))
-          expect(["/api/v1/self/principal", "/api/v1/self/profile"]).toContain(path);
+          expect([
+            "/api/v1/self/principal",
+            "/api/v1/self/profile",
+            "/api/v1/self/profile/provision",
+          ]).toContain(path);
       }
     }
   });

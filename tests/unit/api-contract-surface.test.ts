@@ -8,6 +8,7 @@ import {
   errorStatuses,
   type PrincipalNavigation,
   principalNavigationSchema,
+  provisionCurrentProfileRequestSchema,
   successSchema,
   type UpdateCurrentProfileRequest,
   updateCurrentProfileRequestSchema,
@@ -30,6 +31,9 @@ const REQUEST_ID = "00000000-0000-4000-8000-000000000002";
 // PR-L2-1a C1: the profile Operations (API-AUTH-002/004, SPEC-110 §25) widen the surface. These
 // expectations changed by the specification (two new routes and their schemas), not by the
 // implementation: the exports, route list and builder dependencies below follow the plan.
+// PR-L2-1b C1: API-AUTH-003 (SPEC-110 §25) adds one more route and its request schema. Again a change by
+// the specification, not by the implementation (the export count becomes eight and the builder gains
+// profileProvision).
 const PROFILE: CurrentProfile = {
   profile_ref: PROFILE_REF,
   display_name: "synthetic name",
@@ -119,11 +123,16 @@ function buildApp(
     requestId: (_c: Context<Env>) => REQUEST_ID,
     profileRead: { guard: pass, load: async (_c: Context<Env>) => profileValue() },
     profileUpdate: { guard: pass, body: pass, save: async (_c: Context<Env>) => profileValue() },
+    profileProvision: {
+      guard: pass,
+      body: pass,
+      provision: async (_c: Context<Env>) => ({ created: true, profile: profileValue() }),
+    },
   });
 }
 
 describe("TC-DEV-API-002-001 public surface of @off-r39x/api-contract", () => {
-  it("exports exactly the seven runtime values", async () => {
+  it("exports exactly the eight runtime values", async () => {
     const surface = await import("@off-r39x/api-contract");
     expect(Object.keys(surface).sort()).toEqual([
       "createPublicRpc",
@@ -131,11 +140,16 @@ describe("TC-DEV-API-002-001 public surface of @off-r39x/api-contract", () => {
       "errorSchema",
       "errorStatuses",
       "principalNavigationSchema",
+      "provisionCurrentProfileRequestSchema",
       "successSchema",
       "updateCurrentProfileRequestSchema",
     ]);
     expect(currentProfileSchema.safeParse(PROFILE).success).toBe(true);
     expect(updateCurrentProfileRequestSchema.safeParse({ display_name: null }).success).toBe(true);
+    expect(provisionCurrentProfileRequestSchema.safeParse({}).success).toBe(true);
+    expect(provisionCurrentProfileRequestSchema.safeParse({ display_name: null }).success).toBe(
+      false,
+    );
   });
 
   it("keeps the public type exports (compile-time only)", () => {
@@ -184,9 +198,10 @@ describe("TC-DEV-API-002-001 public surface of @off-r39x/api-contract", () => {
     expectTypeOf(client.api.v1.self.principal.$get).toBeFunction();
     expectTypeOf(client.api.v1.self.profile.$get).toBeFunction();
     expectTypeOf(client.api.v1.self.profile.$patch).toBeFunction();
+    expectTypeOf(client.api.v1.self.profile.provision.$post).toBeFunction();
   });
 
-  it("registers only GET /api/v1/self/principal, GET and PATCH /api/v1/self/profile (guard, body validator and handler entries)", () => {
+  it("registers only GET /api/v1/self/principal, GET and PATCH /api/v1/self/profile and POST /api/v1/self/profile/provision (guard, body validator and handler entries)", () => {
     expect(buildApp().routes.map(({ method, path }) => [method, path])).toEqual([
       ["GET", "/api/v1/self/principal"],
       ["GET", "/api/v1/self/principal"],
@@ -195,6 +210,9 @@ describe("TC-DEV-API-002-001 public surface of @off-r39x/api-contract", () => {
       ["PATCH", "/api/v1/self/profile"],
       ["PATCH", "/api/v1/self/profile"],
       ["PATCH", "/api/v1/self/profile"],
+      ["POST", "/api/v1/self/profile/provision"],
+      ["POST", "/api/v1/self/profile/provision"],
+      ["POST", "/api/v1/self/profile/provision"],
     ]);
   });
 
@@ -229,6 +247,32 @@ describe("TC-DEV-API-002-001 public surface of @off-r39x/api-contract", () => {
     }
   });
 
+  it("answers POST /api/v1/self/profile/provision with 201 for a created and 200 for an existing profile, in the data/meta envelope", async () => {
+    for (const [created, status] of [
+      [true, 201],
+      [false, 200],
+    ] as const) {
+      const pass = async (_c: Context<Env>, next: () => Promise<void>) => {
+        await next();
+      };
+      const app = createPublicRpc<Env>({
+        guard: pass,
+        principal: (_c: Context<Env>) => principal,
+        requestId: (_c: Context<Env>) => REQUEST_ID,
+        profileRead: { guard: pass, load: async (_c: Context<Env>) => PROFILE },
+        profileUpdate: { guard: pass, body: pass, save: async (_c: Context<Env>) => PROFILE },
+        profileProvision: {
+          guard: pass,
+          body: pass,
+          provision: async (_c: Context<Env>) => ({ created, profile: PROFILE }),
+        },
+      });
+      const response = await app.request("/api/v1/self/profile/provision", { method: "POST" });
+      expect(response.status).toBe(status);
+      expect(await response.json()).toEqual({ data: PROFILE, meta: { request_id: REQUEST_ID } });
+    }
+  });
+
   it("answers GET /api/v1/self/principal with the data/meta envelope", async () => {
     const response = await buildApp().request("/api/v1/self/principal");
     expect(response.status).toBe(200);
@@ -248,6 +292,10 @@ describe("TC-DEV-API-002-001 public surface of @off-r39x/api-contract", () => {
     expect((await app.request("/api/v1/self/principal", { method: "POST" })).status).toBe(404);
     expect((await app.request("/api/v1/self/profile", { method: "POST" })).status).toBe(404);
     expect((await app.request("/api/v1/self/profile", { method: "PUT" })).status).toBe(404);
+    expect((await app.request("/api/v1/self/profile/provision")).status).toBe(404);
+    expect((await app.request("/api/v1/self/profile/provision", { method: "PATCH" })).status).toBe(
+      404,
+    );
     expect((await app.request("/api/v1/other")).status).toBe(404);
   });
 
