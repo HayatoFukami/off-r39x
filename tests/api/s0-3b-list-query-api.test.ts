@@ -21,7 +21,9 @@ function build() {
   const lines: string[] = [];
   const logger = createLogger(
     { service: "API", environment: "test", actor_type: "GUEST" },
-    (line) => lines.push(line),
+    (line) => {
+      lines.push(line);
+    },
   );
   const app = createApp({ webOrigin: "https://web.example.test", ready: async () => true, logger });
   const handled: { limit: number; position: unknown }[] = [];
