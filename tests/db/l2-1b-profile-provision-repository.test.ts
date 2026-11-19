@@ -5,6 +5,7 @@
 // are never proven by a fake (TST-GEN-004, DEV-TST-003). Needs TEST_DATABASE_URL and TEST_DATABASE_CA; it
 // fails (it does not skip) without them. Synthetic data only.
 import { readFile } from "node:fs/promises";
+import { createServer } from "node:net";
 import { Client, Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createCurrentProfileRepository, createDatabase } from "../../packages/db/src/index.ts";
@@ -181,6 +182,32 @@ describe("TC-DB-AUTH-001-004 provisionCurrentBusinessProfile (API-AUTH-003, DB-A
 });
 
 describe("TC-DB-AUTH-001-004 unavailable classification (SPEC-110 §50/§51, REL-AUTH-005, FP.DB.BEFORE_TRANSACTION)", () => {
+  it("an unreachable database (a closed port) is returned as unavailable, not thrown, and no row is added", async () => {
+    await resetRows();
+    const before = await snapshot();
+    const server = createServer();
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    const pool = new Pool({
+      host: "127.0.0.1",
+      port,
+      user: "app_api_runtime",
+      database: "synthetic",
+      connectionTimeoutMillis: 500,
+    });
+    pool.on("error", () => undefined);
+    try {
+      expect(
+        await createCurrentProfileRepository(pool).provisionCurrentBusinessProfile(SUBJECT_NEW),
+      ).toEqual({ status: "unavailable" });
+    } finally {
+      await pool.end();
+    }
+    expect(await snapshot()).toEqual(before);
+  });
+
   it("a saturated pool (max 1, the only client held) is returned as unavailable and creates nothing", async () => {
     await resetRows();
     const before = await snapshot();

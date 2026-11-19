@@ -25868,7 +25868,6 @@
         201,
         400,
         401,
-        404,
         405,
         413,
         415,
@@ -26004,7 +26003,7 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "provisionCurrentBusinessProfile returns created for a subject without a row and existing for a row that is there (a name and an old updated_at returned as is, a Role holder included); a subject that is not a UUID throws without touching the database",
-        "A saturated pool (max 1), a closed pool and a lock wait that outlasts the 55P03 retry budget are returned as unavailable and not thrown"
+        "An unreachable database (a closed port), a saturated pool (max 1), a closed pool and a lock wait that outlasts the 55P03 retry budget are returned as unavailable and not thrown"
       ],
       "expected_db_postconditions": [
         "The created row has auth_subject = the subject, display_name NULL, a lowercase UUID public_ref and created_at = updated_at inside the call window (the DB defaults, not a client value); the returned publicRef and updatedAt (milliseconds) equal the row; the row count rises by one and every other row is unchanged in every column; role_assignments are not touched",
@@ -26040,9 +26039,7 @@
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
-      "fault_points": [
-        "FP.DB.BEFORE_TRANSACTION"
-      ],
+      "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
         "Holder ROLLBACK: exactly one created, the others existing, all with the same publicRef; holder COMMIT: no created and every call existing with the holder's public_ref; no call is unavailable, commit_unknown or thrown (no 23505 exposed)"
@@ -26203,7 +26200,8 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "Each case first asserts that the raw pool error has no code and the node-postgres message (Connection terminated unexpectedly, Connection terminated due to connection timeout, Cannot use a pool after calling end on the pool)",
-        "provisionCurrentBusinessProfile then returns { status: unavailable } and does not throw"
+        "provisionCurrentBusinessProfile then returns { status: unavailable } and does not throw",
+        "The transaction is observed in the database log under query_name profile.provision_current (fake pool with the pool logger; no other query_name appears)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],

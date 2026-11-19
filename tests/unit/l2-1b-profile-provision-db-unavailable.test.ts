@@ -8,6 +8,9 @@ import { createServer, type Server, type Socket } from "node:net";
 import { Pool } from "pg";
 import { afterEach, describe, expect, it } from "vitest";
 import { createCurrentProfileRepository } from "../../packages/db/src/index.ts";
+import { observeDatabase } from "../../packages/db/src/observability.ts";
+import { createLogger } from "../../packages/observability/src/index.ts";
+import { createFakePool } from "../harness/db/fake-pool.ts";
 
 const SUBJECT = "00000000-0000-4000-8000-0000000000a1";
 
@@ -95,4 +98,27 @@ describe("TC-DB-AUTH-001-008 code-less node-postgres connection errors are unava
       });
     },
   );
+});
+
+describe("TC-DB-AUTH-001-008 the transaction is named profile.provision_current in the database log (SPEC-160 §24, FP.DB.BEFORE_TRANSACTION not involved)", () => {
+  it("the pool acquire event of provisionCurrentBusinessProfile carries query_name profile.provision_current", async () => {
+    // A fake pool answers every statement with no rows: the control flow ends in the (expected) reselect
+    // cardinality error, which is not the subject here. Only the observed query_name is asserted.
+    const lines: string[] = [];
+    const logger = createLogger(
+      { service: "API", environment: "test", actor_type: "SYSTEM_WORKER" },
+      (line) => {
+        lines.push(line);
+      },
+    );
+    const fake = createFakePool();
+    observeDatabase(fake.pool, logger);
+    await createCurrentProfileRepository(fake.pool)
+      .provisionCurrentBusinessProfile(SUBJECT)
+      .catch(() => undefined);
+    const events = lines.map((line) => JSON.parse(line) as Record<string, unknown>);
+    expect(events.length).toBeGreaterThan(0);
+    expect(events.map((event) => event.query_name)).toContain("profile.provision_current");
+    expect(events.filter((event) => event.query_name !== "profile.provision_current")).toEqual([]);
+  });
 });

@@ -133,6 +133,24 @@ describe("TC-DB-AUTH-001-001 POST /api/v1/self/profile/provision success (API-AU
     ).toEqual([]);
   });
 
+  it("the actor of the completion log: a 201 (no Profile resolved) is AUTHENTICATED_USER with a fingerprint, not the raw subject; a 200 carries the Profile's public reference (SPEC-160 §19.1, OI-6)", async () => {
+    const creating = emptyRig();
+    expect((await creating.provision()).status).toBe(201);
+    const [createdLog] = completion(creating.records);
+    expect(createdLog?.http_status).toBe(201);
+    expect(createdLog?.actor_type).toBe("AUTHENTICATED_USER");
+    expect(typeof createdLog?.actor_ref).toBe("string");
+    expect(createdLog?.actor_ref).not.toBe(SUBJECT);
+    expect(creating.lines.join(String.fromCharCode(10))).not.toContain(SUBJECT);
+
+    const existing = selfProfileRig();
+    expect((await existing.provision()).status).toBe(200);
+    const [existingLog] = completion(existing.records);
+    expect(existingLog?.http_status).toBe(200);
+    expect(existingLog?.actor_type).toBe("AUTHENTICATED_USER");
+    expect(existingLog?.actor_ref).toBe(PROFILE_REF);
+  });
+
   it("a request that proceeds without a Profile is not logged as a rejected Business Profile resolution (OI-6)", async () => {
     const r = emptyRig();
     expect((await r.provision()).status).toBe(201);

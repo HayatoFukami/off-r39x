@@ -11,9 +11,11 @@ import {
   DIRECTORY_EMAIL,
   errorOf,
   GOOD,
+  INITIAL_UPDATED_AT,
   OTHER_PROFILE_REF,
   OTHER_SUBJECT,
   PROFILE_PATH,
+  PROFILE_REF,
   PROVISION_PATH,
   type PrincipalKind,
   principalRow,
@@ -190,7 +192,12 @@ describe("TC-DB-AUTH-001-007 the provisioning guard refuses exactly like PATCH /
     expect(provision.principalReads()).toBe(patch.principalReads());
     expect(patch.store.updates).toEqual([]);
     expect(provision.store.provisions).toEqual([]);
-    expect(provision.store.row(SUBJECT)?.displayName).toBeNull();
+    // The refused request changed nothing: the subject's row is exactly what it was.
+    expect(provision.store.row(SUBJECT)).toEqual({
+      publicRef: PROFILE_REF,
+      displayName: null,
+      updatedAt: INITIAL_UPDATED_AT,
+    });
   });
 
   it("an invalid token is recorded by the attendee guard once on both routes", async () => {
