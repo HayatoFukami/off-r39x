@@ -31,6 +31,7 @@ export function requestContextMiddleware(dependencies: {
     c.set("verificationSlot", undefined);
     c.set("authSubjectRef", undefined);
     c.set("authorizationConfirmed", false);
+    c.set("provisioningSubject", undefined);
     c.header("X-Request-Id", c.get("requestId"));
     c.header("Cache-Control", "no-store");
     await next();

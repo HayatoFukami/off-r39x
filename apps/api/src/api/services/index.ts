@@ -5,6 +5,8 @@
 export {
   type CurrentProfileStore,
   type ProfileRecord,
+  type ProvisionCurrentProfileResult,
+  provisionCurrentProfile,
   type ReadCurrentProfileResult,
   readCurrentProfile,
   type UpdateCurrentProfileResult,

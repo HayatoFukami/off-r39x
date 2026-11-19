@@ -25,6 +25,11 @@ export type ApiEnvironment = {
     authSubjectRef: string | undefined;
     /** SEC-ABU-029: set once the target's authorization check (owner relation / Capability) passed. */
     authorizationConfirmed: boolean | undefined;
+    /**
+     * API-AUTH-003 (SPEC-110 §24.1): the verified Auth Subject, set only by the provisioning guard
+     * after the token, the directory and the Email decision. Never filled from client input.
+     */
+    provisioningSubject: string | undefined;
   };
 };
 

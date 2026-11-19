@@ -106,6 +106,12 @@ export const ROUTES: readonly RouteRegistration[] = Object.freeze([
     operationId: "API-AUTH-004",
     rateLimitClass: "profile_mutation",
   },
+  {
+    method: "POST",
+    path: "/api/v1/self/profile/provision",
+    operationId: "API-AUTH-003",
+    rateLimitClass: "profile_mutation",
+  },
   ...authTransportRoutes,
 ]);
 assertRouteRegistry(ROUTES);

@@ -17,6 +17,10 @@ export const currentProfileSchema = z.strictObject({
 });
 export type CurrentProfile = z.infer<typeof currentProfileSchema>;
 
+/** API-AUTH-003 body: `{}` only (SPEC-110 §25). Every field, including `auth_subject`, is refused. */
+export const provisionCurrentProfileRequestSchema = z.strictObject({});
+export type ProvisionCurrentProfileRequest = z.infer<typeof provisionCurrentProfileRequestSchema>;
+
 /** API-AUTH-004 body. Length and Cc rules belong to the domain (SPEC-030 §9.2). */
 export const updateCurrentProfileRequestSchema = z.strictObject({
   display_name: z.string().nullable(),

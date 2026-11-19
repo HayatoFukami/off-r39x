@@ -5,6 +5,7 @@ import {
   currentProfileSchema,
   type PrincipalNavigation,
   principalNavigationSchema,
+  type provisionCurrentProfileRequestSchema,
   type updateCurrentProfileRequestSchema,
 } from "./schemas/profile.ts";
 
@@ -13,6 +14,11 @@ import {
 // so declaring `out` would make `c.req.valid("json")` look available when it is not.
 type ProfileUpdateInput = {
   in: { json: z.input<typeof updateCurrentProfileRequestSchema> };
+};
+
+// Same for the API-AUTH-003 body (`{}`).
+type ProfileProvisionInput = {
+  in: { json: z.input<typeof provisionCurrentProfileRequestSchema> };
 };
 
 // The server mounts this same builder: no parallel route declaration or import
@@ -31,6 +37,17 @@ export function createPublicRpc<E extends Env>(dependencies: {
     guard: MiddlewareHandler<E>;
     body: MiddlewareHandler<E, "/api/v1/self/profile", ProfileUpdateInput>;
     save: (c: Context<E>) => Promise<CurrentProfile>;
+  };
+  /**
+   * API-AUTH-003. `guard` lets a verified Email without a Business Profile through; `provision`
+   * reports whether the row was created (201) or already existed (200).
+   */
+  profileProvision: {
+    guard: MiddlewareHandler<E>;
+    body: MiddlewareHandler<E, "/api/v1/self/profile/provision", ProfileProvisionInput>;
+    provision: (
+      c: Context<E, "/api/v1/self/profile/provision", ProfileProvisionInput>,
+    ) => Promise<{ created: boolean; profile: CurrentProfile }>;
   };
 }) {
   return new Hono<E>()
@@ -57,6 +74,21 @@ export function createPublicRpc<E extends Env>(dependencies: {
           data: currentProfileSchema.parse(await dependencies.profileUpdate.save(c)),
           meta: { request_id: dependencies.requestId(c) },
         }),
+    )
+    .post(
+      "/api/v1/self/profile/provision",
+      dependencies.profileProvision.guard,
+      dependencies.profileProvision.body,
+      async (c: Context<E, "/api/v1/self/profile/provision", ProfileProvisionInput>) => {
+        const result = await dependencies.profileProvision.provision(c);
+        return c.json(
+          {
+            data: currentProfileSchema.parse(result.profile),
+            meta: { request_id: dependencies.requestId(c) },
+          },
+          result.created ? 201 : 200,
+        );
+      },
     );
 }
 export type AppType = ReturnType<typeof createPublicRpc>;
