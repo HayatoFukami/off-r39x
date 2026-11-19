@@ -5392,7 +5392,7 @@
     {
       "rule_id": "SEC-API-018",
       "code_paths": ["packages/api-contract/src/schemas/list.ts", "apps/api/src/api/pagination.ts"],
-      "test_case_ids": ["TC-API-QRY-002-001", "TC-API-QRY-004-003"],
+      "test_case_ids": ["TC-API-QRY-001-001", "TC-API-QRY-002-001", "TC-API-QRY-004-003"],
       "notes": "Allowlisted filter/sort only"
     },
     {
