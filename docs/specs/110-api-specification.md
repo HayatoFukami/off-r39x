@@ -388,6 +388,7 @@ Idempotency-Key: <16..128 printable ASCII chars (0x20..0x7E)>
 - slot generation
 - slot state/edit mutation
 - goods handoff completion（Staff / Administrator「Administrative Handoff Completion」の双方）
+- reservation cancellation（`API-ADM-KRK-007`）
 - entry ticket offering / karaoke sales configuration / goods sales configuration mutation
 - goods inventory adjustment
 - public content create / update / publish / archive / restore-draft
@@ -1293,6 +1294,7 @@ Allowlist fields: up-stream permitted scope/time/sales configuration relation on
 - **DB lock:** Karaoke Ticket `FOR UPDATE` → Reservation。
 - **Precondition:** Reservation `CONFIRMED`; common Ticket cancellation rule。
 - **Effects:** Reservation `CANCELED`; unused Ticket `CANCELED`; Slot remains `SOLD`; Hold remains `COMMITTED`; no resale。
+- **Idempotency-Key:** required（§18、`API-IDM-011`）。記録（§18.1）を作り、replayは次の既存の取消結果の再利用に従う（`API-IDM-007`）。
 - **Idempotency:** existing cancellation result reuse。
 
 本endpointをgeneric cancellation / invariant bypassとして利用してはならない。SPEC-130 / 150が具体的なUI / Runbookを定義する。
@@ -2554,6 +2556,16 @@ retry count / backoff / queue / operator RunbookはSPEC-150。本書§48.5はSPE
 - 理由: 対象Operationの全routeが共通の入力検証でheaderを扱うため、codeと文字種が本文で決まらないと、routeごと・Clientごとに解釈が分かれる。headerの値の検証はJSONの構文ではなくfield validationに当たる。制御文字とDELを除くことで、HTTP実装・proxy・log処理によって扱いが変わりうる文字を入力の段階で拒否する。正規化をしないのは、key digest（`API-IDM-005`）と同じ値を検証するためである。複数指定を連結した値のまま扱うのは、どの値を使うかを実装ごとに変えないためである。
 - 変更しない場合の影響: 欠落・不正のcodeと文字種が実装の判断で決まり、`SPEC-170` §26の「transport `Idempotency-Key` contract」の期待値を本文から導けない。Web（非mockのAPI client）がerrorの表示と再送の判断を決められない。
 - 影響を受ける可能性がある仕様書: SPEC-170（§26・§28。本文の変更は不要。期待値は本書 `API-IDM-011` から導き、Test Case IDとmanifestは実装のWork Planが割り当てる）、SPEC-140（`SEC-ERR-002`。`details: null` で整合し変更不要）、SPEC-150（`REL-RTY-007` / `REL-RTY-012` の同じkeyでの再送。変更不要）、SPEC-160（§11。変更不要）
+
+### UCR-110-012 — INCORPORATED
+
+- **Status:** `INCORPORATED`。本改訂（v2.9.0）で §18 の対象一覧と §43 `API-ADM-KRK-007` へ反映した（プロジェクト所有者の決定、2026-11-20。`SPEC-000` §8）。`API-IDM-003` は §18 の対象一覧を参照するため、本文を変えずに記録の対象となる。§48.5 は変更していない。新しいerror code・state・Capability・Operationは追加していない。現在の契約は本文を正とし、以下の要求はその経緯の記録である。
+- 対象: SPEC-110 §18（対象一覧）、§18.1 `API-IDM-003`、§43 `API-ADM-KRK-007`、§48.5（共通条件とRunbook表）。
+- 現在の仕様（改訂前）: §48.5 は「本節に列挙したoperation-specific command」の共通条件として `Idempotency-Key` requiredを定め、Runbook表に `API-ADM-KRK-007`（`SPEC-150` §51、本書§43で定義）を含めていた。一方、§18 の対象一覧と `API-IDM-003`（記録の対象）にはReservation cancellationがなく、§43 の本文は `Idempotency: existing cancellation result reuse` だけでheaderに触れていなかった。同じ表の `API-ADM-TQR-001`、`API-ADM-GDS-005` は §18 の対象一覧にある。
+- 要求する変更: §18 の対象一覧に「reservation cancellation（`API-ADM-KRK-007`）」を追加する（`API-IDM-003` により記録の対象にもなる）。検討した別案（§48.5 の `Idempotency-Key` requiredの適用範囲を絞り、KRK-007 には §43 の契約を適用する）は採らなかった。
+- 理由: §48.5 が既にrequiredと定めており、§18 をその厳しい側へ揃えるので既存の規則を緩めない。Domain single-useなgoods handoff completionも §18 にあり、同じ扱いになる。Web AdminはAdministrator mutationと同じくkeyを常に送れ、`SPEC-150` `REL-ADM-002` と `SPEC-130` §55 の運用規則にそのまま乗る。記録の保存は `SPEC-100` §43.1 の一般規則（`DB-IDM-002`）で決まり、replayは §43 の既存の取消結果の再利用に従う（`API-IDM-007`）。
+- 変更しない場合の影響: `API-ADM-KRK-007` でheaderを必須にするか、記録を作るかが実装の判断になり、`SPEC-190` `DEV-API-007`（対象Operationだけで受理）を実装できない。
+- 影響を受ける可能性がある仕様書: SPEC-100（§43.1・§48。`operation_id` の列挙・CHECKがなく、変更不要）、SPEC-130（§27・§55。変更不要）、SPEC-150（§45・§51・`REL-ADM-002`。変更不要）、SPEC-170（§27.1・§28.1。変更不要）
 
 ### UCR-030-001 — INCORPORATED
 
