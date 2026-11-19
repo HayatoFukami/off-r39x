@@ -57,7 +57,7 @@ const CASES: readonly (readonly [label: string, input: string | null, expected: 
   ["Cc and too long: Cc is judged first", "a\u0000".repeat(50), control],
   ["Cf zero width space is allowed", "a​b", ok("a​b")],
   ["Cf zero width joiner is allowed", "a‍b", ok("a‍b")],
-  // UCR-030-001 (SPEC-030 §9.2 v2.2.0; SPEC-170 v2.6.0 TC-API-007-001): well-formed Unicode only.
+  // UCR-030-001 (SPEC-030 §9.2 v2.2.0; SPEC-170 v2.7.0 TC-API-007-001): well-formed Unicode only.
   ["lone high surrogate U+D800", "\uD800", notWellFormed],
   ["lone low surrogate U+DC00", "\uDC00", notWellFormed],
   ["reversed pair (low then high)", "\uDC00\uD800", notWellFormed],
