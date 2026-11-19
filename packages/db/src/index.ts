@@ -23,6 +23,7 @@ export {
 } from "./transaction.ts";
 export type {
   CurrentBusinessProfile,
+  CurrentProfileProvision,
   CurrentProfileRead,
   CurrentProfileUpdate,
 } from "./transactions/profile.ts";
