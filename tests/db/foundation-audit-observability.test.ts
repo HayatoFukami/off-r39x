@@ -1,5 +1,6 @@
 import { Pool } from "pg";
 import { expect, it } from "vitest";
+import { DatabaseUnavailableError } from "../../packages/db/src/errors.ts";
 import { transaction } from "../../packages/db/src/transaction.ts";
 import { createLogger } from "../../packages/observability/src/index.ts";
 import { startCommitAcknowledgementDropProxy } from "../harness/db/commit-proxy.ts";
@@ -89,18 +90,23 @@ it("TC-OBS-AUDIT-001 real DB retry, constraint, unavailability and unknown COMMI
         expect.objectContaining({ sqlstate: code }),
       );
     }
+    // PR-S0-3a (PR #66 review F2): a Node errno is not proof that the database failed, so the DB
+    // boundary types the connection failure as DatabaseUnavailableError and keeps the errno only in
+    // `cause` (SPEC-110 section 51, REL-DB-009). The log events below are unchanged.
     for (const code of ["ECONNRESET", "EPIPE"]) {
       let attempts = 0;
-      await expect(
-        transaction(
-          pool,
-          async () => {
-            attempts++;
-            throw Object.assign(new Error("synthetic-private-value"), { code });
-          },
-          { logger, queryName: "foundation.native_transport" },
-        ),
-      ).rejects.toMatchObject({ code });
+      const original = Object.assign(new Error("synthetic-private-value"), { code });
+      const failure = await transaction(
+        pool,
+        async () => {
+          attempts++;
+          throw original;
+        },
+        { logger, queryName: "foundation.native_transport" },
+      ).catch((error: unknown) => error);
+      expect(failure).toBeInstanceOf(DatabaseUnavailableError);
+      expect((failure as DatabaseUnavailableError).cause).toBe(original);
+      expect((failure as Error).message).not.toContain("synthetic-private-value");
       expect(attempts).toBe(1);
     }
     const nativeEvents = lines
