@@ -114,7 +114,7 @@ const EXPECTED_ROOT_EXPORTS = [
 ];
 
 describe("TC-DEV-DB-001-001 db package public surface", () => {
-  it("TC-DEV-DB-001-001 @off-r39x/db/schema exports exactly app and the eleven table declarations by name", async () => {
+  it("TC-DEV-DB-001-001 @off-r39x/db/schema exports exactly app and the thirteen table declarations by name", async () => {
     const schemaModule = await import("@off-r39x/db/schema");
 
     // (1) no helper or extra name leaks through the barrel (DEV-DB-001).
@@ -128,7 +128,9 @@ describe("TC-DEV-DB-001-001 db package public surface", () => {
       "faqItems",
       "goods",
       "goodsInventory",
+      "karaokeExclusiveScopes",
       "karaokeSalesConfigurations",
+      "karaokeSlots",
       "roleAssignments",
       "sponsorLogos",
     ]);
@@ -571,7 +573,7 @@ describe("TC-DB-ARC-007-001 Drizzle declarations match schema-contract.json", ()
     }
   });
 
-  it("TC-DB-ARC-007-001 business_profiles has no foreign keys and the contract declares exactly the app tables of migrations 0001-0003", async () => {
+  it("TC-DB-ARC-007-001 business_profiles has no foreign keys and the contract declares exactly the app tables of migrations 0001-0004", async () => {
     const schemaModule = await import("@off-r39x/db/schema");
     expect(getTableConfig(schemaModule.businessProfiles).foreignKeys).toHaveLength(0);
     expect(
@@ -585,7 +587,9 @@ describe("TC-DB-ARC-007-001 Drizzle declarations match schema-contract.json", ()
       "faq_items",
       "goods",
       "goods_inventory",
+      "karaoke_exclusive_scopes",
       "karaoke_sales_configurations",
+      "karaoke_slots",
       "role_assignments",
       "sponsor_logos",
     ]);
