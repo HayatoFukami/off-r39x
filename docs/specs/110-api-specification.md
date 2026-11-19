@@ -261,6 +261,14 @@ filterはallowlist query parameterだけを受け、任意column名、raw SQL、
 
 **API-QRY-004:** `cursor`はopaqueとして扱い、Filter変更時はcursorを破棄して先頭pageを再取得する。offset paginationは提供しない。
 
+**API-QRY-005:** cursorは `SPEC-180` §28.3 の `LIST_CURSOR_HMAC_KEY` によるHMAC-SHA-256で署名し、署名に使った鍵のversion（`LIST_CURSOR_HMAC_KEY_VERSION`）を含める。署名は、少なくともOperation ID、sort mode（§48.3でmodeを持つlist）、正規化したfilterの値に結び付け、`limit` には結び付けない。cursorはInternal IDと鍵を含まない。Serverは次のいずれかに当たるcursorを `400 VALIDATION_FAILED`（`details: null`）とし、cursorを無視して先頭pageを返すことはしない。
+
+- 形式または長さが不正（§48.3 `pageQuery` の1〜512文字を外れる場合を含む）
+- 署名が一致しない（発行時とOperation ID、sort mode、filterの値のいずれかが異なる場合を含む）
+- 鍵versionが現在の `LIST_CURSOR_HMAC_KEY_VERSION` と異なる（旧versionのcursorを受け付けない。`SPEC-180` §28.3 のrotationにgraceはない）
+
+Clientは `400` を受けたらcursorを破棄し、先頭pageから取り直す（`API-QRY-004`）。
+
 Response:
 
 ```json
@@ -1684,7 +1692,7 @@ Capability `karaoke_sales.manage`（`SPEC-060 AR-ROLE-016〜018`）。`karaoke_s
 
 各Admin listは以下のZod schemaのallowlist queryだけを受け、strict（`.strict()`相当）で未知parameterを拒否する。`sort` / `order_by` / raw SQL / offset / arbitrary columnは定義しない。日時rangeは`from` inclusion / `to` inclusionとし、serverで`Asia/Tokyo`業務日をinstantへ正規化する。Public Reference boundはすべて`z.string().uuid()`。
 
-各schemaは単一のcomplete canonical sort tupleを持ち、その全sort keyは`SPEC-100`に実在するcolumn / `SPEC-130`が定義した意味からなる。`cursor`は選択されたsort modeのsort key + `public_ref`をserver-signedにencodeし、modeを切り替えた場合はcursorを破棄して先頭pageを再取得する。
+各schemaは単一のcomplete canonical sort tupleを持ち、その全sort keyは`SPEC-100`に実在するcolumn / `SPEC-130`が定義した意味からなる。`cursor`は選択されたsort modeのsort key + `public_ref`をserver-signedにencodeし（§12 `API-QRY-005`）、modeを切り替えた場合はcursorを破棄して先頭pageを再取得する。
 
 共通:
 
@@ -2391,6 +2399,7 @@ resolveConsistencyReviewCase()
 45. 全canonical Operation IDは§56.1でexactly 1つのrate limit classを持つ。`429` は `Retry-After`付きで `RATE_LIMIT_EXCEEDED`、rate limit store判定不能は `503 TEMPORARY_UNAVAILABLE` を返し、どちらもDomain stateを変更しない。
 46. Transport Idempotencyのreplay記録は業務DBの `app.idempotency_records` だけに保存し、業務更新と同じtransactionで書く。応答body・Checkout URL・個人情報・raw keyを保存せず、保持期間は24時間とする（§18.1）。DB障害による保存の失敗は既存の `503 DATABASE_TEMPORARY_FAILURE`（一意制約の競合は `API-IDM-009`、その他の制約違反は §50）、処理中の同じkeyは新しいerror codeを作らず、`IDEMPOTENCY_KEY_REUSED` または既存結果への収束とする。
 47. `API-IDM-011` の対象Operation（§18の対象一覧と `API-ADM-EML-004/005`）で `Idempotency-Key` が欠落、または16〜128文字の印字可能ASCII（0x20〜0x7E）でない場合は、認証・認可の失敗を先に返したうえで `400 VALIDATION_FAILED`（`details: null`）とし、Domain stateと記録（§18.1）を変更しない。受信した値は正規化せずに検証し、同名headerの複数指定は連結した1つの値として扱う（`API-IDM-011`）。
+48. Owner / Admin listのcursorは §12 `API-QRY-005` のとおり署名・検証し、形式・長さ・署名・鍵version・Operation ID・sort mode・filterの不一致を `400 VALIDATION_FAILED`（`details: null`）とし、先頭pageへ黙って戻さない。
 
 ---
 
@@ -2581,3 +2590,13 @@ retry count / backoff / queue / operator RunbookはSPEC-150。本書§48.5はSPE
 ### UCR-030-001 — INCORPORATED
 
 `SPEC-030` が記録したDisplay nameのwell-formed要件（`UCR-030-001`、`SPEC-030` §28）のうち、本書が所有する部分を本改訂（v2.7.0）で `API-AUTH-004` に反映した。well-formedでない値（lone surrogateを含む値）は既存の `400 VALIDATION_FAILED` とし、U+FFFDへの置き換えや除去で補正して保存しない。新しいerror code・state・Capability・Operationは追加していない。不正なUTF-8 byte列を含むJSON bodyの扱い（§21 `MALFORMED_REQUEST` の適用範囲）は本UCRの範囲外である。
+
+### UCR-180-002 — INCORPORATED
+
+`SPEC-180` が起票した一覧cursorの署名鍵の契約（`UCR-180-002`、`SPEC-180` §81）のうち、本書が所有する部分を本改訂（v2.10.0）で反映した。現在の契約は本文を正とする。
+
+- §12: `API-QRY-005` を追加した。cursorは `SPEC-180` §28.3 の鍵によるHMAC-SHA-256で署名し、鍵versionを含め、Operation ID・sort mode・filterの値に結び付ける。形式・長さ・署名・鍵versionの不一致は既存の `400 VALIDATION_FAILED`（`details: null`）とし、先頭pageを返さない。旧versionのcursorは受け付けない。
+- §48.3: 共通の段落から `API-QRY-005` を参照した。
+- §61: Acceptance 48 を追加した。
+
+新しいerror code・state・Capability・Operationは追加していない。
