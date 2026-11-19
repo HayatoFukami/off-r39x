@@ -61,7 +61,11 @@ function observeClient(client: PoolClient, markDbError: (error: unknown) => void
   });
 }
 
-/** Callback must contain database work only; no provider side effects. */
+/**
+ * Callback must contain database work only; no provider side effects. A callback using drizzle must
+ * rethrow the `cause` of `DrizzleQueryError` (the driver's error), as `insertAuditEvent` does;
+ * wrapped errors defeat retry, unavailability typing and constraint classification.
+ */
 export async function transaction<T>(
   pool: Pool,
   operation: (client: PoolClient) => Promise<T>,

@@ -88,8 +88,9 @@ export function errorResponse<C extends ErrorCode>(
  * and symbols, turns NaN / Infinity into null, throws on bigint and cycles, and flattens Date / Map,
  * so any such value means the producer is defective and the data must not be sent. An `undefined`
  * object property is an omitted optional field and is allowed; an `undefined` array element or a
- * sparse-array hole is not. Symbol-keyed properties are dropped by JSON and ignored here. Values
- * are never logged or thrown.
+ * sparse-array hole is not. An array must have only index keys: `JSON.stringify` drops non-index
+ * own keys and an own `toJSON` replaces the contents, so either would change what is sent.
+ * Symbol-keyed properties are dropped by JSON and ignored here. Values are never logged or thrown.
  */
 function isJsonValue(value: unknown, active: WeakSet<object> = new WeakSet()): boolean {
   if (value === null) return true;
@@ -108,6 +109,7 @@ function isJsonValue(value: unknown, active: WeakSet<object> = new WeakSet()): b
   active.add(value);
   try {
     if (Array.isArray(value)) {
+      if (Object.keys(value).length !== value.length) return false;
       for (let i = 0; i < value.length; i += 1) {
         if (!(i in value) || !isJsonValue(value[i], active)) return false;
       }
