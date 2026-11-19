@@ -4,7 +4,7 @@
 - 位置づけ: **仕様ではない**（正式仕様は `docs/specs/`。食い違ったら仕様が正）。`SPEC-180 §17.2` の表の #1（forwarded header と `TRUSTED_PROXY_HOPS`）と #4（`maxmemory-policy noeviction` と `maxmemory`）を、staging で確かめる手順書。**実行者は担当2**。
 - 関連: [手順書](release-runbook.md)（§3.1 順2、§4.2、§4.4）、Issue #42・#45。#43（Redis の TLS）と #44（Redis の実バージョン）は本書の対象外。
 - 根拠: `docs/specs/` と実装（`origin/dev` `17f6f76`）、Railway の公式資料（2026-11-19 に閲覧。**実機では未確認**。資料の記載は断定しない）。
-- 書かないもの: Secret の値、接続文字列・password、本システムの実際のホスト名、IP アドレス（自分の回線・peer・Railway 内部のアドレスを含む）、counter key 名、実在のメールアドレス。ホストの例は `https://api.staging.example.com`、IP の例は文書用の `192.0.2.0/24`・`198.51.100.0/24`・`203.0.113.0/24` だけを使う。
+- 書かないもの: Secret の値、接続文字列・password、本システムの実際のホスト名、IP アドレス（自分の回線・peer・Railway 内部のアドレスを含む）、counter key 名、実在のメールアドレス。ホストの例は `https://api.staging.example.com`、IP の例は文書用の `192.0.2.0/24`・`198.51.100.0/24`・`203.0.113.0/24` だけを使う（例外は、container の中から自分自身に送るための loopback の `127.0.0.1` だけ）。
 
 ---
 
@@ -64,7 +64,7 @@
   2. Railway の画面で、environment が **staging** であることを確かめてから、staging environment の api service の Variables で `RATE_LIMIT_CONFIG`（Secret ではない JSON）を開き、`public_read` の `burst_limit` と `sustained_limit` を読む。**B = min(burst_limit, sustained_limit)** とし、`export B=<数>` で設定する。
   3. 同じ画面で `TRUSTED_PROXY_HOPS` の現在値を読む。
 - **期待:** B は 1 以上 20 以下（`SPEC-140 §68` の ceiling は burst 20・sustained 120）。`TRUSTED_PROXY_HOPS` は 0 以上の整数。
-- **合否:** 値が読めれば次へ進む。B・burst_limit・sustained_limit・`TRUSTED_PROXY_HOPS` の値は記録してよい。
+- **合否:** 値が読めれば次へ進む。B・burst_limit・sustained_limit・`TRUSTED_PROXY_HOPS` の値は記録してよい。B が 1、または `sustained_limit` が `burst_limit` + 1 のときは、§4.3 の T3 の前提を満たさず T3 を判定できないので、§4 に進む前に担当1 に連絡する。
 - **不合格のとき:** `RATE_LIMIT_CONFIG` や `TRUSTED_PROXY_HOPS` がない、または ceiling を超えている場合は、API が Ready にならないはず（`SEC-ABU-010`、`SEC-API-030`）。担当1 に連絡して止める。
 
 ### 2.4 回線
@@ -84,7 +84,11 @@
 - **期待:** 3 点とも同じ。
 - **合否:** 同じなら、staging で決めた `TRUSTED_PROXY_HOPS` を production にも使える見込みになる。
 - **不合格のとき:** どれかが違えば、proxy の段数が変わりうるので、**staging の結果を production に流用しない**。差を Issue #42 に記録し、担当1 に連絡する。
-- **production での確認（推奨）:** 構成が同じでも、production の API をデプロイした後、promotion の前に、副作用のない §4 の T1〜T3 と、Redis の `CONFIG GET`（§3.5 の 4 項目）を行うことを推奨する。満杯試験（§6）と合成 key の実測（§5）は production では行わない。
+- **production での確認（推奨）:** 構成が同じでも、production の API をデプロイした後、promotion の前に、§4 の T1〜T3 と、Redis の `CONFIG GET`（§3.5 の 4 項目）を行うことを推奨する。満杯試験（§6）と合成 key の実測（§5）は production では行わない。
+  - **T1〜T3 の影響:** T1〜T3 は、未一致 path と公開 API（`API-PUB-*`）が共有する `public_read` の IP ごとの counter を、わざと上限まで使う（§2.4 の注意）。検証の端末と出口の IP を共有する利用者（同じ NAT の内側など）がいれば、その利用者の公開 API の request も、最長で 60 秒ほど 429 になる。`TRUSTED_PROXY_HOPS` が誤っていて全員が 1 つの IP に集約されている場合は、全利用者に及ぶ。
+  - **実施の条件:** production の T1〜T3 は、production API に利用者の通信が来ていないことを確かめられるとき（公開の前で、production Web からの通信も流れていないときなど）だけ行う。確かめ方は運営者が決める。
+  - **実施の方法:** 本書の接続手順（§3.2 は staging 以外なら切断する）とコマンド（§4.6 は `STAGING_API_ORIGIN` を使う）は staging 用である。production で行うときの接続先の選び方と origin の変数は、担当1 と運営者が決める。
+  - **条件を満たせないとき:** T1〜T3 は行わず、`CONFIG GET` だけを行う。Issue #42 に「production の T1〜T3 は未実施」と理由を記録する。その状態で promotion してよいかは本書では決めない（`SPEC-180 §17.2` が求めるのは staging での確認で、production での確認は本書の推奨にとどまる）。担当1 と利用者が判断する。
 
 ### 2.6 API への到達
 
@@ -99,7 +103,21 @@
 - **合否:** 両方とも期待どおりなら次へ進む。
 - **不合格のとき:**
   - 302・403、Cloudflare Access のログイン画面、`X-Request-Id` のない 404 が返った場合は、その経路では本書の手順を実行できない。staging API が Cloudflare Access の背後にある場合の実行方法（一時的に対象から外す、Access の service token を担当2 の端末の環境変数だけで使う、など）は、担当2 と運営者が決める。service token は Secret なので、本書や記録には書かない。Access 経由で試験するなら Cloudflare の 1 段が加わるので、§2.5 の構成の比較に含める。
-  - `/internal/health/ready` だけが外部から到達できない構成なら、以後の readiness の確認は、Railway 上の deployment の状態で代える。
+  - `/internal/health/ready` だけが外部から到達できない構成なら、以後の readiness の確認は、§2.6.1 の内部経路で行う。Railway 上の deployment の状態では代えない（deployment が Active のまま、稼働中の readiness だけが 503 に変わることがあるため）。
+
+#### 2.6.1 readiness を内部経路で確かめる（外部から到達できない場合）
+
+- **やること:**
+  1. ローカル端末で `railway status` を実行し、environment が staging であることを確かめる。`railway ssh` で、staging environment の **api** service の container に入る（environment は staging を明示して選ぶ）。
+  2. container 内で次を実行する。API の process と同じ container の中から、待受の port（`PORT` 変数）に直接送る。環境変数の一覧（`env` など）は表示しない。
+
+     ```sh
+     node -e 'fetch("http://127.0.0.1:" + process.env.PORT + "/internal/health/ready").then((r) => console.log(r.status), () => console.log("error"))'
+     ```
+
+- **期待:** `200`（Ready のとき）または `503` が表示される。
+- **合否:** status が表示されれば、以後この経路で readiness を確かめる。
+- **不合格のとき:** `error` になる、SSH が使えない、または container に `node` がない場合は（API は IPv4 の全アドレスで待ち受けるので、IPv6 の loopback では試さない）、readiness は**観測できない**ものとして記録する。§3.4・§3.6・§6.4 の ready の確認は、未一致 path の status だけで判定する。§6.3 の ready の項目は「観測不能」とし、§6.3 の合否に従う。
 
 ### 2.7 記録の準備
 
@@ -159,7 +177,8 @@
   あわせて、Railway の画面で rate-limit-redis の現在の start command を確かめる。
 - **期待:** 値が読める。設定前なので、`maxmemory` は `0`（無制限）、`maxmemory-policy` は `noeviction` 以外、`save` は空でない、のいずれかでもよい。
 - **合否:** 読めれば次へ進む。記録してよいのは、`CONFIG GET` と `INFO` の数値、start command のうち Secret でない引数。`redis_version` は #44 の確認にも使えるが、#44 への記録は #44 の手順で行う。
-- **不合格のとき:** `CONFIG` が使えない（rename・無効化されている）場合は、その旨を記録する。設定の確認は §3.5 で `INFO memory` の `maxmemory` と `maxmemory_policy` で代え、満杯試験は §6.5 の代替手順で行う。
+  - ここで控えた start command（Secret でない引数）と `maxmemory` を「**元の設定**」として記録する。§3.5 が合格する前に中断したときの戻し先になる（§7）。
+- **不合格のとき:** `CONFIG` が使えない（rename・無効化されている）場合は、**§3.4 以降に進まず、何も変えずに中断する。** `INFO` だけでは `save`（RDB を使わないこと: `INF-RLS-003`）を確かめられず、§6 で上限を一時的に下げて戻すこともできないため。`CONFIG` が使えないことと、`INFO memory` の `maxmemory`・`maxmemory_policy` の値を Issue #45 に記録し、担当1 に連絡する。続け方（`CONFIG` を使える構成にする、確認の方法を変える、など）は担当1 と利用者が決める。
 
 ### 3.4 start command を変える
 
@@ -175,10 +194,10 @@
   - `<仮の値>` は、service のメモリ上限の**半分以下**で担当2 が決める（例 `256mb`）。§5 の実測の後、確定値に置き換える。
   - `allkeys-*` などの eviction policy は使わない（`INF-RLS-004`）。
   - Railway では、start command を変えると利用者が管理する扱いになる（資料の記載）。`INF-RLS-003`・`INF-RLS-004` を満たすために必要なので受け入れる（利用者の決定、2026-11-19）。
-  - Deploy して、rate-limit-redis の deployment ID を控える。
+  - Deploy して、rate-limit-redis の deployment ID を控える。変えた後の start command（Secret でない引数）と仮の値を「**仮の設定**」として記録する。§3.5 の合格の後、§5.4 で確定する前に中断したときの戻し先になる（§7）。
 - **期待:** rate-limit-redis が起動する。API の readiness が、30 秒あまり（背景の probe の間隔）で 200 に戻る。
 - **合否:** 起動すれば §3.5 へ進む。
-- **不合格のとき:** 起動しない場合は、元の start command に戻して状況を Issue #45 に記録し、担当1 に連絡する。
+- **不合格のとき:** 起動しない場合は、§7 の表の「§3.4 の後、§3.5 が合格する前」の戻し先（元の設定。§3.1 で Volume を外したなら、Volume を指す引数を除く）に戻して、状況を Issue #45 に記録し、担当1 に連絡する。
 
 ### 3.5 設定が再起動後も残ることの確認
 
@@ -200,7 +219,7 @@
   - `appendonly` が `no`、`aof_enabled:0`
   - `evicted_keys:0`
 - **合否:** **restart の後と再デプロイの後の両方で一致すれば合格。** `CONFIG SET` だけで作った設定は再起動で消えるので、合格にしない。`CONFIG REWRITE` は使わない。
-- **不合格のとき:** `save` だけが空にならない場合は、exec 形式で空文字の引数が渡っていない可能性がある（資料に記載がない）。`/bin/sh -c "exec redis-server … --save '' …"` の形を試してから判定する。それでも start command の引数が効かない、または Railway の制約で設定できない場合は、Production promotion を止めたまま観測を Issue #45 に記録し、担当1 に連絡する（`SPEC-180 §17.2` #4 は「設定できること」自体を確認する項目）。担当1 が store の方針を再検討する UCR 案を作る。
+- **不合格のとき:** `save` だけが空にならない場合は、exec 形式で空文字の引数が渡っていない可能性がある（資料に記載がない）。`/bin/sh -c "exec redis-server … --save '' …"` の形を試してから判定する。それでも start command の引数が効かない、または Railway の制約で設定できない場合は、§7 の表の「§3.4 の後、§3.5 が合格する前」の戻し先に戻し、Production promotion を止めたまま観測を Issue #45 に記録し、担当1 に連絡する（`SPEC-180 §17.2` #4 は「設定できること」自体を確認する項目）。担当1 が store の方針を再検討する UCR 案を作る。
 
 ### 3.6 API が戻ることの確認
 
@@ -230,7 +249,7 @@
 
 1. 試行と試行の間は **61 秒以上**空ける。burst（10 秒）と sustained（60 秒）の両方の window を空にするため。拒否された評価は counter に記録されない（`SEC-ABU-013`）。
 2. 逐次版（§4.6）では、1 回の request ごとに curl を 1 回起動する（毎回新しい接続になる）。
-3. 「ちょうど B+1 回目で 429」を判定するには、B+1 回を **9 秒以内**に送り終える必要がある（burst の window が 10 秒のため）。表示された `elapsed` が 9 秒を超えたら、その試行は無効とし、61 秒後にやり直す。回線が遅くて間に合わない場合は、並列版（§4.6）で B+1 本を同時に送り、「404 が B 件、429 が 1 件」という**件数**で判定する。評価は atomic なので、並列でも 429 はちょうど 1 件になる。
+3. 「ちょうど B+1 回目で 429」を判定するには、B+1 回を **9 秒以内**に送り終える必要がある（burst の window が 10 秒のため）。表示された `elapsed` が 9 秒を超えたら、その試行は無効とし、61 秒後にやり直す。回線が遅くて間に合わない場合は、並列版（§4.6）で B+1 本を同時に送り、「404 が B 件、429 が 1 件」という**件数**で判定する。評価は atomic なので、並列でも 429 はちょうど 1 件になる。**並列版も最後に `elapsed` を表示する。並列版でも 9 秒を超えた試行は無効とする**（T3 では、さらに §4.3 の T3 の条件を満たす必要がある）。
 4. 429 には整数で 1 以上の `Retry-After` がある（`SEC-ABU-007`）。値は、超過した rule のうち、再び admit されるまでが最も長いものの秒数である。`burst_limit < sustained_limit` なら burst で拒否され、1〜10 程度（逐次版なら、おおよそ 10 − `elapsed`）になる。`burst_limit ≥ sustained_limit` なら sustained も超過するので、最大 60 程度になる。合否は「整数で 1 以上」だけで判定する。
 5. B 回以内に 429 が出た場合は、同じ IP の他の通信と counter を共有している疑いがある。他の通信を止め、61 秒後にやり直す。
 6. 503 が出た場合は、store の障害か drain 中である。§4 を中断し、§3.6 で readiness と Redis を確かめる。
@@ -274,17 +293,24 @@ T1〜T4 は観測を集める手順であり、合否は §4.5 でまとめて�
 回線A と回線B の 2 台の端末を同時に使う（§2.2）。
 
 - **やること:**
-  1. 61 秒後、回線A の端末から並列版で B+1 本送る（`run_parallel none`。1 秒ほどで終わる）。429 の `retry-after` の秒数を見る。T3 は回線どうしが独立しているかの確認で、偽装の確認は T2 が受け持つので、偽の header は付けない。T2 で ✗偽 になった値では T3 を省き、その値を ✗偽 としてよい。
-  2. その秒数のうちに、回線B の端末から 1 回送る。次のコマンドを入力しておき、Enter を押すだけにしておく。
+  1. 61 秒後、回線A の端末から並列版で B+1 本送る（`run_parallel none`。1 秒ほどで終わる）。`elapsed` を見る。T3 は回線どうしが独立しているかの確認で、偽装の確認は T2 が受け持つので、偽の header は付けない。T2 で ✗偽 になった値では T3 を省き、その値を ✗偽 としてよい。
+  2. 続けて、回線B の端末から 1 回送る（**本番の 1 回**）。その結果が表示されたらすぐに、回線A の端末からも 1 回送る（**対照の 1 回**）。両方の端末に次のコマンドを入力しておき、Enter を押すだけにしておく。
 
      ```bash
-     curl -sS -o /dev/null ${CURL_OPTS:-} -w '%{http_code}\n' "$STAGING_API_ORIGIN/ops-check/not-found"
+     curl -sS -o /dev/null ${CURL_OPTS:-} -w '%{http_code} retry-after=%header{retry-after}\n' "$STAGING_API_ORIGIN/ops-check/not-found"
      ```
 
-     この 1 回を、回線A の 429 の `retry-after` の秒数のうちに送れなかった場合は無効とする。その場合は回線A の counter がすでに空いているので、counter を共有していても 404 になってしまう。61 秒後に手順 1 からやり直す。
+     次の 3 つをすべて満たす試行だけを有効とする。満たさなければ無効とし、61 秒後に手順 1 からやり直す。
+     - 手順 1 の `elapsed` が 9 秒以下で、`404` が B 件、`429` が 1 件。
+     - 対照の 1 回が、本番の 1 回の結果が出た**後**に送られている。
+     - 対照の 1 回が `429` で、その `retry-after` が「手順 1 の `elapsed` + 2」以上（例: `elapsed=1s` なら 3 以上）。間に合わない場合は、手順 1 の直後に本番の 1 回を送るよう、入力を済ませておく。
+
+     **対照が要る理由:** 本番の 1 回が `404` でも、回線A の counter の entry がすでに失効し始めていたなら、counter を共有していても 404 になりうる。`Retry-After` は、超過した rule ごとに「(件数 − 上限 + 1) 番目に古い entry が window から出るまでの時間」を求め、その最長を秒に切り上げたもの（`SEC-ABU-007`、`evaluate.lua`、`limiter.ts`）。下の前提のもとでは、対照の時点で超過している rule の件数はちょうど上限なので、これは残っている entry のうち最も古いものになる。手順 1 の B 件の entry は、手順 1 の間（`elapsed` + 1 秒未満）に記録され、ほぼ同時に失効する。counter を共有していて、本番の 1 回が entry の失効の後に admit されたとすると、対照の時点で残っている最も古い entry は手順 1 の間に記録されたものなので、対照の `retry-after` は「`elapsed` + 1」以下になる。対照の `retry-after` がそれより大きければ、本番の 1 回の時点で手順 1 の B 件がすべて window の中にあったことになる。その場合、counter を共有していれば本番の 1 回も 429 だったはずなので、本番の `404` は counter が別であることを示す。
+
+     **前提:** この論証は、**B ≥ 2** で、かつ **`sustained_limit` ≠ `burst_limit` + 1** のときだけ成り立つ（§2.3 で読んだ値で確かめる）。B = 1 だと、残っている entry が本番の 1 回だけになり、対照の `retry-after` がそれで決まる。`sustained_limit` = `burst_limit` + 1 だと、本番の 1 回で sustained がちょうど上限に達し、対照の `retry-after` が sustained の window（60 秒）で決まる。どちらも、共有していても対照の `retry-after` が大きくなる。前提を満たさない設定では、T3 は**判定できない**ものとして記録し、担当1 に連絡する（§4.5 の合格にしない）。
   3. 61 秒後、回線B の端末だけで T2（`run_trial vary`）を行う。
-  4. 61 秒後、役割を入れ替える。回線B の端末が並列版（`run_parallel none`）で 429 を受けた直後に、回線A の端末から 1 回送る。手順 2 と同じく、`retry-after` の秒数のうちに送れなかったら無効とし、やり直す。
-- **期待:** 手順 2 と手順 4 の 1 回は `404`（429 でない。回線A と回線B が別の counter）。手順 3 は、ちょうど B+1 回目で `429`。
+  4. 61 秒後、役割を入れ替えて手順 1・2 を行う。回線B の端末が並列版（`run_parallel none`）で B+1 本送り、本番の 1 回を回線A の端末から、対照の 1 回を回線B の端末から送る。有効な試行の条件は手順 2 と同じ。
+- **期待:** 手順 2 と手順 4 の本番の 1 回は `404`（429 でない。回線A と回線B が別の counter）。対照の 1 回は `429`。手順 3 は、ちょうど B+1 回目で `429`。
 - **注意:** 手順 3 で 429 がいつまでも出ない場合は、回線B の送信元 IP が接続ごとに変わっている可能性（携帯回線の CGNAT）を先に疑い、別の回線でやり直す。仕様に照らした不合格と即断しない。
 
 **T4（追記か上書きかの判定）**
@@ -292,10 +318,12 @@ T1〜T4 は観測を集める手順であり、合否は §4.5 でまとめて�
 - **やること:** `TRUSTED_PROXY_HOPS` を **h+1** に変え（§4.7）、Ready になるのを待ってから次を行う。
   - T4a: 回線A から、**同じ**偽の値（`203.0.113.200`）を付けて B+1 回送る（`run_trial fixed`）。
   - T4b: 61 秒後、回線A から、**毎回異なる**偽の値を付けて B+1 回送る（`run_trial vary`）。
-- **期待（判定）:**
-  - **追記型**（Railway などの proxy が、client の送った値の右に、自分の観測した IP を足す）なら、h+1 では偽の値が key になる。T4a は B+1 回目で 429、T4b は 429 が出ない（h+1 では偽装できる = ✗偽）。
-  - **上書き型**（client の値を捨てる）なら、h+1 では要素が足りず peer が使われる。T4a と T4b は同じ結果（どちらも B+1 回目で 429 = ✗共）になり、偽の値の影響を受けない。
-  - T4 は h+1 での T1〜T3 の代わりになる。T4b で 429 が出なければ h+1 は ✗偽、T4a・T4b がともに B+1 回目で 429 なら h+1 は peer（✗共）として扱う。
+- **期待（判定）:** T4a と T4b は、それぞれ §4.2 の規則で有効な試行であること。
+  - **T4a は、どちらの型でも、1〜B 回目が `404`、B+1 回目が `429` になる**（追記型なら固定の偽の値が key になり、上書き型なら peer が key になるため）。T4a がこうならなければ（429 が出ない、B 回以内に 429 が出る）、T4 の結果は**分類できない**（例: peer が接続ごとに変わる）。
+  - **追記型**（Railway などの proxy が、client の送った値の右に、自分の観測した IP を足す）なら、h+1 では偽の値が key になる。T4a は上のとおり、T4b は 429 が出ない（h+1 では偽装できる = ✗偽）。
+  - **上書き型**（client の値を捨てる）なら、h+1 では要素が足りず peer が使われる。T4a と T4b は**どちらも** 1〜B 回目が `404`、B+1 回目が `429` になり（✗共）、偽の値の影響を受けない。
+  - T4a と T4b が**どちらも 429 なし**の場合は、counter の働きを観測できていないので、どちらの型にも分類しない（**分類できない**）。
+  - T4 は h+1 での T1〜T3 の代わりになる。追記型なら h+1 は ✗偽、上書き型なら h+1 は peer（✗共）として扱う。
 - **やること（後始末）:** 判定の後、**必ず `TRUSTED_PROXY_HOPS` を h に戻して**再デプロイする。
 
 **h−1（h が 1 以上のとき）**
@@ -331,13 +359,15 @@ HOPS=0 で ✓ になるのは、peer が利用者自身の IP である場合�
 - **合格:** 次の 3 つをすべて満たす。
   - 試した値のうち、T1〜T3 が ✓ になる値がちょうど 1 つ（h）ある。h+1 は T4 の結果で判定する（§4.3 の T4）。
   - h が 1 以上なら、h−1 は ✓ にならない。
-  - T4 の結果が、**追記型**（T4a は 429、T4b は 429 なし）か**上書き型**（T4a と T4b が同じ結果）のどちらかに分類できる。
+  - T4a が有効な試行で、1〜B 回目が `404`、B+1 回目が `429` になり、T4b の結果で次のどちらかに分類できる。**追記型**（T4b は 429 なし）か、**上書き型**（T4b も 1〜B 回目が `404`、B+1 回目が `429`）。T4a に 429 が出ない場合（T4a と T4b がどちらも 429 なしの場合を含む）は分類できないので、合格にしない。
 
   記録するもの: h、追記型か上書き型か、当てはまる仮説（H1・H2・H3・H3' のどれか。どれにも当てはまらなければ観測をそのまま書く）。staging の `TRUSTED_PROXY_HOPS` は h のままにする。
 - **不合格:** 次のどれか。
   - どの値も ✓ にならない（H4〜H6 のように、どの HOPS でも ✗共 か ✗偽 になる場合。H5 は Railway が `X-Forwarded-For` を付けず `X-Real-IP` だけを付ける場合）
   - ✓ になる値が 2 つ以上ある
   - T4 の結果が、追記型にも上書き型にも分類できない
+
+- **判定できない:** T3 の前提（§4.3 の T3。B ≥ 2 かつ `sustained_limit` ≠ `burst_limit` + 1）を満たさない場合。合格にも不合格にもせず、観測を Issue #42 に記録して担当1 に連絡する。Production promotion は止めたままにする。
 
   不合格のときは、Production promotion を止めたまま（`INF-RLS-008`）、観測を Issue #42 に記録する。担当1 が `SEC-API-031` と `SPEC-180 §17.2` #1 の UCR 案を作り、利用者が判断する。**担当2 は仕様・実装を変えない。** staging の `TRUSTED_PROXY_HOPS` は、確認を始める前の値に戻す。
 
@@ -382,9 +412,10 @@ run_trial() {
   echo "elapsed=$(( $(date +%s) - start ))s"
 }
 
-# 並列版: run_parallel none|vary|fixed。status と retry-after の組を件数で数える。
+# 並列版: run_parallel none|vary|fixed。status と retry-after の組を件数で数え、最後に経過秒を表示する。
 run_parallel() {
   mode=$1
+  start=$(date +%s)
   for i in $(seq 1 $((B + 1))); do
     case "$mode" in
       none)  echo "$i -" ;;
@@ -399,6 +430,7 @@ run_parallel() {
       curl -sS -o /dev/null --max-time 10 $CURL_OPTS -H "X-Forwarded-For: $2" \
         -w "%{http_code} retry-after=%header{retry-after}\n" "$0"
     fi' "$STAGING_API_ORIGIN$CHECK_PATH" | sort | uniq -c
+  echo "elapsed=$(( $(date +%s) - start ))s"
 }
 ```
 
@@ -407,11 +439,11 @@ run_parallel() {
 ```bash
 run_trial none      # T1
 sleep 61; run_trial vary    # T2
-sleep 61; run_parallel none # T3 の手順 1（直後に回線B から 1 回）
+sleep 61; run_parallel none # T3 の手順 1（直後に回線B から本番の 1 回、続けて回線A から対照の 1 回）
 ```
 
 - 逐次版の期待される出力の形（B=20 の例）: `1 404 retry-after=` から `20 404 retry-after=` までが並び、`21 429 retry-after=4`、最後に `elapsed=6s`（`burst_limit < sustained_limit` の場合。§4.2-4）。
-- 並列版の期待される出力の形: `20 404 retry-after=` と `1 429 retry-after=<1 以上の整数>`（burst で拒否されたときは 10 前後）。
+- 並列版の期待される出力の形: `20 404 retry-after=` と `1 429 retry-after=<1 以上の整数>`（burst で拒否されたときは 10 前後）、最後に `elapsed=1s` など。
 - 並列版の偽の値はカンマの後の空白を除いて送る（`198.51.100.2,192.0.2.2`）。要素の区切りはカンマなので、実装の解釈（前後の空白は除いて読む）は変わらない。
 
 ### 4.7 `TRUSTED_PROXY_HOPS` の変え方
@@ -516,6 +548,14 @@ sleep 61; run_parallel none # T3 の手順 1（直後に回線B から 1 回）
 
 - **やること:**
 
+  後片付けの**前に**、合成 key が入った状態の値を控える（§5.4 の手順 1 で使う）。
+
+  ```sh
+  redis-cli INFO memory | grep -E '^(used_memory|used_memory_rss|mem_fragmentation_ratio):'
+  ```
+
+  続けて、合成 key を消す。
+
   ```sh
   DEL_SMALL='for i = tonumber(ARGV[2]) + 1, tonumber(ARGV[2]) + tonumber(ARGV[1]) do
     redis.call("UNLINK", string.format("opscheck:v1:measure.small:%064x", i))
@@ -610,18 +650,31 @@ maxmemory = baseline + バイト数 × 安全係数
 
 - **期待:** 記入欄がすべて埋まる。
 - **合否:** P と安全係数は利用者が確定する（本書では値を決めない）。値が確定したら §5.4 へ進む。
-- **不合格のとき:** P などが決まらなければ §5.4 に進まず、利用者の判断を待つ。それまでは §3.4 の仮の値のままにする。
+- **不合格のとき:** P などが決まらなければ §5.4 に進まず、利用者の判断を待つ。それまでは §3.4 の仮の設定のままにする。ここで作業を中断する場合は、§7 の「§3.5 の合格の後、§5.4 で確定する前」の戻し先に従う。
 - **注意:** 満杯になると、rate limit を通る全 request が 503 で止まる（Fail Closed: `SEC-ABU-019`、`SEC-ABU-032` (4)）。eviction で counter を消すことはしない。
 
 ### 5.4 決定と反映
 
 - **やること:**
-  1. Railway の画面で environment が **staging** であることを確かめてから、確定した値で、staging environment の rate-limit-redis の start command の `--maxmemory` を置き換えて Deploy する。
-  2. §3.5 の確認（restart の後と再デプロイの後）をもう一度行う。
-  3. Railway の rate-limit-redis service のメモリ上限を確かめて記録する。資料の推奨（`maxmemory` は container のメモリのおおむね半分）に沿っているかも記録する。これは仕様の基準ではなく、合否には使わない。
-- **期待:** §3.5 の期待どおり。
-- **合否:** §3.5 の合否と同じ。合格なら §6 へ進む。
-- **不合格のとき:** §3.5 の不合格のときと同じ。メモリ上限が `maxmemory` に近く資料の推奨に沿わない場合は、合否とは別に、運営者・担当1 に相談する。
+  1. **反映の前に**、container のメモリ上限に収まるかを確かめる。Railway の画面で、staging environment の rate-limit-redis service のメモリ上限（L）を確かめて記録し、次の見込みを計算する。
+
+     ```text
+     見込みの RSS = maxmemory × max(1, F) + R0
+     ```
+
+     - F: §5.2 の後片付けの前に控えた `mem_fragmentation_ratio`。データが少ないと大きめに出るが、安全側なのでそのまま使う。
+     - R0: §5.1 の baseline の `used_memory_rss`（Redis の process そのものと、接続のバッファなどの分）。
+     - `maxmemory` は `used_memory`（データの量）の上限で、RSS（container が実際に使うメモリ）の上限ではない。上限を超えた書き込みは、1 回の評価の分だけ越えることがある（`evaluate.lua` の注記）が、counter の数件分なので見込みでは無視する。
+
+     **見込みの RSS ≤ L** なら手順 2 へ進む。超える場合は反映せず、§3.4 の仮の設定のままにして、「不合格のとき」に従う。
+  2. Railway の画面で environment が **staging** であることを確かめてから、確定した値で、staging environment の rate-limit-redis の start command の `--maxmemory` を置き換えて Deploy する。
+  3. §3.5 の確認（restart の後と再デプロイの後）をもう一度行う。
+  4. 資料の推奨（`maxmemory` は container のメモリのおおむね半分）に沿っているかも記録する。これは仕様の基準ではなく、合否には使わない。
+- **期待:** 手順 1 で見込みの RSS が L 以下。手順 3 は §3.5 の期待どおり。
+- **合否:** 手順 1 を満たし、手順 3 が §3.5 の合否で合格なら §6 へ進む。
+- **不合格のとき:**
+  - 手順 1 で見込みの RSS が L を超える場合は、確定を保留する。noeviction で書き込みを断る前に、container がメモリ上限で終了するおそれがあるため。見込みの値を Issue #45 に記録し、service のメモリ上限を上げるか、見積り（P・安全係数）を見直すかを、運営者・担当1・利用者が決める。決まるまで、§3.4 の仮の設定のままにする（§7）。
+  - 手順 3 が不合格なら、§3.5 の不合格のときと同じ。
 
 ### 5.5 監視（本書では決めない）
 
@@ -644,7 +697,10 @@ maxmemory = baseline + バイト数 × 安全係数
      ```sh
      redis-cli INFO errorstats | grep -i oom
      redis-cli INFO stats | grep -E '^evicted_keys:'
+     redis-cli INFO server | grep -E '^(run_id|uptime_in_seconds):'
      ```
+
+     `run_id` は、§6.3 で Redis が再起動していないことを確かめるために控える（Secret ではないが、記録には「同じ／違う」だけを書く）。
 
 - **期待:** 記録できる（`errorstat_OOM` はまだない、またはその件数）。
 - **合否:** 61 秒以上空き、告知済みで、staging であることを確かめ、値を記録できれば §6.2 へ進む。
@@ -661,31 +717,59 @@ maxmemory = baseline + バイト数 × 安全係数
 
 - **期待:** `CONFIG SET` が `OK` を返す。`CONFIG GET maxmemory` が `1`。
 - **合否:** そうなれば §6.3 へ進む。
-- **不合格のとき:** `CONFIG SET` がエラーになる場合（`CONFIG` が無効化されている場合など）は、§6.5 の代替手順で行う。
+- **不合格のとき:** `CONFIG SET` がエラーになる場合は、§6.5 に従う。
 
 ### 6.3 観測
 
-- **やること:** 回線A から次を実行する。
+- **やること:** §6.2 の直後に、次の順で行う。手順 1〜3 は、背景の probe の書き込みが混ざりにくいよう、続けて手早く行う。
+  1. container 内で、OOM の件数を読む（O1）。
 
-  ```bash
-  curl -sS -o /dev/null -w '%{http_code}\n' "$STAGING_API_ORIGIN/ops-check/not-found"
-  for i in $(seq 1 9); do curl -sS -o /dev/null -w "$i %{http_code}\n" "$STAGING_API_ORIGIN/internal/health/ready"; sleep 5; done
-  ```
+     ```sh
+     redis-cli INFO errorstats | grep -i oom
+     ```
 
-  container 内でも、次を読む。
+  2. 回線A から、未一致 path に 5 回、**3 秒ずつ空けて**送る。API は store の失敗が 3 回続くと、その後 2 秒間は Redis を呼ばずに 503 を返す（短絡: `SPEC-150 REL-SEC-005`、`limiter.ts` の `DEFAULT_CIRCUIT`）。3 秒空けると、4 回目以降も 2 秒が過ぎてから送られ、試しに 1 回ずつ Redis が呼ばれるので、5 回すべてが Redis に届く。
 
-  ```sh
-  redis-cli INFO errorstats | grep -i oom
-  redis-cli INFO stats | grep -E '^evicted_keys:'
-  ```
+     ```bash
+     for i in 1 2 3 4 5; do curl -sS -o /dev/null -w "$i %{http_code}\n" "$STAGING_API_ORIGIN/ops-check/not-found"; sleep 3; done
+     ```
+
+  3. container 内で、もう一度 OOM の件数を読む（O2）。
+  4. 回線A から、ready を 5 秒ごとに 9 回読む。
+
+     ```bash
+     for i in $(seq 1 9); do curl -sS -o /dev/null -w "$i %{http_code}\n" "$STAGING_API_ORIGIN/internal/health/ready"; sleep 5; done
+     ```
+
+     外部から到達できない構成なら、Redis 用とは**別の端末**で、§6.2 の前に §2.6.1 の手順 1 で api service の container に入っておき、その中で次を実行する。
+
+     ```sh
+     for i in $(seq 1 9); do node -e 'fetch("http://127.0.0.1:" + process.env.PORT + "/internal/health/ready").then((r) => console.log(r.status), () => console.log("error"))'; sleep 5; done
+     ```
+
+  5. container 内で、Redis が動いていて、書き込みだけを断っていることを確かめる。`SET` が成功してしまった場合は、満杯の状態になっていないので、`redis-cli UNLINK opscheck:oom-probe` で消してから「不合格のとき」に従う。
+
+     ```sh
+     redis-cli PING
+     redis-cli SET opscheck:oom-probe 1 PX 60000
+     redis-cli INFO stats | grep -E '^evicted_keys:'
+     redis-cli INFO server | grep -E '^(run_id|uptime_in_seconds):'
+     ```
 
 - **期待:**
-  - 未一致 path が **`503`**（429 でも 404 でもない: `SEC-ABU-019`、`SEC-ABU-009`）。
-  - ready が 45 秒以内に `503` になる。背景の probe（30 秒以内の間隔）が、固定の readiness key への書き込みに失敗するため。ready が外部から到達できない構成なら、Railway 上の状態で代える。
-  - `errorstat_OOM` の件数が増え、`evicted_keys` は増えない（`noeviction`）。
+  - 手順 2 の 5 回がすべて **`503`**（429 でも 404 でもない: `SEC-ABU-019`、`SEC-ABU-009`）。
+  - O2 の `errorstat_OOM` の件数が、O1 より **5 以上**増えている。手順 2 を 3 秒ずつ空けて送った場合、1 回の request で Redis への評価（script の実行）は 1 回で、満杯の状態ではその書き込みが OOM で断られるため。空けずに送ると、短絡で Redis に届かない request があり、5 に届かない（その場合は「判定できない」ではなく、手順 1 からやり直す）。背景の probe（短絡を通らない）の書き込みが混ざると、さらに 1 つほど増える。
+  - ready が 45 秒以内に `503` になる。背景の probe（30 秒以内の間隔）が、固定の readiness key への書き込みに失敗するため。
+  - 手順 5 で、`PING` が `PONG`、`SET` が `OOM command not allowed …` のエラー、`evicted_keys` が §6.1 から増えていない（`noeviction`）、`run_id` が §6.1 と同じ（Redis が再起動していない）。
   - `OBS-ALT-041` / `042` の通知が配線されていれば、発火しうる。発火したかどうかを記録する（配線の確認ではない。現状、exporter と Better Stack への配線は未実装）。
-- **合否:** 未一致 path が 503、ready が 503、`evicted_keys` が増えないことがそろえば合格。
-- **不合格のとき:** §6.6 に従う（まず §6.4 で元に戻す）。
+- **合否:**
+  - **合格:** 上の期待がすべてそろう（`OBS-ALT-041` / `042` は合否に使わない）。503 が、Redis が動いたまま、API の書き込みを Redis が OOM で断ったことによると確かめられる。
+  - **判定できない:** 次のどれかの場合は、合格にも不合格にもせず、観測をそのまま Issue #45 に記録して担当1 に連絡する。
+    - `INFO errorstats` が読めない、または手順 2 を 3 秒ずつ空けて送ったのに O2 が O1 より 5 以上増えていない（API の 503 が、OOM ではない別の原因、たとえば Redis への接続の失敗によるものかもしれない）。
+    - ready を外部からも内部経路（§2.6.1）からも読めない（ready の項目が観測不能）。
+    - 手順 5 の `SET` が成功した（満杯の状態になっていなかった）。
+  - 上のどちらでもなければ不合格とし、§6.6 に従う。
+- **不合格のとき・判定できないとき:** まず §6.4 で元に戻す。不合格なら §6.6 に従う。判定できない場合は、やり直すかどうかを担当1 と決める（やり直すときは §6.1 から）。
 
 ### 6.4 元に戻す
 
@@ -697,28 +781,27 @@ maxmemory = baseline + バイト数 × 安全係数
   ```
 
   `CONFIG SET` の代わりに、Railway の画面で environment が **staging** であることを確かめてから、staging environment の rate-limit-redis を restart して、start command の値に戻してもよい。
-- **期待:** `CONFIG GET maxmemory` が start command の値と一致する（**1 のまま残さない**）。45 秒以内に、未一致 path が `404`、ready が `200` に戻る。
+- **期待:** `CONFIG GET maxmemory` が start command の値（§5.4 の確定値）と一致する（**1 のまま残さない**）。45 秒以内に、未一致 path が `404`、ready が `200` に戻る（ready が外部から到達できなければ §2.6.1 の内部経路で確かめる）。
 - **合否:** 戻れば §7 へ進む。
 - **不合格のとき:** 戻らない場合は、Railway の画面で environment が **staging** であることを確かめてから、staging environment の rate-limit-redis を restart し、§3.5 と §3.6 を行う。
 
-### 6.5 代替（`CONFIG` が使えない場合）
+### 6.5 `CONFIG SET` が使えない場合
 
-- **やること:**
-  1. Railway の画面と §3.2 の方法で、staging の rate-limit-redis であることを確かめてから、小さい `--maxmemory`（例: baseline に数 MB を足した値）の start command で再デプロイする。
-  2. §5.2 (i) の `EVAL` で合成 key（prefix `opscheck:`、PEXPIRE 付き）を詰めて、OOM のエラーが出るまで増やす。
-  3. §6.3 と同じ観測を行う。
-  4. 合成 key を消し、§5.4 の start command に戻して再デプロイし、§3.5 の確認を行う。
-- **期待:** 手順 2 で `EVAL` が OOM のエラーを返す。手順 3 の観測は §6.3 の期待と同じ。手順 4 の後は §6.4 の期待と同じ。
-- **合否:** §6.3 と §6.4 の合否と同じ基準で判定する。
-- **不合格のとき:** §6.6 と同じ。必ず手順 4 で元に戻す。
+`CONFIG` が使えない構成は §3.3 で中断しているので、ここに来るのは、§3.3〜§5.4 で `CONFIG GET` は使えたのに、§6.2 の `CONFIG SET` だけがエラーになった場合である。
+
+- **やること:** 満杯試験を行わずに中断する。`CONFIG GET maxmemory` が §5.4 の確定値のままであることを確かめ、エラーの内容（Secret を含まない部分）を Issue #45 に記録して、担当1 に連絡する。start command を小さい `maxmemory` に変えて満杯にする方法などの代わりの手順は、本書では行わない（戻し先の管理が増え、確定値の確認をやり直すことになるため）。続け方は担当1 と利用者が決める。
+- **期待:** `CONFIG GET maxmemory` が確定値。
+- **合否:** 満杯試験は「判定できない」として記録する。#45 の満杯試験の項目は未了のままになる。
+- **不合格のとき:** `CONFIG GET maxmemory` が確定値でなければ、§6.4 の「不合格のとき」と同じく restart し、§3.5 と §3.6 を行う。
 
 ### 6.6 不合格のとき
 
 次のどれかが起きたら不合格とする。
 
-- OOM の最中なのに、未一致 path が 429 か 404 のまま
-- ready が 200 のまま
+- OOM の最中なのに（O2 が O1 より 5 以上増え、手順 5 の `SET` が OOM で断られているのに）、未一致 path が 429 か 404 のまま
+- 同じく OOM の最中なのに、ready が 200 のまま
 - `evicted_keys` が増える
+- `PING` が返らない、または `run_id` が変わった（満杯で Redis が止まった、または再起動した）
 
 不合格のときは、**すぐに §6.4 で元に戻す。** そのうえで Production promotion を止めたまま観測を Issue #45 に記録し、担当1 に連絡する（実装か構成が仕様と食い違っている疑い）。
 
@@ -726,14 +809,23 @@ maxmemory = baseline + バイト数 × 安全係数
 
 ## 7. 後片付け（中断したときも必ず行う）
 
+**Redis の設定の戻し先**は、どこまで進んだかで決まる。§3.3 の「元の設定」と §3.4 の「仮の設定」は、記録に控えてある。
+
+| 中断した時点 | 戻し先（start command と `maxmemory`） |
+| --- | --- |
+| §3.4 より前（§3.3 で中断した場合を含む） | 何も変えていないので、そのまま（元の設定） |
+| §3.4 の後、§3.5 が合格する前 | 元の設定。ただし §3.1 で Volume を外した場合は、Volume を指す引数（`--dir` など）を除く（外した Volume を指したままだと起動に失敗しうるため。§3.4 を参照）。§3.4・§3.5 の不合格のときも同じ |
+| §3.5 の合格の後、§5.4 で確定する前（§5.3 で P などを待つ間、§5.4 の手順 1 で保留した場合を含む） | 仮の設定。元の設定には戻さない（仮の設定は `noeviction` と永続化なしを満たし、§3.5 で残ることを確かめてあるため） |
+| §5.4 で確定した後（§6 の最中を含む） | §5.4 の確定値 |
+
 - [ ] `TRUSTED_PROXY_HOPS` が h（合格時）か、確認前の値（不合格時）になっている。Variables の値が h（または確認前の値）で、staged change が残っておらず、Active な deployment が最後の §4.7 の Deploy で作られたもの（控えた ID）と一致することで確かめた。
-- [ ] start command の `--maxmemory` が §5.4 の確定値になっていて（§6.5 の小さい値のままではない）、`CONFIG GET maxmemory` がその bytes の値と一致する（1 のままではない）。`maxmemory-policy` が `noeviction`。
+- [ ] start command が、上の表の戻し先になっている。`CONFIG GET maxmemory` がその bytes の値と一致する（1 のままではない）。戻し先が仮の設定か確定値なら、`maxmemory-policy` が `noeviction`。戻し先がどれかを記録した。
 - [ ] 合成 key（`opscheck:`）が残っていない（`redis-cli --scan --pattern 'opscheck:*' | head` の出力がない。`KEYS` は使わない）。
 - [ ] rate-limit-redis に TCP Proxy・Public Access・public domain が付いていない。
 - [ ] ready が `200`、未一致 path が `404`。
 - [ ] §2.1 の相手に、終わったことを知らせた。
 
-満たされない項目があれば、該当する節に戻って直す。`TRUSTED_PROXY_HOPS` は §4.7、start command と `maxmemory` は §3.4 と §6.4、合成 key は §5.2 の後片付け、TCP Proxy などは §3.1、ready と未一致 path は §3.6。
+満たされない項目があれば、該当する節に戻って直す。`TRUSTED_PROXY_HOPS` は §4.7、start command と `maxmemory` は、元の設定か仮の設定なら §3.4（控えた start command にして Deploy し、§3.5 の確認を行う）、確定値なら §5.4 の手順 2・3 と §6.4、合成 key は §5.2 の後片付け、TCP Proxy などは §3.1、ready と未一致 path は §3.6。
 
 ---
 
@@ -765,6 +857,7 @@ maxmemory = baseline + バイト数 × 安全係数
 - Secret、password、接続文字列、Access の service token
 - counter key 名
 - `X-Request-Id` の値（記録する必要がない）
+- Redis の `run_id` の値（§6.1 と §6.3 で同じかどうかだけを書く）
 
 ### 8.1 #42 のテンプレート
 
@@ -782,16 +875,17 @@ maxmemory = baseline + バイト数 × 安全係数
 | --- | --- | --- | --- | --- |
 | | T1 | A | | |
 | | T2 | A | | |
-| | T3-1・2 | A → B | | |
+| | T3-1・2 | A（並列、elapsed）→ B（本番）→ A（対照、retry-after） | | |
 | | T3-3 | B | | |
-| | T3-4 | B → A | | |
+| | T3-4 | B（並列、elapsed）→ A（本番）→ B（対照、retry-after） | | |
 | h+1 = | T4a | A | | |
 | h+1 = | T4b | A | | |
 | h−1 = | T1〜T3 | | | |
 
-- 判定: 合格 / 不合格
+- 判定: 合格 / 不合格 / 判定できない（理由: ）
 - 決めた TRUSTED_PROXY_HOPS（staging）:
 - X-Forwarded-For の扱い: 追記型 / 上書き型 / 分類できない（仮説 H?）
+- production の T1〜T3: 実施 / 未実施（理由: ）
 - 資料（specs-and-limits の Request Headers）との差:
 - 後片付け（§7）: 済
 ```
@@ -806,7 +900,8 @@ maxmemory = baseline + バイト数 × 安全係数
 - 実施者: 担当2
 - 構成（INF-RLS-001/002/003/005）: service 1 つ / public domain・TCP Proxy・Public Access なし / Volume なし / replicas 1 / worker から参照なし
 - 接続方法: railway ssh（保守のための一時的な接続。TCP Proxy なし）
-- start command の追加引数（Secret 以外）: --maxmemory … --maxmemory-policy noeviction --save "" --appendonly no
+- 元の設定（§3.3。start command の Secret 以外の引数 / maxmemory）:
+- 仮の設定（§3.4）: --maxmemory … --maxmemory-policy noeviction --save "" --appendonly no
 
 | 時点 | maxmemory | maxmemory-policy | save | appendonly | evicted_keys |
 | --- | --- | --- | --- | --- | --- |
@@ -816,9 +911,10 @@ maxmemory = baseline + バイト数 × 安全係数
 
 - 実測: baseline = / k1 = / m1 = / （任意）listpack の 1 member あたり = / zset-max-listpack-entries =
 - 見積り: P = （根拠: ） / r = / P_auth = / E = / 安全係数 =
-- 決めた maxmemory: / service のメモリ上限: / mem_fragmentation_ratio:
-- 満杯試験: 未一致 path = / ready が 503 になるまで = 秒 / OOM の件数の増加 = / evicted_keys の増加 = / 戻した後の ready が 200 になるまで = 秒 / alert の発火 =
-- 判定: 合格 / 不合格
+- 決めた maxmemory: / service のメモリ上限 L: / F（mem_fragmentation_ratio、§5.2 の後片付けの前）: / R0（baseline の used_memory_rss）: / 見込みの RSS: / L 以下か:
+- 満杯試験: 未一致 path（5 回） = / OOM の件数の増加（O2 − O1） = / ready が 503 になるまで = 秒（外部 / 内部経路 / 観測不能） / PING = / SET opscheck:oom-probe = / run_id = 同じ・違う / evicted_keys の増加 = / 戻した後の ready が 200 になるまで = 秒 / alert の発火 =
+- 判定: 合格 / 不合格 / 判定できない（理由: ）
+- 後片付けの戻し先（§7 の表）: 元の設定 / 仮の設定 / 確定値
 - follow-up（担当1）: used_memory の監視閾値と alert（仕様に定めがない）
 - 資料との差:
 - 後片付け（§7）: 済
@@ -829,7 +925,7 @@ maxmemory = baseline + バイト数 × 安全係数
 ## 9. 不合格・中断のときの扱い（まとめ）
 
 - どの不合格でも、**Production promotion を止めたまま**にする（`INF-RLS-008`）。観測を Issue に記録し、担当1 が UCR 案（`SPEC-000 §15.2` 形式）を作り、利用者が判断する。
-- staging の設定は、`TRUSTED_PROXY_HOPS` は確認前の値に、`maxmemory` は start command の値に戻す（§7）。
+- staging の設定は、`TRUSTED_PROXY_HOPS` は確認前の値に、Redis の start command と `maxmemory` は §7 の表の戻し先に戻す。
 - 担当2 は仕様・実装を変えない。仕様にない endpoint やログを足して確かめることもしない。
 
 ## 10. 根拠（手順 ↔ 仕様 ↔ 実装）
