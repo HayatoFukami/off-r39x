@@ -105,7 +105,56 @@ const unrepresentable: readonly (readonly [string, () => unknown])[] = [
     "array with an own toJSON inside an object property",
     () => ({ label: MARKER_NESTED, list: Object.assign(["a"], { toJSON: () => "replaced" }) }),
   ],
+  // PR #66 review round 5: the check and the sent bytes must agree. Each case below passed the old
+  // check but JSON.stringify drops or replaces part of it (a non-enumerable toJSON returning
+  // undefined drops data; a hidden index or extra key changes the array), or reads a getter.
+  [
+    "top-level object with a non-enumerable toJSON",
+    () => withHiddenToJson({ label: MARKER_NESTED }),
+  ],
+  [
+    "nested object with a non-enumerable toJSON",
+    () => ({ label: MARKER_NESTED, inner: withHiddenToJson({ label: MARKER_NESTED }) }),
+  ],
+  [
+    "null-prototype object with a non-enumerable toJSON",
+    () => withHiddenToJson(Object.create(null) as Record<string, unknown>),
+  ],
+  [
+    "array with a non-enumerable index 0 and an enumerable extra key",
+    () => {
+      const list: unknown[] = [];
+      Object.defineProperty(list, 0, { value: MARKER_NESTED, enumerable: false, writable: true });
+      return Object.assign(list, { extra: "x" });
+    },
+  ],
+  [
+    "array with only a non-enumerable extra key",
+    () => {
+      const list: unknown[] = [MARKER_NESTED];
+      Object.defineProperty(list, "extra", { value: "x", enumerable: false });
+      return list;
+    },
+  ],
+  [
+    "object with an enumerable getter",
+    () => ({
+      label: MARKER_NESTED,
+      get computed() {
+        return MARKER_NESTED;
+      },
+    }),
+  ],
 ];
+function withHiddenToJson<T extends object>(target: T): T {
+  Object.defineProperty(target, "toJSON", {
+    value: () => undefined,
+    enumerable: false,
+    writable: true,
+    configurable: true,
+  });
+  return target;
+}
 const representable: readonly (readonly [string, () => unknown, unknown])[] = [
   [
     "object with an undefined optional property (key absent in JSON)",
@@ -119,6 +168,17 @@ const representable: readonly (readonly [string, () => unknown, unknown])[] = [
     "nested plain objects and arrays",
     () => ({ a: { b: [1, "two", true, null, { c: 0 }] }, n: Object.create(null) }),
     { a: { b: [1, "two", true, null, { c: 0 }] }, n: {} },
+  ],
+  // JSON.stringify ignores a toJSON that is not callable, so an own string-valued toJSON is data.
+  ["object with an own string-valued toJSON key", () => ({ toJSON: "x" }), { toJSON: "x" }],
+  [
+    "object with a non-enumerable own property (not sent, as in JSON)",
+    () => {
+      const value: Record<string, unknown> = { label: "synthetic" };
+      Object.defineProperty(value, "hidden", { value: "hidden-value", enumerable: false });
+      return value;
+    },
+    { label: "synthetic" },
   ],
 ];
 const jsonOutputSchema = (make: () => unknown) => z.string().transform(make);
@@ -364,6 +424,44 @@ describe("TC-DEV-API-003-003 the success envelope is built in one place and vali
     },
   );
 
+  it("successResponse: the sent data is the value read once during validation (no re-read after the check)", async () => {
+    const { successResponse } = await loadRespond();
+    const { app, lines } = rig();
+    // A get of "field" returns the next value and advances the counter; the descriptor trap reports the
+    // current value without advancing it. A copy built from one read is "value-0" and needs at most
+    // one get; an implementation that checks and then serializes the original reads it again and
+    // sends "value-1".
+    let version = 0;
+    let gets = 0;
+    const target: Record<string, unknown> = { field: "value-target" };
+    const proxy = new Proxy(target, {
+      get(t, key, receiver) {
+        if (key !== "field") return Reflect.get(t, key, receiver);
+        gets += 1;
+        const value = `value-${version}`;
+        version += 1;
+        return value;
+      },
+      getOwnPropertyDescriptor(t, key) {
+        if (key !== "field") return Reflect.getOwnPropertyDescriptor(t, key);
+        return { value: `value-${version}`, writable: true, enumerable: true, configurable: true };
+      },
+    });
+    app.get("/api/v1/test/success/proxy", (c) =>
+      successResponse(
+        c,
+        jsonOutputSchema(() => proxy),
+        "synthetic-input-marker",
+      ),
+    );
+    const response = await app.request("/api/v1/test/success/proxy");
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { data: Json };
+    expect(body.data).toEqual({ field: "value-0" });
+    expect(gets).toBeLessThanOrEqual(1);
+    expect(lines.join("\n")).not.toContain("value-");
+  });
+
   it.each([
     "/api/v1/test/success/extra",
     "/api/v1/test/success/wrong-type",
@@ -544,6 +642,26 @@ describe("TC-DEV-API-003-004 respond() maps a service result to the section 20 /
     const body = (await response.json()) as Json;
     expect(body.data).toEqual({ label: "synthetic" });
     expect(body.meta).toEqual({ request_id: response.headers.get("X-Request-Id") });
+  });
+
+  it("(p) a success whose parsed data has a non-enumerable toJSON is 500 INTERNAL_ERROR, details null, never a 201 without data", async () => {
+    const { respond } = await loadRespond();
+    const { app, lines } = rig();
+    app.get("/api/v1/test/result-hidden-tojson", (c) =>
+      respond(
+        c,
+        { kind: "success", status: 201, data: "synthetic-input-marker" },
+        jsonOutputSchema(() => withHiddenToJson({ label: MARKER_NESTED })),
+      ),
+    );
+    const response = await app.request("/api/v1/test/result-hidden-tojson");
+    const { text, error } = await readError(response);
+    expectEnvelope(response, text, "INTERNAL_ERROR", "p");
+    expect(error).toMatchObject({ retryable: false, details: null, message: FIXED_MESSAGE });
+    for (const leaked of [MARKER_NESTED, "synthetic-input-marker"]) {
+      expect(text, leaked).not.toContain(leaked);
+      expect(lines.join("\n"), leaked).not.toContain(leaked);
+    }
   });
 
   it("(f) a temporary Stripe failure is 424 and retryable", async () => {
