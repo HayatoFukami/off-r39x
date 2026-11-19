@@ -114,15 +114,23 @@ const EXPECTED_ROOT_EXPORTS = [
 ];
 
 describe("TC-DEV-DB-001-001 db package public surface", () => {
-  it("TC-DEV-DB-001-001 @off-r39x/db/schema exports exactly app, auditEvents, businessProfiles and roleAssignments", async () => {
+  it("TC-DEV-DB-001-001 @off-r39x/db/schema exports exactly app and the eleven table declarations by name", async () => {
     const schemaModule = await import("@off-r39x/db/schema");
 
     // (1) no helper or extra name leaks through the barrel (DEV-DB-001).
     expect(Object.keys(schemaModule).sort()).toEqual([
+      "announcements",
       "app",
       "auditEvents",
       "businessProfiles",
+      "entryTicketOfferings",
+      "events",
+      "faqItems",
+      "goods",
+      "goodsInventory",
+      "karaokeSalesConfigurations",
       "roleAssignments",
+      "sponsorLogos",
     ]);
 
     // (2) the shared pgSchema object is the "app" schema.
@@ -563,11 +571,23 @@ describe("TC-DB-ARC-007-001 Drizzle declarations match schema-contract.json", ()
     }
   });
 
-  it("TC-DB-ARC-007-001 business_profiles has no foreign keys and the contract declares exactly the three app tables", async () => {
+  it("TC-DB-ARC-007-001 business_profiles has no foreign keys and the contract declares exactly the app tables of migrations 0001-0003", async () => {
     const schemaModule = await import("@off-r39x/db/schema");
     expect(getTableConfig(schemaModule.businessProfiles).foreignKeys).toHaveLength(0);
     expect(
       contract.tables.map(([name]) => name).filter((name) => name !== "schema_migrations"),
-    ).toEqual(["audit_events", "business_profiles", "role_assignments"]);
+    ).toEqual([
+      "announcements",
+      "audit_events",
+      "business_profiles",
+      "entry_ticket_offerings",
+      "events",
+      "faq_items",
+      "goods",
+      "goods_inventory",
+      "karaoke_sales_configurations",
+      "role_assignments",
+      "sponsor_logos",
+    ]);
   });
 });
