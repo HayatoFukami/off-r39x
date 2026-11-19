@@ -26600,7 +26600,7 @@
       "system_invariant_ids": ["INV-010-08"],
       "api_operation_ids": ["API-AUTH-003"],
       "db_constraint_names": [],
-      "preconditions": "createCurrentProfileRepository over node-postgres pools pointed at local TCP servers that misbehave (closed by the peer right after connect, accepts and never answers, pool used after end); no PostgreSQL. EAI_AGAIN (Issue #69) is not covered and is fixed for read, update and provision together in #69",
+      "preconditions": "createCurrentProfileRepository over node-postgres pools pointed at local TCP servers that misbehave (closed by the peer right after connect, accepts and never answers, pool used after end); no PostgreSQL. an errno such as EAI_AGAIN is not raised; transaction() types it as DatabaseUnavailableError, which the provision path treats as unavailable (Issue #69 remains on the read path outside transaction())",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,

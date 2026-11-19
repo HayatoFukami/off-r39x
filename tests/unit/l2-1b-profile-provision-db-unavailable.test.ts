@@ -2,8 +2,9 @@
 // Node `code` (connection dropped right after connect, connect timeout, use after pool.end). SPEC-110
 // §50/§51 make them temporary: provisionCurrentBusinessProfile must return { status: "unavailable" } and
 // never throw (API-AUTH-003, REL-AUTH-005). Needs no PostgreSQL: the "database" is a local TCP server
-// that misbehaves (Fault Point FP.DB.BEFORE_TRANSACTION), as in TC-API-007-008. EAI_AGAIN (Issue #69) is
-// not covered here; it is fixed for all three paths in #69.
+// that misbehaves (Fault Point FP.DB.BEFORE_TRANSACTION), as in TC-API-007-008. An errno such as
+// EAI_AGAIN is not raised here; transaction() types it as DatabaseUnavailableError, which this path
+// treats as unavailable. Issue #69 (EAI_AGAIN answered 500) remains on the read path outside transaction().
 import { createServer, type Server, type Socket } from "node:net";
 import { Pool } from "pg";
 import { afterEach, describe, expect, it } from "vitest";
