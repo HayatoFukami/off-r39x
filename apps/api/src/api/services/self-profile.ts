@@ -1,4 +1,4 @@
-// SPEC-110 §25 API-AUTH-002 / API-AUTH-004 application service. No hono, ApiFailure, routes or
+// SPEC-110 §25 API-AUTH-002 / API-AUTH-003 / API-AUTH-004 application service. No hono, ApiFailure, routes or
 // middleware here (DEV-DEP-001): the route maps these results to HTTP.
 import { normalizeDisplayName } from "@off-r39x/domain";
 

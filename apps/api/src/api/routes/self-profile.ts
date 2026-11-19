@@ -1,5 +1,5 @@
-// SPEC-110 §25 API-AUTH-001 / API-AUTH-002 / API-AUTH-004. The route declarations and the response
-// schemas live in the @off-r39x/api-contract builder (DEV-API-002/003); this file only injects the
+// SPEC-110 §25 API-AUTH-001 / API-AUTH-002 / API-AUTH-003 / API-AUTH-004. The route declarations and the
+// response schemas live in the @off-r39x/api-contract builder (DEV-API-002/003); this file only injects the
 // guards, the body validation and the service result -> HTTP mapping (DEV-API-001).
 import {
   type CurrentProfile,
