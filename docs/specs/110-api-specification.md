@@ -2595,7 +2595,7 @@ retry count / backoff / queue / operator RunbookはSPEC-150。本書§48.5はSPE
 
 `SPEC-180` が起票した一覧cursorの署名鍵の契約（`UCR-180-002`、`SPEC-180` §81）のうち、本書が所有する部分を本改訂（v2.10.0）で反映した。現在の契約は本文を正とする。
 
-- §12: `API-QRY-005` を追加した。cursorは `SPEC-180` §28.3 の鍵によるHMAC-SHA-256で署名し、鍵versionを含め、Operation ID・sort mode・filterの値に結び付ける。形式・長さ・署名・鍵versionの不一致は既存の `400 VALIDATION_FAILED`（`details: null`）とし、先頭pageを返さない。旧versionのcursorは受け付けない。
+- §12: `API-QRY-005` を追加した。cursorは `SPEC-180` §28.3 の鍵によるHMAC-SHA-256で署名し、鍵versionを含め、少なくともOperation ID・sort mode・filterの値に結び付け、`limit` には結び付けない。形式・長さ・署名・鍵versionの不一致は既存の `400 VALIDATION_FAILED`（`details: null`）とし、先頭pageを返さない。旧versionのcursorは受け付けない。
 - §48.3: 共通の段落から `API-QRY-005` を参照した。
 - §61: Acceptance 48 を追加した。
 

@@ -772,8 +772,8 @@ Startup validation:
 - Environment別（`INF-ENV-002` / `INF-SEC-002` / `SPEC-140` `SEC-KEY-004`）。Environmentのclone時はclone先で新しく発行する（`SPEC-140` §46）
 - API serviceだけが読む（§26、`INF-SEC-003`）
 - routine rotation 180日以内。漏えいの疑いがあれば即時（`SPEC-140` §46、`SEC-KEY-006`）
-- rotationでは鍵とversionを同時に替えて再deployする。旧い鍵を受け付ける期間（grace）は設けない。旧versionのcursorは `400 VALIDATION_FAILED` となり、Clientは先頭pageから取り直す（`SPEC-110` `API-QRY-004` / `API-QRY-005`）。Event当日等、管理操作の多い時間帯を避けて実施する
-- Production（API 2 replica。§16）のrolling deploy中は、新旧のreplicaが異なる鍵を持つため、一方のreplicaが発行したcursorが他方で一時的に `400` になりうる。これを許容し、graceの追加や署名の省略で回避しない
+- rotationでは鍵とversionを同時に替えて再deployする。古い鍵を受け付ける期間（grace）は設けない。旧versionのcursorは `400 VALIDATION_FAILED` となり、Clientは先頭pageから取り直す（`SPEC-110` `API-QRY-004` / `API-QRY-005`）。Event当日等、管理操作の多い時間帯を避けて実施する
+- Production（API 2 replica。§16）で、鍵をrotationするdeployの途中に新旧のreplicaが並行して応答する間は、一方のreplicaが発行したcursorが他方で一時的に `400` になりうる。これを許容し、graceの追加や署名の省略で回避しない
 
 **INF-SEC-007:** `LIST_CURSOR_HMAC_KEY` または `LIST_CURSOR_HMAC_KEY_VERSION` の欠落・形式不正（鍵が32 byteでない、versionが正の整数でない）は、startup security configuration failureとしてAPIをReadyにしない（`INF-HLT-002`、`SPEC-140` `SEC-KEY-006`）。署名しないcursor、固定値・defaultの鍵、他のSecret（`RATE_LIMIT_HMAC_KEY`、`OBS_CORRELATION_HMAC_KEY`、QR keyring等）の流用またはそれからの導出へfallbackしない。この鍵を他の用途や他のSecretと共有しない（`SPEC-140` `SEC-KEY-003`）。
 
@@ -1903,16 +1903,16 @@ SPEC-180は次をすべて満たしたとき受入可能とする。
 - **要求する変更:**
   1. cursor署名専用のSecret `LIST_CURSOR_HMAC_KEY`（Railway Sealed Variable、32 byte、Environment別）と、non-secretの `LIST_CURSOR_HMAC_KEY_VERSION` を置く（§28.3）。
   2. readerはAPI serviceだけとする（§26）。
-  3. routine rotationは180日以内とし、graceを設けない。旧versionのcursorは `400` とし、Clientは先頭pageから取り直す。
-  4. cursorに鍵versionを含める。
+  3. routine rotationは180日以内とし、graceを設けない。旧versionのcursorは `400` とし、Clientは先頭pageから取り直す。鍵をrotationするdeployの途中に新旧のreplicaが並行して応答する間の一時的な `400` は許容する。
+  4. cursorに鍵versionを含める。署名は少なくともOperation ID・sort mode・filterに結び付け、`limit` には結び付けない。
   5. 鍵・versionの欠落・形式不正はReady=falseとし、署名しないcursor、他のSecretの流用・導出へのfallbackを禁止する（`INF-SEC-007`、§40）。
   6. 不正なcursorは `400 VALIDATION_FAILED`（`details: null`）とし、cursorを無視して先頭pageを返さない（`SPEC-110` `API-QRY-005`）。
   7. Secretの分類とSecurity Configuration validation（`SPEC-140` §44 / §45 / §85）、named secret（`SPEC-190` §24）に加える。
-- **理由:** 実装者が鍵の名前・置き場所・rotationを推測で決めると、reader matrixとreadinessが実装と食い違う（`SPEC-000 §15.1`、`DEV-INF-001`）。既存の鍵の流用は用途の分離（`SPEC-140` §44、`SEC-KEY-003`）に反し、rate limitや相関の鍵のrotationでcursorが無効になる。cursorは再取得で作り直せるため、旧い鍵を受け付ける期間とそのための変数を増やす利点は小さい。
+- **理由:** 実装者が鍵の名前・置き場所・rotationを推測で決めると、reader matrixとreadinessが実装と食い違う（`SPEC-000 §15.1`、`DEV-INF-001`）。既存の鍵の流用は用途の分離（`SPEC-140` §44、`SEC-KEY-003`）に反し、rate limitや相関の鍵のrotationでcursorが無効になる。cursorは再取得で作り直せるため、古い鍵を受け付ける期間とそのための変数を増やす利点は小さい。
 - **変更しない場合の影響:** 一覧のOperation（`API-ORD-001`、`API-TKT-001`、`API-ADM-*-001` 等）がcursorを発行できず、routeを登録できない。実装が独自の鍵・変数を足す、または既存の鍵を流用する危険がある。readinessで鍵の欠落を検出できない。
 - **影響を受ける可能性がある仕様書:** SPEC-110、SPEC-140、SPEC-190。SPEC-170とSPEC-200は、読んだうえで変更不要と判断した（`SPEC-170` §46、`SPEC-200` `ACC-SEC-006` / `ACC-SEC-010` / `ACC-SEC-012` / `ACC-INF-005` の汎用の基準が対象に含み、`ACC-GEN-004` によりUCRの反映状況はOwner本文で確認する）。
 - **反映先:** 本書 §26、§28.3（`INF-SEC-007`）、§40、§78、§80 項目57。`SPEC-110` v2.8.0 §12（`API-QRY-005`）・§48.3・§61 項目47・§66。`SPEC-140` v2.5.0 §44・§45・§85・§101.6。`SPEC-190` v2.3.0 §24。新しいState・Operation・Capability・error code・DB roleは追加していない。
-- **決定（利用者、2026-11-20）:** 専用の `LIST_CURSOR_HMAC_KEY` / `LIST_CURSOR_HMAC_KEY_VERSION`、graceなし、cursorに鍵versionを含める、UCRは本件1本にまとめる、不正なcursorの応答を `SPEC-110` §12 に明記する。
+- **決定（利用者、2026-11-20）:** 専用の `LIST_CURSOR_HMAC_KEY` / `LIST_CURSOR_HMAC_KEY_VERSION`、graceなし（rotationのdeploy中の一時的な `400` を許容する）、cursorに鍵versionを含める、署名は少なくともOperation ID・sort mode・filterに結び付けて `limit` には結び付けない、UCRは本件1本にまとめる、不正なcursorの応答を `SPEC-110` §12 に明記する。
 
 本仕様は、Infrastructure Ownerとして明示的に委譲されたEnvironment、DB principal、Secret placement、scheduler、health、deployment、Audit access/purge、observability backend、backup / restore、Test gateの具体化だけを行っている。
 
