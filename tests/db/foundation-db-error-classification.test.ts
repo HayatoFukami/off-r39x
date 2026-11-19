@@ -246,7 +246,10 @@ describe("TC-REL-DB-009-003 a real pool acquisition timeout is a DatabaseUnavail
       expect(callbackRuns).toBe(0);
       expect(count("db.availability.failed")).toBe(1);
       expect(count("db.transaction.retry_scheduled")).toBe(0);
-      expect(elapsed).toBeGreaterThanOrEqual(200);
+      // The pool waited for its acquisition timeout instead of failing at once. Node's timers run on
+      // a millisecond-truncated loop clock, so the 200 ms timer can fire up to 1 ms early as measured
+      // by performance.now() (CI observed 199.9 ms); the bound allows exactly that.
+      expect(elapsed).toBeGreaterThanOrEqual(199);
       expect(elapsed).toBeLessThan(2000);
 
       const after = await transaction(pool, async (client) => {
