@@ -22,6 +22,9 @@ const OPERATION_ID = /^API-[A-Z0-9]+(-[A-Z0-9]+)*$/;
 const PUBLIC_REF = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const BASE64URL = /^[A-Za-z0-9_-]+$/;
 
+const safeScalar = (value: unknown): boolean =>
+  typeof value !== "number" || Number.isSafeInteger(value);
+
 const publicRefSchema = z.string().regex(PUBLIC_REF);
 
 function assertKey(cursorKey: CursorKey): void {
@@ -67,6 +70,7 @@ export function defineListCursor<K extends z.ZodType<readonly CursorScalar[]>>(d
     encode(cursorKey: CursorKey, position: Position, binding: CursorBinding): string {
       assertKey(cursorKey);
       const parsed = positionSchema.parse(position) as { keys: z.output<K>; publicRef: string };
+      if (!parsed.keys.every(safeScalar)) throw new Error("Unsafe cursor key");
       const payload = Buffer.from(
         JSON.stringify({ v: 1, kv: cursorKey.version, k: parsed.keys, r: parsed.publicRef }),
         "utf8",
@@ -101,6 +105,7 @@ export function defineListCursor<K extends z.ZodType<readonly CursorScalar[]>>(d
         const parsed = payloadSchema.safeParse(JSON.parse(text));
         if (!parsed.success) return fail;
         const data = parsed.data as { kv: number; k: z.output<K>; r: string };
+        if (!(data.k as readonly unknown[]).every(safeScalar)) return fail;
         if (data.kv !== cursorKey.version) return fail;
         return { ok: true, position: { keys: data.k, publicRef: data.r } };
       } catch {

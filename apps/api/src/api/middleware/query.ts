@@ -11,10 +11,11 @@ export function validateQuery<T extends z.ZodType>(
   schema: T,
 ): MiddlewareHandler<ApiEnvironment, string, { in: { query: z.input<T> } }> {
   return async (c, next) => {
-    const entries: [string, string][] = [];
-    for (const [key, values] of Object.entries(c.req.queries())) {
-      if (values.length !== 1) throw new ApiFailure("VALIDATION_FAILED");
-      entries.push([key, values[0] as string]);
+    const entries = new Map<string, string>();
+    for (const [key, value] of new URL(c.req.url).searchParams) {
+      // A parameter with an empty name is never in the schema, and Hono drops it from queries().
+      if (key === "" || entries.has(key)) throw new ApiFailure("VALIDATION_FAILED");
+      entries.set(key, value);
     }
     const result = schema.safeParse(Object.fromEntries(entries));
     if (!result.success) throw new ApiFailure("VALIDATION_FAILED");
