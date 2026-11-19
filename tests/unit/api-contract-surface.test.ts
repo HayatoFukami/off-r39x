@@ -1,12 +1,16 @@
 import {
   type AppType,
+  type CurrentProfile,
   createPublicRpc,
+  currentProfileSchema,
   type ErrorCode,
   errorSchema,
   errorStatuses,
   type PrincipalNavigation,
   principalNavigationSchema,
   successSchema,
+  type UpdateCurrentProfileRequest,
+  updateCurrentProfileRequestSchema,
 } from "@off-r39x/api-contract";
 import type { Context, Env } from "hono";
 import { hc } from "hono/client";
@@ -23,6 +27,14 @@ import { z } from "zod";
 
 const PROFILE_REF = "00000000-0000-4000-8000-000000000001";
 const REQUEST_ID = "00000000-0000-4000-8000-000000000002";
+// PR-L2-1a C1: the profile Operations (API-AUTH-002/004, SPEC-110 §25) widen the surface. These
+// expectations changed by the specification (two new routes and their schemas), not by the
+// implementation: the exports, route list and builder dependencies below follow the plan.
+const PROFILE: CurrentProfile = {
+  profile_ref: PROFILE_REF,
+  display_name: "synthetic name",
+  updated_at: "2026-11-19T00:00:00.000Z",
+};
 
 const EXPECTED_ERROR_STATUSES = [
   ["MALFORMED_REQUEST", 400],
@@ -94,29 +106,39 @@ function successEnvelope(overrides: Record<string, unknown> = {}): Record<string
   return { data: { name: "synthetic" }, meta: { request_id: REQUEST_ID }, ...overrides };
 }
 
-function buildApp(principalValue: () => PrincipalNavigation = () => principal) {
+function buildApp(
+  principalValue: () => PrincipalNavigation = () => principal,
+  profileValue: () => CurrentProfile = () => PROFILE,
+) {
+  const pass = async (_c: Context<Env>, next: () => Promise<void>) => {
+    await next();
+  };
   return createPublicRpc<Env>({
-    guard: async (_c, next) => {
-      await next();
-    },
+    guard: pass,
     principal: (_c: Context<Env>) => principalValue(),
     requestId: (_c: Context<Env>) => REQUEST_ID,
+    profileRead: { guard: pass, load: async (_c: Context<Env>) => profileValue() },
+    profileUpdate: { guard: pass, body: pass, save: async (_c: Context<Env>) => profileValue() },
   });
 }
 
 describe("TC-DEV-API-002-001 public surface of @off-r39x/api-contract", () => {
-  // S0-3a: errorRetryable (SPEC-110 section 21 Retryable column) is the one added runtime value.
-  // The five existing values are unchanged.
-  it("exports exactly the six runtime values", async () => {
+  // S0-3a adds errorRetryable (SPEC-110 section 21 Retryable column); L2-1a adds the two profile
+  // schemas. The five earlier values are unchanged.
+  it("exports exactly the eight runtime values", async () => {
     const surface = await import("@off-r39x/api-contract");
     expect(Object.keys(surface).sort()).toEqual([
       "createPublicRpc",
+      "currentProfileSchema",
       "errorRetryable",
       "errorSchema",
       "errorStatuses",
       "principalNavigationSchema",
       "successSchema",
+      "updateCurrentProfileRequestSchema",
     ]);
+    expect(currentProfileSchema.safeParse(PROFILE).success).toBe(true);
+    expect(updateCurrentProfileRequestSchema.safeParse({ display_name: null }).success).toBe(true);
   });
 
   it("keeps the public type exports (compile-time only)", () => {
@@ -154,16 +176,60 @@ describe("TC-DEV-API-002-001 public surface of @off-r39x/api-contract", () => {
       has_staff_role: boolean;
       has_administrator_role: boolean;
     }>();
+    expectTypeOf<CurrentProfile>().toEqualTypeOf<{
+      profile_ref: string;
+      display_name: string | null;
+      updated_at: string;
+    }>();
+    expectTypeOf<UpdateCurrentProfileRequest>().toEqualTypeOf<{ display_name: string | null }>();
     expectTypeOf<AppType>().toEqualTypeOf<ReturnType<typeof createPublicRpc>>();
     const client = hc<AppType>("http://api.example.test");
     expectTypeOf(client.api.v1.self.principal.$get).toBeFunction();
+    expectTypeOf(client.api.v1.self.profile.$get).toBeFunction();
+    expectTypeOf(client.api.v1.self.profile.$patch).toBeFunction();
   });
 
-  it("registers only GET /api/v1/self/principal (guard and handler)", () => {
+  it("registers only GET /api/v1/self/principal, GET and PATCH /api/v1/self/profile (guard, body validator and handler entries)", () => {
     expect(buildApp().routes.map(({ method, path }) => [method, path])).toEqual([
       ["GET", "/api/v1/self/principal"],
       ["GET", "/api/v1/self/principal"],
+      ["GET", "/api/v1/self/profile"],
+      ["GET", "/api/v1/self/profile"],
+      ["PATCH", "/api/v1/self/profile"],
+      ["PATCH", "/api/v1/self/profile"],
+      ["PATCH", "/api/v1/self/profile"],
     ]);
+  });
+
+  it("answers GET and PATCH /api/v1/self/profile with the data/meta envelope built from the injected profile", async () => {
+    const app = buildApp();
+    for (const method of ["GET", "PATCH"]) {
+      const response = await app.request("/api/v1/self/profile", { method });
+      expect(response.status, method).toBe(200);
+      expect(await response.json(), method).toEqual({
+        data: PROFILE,
+        meta: { request_id: REQUEST_ID },
+      });
+    }
+  });
+
+  it("rejects a profile with an extra key or a non-millisecond updated_at through the strict schema (500, no body detail)", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      for (const bad of [
+        { ...PROFILE, auth_subject: "synthetic-subject" },
+        { ...PROFILE, updated_at: "2026-11-19T00:00:00Z" },
+      ]) {
+        const app = buildApp(undefined, () => bad as CurrentProfile);
+        for (const method of ["GET", "PATCH"]) {
+          const response = await app.request("/api/v1/self/profile", { method });
+          expect(response.status, method).toBe(500);
+          expect(await response.text(), method).toBe("Internal Server Error");
+        }
+      }
+    } finally {
+      logged.mockRestore();
+    }
   });
 
   it("answers GET /api/v1/self/principal with the data/meta envelope", async () => {
@@ -183,6 +249,8 @@ describe("TC-DEV-API-002-001 public surface of @off-r39x/api-contract", () => {
   it("does not register other methods or paths", async () => {
     const app = buildApp();
     expect((await app.request("/api/v1/self/principal", { method: "POST" })).status).toBe(404);
+    expect((await app.request("/api/v1/self/profile", { method: "POST" })).status).toBe(404);
+    expect((await app.request("/api/v1/self/profile", { method: "PUT" })).status).toBe(404);
     expect((await app.request("/api/v1/other")).status).toBe(404);
   });
 

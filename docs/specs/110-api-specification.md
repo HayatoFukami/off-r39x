@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-110
 title: API Specification
-version: 2.6.0
+version: 2.7.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -628,9 +628,9 @@ rate limit（`SPEC-140` Part XIII）は上記の番号付き手順に次の位�
 - **Method:** `PATCH`
 - **Path:** `/api/v1/self/profile`
 - **Capability:** `profile.self.update`
-- **Body:** strict object `{ "display_name"?: string | null }`。少なくとも1 fieldを要求し、許可Fieldは `display_name` のみ。省略は変更なし、null／trim後空文字はNULLへのclear。`SPEC-030` §9.2に従いtrim後1〜80 Unicode code points、内部 `Cc` 制御文字は拒否する。Clientからowner / auth_subject / roleを受けない。
+- **Body:** strict object `{ "display_name"?: string | null }`。少なくとも1 fieldを要求し、許可Fieldは `display_name` のみ。省略は変更なし、null／trim後空文字はNULLへのclear。`SPEC-030` §9.2に従いwell-formedなUnicode文字列（lone surrogateを含まない）に限り、trim後1〜80 Unicode code points、内部 `Cc` 制御文字は拒否する。lone surrogateをU+FFFDへ置き換えたり除去したりして保存しない。Clientからowner / auth_subject / roleを受けない。
 - **DB:** owner rowをAuth Subject relationで更新。mass assignment禁止。
-- **Response 200:** `API-AUTH-002`と同形のupdated profile。未知Field／長さ超過／制御文字は `400 VALIDATION_FAILED`。未設定は登録・購入の阻害条件にしない。
+- **Response 200:** `API-AUTH-002`と同形のupdated profile。未知Field／長さ超過／制御文字／well-formedでない値（JSON escape `\uD800` 等に由来するlone surrogateを含む値）は `400 VALIDATION_FAILED` とし、Profileを変更しない。未設定は登録・購入の阻害条件にしない。
 
 ---
 
@@ -2532,3 +2532,7 @@ retry count / backoff / queue / operator RunbookはSPEC-150。本書§48.5はSPE
 - 理由: 上流 `SPEC-060` §18（Identity検証 → Email確認 → Business Profile）と §8.3、および `API-AUTH-003`（Business Profileがない状態でEmail確認済みを要求する）と整合させるため。手順3をDBより前に置くためにJWTのclaimで判定すると §23 と `AR-AUTH-005` に反し、手順5の後に置くとEmail未確認でBusiness Profileのない利用者へ `403 AUTHORIZATION_DENIED` を返してEmail確認へ誘導できない。
 - 変更しない場合の影響: 実装が §23 と §24 のどちらかに反する。Email未確認の利用者に返るerror codeが、Business Profileの有無で変わる。
 - 影響を受ける可能性がある仕様書: SPEC-060, SPEC-140, SPEC-170（いずれも本文の変更は不要。`SEC-ABU-017` の段階2は引き続きDB accessの前にある）
+
+### UCR-030-001 — INCORPORATED
+
+`SPEC-030` が記録したDisplay nameのwell-formed要件（`UCR-030-001`、`SPEC-030` §28）のうち、本書が所有する部分を本改訂（v2.7.0）で `API-AUTH-004` に反映した。well-formedでない値（lone surrogateを含む値）は既存の `400 VALIDATION_FAILED` とし、U+FFFDへの置き換えや除去で補正して保存しない。新しいerror code・state・Capability・Operationは追加していない。不正なUTF-8 byte列を含むJSON bodyの扱い（§21 `MALFORMED_REQUEST` の適用範囲）は本UCRの範囲外である。

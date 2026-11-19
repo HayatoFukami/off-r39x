@@ -23,8 +23,10 @@ bigint-mode tables; reviewed SQL lives in `migrations/`.
   the `SPEC-150` retry policy, `commit_unknown` and advisory locks.
   `src/transactions/` is the planned home of business transaction modules: one
   use case per transaction, no external calls inside (`DEV-DB-010`), and the
-  caller of `transaction()`. The directory does not exist yet; the first PR that
-  adds a business transaction creates it (`DEV-DB-003`, `SPEC-100 §55`).
+  caller of `transaction()` (`DEV-DB-003`, `SPEC-100 §55`). Today it holds
+  `src/transactions/profile.ts` (`readCurrentBusinessProfile` /
+  `updateCurrentBusinessProfile`, the caller's own Profile for `API-AUTH-002` /
+  `API-AUTH-004`).
 
 ## Migration numbering
 

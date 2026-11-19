@@ -91,13 +91,15 @@ interface SchemaContract {
 const contract = JSON.parse(readFileSync(contractUrl, "utf8")) as SchemaContract;
 
 // The error classification added in S0-3a adds three runtime exports:
-// classifyDatabaseError, DatabaseUnavailableError and isDatabaseUnavailableCode (13 -> 16).
+// classifyDatabaseError, DatabaseUnavailableError and isDatabaseUnavailableCode; L2-1a adds
+// createCurrentProfileRepository (13 -> 17).
 const EXPECTED_ROOT_EXPORTS = [
   "DatabaseUnavailableError",
   "TransactionDeadlineError",
   "checkReadiness",
   "classifyDatabaseError",
   "computeMigrationSetHash",
+  "createCurrentProfileRepository",
   "createDatabase",
   "createPrincipalRepository",
   "insertAuditEvent",
@@ -139,13 +141,13 @@ describe("TC-DEV-DB-001-001 db package public surface", () => {
     expect(contract.schemas.map(([name]) => name)).toContain("app");
   });
 
-  it("TC-DEV-DB-001-001 @off-r39x/db root exports exactly the 16 runtime names", async () => {
+  it("TC-DEV-DB-001-001 @off-r39x/db root exports exactly the 17 runtime names", async () => {
     const rootModule = await import("@off-r39x/db");
 
     // (4) runtime exports only; type-only exports are erased and out of scope. Importing the
     // package must not open a connection: createDatabase is never called here.
     expect(Object.keys(rootModule).sort()).toEqual(EXPECTED_ROOT_EXPORTS);
-    expect(EXPECTED_ROOT_EXPORTS).toHaveLength(16);
+    expect(EXPECTED_ROOT_EXPORTS).toHaveLength(17);
     // The schema is intentionally not part of the root surface.
     expect(rootModule).not.toHaveProperty("businessProfiles");
     expect(rootModule).not.toHaveProperty("roleAssignments");

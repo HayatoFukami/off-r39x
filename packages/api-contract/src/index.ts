@@ -8,4 +8,11 @@ export {
   errorStatuses,
   type ItemFailure,
 } from "./schemas/errors.ts";
-export { type PrincipalNavigation, principalNavigationSchema } from "./schemas/profile.ts";
+export {
+  type CurrentProfile,
+  currentProfileSchema,
+  type PrincipalNavigation,
+  principalNavigationSchema,
+  type UpdateCurrentProfileRequest,
+  updateCurrentProfileRequestSchema,
+} from "./schemas/profile.ts";

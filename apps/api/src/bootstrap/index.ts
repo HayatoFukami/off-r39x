@@ -1,7 +1,12 @@
 import { serve } from "@hono/node-server";
 import { createTokenVerifier } from "@off-r39x/auth";
 import { getBuildMigrationSetHash, parseServerConfig } from "@off-r39x/config";
-import { checkReadiness, createDatabase, createPrincipalRepository } from "@off-r39x/db";
+import {
+  checkReadiness,
+  createCurrentProfileRepository,
+  createDatabase,
+  createPrincipalRepository,
+} from "@off-r39x/db";
 import { createLogger, createRateLimitMetrics } from "@off-r39x/observability";
 import { createRedisRateLimitStore } from "@off-r39x/rate-limit-redis";
 import {
@@ -79,6 +84,7 @@ export function bootstrap(
     allowedHosts: config.http.allowedHosts,
     logger,
     auth: { verifier, store: principals },
+    profiles: createCurrentProfileRepository(database.pool),
     ...(authProxy ? { authProxy } : {}),
     rateLimit: {
       limiter,

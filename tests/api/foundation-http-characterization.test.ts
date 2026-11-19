@@ -6,6 +6,10 @@
 // Revised after SPEC-110 v2.6.0 (§17 adoption of a canonical incoming X-Request-Id, §24.1 order of
 // the Email verified check): those expectations changed by the specification, not by the split.
 // See the TC-SEC-API-023-001 and TC-SEC-ABU-017-001 titles.
+// Revised again for PR-L2-1a (API-AUTH-002 / API-AUTH-004, SPEC-110 §25): GET and PATCH
+// /api/v1/self/profile are new registered routes, so the http_route list (TC-TST-OBS-001-001) and the
+// mounted route list (TC-DEV-API-002-002) gain them. Those expectations changed by the specification;
+// every other recorded value is untouched.
 import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   type ApiEnvironment,
@@ -19,6 +23,7 @@ import {
 import { createAuthProxy } from "../../apps/api/src/api/auth-proxy.ts";
 import { AuthFailure } from "../../packages/auth/src/index.ts";
 import { createLogger } from "../../packages/observability/src/index.ts";
+import { createRecordingProfileStore } from "../harness/api/self-profile.ts";
 import { createTestRateLimit, peer, type TestRateLimit } from "../harness/rate-limit/api.ts";
 
 const WEB = "https://web.example.test";
@@ -112,6 +117,13 @@ function rig(options: RigOptions = {}): Rig {
         },
       },
     },
+    profiles: createRecordingProfileStore({
+      [SUBJECT]: {
+        publicRef: PROFILE_REF,
+        displayName: null,
+        updatedAt: "2026-11-01T00:00:00.000Z",
+      },
+    }),
     ...(trs ? { rateLimit: trs.rateLimit } : {}),
     ...(options.authProxy ? { authProxy: proxy } : {}),
     ...(options.drain ? { draining: () => state.draining } : {}),
@@ -562,11 +574,12 @@ describe("TC-TST-OBS-001-001 completion log and http_route (TST-OBS-001, SPEC-16
     ["POST", "email-otp/send-verification-otp"],
     ["POST", "email-otp/verify-email"],
   ];
-  /** The 18 values http_route may take; anything else is logged as "/". */
+  /** The 19 values http_route may take; anything else is logged as "/". */
   const ALLOWED_ROUTES = [
     "/internal/health/live",
     "/internal/health/ready",
     "/api/v1/self/principal",
+    "/api/v1/self/profile",
     "/auth/get-session",
     "/auth/token",
     "/auth/verify-email",
@@ -632,6 +645,26 @@ describe("TC-TST-OBS-001-001 completion log and http_route (TST-OBS-001, SPEC-16
         200,
       ),
       make("4 principal 401", "/api/v1/self/principal", {}, "GET", "/api/v1/self/principal", 401),
+      make(
+        "4b profile 200",
+        "/api/v1/self/profile",
+        { headers: bearer },
+        "GET",
+        "/api/v1/self/profile",
+        200,
+      ),
+      make(
+        "4c profile patch 200",
+        "/api/v1/self/profile",
+        {
+          method: "PATCH",
+          headers: withOrigin({ ...bearer, "content-type": "application/json" }),
+          body: '{"display_name":"synthetic name"}',
+        },
+        "PATCH",
+        "/api/v1/self/profile",
+        200,
+      ),
       ...AUTH_ROUTES.map(([method, path]) =>
         make(
           `auth ${method} ${path}`,
@@ -677,7 +710,7 @@ describe("TC-TST-OBS-001-001 completion log and http_route (TST-OBS-001, SPEC-16
       if (row.route !== "/") seenRoutes.add(row.route);
     }
     expect([...seenRoutes].sort()).toEqual([...ALLOWED_ROUTES].sort());
-    expect(ALLOWED_ROUTES).toHaveLength(18);
+    expect(ALLOWED_ROUTES).toHaveLength(19);
   });
 
   it("a route added after createApp is not in the registry and is logged as '/'", async () => {
@@ -944,6 +977,12 @@ describe("TC-DEV-API-002-002 route table and public surface of app.ts (DEV-API-0
     // The RPC route is registered as a guard entry and a handler entry.
     ["GET", "/api/v1/self/principal"],
     ["GET", "/api/v1/self/principal"],
+    // API-AUTH-002 (guard + handler) and API-AUTH-004 (guard + body validator + handler).
+    ["GET", "/api/v1/self/profile"],
+    ["GET", "/api/v1/self/profile"],
+    ["PATCH", "/api/v1/self/profile"],
+    ["PATCH", "/api/v1/self/profile"],
+    ["PATCH", "/api/v1/self/profile"],
   ];
   const HEALTH = [
     ["GET", "/internal/health/live"],
@@ -995,7 +1034,7 @@ describe("TC-DEV-API-002-002 route table and public surface of app.ts (DEV-API-0
     expect(routesOf(fullRig())).toEqual([...MIDDLEWARE_AND_RPC, ...authRoutes, ...HEALTH]);
   });
 
-  it("no public, staff, admin or webhook path and no other self path is mounted", () => {
+  it("no public, staff, admin or webhook path and no self path other than principal and profile is mounted", () => {
     for (const r of [minimalRig(), fullRig()]) {
       for (const [, path] of routesOf(r) as [string, string][]) {
         for (const prefix of [
@@ -1005,7 +1044,8 @@ describe("TC-DEV-API-002-002 route table and public surface of app.ts (DEV-API-0
           "/api/v1/webhooks",
         ])
           expect(path.startsWith(prefix), path).toBe(false);
-        if (path.startsWith("/api/v1/self/")) expect(path).toBe("/api/v1/self/principal");
+        if (path.startsWith("/api/v1/self/"))
+          expect(["/api/v1/self/principal", "/api/v1/self/profile"]).toContain(path);
       }
     }
   });

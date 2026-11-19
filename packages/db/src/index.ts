@@ -24,3 +24,9 @@ export type { DatabaseReadiness, ReadinessExpectations } from "./readiness.ts";
 export { checkReadiness } from "./readiness.ts";
 export type { TransactionResult } from "./transaction.ts";
 export { transaction, withWorkerAdvisoryLock } from "./transaction.ts";
+export type {
+  CurrentBusinessProfile,
+  CurrentProfileRead,
+  CurrentProfileUpdate,
+} from "./transactions/profile.ts";
+export { createCurrentProfileRepository } from "./transactions/profile.ts";

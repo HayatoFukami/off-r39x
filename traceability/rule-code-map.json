@@ -3406,9 +3406,10 @@
       "code_paths": [
         "packages/auth/src/index.ts",
         "apps/api/src/api/app.ts",
-        "apps/api/src/api/middleware/principal.ts"
+        "apps/api/src/api/middleware/principal.ts",
+        "apps/api/src/api/routes/self-profile.ts"
       ],
-      "test_case_ids": ["TC-SEC-AZ-013-050"],
+      "test_case_ids": ["TC-SEC-AZ-013-050", "TC-API-007-007"],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
     },
     {
@@ -3426,9 +3427,10 @@
       "code_paths": [
         "packages/auth/src/index.ts",
         "apps/api/src/api/app.ts",
-        "apps/api/src/api/middleware/principal.ts"
+        "apps/api/src/api/middleware/principal.ts",
+        "apps/api/src/api/routes/self-profile.ts"
       ],
-      "test_case_ids": ["TC-SEC-AZ-013-050"],
+      "test_case_ids": ["TC-SEC-AZ-013-050", "TC-API-007-007"],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
     },
     {
@@ -3478,6 +3480,8 @@
         "TC-DEV-API-003-050",
         "TC-RPC-AUDIT-001",
         "TC-DEV-API-003-001",
+        "TC-API-007-003",
+        "TC-API-007-004",
         "TC-DEV-API-003-002",
         "TC-DEV-API-003-003",
         "TC-DEV-API-003-004"
@@ -3498,7 +3502,10 @@
         "TC-DEV-API-003-050",
         "TC-RPC-AUDIT-001",
         "TC-DEV-API-002-001",
-        "TC-DEV-API-002-002"
+        "TC-DEV-API-002-002",
+        "TC-API-007-003",
+        "TC-API-007-004",
+        "TC-API-007-009"
       ],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
     },
@@ -3589,6 +3596,72 @@
       "code_paths": ["packages/providers/resend/src/index.ts", "packages/application/src/index.ts"],
       "test_case_ids": ["TC-FOUNDATION-RUNTIME-002"],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
+    },
+    {
+      "rule_id": "EML-GEN-003",
+      "code_paths": [
+        "packages/application/src/notification.ts",
+        "packages/application/src/uuid-v5.ts"
+      ],
+      "test_case_ids": ["TC-NTF-PORT-005", "TC-NTF-PORT-006", "TC-NTF-PORT-007"],
+      "notes": "Port input and UUIDv5 business_cause_key derivation only; persistence is PR-L1-1c"
+    },
+    {
+      "rule_id": "EML-TPL-001",
+      "code_paths": ["packages/application/src/notification.ts"],
+      "test_case_ids": ["TC-NTF-PORT-001"],
+      "notes": "Exhaustive notification type to template id/version map"
+    },
+    {
+      "rule_id": "EML-TPL-002",
+      "code_paths": [
+        "packages/application/src/notification.ts",
+        "packages/application/src/wire-values.ts"
+      ],
+      "test_case_ids": ["TC-NTF-PORT-002", "TC-NTF-PORT-003"],
+      "notes": "render_context Zod schemas; rendering itself is not implemented"
+    },
+    {
+      "rule_id": "EML-IDM-003",
+      "code_paths": ["packages/application/src/notification.ts"],
+      "test_case_ids": ["TC-NTF-PORT-007"],
+      "notes": "Business Cause derived from source only, never from transport keys"
+    },
+    {
+      "rule_id": "EML-RCP-001",
+      "code_paths": ["packages/application/src/notification.ts"],
+      "test_case_ids": ["TC-NTF-PORT-004", "TC-NTF-PORT-005"],
+      "notes": "Enqueue input carries a Business Profile ID only; no slot for a client supplied email address"
+    },
+    {
+      "rule_id": "SEC-EML-006",
+      "code_paths": [
+        "packages/application/src/notification.ts",
+        "packages/application/src/wire-values.ts"
+      ],
+      "test_case_ids": ["TC-NTF-PORT-002"],
+      "notes": "event_name (part of the subject) rejects CR / LF; other subject inputs are the Worker and Provider adapter's"
+    },
+    {
+      "rule_id": "SEC-EML-007",
+      "code_paths": ["packages/application/src/notification.ts"],
+      "test_case_ids": ["TC-NTF-PORT-002"],
+      "notes": "Per-notification-type Zod schemas for render_context; HTML escaping stays in the Template"
+    },
+    {
+      "rule_id": "REL-REC-006",
+      "code_paths": ["packages/application/src/review-case.ts"],
+      "test_case_ids": ["TC-REVIEW-PORT-001"],
+      "notes": "Review reason codes are a separate set from Domain States"
+    },
+    {
+      "rule_id": "REL-REC-008",
+      "code_paths": [
+        "packages/application/src/review-case.ts",
+        "packages/application/src/wire-values.ts"
+      ],
+      "test_case_ids": ["TC-REVIEW-PORT-003"],
+      "notes": "details value-kind allowlist"
     },
     {
       "rule_id": "DEV-REL-007",
@@ -3959,7 +4032,10 @@
         "apps/web/src/features/entry/entry-page.tsx",
         "apps/web/src/api-client/eligibility-target-key.ts",
         "apps/web/src/features/goods/goods-detail-page.tsx",
-        "apps/web/src/features/karaoke/karaoke-slot-page.tsx"
+        "apps/web/src/features/karaoke/karaoke-slot-page.tsx",
+        "packages/domain/src/profile.ts",
+        "packages/api-contract/src/schemas/profile.ts",
+        "apps/api/src/api/routes/self-profile.ts"
       ],
       "test_case_ids": [
         "TC-PG-CRT-001-105",
@@ -3970,7 +4046,10 @@
         "TC-PG-TKT-001-511",
         "TC-PG-KRK-003-107",
         "TC-PG-GDS-002-508",
-        "TC-PG-KRK-003-647"
+        "TC-PG-KRK-003-647",
+        "TC-API-007-001",
+        "TC-API-007-002",
+        "TC-API-007-007"
       ],
       "notes": "implementation mapping only: owner-scoped eligibility in the UI mock test double (no DB / idempotency write) and the browser side (shown to verified owners only, never persisted, re-read on session change); not API coverage (TC-API-005-001 not executed)"
     },
@@ -4443,7 +4522,13 @@
         "packages/security/src/rate-limit/operations.ts",
         "apps/api/src/api/routes.ts"
       ],
-      "test_case_ids": ["TC-RLM-007-001", "TC-RLM-007-002", "TC-RLM-007-003", "TC-RLM-004-239"],
+      "test_case_ids": [
+        "TC-RLM-007-001",
+        "TC-RLM-007-002",
+        "TC-RLM-007-003",
+        "TC-RLM-004-239",
+        "TC-API-007-004"
+      ],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
     {
@@ -5040,6 +5125,99 @@
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
     {
+      "rule_id": "API-AUTH-002",
+      "code_paths": [
+        "packages/api-contract/src/rpc.ts",
+        "packages/api-contract/src/schemas/profile.ts",
+        "apps/api/src/api/routes/self-profile.ts",
+        "apps/api/src/api/services/self-profile.ts",
+        "apps/api/src/api/routes.ts",
+        "packages/db/src/transactions/profile.ts"
+      ],
+      "test_case_ids": [
+        "TC-API-007-001",
+        "TC-API-007-003",
+        "TC-API-007-004",
+        "TC-API-007-005",
+        "TC-API-007-006",
+        "TC-API-007-008"
+      ],
+      "notes": "implementation mapping only: PR-L2-1a self Profile read and update; synthetic evidence, G8 (production-like E2E) not executed"
+    },
+    {
+      "rule_id": "API-AUTH-004",
+      "code_paths": [
+        "packages/api-contract/src/rpc.ts",
+        "packages/api-contract/src/schemas/profile.ts",
+        "apps/api/src/api/routes/self-profile.ts",
+        "apps/api/src/api/services/self-profile.ts",
+        "apps/api/src/api/routes.ts",
+        "packages/db/src/transactions/profile.ts",
+        "packages/domain/src/profile.ts",
+        "packages/api-contract/src/schemas/common.ts"
+      ],
+      "test_case_ids": [
+        "TC-API-007-001",
+        "TC-API-007-002",
+        "TC-API-007-003",
+        "TC-API-007-004",
+        "TC-API-007-005",
+        "TC-API-007-006",
+        "TC-API-007-007",
+        "TC-API-007-008",
+        "TC-API-007-009"
+      ],
+      "notes": "implementation mapping only: PR-L2-1a self Profile read and update; synthetic evidence, G8 (production-like E2E) not executed"
+    },
+    {
+      "rule_id": "AR-OWN-006",
+      "code_paths": [
+        "apps/api/src/api/routes/self-profile.ts",
+        "apps/api/src/api/services/self-profile.ts",
+        "packages/db/src/transactions/profile.ts"
+      ],
+      "test_case_ids": ["TC-API-007-001", "TC-API-007-005", "TC-API-007-006", "TC-API-007-007"],
+      "notes": "implementation mapping only: PR-L2-1a self Profile read and update; synthetic evidence, G8 (production-like E2E) not executed"
+    },
+    {
+      "rule_id": "AR-ID-002",
+      "code_paths": [
+        "apps/api/src/api/routes/self-profile.ts",
+        "apps/api/src/api/services/self-profile.ts",
+        "packages/db/src/transactions/profile.ts"
+      ],
+      "test_case_ids": ["TC-API-007-001", "TC-API-007-006", "TC-API-007-007"],
+      "notes": "implementation mapping only: PR-L2-1a self Profile read and update; synthetic evidence, G8 (production-like E2E) not executed"
+    },
+    {
+      "rule_id": "DEV-API-005",
+      "code_paths": [
+        "apps/api/src/api/routes/self-profile.ts",
+        "apps/api/src/api/services/self-profile.ts",
+        "packages/db/src/transactions/profile.ts"
+      ],
+      "test_case_ids": ["TC-API-007-006"],
+      "notes": "implementation mapping only: PR-L2-1a self Profile read and update; synthetic evidence, G8 (production-like E2E) not executed"
+    },
+    {
+      "rule_id": "DB-TIM-003",
+      "code_paths": ["packages/db/src/transactions/profile.ts"],
+      "test_case_ids": ["TC-API-007-005"],
+      "notes": "implementation mapping only: PR-L2-1a self Profile read and update; synthetic evidence, G8 (production-like E2E) not executed"
+    },
+    {
+      "rule_id": "DEV-DB-002",
+      "code_paths": ["packages/db/src/transactions/profile.ts"],
+      "test_case_ids": ["TC-API-007-005"],
+      "notes": "implementation mapping only: PR-L2-1a self Profile read and update; synthetic evidence, G8 (production-like E2E) not executed"
+    },
+    {
+      "rule_id": "DEV-DB-003",
+      "code_paths": ["packages/db/src/transactions/profile.ts"],
+      "test_case_ids": ["TC-API-007-005"],
+      "notes": "implementation mapping only: PR-L2-1a self Profile read and update; synthetic evidence, G8 (production-like E2E) not executed"
+    },
+    {
       "rule_id": "DEV-API-010",
       "code_paths": [
         "apps/api/src/api/services/constraint-violation.ts",
@@ -5083,7 +5261,8 @@
       "code_paths": [
         "packages/db/src/errors.ts",
         "packages/db/src/transaction.ts",
-        "apps/api/src/api/respond.ts"
+        "apps/api/src/api/respond.ts",
+        "packages/db/src/transactions/profile.ts"
       ],
       "test_case_ids": ["TC-REL-DB-009-001", "TC-REL-DB-009-002", "TC-REL-DB-009-003"],
       "notes": "Backend foundation only; no business Operation uses this yet"

@@ -18,6 +18,7 @@ import { errorFromException, errorResponse } from "./respond.ts";
 import { assertMountedAuthRoutes, assertMountedRoutesClassified } from "./routes.ts";
 import { mountRpcRoutes } from "./rpc.ts";
 import type { ErrorCode } from "./schemas/common.ts";
+import type { CurrentProfileStore } from "./services/index.ts";
 
 export { type ApiEnvironment, ApiFailure } from "./failure.ts";
 export { requireCapability } from "./middleware/capability.ts";
@@ -46,6 +47,8 @@ export interface AppDependencies {
   /** Shared rate limit (UCR-140-003). Absent => every registered route fails closed (503). */
   rateLimit?: AppRateLimit;
   authProxy?: AuthProxy;
+  /** API-AUTH-002 / 004. Absent => both routes fail closed (503). */
+  profiles?: CurrentProfileStore;
 }
 const EXPOSED_HEADERS = "X-Request-Id, Retry-After";
 export function createApp(dependencies: AppDependencies) {
