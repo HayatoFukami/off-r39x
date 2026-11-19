@@ -105,11 +105,10 @@ const NOT_CANONICALIZABLE = "Request is not canonicalizable";
 
 function serialize(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(serialize).join(",")}]`;
-  if (typeof value === "object" && value !== null) {
+  if (isRecord(value)) {
     // Default sort compares UTF-16 code units.
     const keys = Object.keys(value).sort();
-    const record = value as Record<string, unknown>;
-    return `{${keys.map((key) => `${JSON.stringify(key)}:${serialize(record[key])}`).join(",")}}`;
+    return `{${keys.map((key) => `${JSON.stringify(key)}:${serialize(value[key])}`).join(",")}}`;
   }
   return JSON.stringify(value);
 }
