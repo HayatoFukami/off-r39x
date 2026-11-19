@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-170
 title: Test Specification
-version: 2.6.0
+version: 2.7.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -818,7 +818,7 @@ Release Manifestの `mounted_operation_ids`（`SPEC-180 §44`）に含まれるO
 
 **TST-API-007:** 任意Display nameの保存・表示はBusiness Profile本人だけに限定し、Logo表示名称と混同しない。
 
-`TC-API-007-001`: `API-AUTH-002/004`, `SPEC-030` §9.2。省略／null／trim後空文字／1・80・81 code points、絵文字・結合文字を含むUnicode長、内部Cc、未知Field／Owner／Role入力、本人限定更新を検証する。既存rowはNULLで移行でき、未設定表示は「未設定」、登録・購入を妨げずNeon Auth氏名を複写しない。G1/G3/G4/G5/G8 → `ACC-BIZ-029`。
+`TC-API-007-001`: `API-AUTH-002/004`, `SPEC-030` §9.2。省略／null／trim後空文字／1・80・81 code points、絵文字・結合文字を含むUnicode長、内部Cc、lone surrogate（JSON escape `\uD800` 単独、`\uDC00` 単独、順序が逆の `\uDC00\uD800`、他の文字との混在）を含む値が `400 VALIDATION_FAILED` になり、既存の値が変わらずU+FFFDで保存されないこと（正しく対になったsurrogate pairは受理）、未知Field／Owner／Role入力、本人限定更新を検証する。既存rowはNULLで移行でき、未設定表示は「未設定」、登録・購入を妨げずNeon Auth氏名を複写しない。G1/G3/G4/G5/G8 → `ACC-BIZ-029`。
 
 **TST-EML-002:** 複合確認は専用の1通知要求・1通へ収束する。
 
@@ -2077,6 +2077,7 @@ SPEC-170に準拠したTest implementationは、少なくとも次をすべて�
 
 ## 78. UCR status inheritance
 
+- `UCR-030-001`: `INCORPORATED`（`SPEC-030` §9.2のDisplay name well-formed要件、`SPEC-110` `API-AUTH-004`、本書 `TC-API-007-001`、`SPEC-200` `ACC-BIZ-029`）
 - `UCR-100-001〜003`: `INCORPORATED`（`SPEC-100` §§13.4,14.1,16〜19,24,39,47〜49）
 - `UCR-110-001`: `INCORPORATED`（`SPEC-110` Cart／eligibility／Logo／Orderサマリー契約、§27.2の個別Case）
 - `UCR-110-004`: `INCORPORATED`（`SPEC-110` `API-PUR-ELG-001`・§27。`UCR-RELSCOPE-001` の一部）

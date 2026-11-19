@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-030
 title: Domain Model and Business Rules
-version: 2.1.0
+version: 2.2.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -344,7 +344,7 @@ Password CredentialやNeon Auth内部のCredential状態をBusiness Profileへ�
 
 Business ProfileのOwnerは対応するAuth Identity本人である。本人向けProfile参照・更新では、Requestで指定された任意のuser identifierではなく、Server-sideで検証したAuth Identityから対象Business Profileを解決する。
 
-本人編集可能な項目は任意のDisplay nameとする。保存前にECMAScript `String.prototype.trim()` 相当で前後空白を除去し、空文字は未設定（NULL）へ正規化する。設定値は1〜80 Unicode code pointsで、内部の制御文字（Unicode General Category `Cc`）を許可しない。Neon Authの氏名とは独立し、メール・氏名等から推測して補完しない。未設定でも登録・購入を妨げず、画面では個人情報を使わない「未設定」を表示する。型・CHECKは `SPEC-100`、PATCHの省略／nullの意味は `SPEC-110` が所有する。
+本人編集可能な項目は任意のDisplay nameとする。保存前にECMAScript `String.prototype.trim()` 相当で前後空白を除去し、空文字は未設定（NULL）へ正規化する。設定値はwell-formedなUnicode文字列（ECMAScript `String.prototype.isWellFormed()` 相当。対になっていないsurrogate code point、すなわちUnicode General Category `Cs` を含まない）に限り、1〜80 Unicode code pointsで、内部の制御文字（Unicode General Category `Cc`）を許可しない。well-formedでない値は、置換文字（U+FFFD）への置き換えや該当code pointの除去で補正して保存せず、拒否する。Neon Authの氏名とは独立し、メール・氏名等から推測して補完しない。未設定でも登録・購入を妨げず、画面では個人情報を使わない「未設定」を表示する。型・CHECKは `SPEC-100`、PATCHの省略／nullの意味は `SPEC-110` が所有する。
 
 ### 9.3 Customerの導出
 
@@ -1479,4 +1479,18 @@ SPEC-070の `PAY-ORD-004` と `PAY-CFM-012〜014` は同じ4値Purpose／複合�
 
 ## 28. 上流仕様変更要求
 
-なし。
+他仕様書への新規Upstream Change Requestはない。
+
+本書の規則の不足を解消する次の要求を、本改訂（v2.2.0）で本文へ取り込んだ。現在の契約は本文を正とし、以下の記録を別の契約として実装しない。
+
+### UCR-030-001 — INCORPORATED
+
+- **Status:** `INCORPORATED`（`SPEC-030 v2.2.0`）。プロジェクト所有者の決定（2026-11-19、`SPEC-000` §8の1）。新しいerror code・state・Capability・Operation・DB列・制約は追加していない。
+- 対象: SPEC-030（§9.2 Display name）
+- 現在の仕様（改訂前）: §9.2 はDisplay nameを、trim後の空文字をNULLへ正規化し、設定値を1〜80 Unicode code pointsとし、内部の `Cc` を拒否すると定めていた。対になっていないsurrogate code point（lone surrogate。General Category `Cs`）を含む値の扱いは定めていなかった。JSONは `"\uD800"` のようなescapeでlone surrogateを表現でき、`JSON.parse` 後の文字列はtrim・長さ・`Cc` の規則をすべて満たす。
+- 要求する変更: Display nameの設定値をwell-formedなUnicode文字列（ECMAScript `String.prototype.isWellFormed()` 相当）に限り、well-formedでない値をU+FFFDへの置き換えや除去で補正せず拒否する。trim、空文字→NULL、1〜80 code points、内部 `Cc` の拒否は変更しない。APIでは既存の `400 VALIDATION_FAILED`（`SPEC-110` `API-AUTH-004`）とする。
+- 理由: PostgreSQLの `text`（UTF-8）はsurrogate code pointを保持できず、Node.jsのUTF-8 encodeはlone surrogateをU+FFFDへ置き換えるため、現行規則のままでは利用者が送った値と異なる値が成功応答とともに黙って保存される。拒否すれば保存値と応答値が一致し、`SPEC-140` `SEC-API-029` の「正規化後のplain text」の範囲も一意になる。
+- 変更しない場合の影響: lone surrogateを含む要求が `200` で成功し、保存値がU+FFFDに変わる。実装ごとに拒否・置換・除去の扱いが分かれ、`TC-API-007-001` の期待値を定められない。
+- 影響を受ける可能性がある仕様書: SPEC-050, SPEC-100, SPEC-110, SPEC-140, SPEC-170, SPEC-200
+- **本書側反映:** §9.2。
+- **残作業:** なし。`SPEC-110 v2.7.0` の `API-AUTH-004`、`SPEC-170 v2.7.0` の `TC-API-007-001` と §78、`SPEC-200 v3.2.0` の `ACC-BIZ-029`、`SPEC-100 v2.4.1` の §14.1の説明文へ反映した。`SPEC-140` `SEC-API-029` と `SPEC-050` `PG-MYP-002` は §9.2 を参照しており、確認の結果、変更を要しない（Webの入力補助は権威検証ではなく、`PG-MYP-002` の長さの権威検証はAPIである）。不正なUTF-8 byte列を含むJSON bodyの扱いはAPI全体の契約であり、本UCRの範囲外である。
