@@ -400,13 +400,12 @@ Idempotency-Key: <16..128 printable ASCII chars (0x20..0x7E)>
 
 Check-inはHeaderを受けてもよいが、Ticket consume-onceがCanonical idempotencyでありHeaderを必須にしない。
 
-**API-IDM-011:** 対象Operationは `Idempotency-Key` を次のとおり検証する。
+**API-IDM-011:** `Idempotency-Key` を必須とするOperation（`API-IDM-003` と同じ集合。§18の対象一覧のOperationと、`SPEC-120 §36.1` の `API-ADM-EML-004`、`API-ADM-EML-005`。以下「対象Operation」）は、headerを次のとおり検証する。
 
 1. 形式: 16文字以上128文字以下で、すべての文字が印字可能なASCII（0x20〜0x7E）であること。制御文字（0x00〜0x1F）、DEL（0x7F）、非ASCII（0x80以上。UTF-8の多byte文字を含む）を1文字でも含む値は形式に合わないものとする。
-2. 検証する値: アプリケーションが受け取ったfield valueを、trim、大文字小文字の変換、その他の正規化をせずにそのまま検証する。この値は `API-IDM-005` のkey digestの入力と同じである。同名のheaderが複数ある場合は、それらを連結した1つのfield value（RFC 9110 §5.3）を1つの値として検証し、いずれか1つの値を選んで使わない。
+2. 検証する値: HTTPの構文解析（RFC 9110 §5.5 の前後の空白の除去を含む）を経てアプリケーションへ渡されたfield valueを、trim、大文字小文字の変換、その他の正規化をせずにそのまま検証する。この値は `API-IDM-005` のkey digestの入力と同じである。HTTP層で拒否されアプリケーションに届かないrequestは本規則の対象外とする。同名のheaderが複数ある場合は、それらを連結した1つのfield value（RFC 9110 §5.3）を1つの値として検証し、いずれか1つの値を選んで使わない。連結の区切りはHTTP実装の結合に従い、本書では固定しない。
 3. 欠落・形式不正: headerが欠落している場合、または1の形式に合わない場合は `400 VALIDATION_FAILED`（`details: null`）を返す。Domain stateを変更せず、記録（§18.1）を作らない（`API-IDM-004` の「最初の業務commit前の拒否」に当たる）。新しいerror codeを追加しない。
 4. 順序: 認証・認可（§24の手順2〜7）で失敗するrequestは、その失敗（`401`、`403`、self operationの `404` など）を本検証より先に返す。
-5. 受信した値（形式に合わない値を含む）をresponseへechoせず、log・Audit Eventへrawで保存しない（`SPEC-140` `SEC-ERR-002`、`SPEC-160` §11）。
 
 Transport key replay時は、同じPrincipal + Operation ID + normalized request fingerprintに一致する場合だけ同じtransport resultを返してよい。異なるpayloadで同じkeyを再利用した場合は `409 IDEMPOTENCY_KEY_REUSED`。
 
@@ -476,7 +475,7 @@ listも同じ`data`内に`items/page`を持つ。
 | HTTP | Code | 意味 | Retryable |
 |---:|---|---|---|
 | 400 | `MALFORMED_REQUEST` | JSON / syntax（未対応content typeは415 `UNSUPPORTED_MEDIA_TYPE`） | No |
-| 400 | `VALIDATION_FAILED` | Zod / field validation（§18の対象Operationの `Idempotency-Key` の欠落・形式不正を含む。`API-IDM-011`） | No |
+| 400 | `VALIDATION_FAILED` | Zod / field validation（`API-IDM-011` の対象Operationの `Idempotency-Key` の欠落・形式不正を含む） | No |
 | 401 | `AUTHENTICATION_REQUIRED` | credentialなし / invalid session | 条件付き |
 | 403 | `EMAIL_VERIFICATION_REQUIRED` | verified email必須 | No |
 | 403 | `AUTHORIZATION_DENIED` | Role / Capability不足 | No |
@@ -1294,7 +1293,7 @@ Allowlist fields: up-stream permitted scope/time/sales configuration relation on
 - **DB lock:** Karaoke Ticket `FOR UPDATE` → Reservation。
 - **Precondition:** Reservation `CONFIRMED`; common Ticket cancellation rule。
 - **Effects:** Reservation `CANCELED`; unused Ticket `CANCELED`; Slot remains `SOLD`; Hold remains `COMMITTED`; no resale。
-- **Idempotency-Key:** required（§18、`API-IDM-011`）。記録（§18.1）を作り、replayは次の既存の取消結果の再利用に従う（`API-IDM-007`）。
+- **Idempotency-Key:** required（§18、`API-IDM-011`）。記録（§18.1）を作り、replayは下の `Idempotency` 行（existing cancellation result reuse）に従う（`API-IDM-007`）。
 - **Idempotency:** existing cancellation result reuse。
 
 本endpointをgeneric cancellation / invariant bypassとして利用してはならない。SPEC-130 / 150が具体的なUI / Runbookを定義する。
@@ -2390,7 +2389,7 @@ resolveConsistencyReviewCase()
 44. `API-ADM-GDS-005` Inventory adjustmentはClientからreason code / free textを受け取らず、serverがfixed `ADMINISTRATIVE_CAPACITY_ADJUSTMENT`を導出し、same-transaction Audit Eventへsigned adjustment quantity / safe before/after counters / resultと共に永続化する（`SPEC-160 §28.1`, `OBS-GDS-002,004,005`）。
 45. 全canonical Operation IDは§56.1でexactly 1つのrate limit classを持つ。`429` は `Retry-After`付きで `RATE_LIMIT_EXCEEDED`、rate limit store判定不能は `503 TEMPORARY_UNAVAILABLE` を返し、どちらもDomain stateを変更しない。
 46. Transport Idempotencyのreplay記録は業務DBの `app.idempotency_records` だけに保存し、業務更新と同じtransactionで書く。応答body・Checkout URL・個人情報・raw keyを保存せず、保持期間は24時間とする（§18.1）。DB障害による保存の失敗は既存の `503 DATABASE_TEMPORARY_FAILURE`（一意制約の競合は `API-IDM-009`、その他の制約違反は §50）、処理中の同じkeyは新しいerror codeを作らず、`IDEMPOTENCY_KEY_REUSED` または既存結果への収束とする。
-47. §18の対象Operationで `Idempotency-Key` が欠落、または16〜128文字の印字可能ASCII（0x20〜0x7E）でない場合は、認証・認可の失敗を先に返したうえで `400 VALIDATION_FAILED`（`details: null`）とし、Domain stateと記録（§18.1）を変更しない。受信した値は正規化せずに検証し、同名headerの複数指定は連結した1つの値として扱う（`API-IDM-011`）。
+47. `API-IDM-011` の対象Operation（§18の対象一覧と `API-ADM-EML-004/005`）で `Idempotency-Key` が欠落、または16〜128文字の印字可能ASCII（0x20〜0x7E）でない場合は、認証・認可の失敗を先に返したうえで `400 VALIDATION_FAILED`（`details: null`）とし、Domain stateと記録（§18.1）を変更しない。受信した値は正規化せずに検証し、同名headerの複数指定は連結した1つの値として扱う（`API-IDM-011`）。
 
 ---
 
@@ -2547,7 +2546,7 @@ retry count / backoff / queue / operator RunbookはSPEC-150。本書§48.5はSPE
 ### UCR-110-011 — INCORPORATED
 
 - **Status:** `INCORPORATED`。本改訂（v2.9.0）で §18（`API-IDM-011`）、§21、Acceptance 47へ反映した（プロジェクト所有者の決定、2026-11-20。`SPEC-000` §8）。新しいerror code・state・Capability・Operationは追加していない。現在の契約は本文を正とし、以下の要求はその経緯の記録である。
-- 対象: SPEC-110 §18（Transport idempotency input）、§21。`SPEC-170` §26（transport `Idempotency-Key` contract）に関連する。
+- 対象: SPEC-110 §18（Transport idempotency input）、§21、§61 Acceptance 47。`SPEC-170` §26（transport `Idempotency-Key` contract）に関連する。
 - 現在の仕様（改訂前）: §18 は `Idempotency-Key: <16..128 ASCII chars>` と対象Operationを定めていたが、対象Operationでheaderが欠落した場合、形式（長さ・文字種）に合わない場合のHTTP statusとerror codeを定めていなかった。§21 の `MALFORMED_REQUEST`（JSON / syntax）と `VALIDATION_FAILED`（Zod / field validation）のどちらに当たるかが本文から一意に決まらなかった。「ASCII chars」が制御文字・DELを含むか、同名headerの複数指定をどう扱うかも定めていなかった。
 - 要求する変更:
   1. 対象Operationでheaderが欠落、または形式に合わない場合は `400 VALIDATION_FAILED`、`details: null` とし、Domain stateを変更しない。認証・認可（§24の手順2〜7）の失敗はそれより先に返す。新しいerror codeを追加しない。
@@ -2555,7 +2554,7 @@ retry count / backoff / queue / operator RunbookはSPEC-150。本書§48.5はSPE
   3. 同名headerが複数ある場合は、連結された値を1つの値として扱い、形式に合わなければ要求1と同じ `400` とする。
 - 理由: 対象Operationの全routeが共通の入力検証でheaderを扱うため、codeと文字種が本文で決まらないと、routeごと・Clientごとに解釈が分かれる。headerの値の検証はJSONの構文ではなくfield validationに当たる。制御文字とDELを除くことで、HTTP実装・proxy・log処理によって扱いが変わりうる文字を入力の段階で拒否する。正規化をしないのは、key digest（`API-IDM-005`）と同じ値を検証するためである。複数指定を連結した値のまま扱うのは、どの値を使うかを実装ごとに変えないためである。
 - 変更しない場合の影響: 欠落・不正のcodeと文字種が実装の判断で決まり、`SPEC-170` §26の「transport `Idempotency-Key` contract」の期待値を本文から導けない。Web（非mockのAPI client）がerrorの表示と再送の判断を決められない。
-- 影響を受ける可能性がある仕様書: SPEC-170（§26・§28。本文の変更は不要。期待値は本書 `API-IDM-011` から導き、Test Case IDとmanifestは実装のWork Planが割り当てる）、SPEC-140（`SEC-ERR-002`。`details: null` で整合し変更不要）、SPEC-150（`REL-RTY-007` / `REL-RTY-012` の同じkeyでの再送。変更不要）、SPEC-160（§11。変更不要）
+- 影響を受ける可能性がある仕様書: SPEC-170（§26・§28。本文の変更は不要。期待値は本書 `API-IDM-011` から導き、Test Case IDとmanifestは実装のWork Planが割り当てる）、SPEC-140（`SEC-ERR-002`。`details: null` で整合し変更不要）、SPEC-150（`REL-RTY-007` / `REL-RTY-012` の同じkeyでの再送。変更不要）、SPEC-160（§11。変更不要）、SPEC-120（§36.1。`API-ADM-EML-004/005` は `API-IDM-003` と同じく対象Operationに含まれ、変更不要）、SPEC-190（`DEV-API-007`。対象Operationの集合が本書で一意になり、変更不要）
 
 ### UCR-110-012 — INCORPORATED
 
