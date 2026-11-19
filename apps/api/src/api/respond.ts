@@ -85,13 +85,23 @@ export function errorResponse<C extends ErrorCode>(
 type JsonCopy = { readonly ok: true; readonly value: unknown } | { readonly ok: false };
 const REJECTED: JsonCopy = { ok: false };
 
+// The longest chain of an accepted value is an array's (the array, Array.prototype, Object.prototype).
+const MAX_PROTOTYPE_CHAIN = 8;
+
 // True when a callable `toJSON` is reachable (own or inherited, enumerable or not). Descriptors are
 // inspected so that no getter runs. An accessor `toJSON` is rejected too, since its value is unknown.
+// The walk is finite: a Proxy can report any prototype, so a chain that revisits an object or does
+// not reach null within MAX_PROTOTYPE_CHAIN links is rejected instead of being followed.
 function hasToJson(value: object): boolean {
-  for (let node: object | null = value; node !== null; node = Reflect.getPrototypeOf(node)) {
+  const seen = new Set<object>();
+  let node: object | null = value;
+  while (node !== null) {
+    if (seen.has(node) || seen.size >= MAX_PROTOTYPE_CHAIN) return true;
+    seen.add(node);
     const descriptor = Object.getOwnPropertyDescriptor(node, "toJSON");
-    if (descriptor === undefined) continue;
-    return !("value" in descriptor) || typeof descriptor.value === "function";
+    if (descriptor !== undefined)
+      return !("value" in descriptor) || typeof descriptor.value === "function";
+    node = Reflect.getPrototypeOf(node);
   }
   return false;
 }

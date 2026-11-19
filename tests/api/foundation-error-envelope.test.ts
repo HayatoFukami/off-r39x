@@ -146,6 +146,58 @@ const unrepresentable: readonly (readonly [string, () => unknown])[] = [
     }),
   ],
 ];
+// PR #66 review round 6: a Proxy may report any prototype, so the prototype walk must end even when
+// the reported chain loops back or never reaches null (no synchronous hang). These values reach
+// successResponse through z.unknown() as they are: a transform output is not used here because zod's
+// own transform step runs `instanceof Promise` on it, which walks the same chain before respond.ts.
+// Each trap call is counted; past the safety stop the trap throws, so an unbounded walk is seen as a
+// call count over the bound instead of a test run that never returns.
+const PROTOTYPE_SAFETY_STOP = 10_000;
+type PrototypeCounter = { step(): void; calls(): number };
+function prototypeCounter(): PrototypeCounter {
+  let calls = 0;
+  return {
+    step() {
+      calls += 1;
+      if (calls > PROTOTYPE_SAFETY_STOP) throw new Error("synthetic-prototype-safety-stop");
+    },
+    calls: () => calls,
+  };
+}
+const endlessPrototypes: readonly (readonly [string, (counter: PrototypeCounter) => unknown])[] = [
+  ["Proxy whose prototype is itself", (counter) => selfPrototypeProxy(counter)],
+  [
+    "Proxy nested in an object whose prototype is itself",
+    (counter) => ({ label: MARKER_NESTED, inner: selfPrototypeProxy(counter) }),
+  ],
+  [
+    "array Proxy whose prototype is itself",
+    (counter) => selfPrototypeProxy(counter, [MARKER_NESTED]),
+  ],
+  [
+    "Proxy with an endless prototype chain of fresh objects",
+    (counter) => endlessPrototypeProxy(counter),
+  ],
+];
+function selfPrototypeProxy(
+  counter: PrototypeCounter,
+  target: object = { label: MARKER_NESTED },
+): object {
+  const proxy: object = new Proxy(target, {
+    getPrototypeOf: () => {
+      counter.step();
+      return proxy;
+    },
+  });
+  return proxy;
+}
+function endlessPrototypeProxy(counter: PrototypeCounter): object {
+  const link = (): object => {
+    counter.step();
+    return new Proxy({}, { getPrototypeOf: link });
+  };
+  return new Proxy({ label: MARKER_NESTED }, { getPrototypeOf: link });
+}
 function withHiddenToJson<T extends object>(target: T): T {
   Object.defineProperty(target, "toJSON", {
     value: () => undefined,
@@ -380,6 +432,27 @@ describe("TC-DEV-API-003-003 the success envelope is built in one place and vali
     expect(text).not.toContain("synthetic-undefined-marker");
     expect(lines.join("\n")).not.toContain("synthetic-undefined-marker");
   });
+
+  it.each(endlessPrototypes)(
+    "successResponse: data whose reported prototype chain never ends (%s) is 500 INTERNAL_ERROR, details null, without hanging",
+    async (label, make) => {
+      const { successResponse } = await loadRespond();
+      const { app, lines } = rig();
+      const counter = prototypeCounter();
+      app.get("/api/v1/test/success/prototype", (c) =>
+        successResponse(c, z.unknown(), make(counter)),
+      );
+      const response = await app.request("/api/v1/test/success/prototype");
+      const { text, error } = await readError(response);
+      expectEnvelope(response, text, "INTERNAL_ERROR", label);
+      expect(error).toMatchObject({ retryable: false, details: null, message: FIXED_MESSAGE });
+      expect(Object.keys(JSON.parse(text) as Json)).toEqual(["error"]);
+      expect(text).not.toContain(MARKER_NESTED);
+      expect(lines.join("\n")).not.toContain(MARKER_NESTED);
+      // The walk is bounded well below the safety stop: it ends by itself, not by the trap throwing.
+      expect(counter.calls()).toBeLessThan(100);
+    },
+  );
 
   it.each(unrepresentable)(
     "successResponse: parsed data that is not JSON-representable (%s) is 500 INTERNAL_ERROR, details null, never a 200 without data",
