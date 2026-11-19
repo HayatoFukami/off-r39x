@@ -82,6 +82,48 @@ export function errorResponse<C extends ErrorCode>(
   return c.json(parsed.data, errorStatuses[code]);
 }
 
+/**
+ * True only when `value` serializes to JSON without loss (SPEC-110 section 19: a success envelope
+ * carries a required `data`). Fail closed: `JSON.stringify` silently drops `undefined`, functions
+ * and symbols, turns NaN / Infinity into null, throws on bigint and cycles, and flattens Date / Map,
+ * so any such value means the producer is defective and the data must not be sent. An `undefined`
+ * object property is an omitted optional field and is allowed; an `undefined` array element or a
+ * sparse-array hole is not. Symbol-keyed properties are dropped by JSON and ignored here. Values
+ * are never logged or thrown.
+ */
+function isJsonValue(value: unknown, active: WeakSet<object> = new WeakSet()): boolean {
+  if (value === null) return true;
+  switch (typeof value) {
+    case "boolean":
+    case "string":
+      return true;
+    case "number":
+      return Number.isFinite(value);
+    case "object":
+      break;
+    default:
+      return false;
+  }
+  if (active.has(value)) return false;
+  active.add(value);
+  try {
+    if (Array.isArray(value)) {
+      for (let i = 0; i < value.length; i += 1) {
+        if (!(i in value) || !isJsonValue(value[i], active)) return false;
+      }
+      return true;
+    }
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return false;
+    for (const entry of Object.values(value)) {
+      if (entry !== undefined && !isJsonValue(entry, active)) return false;
+    }
+    return true;
+  } finally {
+    active.delete(value);
+  }
+}
+
 export function successResponse<S extends z.ZodType>(
   c: AppContext,
   dataSchema: S,
@@ -94,8 +136,8 @@ export function successResponse<S extends z.ZodType>(
   });
   // A schema mismatch is a defect in the producer: never send the data (DEV-API-003).
   if (!parsed.success) return errorResponse(c, "INTERNAL_ERROR");
-  // SPEC-110 section 19: `data` is required; undefined would be dropped by JSON serialization.
-  if (!("data" in parsed.data) || parsed.data.data === undefined)
+  // SPEC-110 section 19: `data` is required and must survive JSON serialization unchanged.
+  if (!("data" in parsed.data) || !isJsonValue(parsed.data.data))
     return errorResponse(c, "INTERNAL_ERROR");
   c.header("Cache-Control", "no-store");
   return c.json(parsed.data, status);
