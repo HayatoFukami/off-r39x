@@ -6,13 +6,16 @@
   "exports": {
     ".": "./src/index.ts",
     "./worker": "./src/worker.ts",
-    "./reconciliation": "./src/reconciliation.ts"
+    "./reconciliation": "./src/reconciliation.ts",
+    "./notification": "./src/notification.ts",
+    "./review-case": "./src/review-case.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@off-r39x/reliability": "workspace:*"
+    "@off-r39x/reliability": "workspace:*",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@types/node": "24.12.0",
