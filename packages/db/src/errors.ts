@@ -88,6 +88,29 @@ export type DatabaseErrorClass =
     }
   | { readonly kind: "other" };
 
+/**
+ * True for the classes the API answers with a retryable 503 `DATABASE_TEMPORARY_FAILURE`
+ * (SPEC-110 sections 50-51, REL-DB-009): an exhausted retryable SQLSTATE, the transaction deadline,
+ * and unavailability. Statement timeout (`57014`), constraint and every other error are not. A
+ * repository that turns a temporary failure into a result value uses this, so its answer matches the
+ * HTTP boundary's `errorFromException`.
+ */
+export function isDatabaseTemporaryFailure(error: unknown): boolean {
+  const { kind } = classifyDatabaseError(error);
+  return kind === "retryable" || kind === "deadline" || kind === "unavailable";
+}
+
+/**
+ * Types a rejection of one statement sent on the pool outside `transaction()` (a single read): the
+ * driver raised it, so without a server SQLSTATE (no code, or a Node errno such as EAI_AGAIN) no
+ * server answer was received and it is a `DatabaseUnavailableError` with the original as `cause`,
+ * as `transaction()` types a database-originated failure. An error with a SQLSTATE is returned as it
+ * is. Only for errors that came out of the database call itself, never the caller's own throws.
+ */
+export function typeDirectQueryFailure(error: unknown): unknown {
+  return isSqlstate(sqlState(error)) ? error : new DatabaseUnavailableError({ cause: error });
+}
+
 export function classifyDatabaseError(error: unknown): DatabaseErrorClass {
   if (error instanceof DatabaseUnavailableError) return { kind: "unavailable" };
   if (error instanceof TransactionDeadlineError) return { kind: "deadline" };

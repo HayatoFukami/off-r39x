@@ -109,6 +109,7 @@ function successEnvelope(overrides: Record<string, unknown> = {}): Record<string
 function buildApp(
   principalValue: () => PrincipalNavigation = () => principal,
   profileValue: () => CurrentProfile = () => PROFILE,
+  requestId: () => string = () => REQUEST_ID,
 ) {
   const pass = async (_c: Context<Env>, next: () => Promise<void>) => {
     await next();
@@ -116,7 +117,7 @@ function buildApp(
   return createPublicRpc<Env>({
     guard: pass,
     principal: (_c: Context<Env>) => principalValue(),
-    requestId: (_c: Context<Env>) => REQUEST_ID,
+    requestId: (_c: Context<Env>) => requestId(),
     profileRead: { guard: pass, load: async (_c: Context<Env>) => profileValue() },
     profileUpdate: { guard: pass, body: pass, save: async (_c: Context<Env>) => profileValue() },
   });
@@ -268,6 +269,61 @@ describe("TC-DEV-API-002-001 public surface of @off-r39x/api-contract", () => {
       logged.mockRestore();
     }
   });
+
+  // PR #66 round 6: every route validates the whole success envelope with successSchema (SPEC-110
+  // section 19), meta.request_id included, so the builder cannot answer 200 with an off-contract meta.
+  it.each([
+    ["not a UUID", "not-a-request-id"],
+    ["an upper-case UUID", REQUEST_ID.toUpperCase().replace("0000-4000", "ABCD-4000")],
+    ["empty", ""],
+  ])("a request_id that is %s fails every route closed (500, no data)", async (_label, id) => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const app = buildApp(undefined, undefined, () => id);
+      for (const [method, path] of [
+        ["GET", "/api/v1/self/principal"],
+        ["GET", "/api/v1/self/profile"],
+        ["PATCH", "/api/v1/self/profile"],
+      ] as const) {
+        const response = await app.request(path, { method });
+        expect(response.status, `${method} ${path}`).toBe(500);
+        const text = await response.text();
+        expect(text, `${method} ${path}`).toBe("Internal Server Error");
+        expect(text).not.toContain(PROFILE_REF);
+      }
+    } finally {
+      logged.mockRestore();
+    }
+  });
+
+  // SPEC-110 section 9: a Public Reference is returned as a lower-case canonical UUID. An upper- or
+  // mixed-case value from the store is a producer defect and is never sent.
+  it.each([
+    ["upper case", PROFILE_REF.toUpperCase().replace(/^0{8}/, "ABCDEF00")],
+    ["mixed case", "abcdef00-0000-4000-8000-00000000000A"],
+  ])(
+    "a %s profile_ref fails the profile and principal routes closed (500)",
+    async (_label, ref) => {
+      const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      try {
+        const app = buildApp(
+          () => ({ ...principal, profile_ref: ref }),
+          () => ({ ...PROFILE, profile_ref: ref }),
+        );
+        for (const [method, path] of [
+          ["GET", "/api/v1/self/principal"],
+          ["GET", "/api/v1/self/profile"],
+          ["PATCH", "/api/v1/self/profile"],
+        ] as const) {
+          const response = await app.request(path, { method });
+          expect(response.status, `${method} ${path}`).toBe(500);
+          expect(await response.text(), `${method} ${path}`).not.toContain(ref);
+        }
+      } finally {
+        logged.mockRestore();
+      }
+    },
+  );
 });
 
 describe("TC-DEV-API-003-001 error table and envelope schemas", () => {
@@ -398,6 +454,11 @@ describe("TC-DEV-API-003-001 error table and envelope schemas", () => {
     [
       "profile_ref that is not a UUID",
       { ...principal, profile_ref: "not-a-uuid" },
+      { success: false, issues: [["invalid_format", ["profile_ref"]]] },
+    ],
+    [
+      "profile_ref in upper case (SPEC-110 section 9: lower-case canonical UUID)",
+      { ...principal, profile_ref: "ABCDEF00-0000-4000-8000-000000000001" },
       { success: false, issues: [["invalid_format", ["profile_ref"]]] },
     ],
     [

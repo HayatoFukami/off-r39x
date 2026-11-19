@@ -149,6 +149,21 @@ describe("TC-API-007-003 request and response schemas (DEV-API-003, SPEC-110 §8
     expect(currentProfileSchema.safeParse(withoutName).success).toBe(false);
   });
 
+  // PR #66 round 6: SPEC-110 §9 returns a Public Reference as a lower-case canonical UUID; z.uuid()
+  // alone accepts upper case, so the response schema pins the case.
+  it.each([
+    ["all upper case", "ABCDEF00-0000-4000-8000-0000000000B1"],
+    ["mixed case", "abcdef00-0000-4000-8000-0000000000B1"],
+    ["one upper-case hex digit", "abcdef00-0000-4000-8000-0000000000bF"],
+  ])("response rejects a profile_ref in %s", (_label, ref) => {
+    expect(currentProfileSchema.safeParse({ ...validProfile, profile_ref: ref }).success).toBe(
+      false,
+    );
+    expect(
+      currentProfileSchema.safeParse({ ...validProfile, profile_ref: ref.toLowerCase() }).success,
+    ).toBe(true);
+  });
+
   it("response rejects a profile_ref that is not a UUID and a missing updated_at", () => {
     expect(
       currentProfileSchema.safeParse({ ...validProfile, profile_ref: "not-a-uuid" }).success,
