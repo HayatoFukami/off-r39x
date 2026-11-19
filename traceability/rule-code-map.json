@@ -3489,7 +3489,8 @@
         "TC-DEV-API-002-001",
         "TC-DEV-API-002-002",
         "TC-API-007-003",
-        "TC-API-007-004"
+        "TC-API-007-004",
+        "TC-API-007-009"
       ],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
     },

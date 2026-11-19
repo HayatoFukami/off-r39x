@@ -29,8 +29,9 @@ export function rejectDuplicateKeys(raw: string): void {
   }
 }
 /**
- * Mount only on a canonical JSON operation, after streaming bodyLimit. The type carries the request
- * body as Hono's `in` input for hc<AppType> only; the parsed value is read from `validatedJson`.
+ * Mount only on a canonical JSON operation, after streaming bodyLimit. The parsed value is read from
+ * `validatedJson`, so only Hono's `in` input is declared (no `out`: `c.req.valid` is never filled).
+ * AppType takes its input type from the builder in @off-r39x/api-contract, not from this type.
  */
 export function validateJson<T extends z.ZodType>(
   schema: T,
