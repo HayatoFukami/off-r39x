@@ -1,7 +1,5 @@
 import { AuthFailure, type PrincipalStore, type TokenVerifier } from "@off-r39x/auth";
-import { TransactionDeadlineError } from "@off-r39x/db";
 import type { createLogger } from "@off-r39x/observability";
-import { isDatabaseRetryable } from "@off-r39x/reliability";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { TrieRouter } from "hono/router/trie-router";
@@ -16,9 +14,10 @@ import {
   createRateLimitStageOne,
   createVerificationGate,
 } from "./rate-limit.ts";
+import { errorFromException, errorResponse } from "./respond.ts";
 import { assertMountedAuthRoutes, assertMountedRoutesClassified } from "./routes.ts";
 import { mountRpcRoutes } from "./rpc.ts";
-import { type ErrorCode, errorSchema, errorStatuses } from "./schemas/common.ts";
+import type { ErrorCode } from "./schemas/common.ts";
 import type { CurrentProfileStore } from "./services/index.ts";
 
 export { type ApiEnvironment, ApiFailure } from "./failure.ts";
@@ -52,33 +51,6 @@ export interface AppDependencies {
   profiles?: CurrentProfileStore;
 }
 const EXPOSED_HEADERS = "X-Request-Id, Retry-After";
-function failure(
-  c: import("hono").Context<ApiEnvironment>,
-  code: ErrorCode,
-  statusOverride?: 400 | 413,
-  retryAfterSeconds?: number,
-) {
-  c.header("Cache-Control", "no-store");
-  const status = statusOverride ?? errorStatuses[code];
-  // SEC-ABU-007: a 429 always carries an integer-second Retry-After (min 1).
-  if (code === "RATE_LIMIT_EXCEEDED")
-    c.header("Retry-After", String(Math.max(1, retryAfterSeconds ?? 1)));
-  return c.json(
-    errorSchema.parse({
-      error: {
-        code,
-        message:
-          code === "RESOURCE_NOT_FOUND"
-            ? "Requested resource was not found."
-            : "Request could not be completed.",
-        request_id: c.get("requestId"),
-        retryable: status === 503 || status === 424 || status === 429,
-        details: null,
-      },
-    }),
-    status,
-  );
-}
 export function createApp(dependencies: AppDependencies) {
   const origin = new URL(dependencies.webOrigin).origin;
   if (origin !== dependencies.webOrigin) throw new Error("Expected exact Web origin");
@@ -87,12 +59,12 @@ export function createApp(dependencies: AppDependencies) {
   app.use("*", secureHeaders({ strictTransportSecurity: "max-age=63072000; includeSubDomains" }));
   app.use("/api/v1/*", async (c, next) => {
     if (dependencies.allowedHosts && !dependencies.allowedHosts.includes(new URL(c.req.url).host))
-      return failure(c, "MALFORMED_REQUEST");
+      return errorResponse(c, "MALFORMED_REQUEST");
     await next();
     return;
   });
   app.use("*", async (c, next) => {
-    if (dependencies.draining?.()) return failure(c, "TEMPORARY_UNAVAILABLE");
+    if (dependencies.draining?.()) return errorResponse(c, "TEMPORARY_UNAVAILABLE");
     await next();
     return;
   });
@@ -142,14 +114,7 @@ export function createApp(dependencies: AppDependencies) {
               ? "CONSISTENCY_FAILURE"
               : "SECURITY_FAILURE",
       });
-    if (error instanceof ApiFailure)
-      return failure(c, error.code, error.statusOverride, error.retryAfterSeconds);
-    if (error instanceof AuthFailure) return failure(c, authErrorCodes[error.kind]);
-    // SPEC-110 §50 / REL-DB-011: an exhausted transaction retry budget is a temporary failure,
-    // never 404 / 409 / 500. The SQLSTATE stays out of the response (SPEC-110 §20).
-    if (isDatabaseRetryable(error) || error instanceof TransactionDeadlineError)
-      return failure(c, "DATABASE_TEMPORARY_FAILURE");
-    return failure(c, "INTERNAL_ERROR");
+    return errorFromException(c, error, authErrorCodes);
   });
   app.use("/api/v1/*", async (c, next) => {
     const requestOrigin = c.req.header("Origin");
@@ -194,7 +159,7 @@ export function createApp(dependencies: AppDependencies) {
   });
   app.use(
     "/api/v1/*",
-    bodyLimit({ maxSize: 65536, onError: (c) => failure(c, "PAYLOAD_TOO_LARGE") }),
+    bodyLimit({ maxSize: 65536, onError: (c) => errorResponse(c, "PAYLOAD_TOO_LARGE") }),
   );
   const principalHooks = dependencies.rateLimit
     ? createPrincipalRateLimitHooks(dependencies.rateLimit.limiter, {
@@ -210,7 +175,7 @@ export function createApp(dependencies: AppDependencies) {
           dependencies.allowedHosts &&
           !dependencies.allowedHosts.includes(new URL(c.req.url).host)
         )
-          return failure(c, "MALFORMED_REQUEST");
+          return errorResponse(c, "MALFORMED_REQUEST");
         const proxy = dependencies.authProxy;
         if (!proxy) throw new ApiFailure("TEMPORARY_UNAVAILABLE");
         // Stage 1 already ran (and failed closed without a limiter) before this handler.
@@ -237,9 +202,9 @@ export function createApp(dependencies: AppDependencies) {
     if (methods.has("GET") && !c.req.path.startsWith("/auth/")) methods.add("HEAD");
     if (methods.size) {
       c.header("Allow", [...methods].sort().join(", "));
-      return failure(c, "METHOD_NOT_ALLOWED");
+      return errorResponse(c, "METHOD_NOT_ALLOWED");
     }
-    return failure(c, "RESOURCE_NOT_FOUND");
+    return errorResponse(c, "RESOURCE_NOT_FOUND");
   });
   // DEV-RLM-005: every mounted route must be in the rate limit registry (startup failure otherwise).
   assertMountedRoutesClassified(app.routes);

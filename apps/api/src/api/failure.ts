@@ -8,6 +8,7 @@ export type ApiEnvironment = {
     requestId: string;
     principal: Principal;
     validatedJson: unknown;
+    validatedQuery: unknown;
     logger: ReturnType<typeof createLogger> | undefined;
     operationExecutionId: string | undefined;
     /** Set by the rate limit Stage 1 middleware from the route registry (SEC-ABU-017). */
@@ -34,12 +35,15 @@ export type ApiEnvironment = {
 };
 
 export class ApiFailure extends Error {
+  readonly retryAfterSeconds: number | undefined;
   constructor(
     readonly code: ErrorCode,
-    readonly statusOverride?: 400 | 413,
-    /** Only for RATE_LIMIT_EXCEEDED: the integer-second Retry-After value (SEC-ABU-007). */
-    readonly retryAfterSeconds?: number,
+    options: {
+      /** Only for RATE_LIMIT_EXCEEDED: the integer-second Retry-After value (SEC-ABU-007). */
+      readonly retryAfterSeconds?: number;
+    } = {},
   ) {
     super(code);
+    this.retryAfterSeconds = options.retryAfterSeconds;
   }
 }
