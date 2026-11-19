@@ -17267,7 +17267,8 @@
         "fk_sponsor_logos_event",
         "fk_entry_ticket_offerings_event",
         "fk_karaoke_sales_configurations_event",
-        "fk_goods_event"
+        "fk_goods_event",
+        "fk_goods_inventory_goods"
       ],
       "preconditions": "Independent real PG17 database with every migration applied by app_migrator; the catalog and constraint goldens are written by hand from SPEC-100 and are not derived from schema-contract.json or the migration; administrator connection inside BEGIN / ROLLBACK, one savepoint per attempt, synthetic data only",
       "fixture_ids": [],
@@ -17279,7 +17280,7 @@
         "Deleting an Event never cascades into sales configuration or content, and no delete of a referenced parent loses a child"
       ],
       "expected_db_postconditions": [
-        "All eight foreign keys are ON DELETE RESTRICT and ON UPDATE NO ACTION and name the expected parent",
+        "The seven foreign keys of the eight tables (six to events, fk_goods_inventory_goods to goods) are ON DELETE RESTRICT and ON UPDATE NO ACTION and name the expected parent",
         "An absent event_id is 23503 fk_<table>_event and an omitted event_id is 23502 on faq_items, announcements, sponsor_logos, entry_ticket_offerings, karaoke_sales_configurations and goods",
         "Deleting an event that has a child row in any of the six tables is 23503 fk_<table>_event and the event and the child both remain",
         "No row is committed by this case"

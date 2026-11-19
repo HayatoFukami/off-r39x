@@ -1804,7 +1804,7 @@ describe("TC-DB-GDS-001-001 one inventory row per Goods, keyed by goods_id (real
 // ---- TC-DB-FK-002-001 ---------------------------------------------------------------------------
 
 describe("TC-DB-FK-002-001 event foreign keys restrict deletes and never cascade (real PostgreSQL 17)", () => {
-  it("TC-DB-FK-002-001 all eight foreign keys are ON DELETE RESTRICT and ON UPDATE NO ACTION", async () => {
+  it("TC-DB-FK-002-001 the seven foreign keys of the eight tables are ON DELETE RESTRICT and ON UPDATE NO ACTION", async () => {
     const rows = (
       await admin.query(
         `SELECT conrelid::regclass::text AS child, conname, confrelid::regclass::text AS parent, confdeltype, confupdtype
