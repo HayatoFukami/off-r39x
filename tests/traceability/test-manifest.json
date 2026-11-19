@@ -25252,7 +25252,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "classifyDatabaseError maps 40001/40P01/55P03 to retryable, a transaction deadline to deadline, 08xxx/57P01-57P03/Node connection errno and DatabaseUnavailableError to unavailable, 57014 to statement_timeout, 23505/23P01/23503/23514 to constraint (name only when a string) and everything else to other",
+        "classifyDatabaseError maps 40001/40P01/55P03 to retryable, a transaction deadline to deadline, SQLSTATE 08xxx/57P01-57P03 and DatabaseUnavailableError to unavailable and a bare Node errno (including EAI_AGAIN) to other, 57014 to statement_timeout, 23505/23P01/23503/23514 to constraint (name only when a string) and everything else to other",
         "resolveConstraintViolation calls the table's resolve exactly once and returns its result unchanged only for a registered name with a matching SQLSTATE; every other error is rethrown as the same reference with resolve not called; a resolve failure propagates; the original operation is never re-run"
       ],
       "expected_db_postconditions": [],
@@ -25277,7 +25277,9 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "A codeless pool connect failure or a codeless failure on a discarded connection rejects with DatabaseUnavailableError carrying the original as cause and a fixed message; the callback does not run for a connect failure; no retry is scheduled",
-        "An error that carries a connection SQLSTATE is rethrown as it is, and a codeless error from a healthy connection stays the callback's own error"
+        "A connect or query failure that carries only a Node errno (ECONNRESET, ECONNREFUSED, EPIPE, ETIMEDOUT, ENOTFOUND, EHOSTUNREACH, ENETUNREACH, EAI_AGAIN) rejects with DatabaseUnavailableError carrying the original as cause",
+        "An error that carries a connection SQLSTATE (08006), at query or connect, is rethrown as it is, and a codeless error from a healthy connection stays the callback's own error",
+        "connectAttempts() counts every connect() call whether or not a connect hook is given"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -25358,7 +25360,8 @@
       "expected_http": [200, 201, 500],
       "expected_domain_postconditions": [
         "Matching data answers 200 or 201 with exactly { data, meta: { request_id } } and meta.request_id equal to X-Request-Id",
-        "Data that does not match the schema answers 500 INTERNAL_ERROR with details null and neither the body nor the log contains the data values"
+        "Data that does not match the schema answers 500 INTERNAL_ERROR with details null and neither the body nor the log contains the data values",
+        "successResponse and respond accept the schema input type and send the parsed output (a transform runs: input count \"3\" is sent as the number 3)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -25377,7 +25380,8 @@
         "SEC-ERR-002",
         "DEV-API-011",
         "SPEC-110-20",
-        "SPEC-110-28"
+        "SPEC-110-28",
+        "REL-DB-006"
       ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
@@ -25390,6 +25394,7 @@
       "expected_http": [409, 424, 500, 503],
       "expected_domain_postconditions": [
         "STATE_CONFLICT with valid item_failures answers 409 with the details unchanged; without details it answers details null",
+        "item_failures details are accepted only when the operationId is API-PUR-CART-001; under another operationId or none the same details answer 500 INTERNAL_ERROR with details null and no echo of the code, target_ref or reasons",
         "Details with an unknown reason, an extra key, or on a code that allows none answer 500 INTERNAL_ERROR with details null and no echo of the input or the original code",
         "A temporary Stripe failure answers 424 retryable; commit_unknown answers 503 DATABASE_TEMPORARY_FAILURE retryable; exactly one response per request"
       ],
@@ -25403,18 +25408,19 @@
       "test_case_id": "TC-REL-DB-009-002",
       "level": "API",
       "suite": "api",
-      "upstream_rule_ids": ["REL-DB-009", "REL-DB-006", "SEC-API-020", "SPEC-110-51"],
+      "upstream_rule_ids": ["REL-DB-009", "SEC-API-020", "SPEC-110-51"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "Harness-only route throws 08006, 57P01, ECONNRESET, DatabaseUnavailableError, a plain Error and 57014",
+      "preconditions": "Harness-only route throws 08006, 57P01, ECONNRESET, EAI_AGAIN, DatabaseUnavailableError, a plain Error and 57014",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
       "fault_points": ["synthetic_exception"],
       "expected_http": [500, 503],
       "expected_domain_postconditions": [
-        "Connection-class SQLSTATE, Node connection errno and DatabaseUnavailableError answer 503 DATABASE_TEMPORARY_FAILURE with retryable true, details null and no SQLSTATE, errno or message in the body",
+        "Connection-class SQLSTATE (08006, 57P01) and DatabaseUnavailableError answer 503 DATABASE_TEMPORARY_FAILURE with retryable true, details null and no SQLSTATE or message in the body",
+        "A bare Node errno (ECONNRESET, EAI_AGAIN) thrown by a handler answers 500 INTERNAL_ERROR with no errno or message in the body, since SPEC-110 section 51 makes only a database connection failure a 503",
         "A plain Error without SQLSTATE answers 500 INTERNAL_ERROR; 57014 stays 500 INTERNAL_ERROR in this change"
       ],
       "expected_db_postconditions": [],

@@ -43,13 +43,18 @@ describe("TC-DEV-API-010-001 classifyDatabaseError", () => {
     expect(classifyDatabaseError(new TransactionDeadlineError())).toEqual({ kind: "deadline" });
   });
 
+  it.each(["08000", "08001", "08006", "57P01", "57P02", "57P03"])(
+    "SQLSTATE %s is unavailable",
+    (code) => {
+      expect(classifyDatabaseError(syntheticSqlstateError(code))).toEqual({ kind: "unavailable" });
+    },
+  );
+
+  // Review fix F2: a bare Node errno proves nothing about the database (it can come from any socket,
+  // e.g. a provider call), and SPEC-110 section 51 makes only a database connection failure a 503.
+  // The origin is typed at the transaction() boundary (DatabaseUnavailableError), so a bare errno
+  // is `other` here. This replaces the earlier expectation of `unavailable`.
   it.each([
-    "08000",
-    "08001",
-    "08006",
-    "57P01",
-    "57P02",
-    "57P03",
     "ECONNRESET",
     "ECONNREFUSED",
     "EPIPE",
@@ -57,8 +62,9 @@ describe("TC-DEV-API-010-001 classifyDatabaseError", () => {
     "ENOTFOUND",
     "EHOSTUNREACH",
     "ENETUNREACH",
-  ])("%s is unavailable", (code) => {
-    expect(classifyDatabaseError(syntheticSqlstateError(code))).toEqual({ kind: "unavailable" });
+    "EAI_AGAIN",
+  ])("a bare errno %s is other, not unavailable", (code) => {
+    expect(classifyDatabaseError(syntheticSqlstateError(code))).toEqual({ kind: "other" });
   });
 
   it("DatabaseUnavailableError is unavailable", () => {
@@ -271,6 +277,113 @@ describe("TC-REL-DB-009-001 transaction() types a codeless connection failure", 
     expect(fake.clients[0]?.releases).toEqual([true]);
     expect(count("db.availability.failed")).toBe(1);
     expect(count("db.transaction.retry_scheduled")).toBe(0);
+  });
+
+  // Review fix F2/F3: a connection failure that carries a Node errno (no SQLSTATE) is typed at this
+  // boundary, with the original as cause, so a bare errno elsewhere is not mistaken for the DB.
+  it.each([
+    "ECONNRESET",
+    "ECONNREFUSED",
+    "EPIPE",
+    "ETIMEDOUT",
+    "ENOTFOUND",
+    "EHOSTUNREACH",
+    "ENETUNREACH",
+    "EAI_AGAIN",
+  ])(
+    "(a2) a pool connect() failing with errno %s is a DatabaseUnavailableError (cause kept)",
+    async (code) => {
+      const cause = syntheticSqlstateError(code, MARKER);
+      const fake = createFakePool(undefined, {
+        connect: (attempt) => (attempt === 0 ? cause : undefined),
+      });
+      const { logger, count } = collector();
+      let calls = 0;
+      const error = await settle(
+        transaction(
+          fake.pool,
+          async () => {
+            calls++;
+          },
+          { logger, queryName: "unavailable.connect.errno" },
+        ),
+      );
+      expect(error).toBeInstanceOf(DatabaseUnavailableError);
+      expect((error as DatabaseUnavailableError).cause).toBe(cause);
+      expect((error as Error).message).not.toContain(MARKER);
+      expect(calls).toBe(0);
+      expect(fake.connectAttempts()).toBe(1);
+      expect(count("db.availability.failed")).toBe(1);
+      expect(count("db.transaction.retry_scheduled")).toBe(0);
+    },
+  );
+
+  it.each([
+    "ECONNRESET",
+    "ECONNREFUSED",
+    "EPIPE",
+    "ETIMEDOUT",
+    "ENOTFOUND",
+    "EHOSTUNREACH",
+    "ENETUNREACH",
+    "EAI_AGAIN",
+  ])(
+    "(b2) a query failing with errno %s is a DatabaseUnavailableError (cause kept)",
+    async (code) => {
+      const cause = syntheticSqlstateError(code, MARKER);
+      const fake = createFakePool(({ sql }) => (sql === PROBE ? cause : undefined));
+      const { logger, count } = collector();
+      const error = await settle(
+        transaction(
+          fake.pool,
+          async (client) => {
+            await client.query(PROBE);
+          },
+          { logger, queryName: "unavailable.query.errno" },
+        ),
+      );
+      expect(error).toBeInstanceOf(DatabaseUnavailableError);
+      expect((error as DatabaseUnavailableError).cause).toBe(cause);
+      expect((error as Error).message).not.toContain(MARKER);
+      expect(count("db.availability.failed")).toBe(1);
+      expect(count("db.transaction.retry_scheduled")).toBe(0);
+    },
+  );
+
+  it("(c2) a connect() failing with SQLSTATE 08006 is rethrown as it is, not typed", async () => {
+    const cause = syntheticSqlstateError("08006", MARKER);
+    const fake = createFakePool(undefined, {
+      connect: (attempt) => (attempt === 0 ? cause : undefined),
+    });
+    const { logger } = collector();
+    const error = await settle(
+      transaction(fake.pool, async () => undefined, {
+        logger,
+        queryName: "unavailable.connect.08",
+      }),
+    );
+    expect(error).toBe(cause);
+    expect(error).not.toBeInstanceOf(DatabaseUnavailableError);
+  });
+
+  // Review fix F5: the attempt counter must advance even when no connect hook is given.
+  it("(e) connectAttempts() counts connect() calls with and without a connect hook", async () => {
+    const plain = createFakePool();
+    const { logger } = collector();
+    await transaction(plain.pool, async () => undefined, { logger, queryName: "attempts.plain" });
+    expect(plain.connectAttempts()).toBe(1);
+    expect(plain.clients).toHaveLength(1);
+
+    const seen: number[] = [];
+    const hooked = createFakePool(undefined, {
+      connect: (attempt) => {
+        seen.push(attempt);
+        return undefined;
+      },
+    });
+    await transaction(hooked.pool, async () => undefined, { logger, queryName: "attempts.hooked" });
+    expect(hooked.connectAttempts()).toBe(1);
+    expect(seen).toEqual([0]);
   });
 
   it("(c) an error that carries a connection SQLSTATE is rethrown as it is, not typed", async () => {

@@ -75,6 +75,7 @@ const RETRYABLE_CODES: ReadonlySet<ErrorCode> = new Set<ErrorCode>([
 ]);
 
 const dataSchema = z.strictObject({ name: z.string() });
+const transformSchema = z.strictObject({ count: z.string().transform((v) => Number(v)) });
 
 describe("TC-SEC-ERR-001-001 every ApiFailure code produces the section 21 envelope", () => {
   const codes = (Object.keys(errorStatuses) as ErrorCode[]).filter(
@@ -209,6 +210,15 @@ describe("TC-DEV-API-003-003 the success envelope is built in one place and vali
     app.get("/api/v1/test/respond/created", (c) =>
       respond(c, { kind: "success", status: 201, data: { name: "synthetic" } }, dataSchema),
     );
+    // Review fix F4: data is the schema INPUT; the parsed (transformed) output is what is sent.
+    // These calls are also a type check (tests workspace typecheck): passing an input type that
+    // differs from the output type must not be a type error.
+    app.get("/api/v1/test/success/transform", (c) =>
+      successResponse(c, transformSchema, { count: "3" }),
+    );
+    app.get("/api/v1/test/respond/transform", (c) =>
+      respond(c, { kind: "success", status: 200, data: { count: "3" } }, transformSchema),
+    );
     app.get("/api/v1/test/respond/extra", (c) =>
       respond(
         c,
@@ -237,6 +247,19 @@ describe("TC-DEV-API-003-003 the success envelope is built in one place and vali
     expect(requestId).toMatch(UUID_V4);
     expect(body).toEqual({ data: { name: "synthetic" }, meta: { request_id: requestId } });
   });
+
+  it.each(["/api/v1/test/success/transform", "/api/v1/test/respond/transform"])(
+    "%s sends the schema's parsed output (the transform ran), not the input",
+    async (path) => {
+      const { app } = await routes();
+      const response = await app.request(path);
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as { data: Json; meta: Json };
+      expect(body.data).toEqual({ count: 3 });
+      expect(body.data.count).toBe(3);
+      expect(body.meta).toEqual({ request_id: response.headers.get("X-Request-Id") });
+    },
+  );
 
   it.each([
     "/api/v1/test/success/extra",
@@ -283,11 +306,36 @@ describe("TC-DEV-API-003-004 respond() maps a service result to the section 20 /
     h: { kind: "rejected", code: "SOLD_OUT" },
     i: { kind: "rejected", code: "SLOT_UNAVAILABLE" },
     j: { kind: "temporary", code: "AUTH_SERVICE_TEMPORARY_FAILURE" },
+    // Review fix F1: item_failures is defined only for API-PUR-CART-001 (SPEC-110 section 28), so the
+    // same details are valid or not depending on the Operation that produced them.
+    k: {
+      kind: "rejected",
+      code: "STATE_CONFLICT",
+      details: { item_failures: [itemFailure] },
+    },
+    l: {
+      kind: "rejected",
+      code: "STATE_CONFLICT",
+      details: { item_failures: [itemFailure] },
+    },
+  };
+  // The operation id each case runs under; "l" runs with none set, every other case with the cart one.
+  const operationIds: Record<string, string | undefined> = {
+    k: "API-AUTH-001",
+    l: undefined,
   };
   async function routes() {
     const { respond } = await loadRespond();
     const harness = rig();
     let responses = 0;
+    // The production route table sets operationId per route; the harness stands in for that.
+    harness.app.use("/api/v1/test/result/:name", async (c, next) => {
+      const name = c.req.param("name");
+      const operationId = name in operationIds ? operationIds[name] : "API-PUR-CART-001";
+      if (operationId !== undefined)
+        (c as unknown as { set(key: string, value: string): void }).set("operationId", operationId);
+      await next();
+    });
     harness.app.get("/api/v1/test/result/:name", (c) => {
       responses++;
       return respond(
@@ -306,7 +354,7 @@ describe("TC-DEV-API-003-004 respond() maps a service result to the section 20 /
     return { response, text, error };
   }
 
-  it("(a) STATE_CONFLICT with valid item_failures is 409 and the details are returned as given", async () => {
+  it("(a) STATE_CONFLICT with valid item_failures under API-PUR-CART-001 is 409 and the details are returned as given", async () => {
     const { response, text, error } = await call("a");
     expectEnvelope(response, text, "STATE_CONFLICT");
     expect(error).toMatchObject({ retryable: false });
@@ -323,6 +371,8 @@ describe("TC-DEV-API-003-004 respond() maps a service result to the section 20 /
     ["c", "an unknown reason", ["NOT_A_REASON"]],
     ["d", "an extra key on an item", ["synthetic-echo-marker", "raw_input"]],
     ["e", "item_failures on a code that allows none", ["item_failures"]],
+    ["k", "item_failures under an operationId other than API-PUR-CART-001", ["item_failures"]],
+    ["l", "item_failures with no operationId set", ["item_failures"]],
   ])(
     "(%s) %s becomes 500 INTERNAL_ERROR, details null, and nothing of the input is echoed",
     async (name, _label, leaked) => {
@@ -366,6 +416,7 @@ describe("TC-REL-DB-009-002 database availability failures are 503, never a leak
     sqlstate08: () => Object.assign(new Error(MARKER), { code: "08006" }),
     sqlstate57P01: () => Object.assign(new Error(MARKER), { code: "57P01" }),
     errno: () => Object.assign(new Error(MARKER), { code: "ECONNRESET" }),
+    errnoDns: () => Object.assign(new Error(MARKER), { code: "EAI_AGAIN" }),
     unavailable: () => new DatabaseUnavailableError({ cause: new Error(MARKER) }),
     codeless: () => new Error(MARKER),
     statement_timeout: () => Object.assign(new Error(MARKER), { code: "57014" }),
@@ -385,7 +436,6 @@ describe("TC-REL-DB-009-002 database availability failures are 503, never a leak
   it.each([
     ["sqlstate08", ["08006"]],
     ["sqlstate57P01", ["57P01"]],
-    ["errno", ["ECONNRESET"]],
     ["unavailable", []],
   ])(
     "%s is 503 DATABASE_TEMPORARY_FAILURE with no SQLSTATE, errno or message in the body",
@@ -399,6 +449,23 @@ describe("TC-REL-DB-009-002 database availability failures are 503, never a leak
       expect(logged[0]?.http_status).toBe(503);
     },
   );
+
+  // Review fix F2: a bare Node errno does not say the database failed (it may be any socket, e.g. a
+  // provider call), and SPEC-110 section 51 makes only a DB connection failure a 503. The DB origin
+  // is typed at transaction(); an untyped errno reaching the boundary is a defect. This replaces the
+  // earlier expectation of 503 for a bare ECONNRESET.
+  it.each([
+    ["errno", "ECONNRESET"],
+    ["errnoDns", "EAI_AGAIN"],
+  ])("a bare errno (%s) is 500 INTERNAL_ERROR, not 503, and leaks nothing", async (kind, errno) => {
+    const { response, text, error, logged } = await call(kind);
+    expectEnvelope(response, text, "INTERNAL_ERROR", kind);
+    expect(error).toMatchObject({ retryable: false, details: null });
+    expect(text).not.toContain(errno);
+    expect(text).not.toContain(MARKER);
+    expect(logged).toHaveLength(1);
+    expect(logged[0]?.http_status).toBe(500);
+  });
 
   it("an error with no SQLSTATE and no typed wrapper is a defect: 500 INTERNAL_ERROR, not 503", async () => {
     const { response, text, error, logged } = await call("codeless");

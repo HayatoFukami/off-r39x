@@ -90,7 +90,9 @@ export function createFakePool(
   let attempts = 0;
   const pool = {
     async connect() {
-      const failure = options.connect?.(attempts++);
+      // Count every call, hook or not, and hand the hook the number before this increment.
+      const attempt = attempts++;
+      const failure = options.connect?.(attempt);
       if (failure) throw failure;
       const record: FakeClientRecord = { index: clients.length, queries: [], releases: [] };
       clients.push(record);
