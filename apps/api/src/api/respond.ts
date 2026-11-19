@@ -176,7 +176,7 @@ function copyJsonNode(value: unknown, active: WeakSet<object>): JsonCopy {
  * may have only index keys. Symbol keys and non-enumerable object properties are dropped, as JSON
  * does. Values are never logged or thrown.
  */
-function copyJsonValue(value: unknown): JsonCopy {
+export function copyJsonValue(value: unknown): JsonCopy {
   return copyJsonNode(value, new WeakSet());
 }
 
