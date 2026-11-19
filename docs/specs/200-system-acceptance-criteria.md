@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-200
 title: System Acceptance Criteria
-version: 3.1.0
+version: 3.2.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -562,7 +562,7 @@ Acceptance Manifest、Release Manifest、最終gate summary、approval reference
 |---|---|---|---|
 | `ACC-BIZ-027` | `FR-CRT-007〜011`, `BR-ORD-013〜019`, `DI-030-013`, `API-PUR-CART-001` | `TC-API-004-001〜004`; G1/G3/G4/G6/G8/G10 | 4値Purpose、単品互換API維持、複数Itemの単一Order・単一決済、全体確保／確定／解放、Fault／再送／並行時に部分確定や二重販売なし。複合full refundは双方の通常条件を満たす |
 | `ACC-BIZ-028` | `FR-PUB-011,015`, `FR-ADM-018`, `BR-EVT-005`, `API-PUB-012`, `API-ADM-CNT-017〜021`, `PG-ADM-027`, `SEC-WEB-026` | `TC-API-006-001〜006`; G1/G3/G4/G5/G8＋設定検証 | 外部HTTPS画像方式の永続化・公開／管理、PUBLISHED限定、順序・0件・独立Failure、正規Publication遷移／認可／競合／Audit、APIとCSPの画像origin一致 |
-| `ACC-BIZ-029` | `FR-AUTH-010〜012`, `API-AUTH-002/004`, `SPEC-030` §9.2 | `TC-API-007-001`; G1/G3/G4/G5/G8 | 任意Display nameのtrim・80 code points・空欄NULL・制御文字拒否・本人限定保存、未設定の安全表示、登録／購入を阻害しない |
+| `ACC-BIZ-029` | `FR-AUTH-010〜012`, `API-AUTH-002/004`, `SPEC-030` §9.2 | `TC-API-007-001`; G1/G3/G4/G5/G8 | 任意Display nameのtrim・80 code points・空欄NULL・制御文字拒否・well-formedでない値（lone surrogate）の拒否と非置換・本人限定保存、未設定の安全表示、登録／購入を阻害しない |
 | `ACC-BIZ-030` | `FR-CRT-005,007`, `API-PUR-ELG-001`, `SEC-API-029` | `TC-API-005-001`; G1/G3/G4/G5/G8 | 本人向け一括判定のreason／数量／秘匿、private/no-store、業務DB無変更、取得障害の非偽装、購入開始時の再検証 |
 | `ACC-BIZ-031` | `FR-EML-002,004,006〜011`, `ENTRY_GOODS_PURCHASE_CONFIRMED`, `BR-ORD-015` | `TC-EML-002-001`; G1/G3/G6/G9 | 全Entry／Goods明細・合計・受取案内を専用1通に集約、同一Causeで1要求、単独通知との重複なし、失敗時も権利維持、raw QR非包含 |
 | `ACC-BIZ-032` | `API-ORD-003`, `EML-NTF-003`, `SEC-API-029`, `PG-XFN-001` | `TC-API-008-001`; G1/G3/G4/G5/G8 | 所有者だけに最小通知サマリー、射影優先順とnullの意味、SENT≠配送保証、部分障害でOrder成功維持、認可／本体障害を隠蔽せず内部情報非開示 |
