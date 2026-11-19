@@ -82,48 +82,92 @@ export function errorResponse<C extends ErrorCode>(
   return c.json(parsed.data, errorStatuses[code]);
 }
 
-/**
- * True only when `value` serializes to JSON without loss (SPEC-110 section 19: a success envelope
- * carries a required `data`). Fail closed: `JSON.stringify` silently drops `undefined`, functions
- * and symbols, turns NaN / Infinity into null, throws on bigint and cycles, and flattens Date / Map,
- * so any such value means the producer is defective and the data must not be sent. An `undefined`
- * object property is an omitted optional field and is allowed; an `undefined` array element or a
- * sparse-array hole is not. An array must have only index keys: `JSON.stringify` drops non-index
- * own keys and an own `toJSON` replaces the contents, so either would change what is sent.
- * Symbol-keyed properties are dropped by JSON and ignored here. Values are never logged or thrown.
- */
-function isJsonValue(value: unknown, active: WeakSet<object> = new WeakSet()): boolean {
-  if (value === null) return true;
+type JsonCopy = { readonly ok: true; readonly value: unknown } | { readonly ok: false };
+const REJECTED: JsonCopy = { ok: false };
+
+// True when a callable `toJSON` is reachable (own or inherited, enumerable or not). Descriptors are
+// inspected so that no getter runs. An accessor `toJSON` is rejected too, since its value is unknown.
+function hasToJson(value: object): boolean {
+  for (let node: object | null = value; node !== null; node = Reflect.getPrototypeOf(node)) {
+    const descriptor = Object.getOwnPropertyDescriptor(node, "toJSON");
+    if (descriptor === undefined) continue;
+    return !("value" in descriptor) || typeof descriptor.value === "function";
+  }
+  return false;
+}
+
+function isIndexKey(key: string, length: number): boolean {
+  const index = Number(key);
+  return Number.isInteger(index) && index >= 0 && index < length && String(index) === key;
+}
+
+function copyJsonNode(value: unknown, active: WeakSet<object>): JsonCopy {
+  if (value === null) return { ok: true, value };
   switch (typeof value) {
     case "boolean":
     case "string":
-      return true;
+      return { ok: true, value };
     case "number":
-      return Number.isFinite(value);
+      return Number.isFinite(value) ? { ok: true, value } : REJECTED;
     case "object":
       break;
     default:
-      return false;
+      return REJECTED;
   }
-  if (active.has(value)) return false;
+  if (active.has(value) || hasToJson(value)) return REJECTED;
   active.add(value);
   try {
     if (Array.isArray(value)) {
-      if (Object.keys(value).length !== value.length) return false;
-      for (let i = 0; i < value.length; i += 1) {
-        if (!(i in value) || !isJsonValue(value[i], active)) return false;
+      const length = value.length;
+      for (const key of Reflect.ownKeys(value)) {
+        if (typeof key === "string" && key !== "length" && !isIndexKey(key, length))
+          return REJECTED;
       }
-      return true;
+      const items: unknown[] = [];
+      for (let i = 0; i < length; i += 1) {
+        // JSON reads every index whether or not it is enumerable; a hole or accessor is rejected.
+        const descriptor = Object.getOwnPropertyDescriptor(value, String(i));
+        if (descriptor === undefined || !("value" in descriptor)) return REJECTED;
+        const item = copyJsonNode(descriptor.value, active);
+        if (!item.ok) return REJECTED;
+        items.push(item.value);
+      }
+      return { ok: true, value: items };
     }
-    const prototype = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null) return false;
-    for (const entry of Object.values(value)) {
-      if (entry !== undefined && !isJsonValue(entry, active)) return false;
+    const prototype = Reflect.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return REJECTED;
+    const entries: [string, unknown][] = [];
+    for (const key of Reflect.ownKeys(value)) {
+      if (typeof key !== "string") continue; // JSON drops symbol keys
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (descriptor === undefined) continue;
+      if (!("value" in descriptor)) return REJECTED;
+      if (!descriptor.enumerable || descriptor.value === undefined) continue; // omitted, as in JSON
+      const entry = copyJsonNode(descriptor.value, active);
+      if (!entry.ok) return REJECTED;
+      entries.push([key, entry.value]);
     }
-    return true;
+    // fromEntries defines own data properties, so a "__proto__" key stays data, not a prototype.
+    return { ok: true, value: Object.fromEntries(entries) };
   } finally {
     active.delete(value);
   }
+}
+
+/**
+ * Copies `value` into a fresh tree of JSON values, or fails (SPEC-110 section 19: a success envelope
+ * carries a required `data` that must reach the client unchanged). Fail closed: `JSON.stringify`
+ * silently drops `undefined`, functions and symbols, turns NaN / Infinity into null, throws on bigint
+ * and cycles, flattens Date / Map, and lets `toJSON` or accessors replace the contents, so any such
+ * value means the producer is defective and nothing is sent. Only the returned copy is sent, so what
+ * was checked is exactly what is serialized; each property is read once, from its descriptor, so a
+ * getter cannot answer differently between checking and sending. An `undefined` object property is an
+ * omitted optional field and is skipped; an `undefined` array element or a hole is rejected. Arrays
+ * may have only index keys. Symbol keys and non-enumerable object properties are dropped, as JSON
+ * does. Values are never logged or thrown.
+ */
+function copyJsonValue(value: unknown): JsonCopy {
+  return copyJsonNode(value, new WeakSet());
 }
 
 export function successResponse<S extends z.ZodType>(
@@ -139,10 +183,14 @@ export function successResponse<S extends z.ZodType>(
   // A schema mismatch is a defect in the producer: never send the data (DEV-API-003).
   if (!parsed.success) return errorResponse(c, "INTERNAL_ERROR");
   // SPEC-110 section 19: `data` is required and must survive JSON serialization unchanged.
-  if (!("data" in parsed.data) || !isJsonValue(parsed.data.data))
-    return errorResponse(c, "INTERNAL_ERROR");
+  if (!("data" in parsed.data)) return errorResponse(c, "INTERNAL_ERROR");
+  const copy = copyJsonValue(parsed.data.data);
+  if (!copy.ok) return errorResponse(c, "INTERNAL_ERROR");
+  // The copy is structurally identical to the validated value (it only drops what JSON drops), so
+  // it has the schema's output type (DEV-TS-003); the assertion keeps the Hono RPC inference.
+  const sent = copy.value as typeof parsed.data.data;
   c.header("Cache-Control", "no-store");
-  return c.json(parsed.data, status);
+  return c.json({ data: sent, meta: parsed.data.meta }, status);
 }
 
 /** SPEC-110 section 58 step 5: a service result becomes exactly one response. */
