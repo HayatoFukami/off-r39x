@@ -17,6 +17,7 @@ const B = { state: "CONFIRMED" };
 const P = { keys: [TIMESTAMP], publicRef: REF } as const;
 
 const cursor = defineListCursor({ operationId: OPERATION_ID, keys: z.tuple([z.string()]) });
+const numeric = defineListCursor({ operationId: OPERATION_ID, keys: z.tuple([z.number()]) });
 
 function forge(payload: Uint8Array): string {
   const payloadPart = Buffer.from(payload).toString("base64url");
@@ -61,6 +62,31 @@ describe("TC-API-QRY-004-001 cursor round trip and opacity", () => {
     const token = two.encode(K1, position, B);
     expect(token.length).toBeLessThanOrEqual(512);
     expect(two.decode(K1, token, B)).toEqual({ ok: true, position });
+  });
+});
+
+describe("TC-API-QRY-004-001 numeric sort keys (F-5, repository decision: safe integers only)", () => {
+  const at = (n: number) => ({ keys: [n] as [number], publicRef: REF });
+
+  it("round-trips safe integers", () => {
+    for (const n of [42, 0, Number.MAX_SAFE_INTEGER, -Number.MAX_SAFE_INTEGER]) {
+      expect(numeric.decode(K1, numeric.encode(K1, at(n), B), B)).toEqual({
+        ok: true,
+        position: at(n),
+      });
+    }
+  });
+
+  it("refuses to encode fractions, unsafe integers, NaN and infinities", () => {
+    for (const n of [
+      1.5,
+      2 ** 53,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+    ]) {
+      expect(() => numeric.encode(K1, at(n), B), String(n)).toThrow();
+    }
   });
 });
 
@@ -128,6 +154,15 @@ describe("TC-API-QRY-004-002 malformed or tampered tokens never decode and never
     }
   });
 
+  it("rejects a correctly signed numeric payload with a fraction or an unsafe integer (F-5)", () => {
+    // 1e400 parses to Infinity in JSON.parse.
+    const raw = (k: string) => new TextEncoder().encode(`{"v":1,"kv":1,"k":[${k}],"r":"${REF}"}`);
+    expect(numeric.decode(K1, forge(raw("42")), B)).toMatchObject({ ok: true });
+    for (const k of ["1.5", "9007199254740992", "1e400"]) {
+      expect(numeric.decode(K1, forge(raw(k)), B), k).toEqual({ ok: false });
+    }
+  });
+
   it("never throws for 1,000 arbitrary strings from a fixed seed", () => {
     let state = 0x2545f491;
     const next = () => {
@@ -161,6 +196,11 @@ describe("TC-API-QRY-004-003 a cursor is bound to key, version, Operation, mode,
     expect(cursor.decode(K1, token, { ...bound, state: "CANCELED" })).toEqual({ ok: false });
     expect(cursor.decode(K1, token, { ...bound, order_ref: REF })).toEqual({ ok: false });
     expect(cursor.decode(K1, token, { state: "CONFIRMED" })).toEqual({ ok: false });
+    // F-4: filter dropped, mode kept.
+    expect(cursor.decode(K1, token, { order: "CREATED_DESC" })).toEqual({ ok: false });
+    expect(cursor.decode(K1, token, { state: undefined, order: "CREATED_DESC" })).toEqual({
+      ok: false,
+    });
     expect(cursor.decode(K1, token, { ...bound, order: "USAGE_START_ASC" })).toEqual({ ok: false });
     const scoped = cursor.encode(K1, P, scopeA);
     expect(

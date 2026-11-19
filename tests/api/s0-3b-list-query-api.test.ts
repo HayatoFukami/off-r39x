@@ -5,6 +5,7 @@ import { createApp } from "../../apps/api/src/api/app.ts";
 import { validateQuery } from "../../apps/api/src/api/middleware/query.ts";
 import { defineListCursor, readCursor } from "../../apps/api/src/api/pagination.ts";
 import { successResponse } from "../../apps/api/src/api/respond.ts";
+import { createLogger } from "../../packages/observability/src/index.ts";
 import { syntheticCursorKey } from "../harness/pagination.ts";
 
 const REF = "00000000-0000-4000-8000-0000000000a1";
@@ -17,7 +18,12 @@ const cursorDef = defineListCursor({
 const querySchema = listQuerySchema({ state: z.enum(["CONFIRMED", "CANCELED"]).optional() });
 
 function build() {
-  const app = createApp({ webOrigin: "https://web.example.test", ready: async () => true });
+  const lines: string[] = [];
+  const logger = createLogger(
+    { service: "API", environment: "test", actor_type: "GUEST" },
+    (line) => lines.push(line),
+  );
+  const app = createApp({ webOrigin: "https://web.example.test", ready: async () => true, logger });
   const handled: { limit: number; position: unknown }[] = [];
   // Harness-only route; the production app mounts no list Operation (plan A7). Order: validate, then
   // read the cursor with the validated filter as binding, then the handler.
@@ -32,11 +38,11 @@ function build() {
   });
   const get = (query: string) =>
     app.request(`/api/v1/test/list${query}`, { headers: { Origin: "https://web.example.test" } });
-  return { get, handled };
+  return { get, handled, lines };
 }
 
 it("TC-API-QRY-001-002 list query: unknown, duplicate, out-of-range and tampered input is 400 VALIDATION_FAILED before the handler", async () => {
-  const { get, handled } = build();
+  const { get, handled, lines } = build();
 
   const first = await get("");
   expect(first.status).toBe(200);
@@ -54,9 +60,16 @@ it("TC-API-QRY-001-002 list query: unknown, duplicate, out-of-range and tampered
     "?limit=0",
     "?limit=101",
     "?limit=1&limit=2",
+    // F-1: nameless parameters are unknown queries, not dropped (API-QRY-001).
+    "?=x",
+    "?=",
+    "?limit=1&=x",
+    "?&=1",
     "?cursor=",
     `?cursor=${tampered}`,
     `?state=CANCELED&cursor=${good}`,
+    // F-4: a cursor made under a state filter is refused when the filter is absent.
+    `?cursor=${good}`,
   ];
   for (const query of bad) {
     const res = await get(query);
@@ -77,4 +90,17 @@ it("TC-API-QRY-001-002 list query: unknown, duplicate, out-of-range and tampered
   const ok = await get(`?state=CONFIRMED&cursor=${good}`);
   expect(ok.status).toBe(200);
   expect(handled).toEqual([{ limit: 30, position: { keys: [TIMESTAMP], publicRef: REF } }]);
+
+  // (e) SPEC-160-15: no captured log line carries the query, a cursor or a query value.
+  // The app currently emits no http.request.completed line, so this can be vacuous; it still pins
+  // that nothing logged (now or later) carries query data.
+  for (const line of lines) {
+    for (const secret of [good, tampered, "foo", "created_at", "?"]) {
+      expect(line).not.toContain(secret);
+    }
+  }
+  const completed = lines
+    .map((line) => JSON.parse(line))
+    .filter((entry) => entry.event === "http.request.completed");
+  for (const entry of completed) expect(String(entry.http_route)).not.toContain("?");
 });

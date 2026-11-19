@@ -26644,7 +26644,7 @@
       "upstream_rule_ids": [
         "API-QRY-001",
         "SEC-API-011",
-        "SEC-API-012",
+        "SEC-API-018",
         "SPEC-110-48.3",
         "SPEC-110-12"
       ],
@@ -26734,7 +26734,7 @@
       "sensitivity_class": "synthetic",
       "preconditions": "Synthetic 32-byte cursor keys from tests/harness/pagination.ts; no environment variables, network, database or Redis",
       "expected_domain_postconditions": [
-        "encode then decode returns the same sort keys and public_ref; the token is deterministic base64url within 512 characters",
+        "encode then decode returns the same sort keys and public_ref; the token is deterministic base64url within 512 characters; numeric sort keys are safe integers only (1.5, 2**53, NaN and infinities make encode throw)",
         "The payload holds only v, kv, k and r and none of the filter value, Operation ID or key bytes; an internal ID or uppercase public_ref makes encode throw"
       ],
       "critical": true
@@ -26743,7 +26743,7 @@
       "test_case_id": "TC-API-QRY-004-002",
       "level": "Security",
       "suite": "security",
-      "upstream_rule_ids": ["API-QRY-004", "SEC-DEP-007", "SEC-API-018"],
+      "upstream_rule_ids": ["API-QRY-004", "SEC-DEP-007", "SEC-API-011"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -26759,7 +26759,7 @@
       "preconditions": "Synthetic 32-byte cursor keys from tests/harness/pagination.ts; no environment variables, network, database or Redis",
       "expected_domain_postconditions": [
         "Single-character substitutions, truncation, extension, non-base64url characters, non-canonical base64url, 513 characters, empty and too-short tokens decode to { ok: false }",
-        "A correctly signed token with a payload that breaks the strict schema decodes to { ok: false }; 1,000 seeded arbitrary strings never throw"
+        "A correctly signed token with a payload that breaks the strict schema, or a numeric key that is a fraction or an unsafe integer, decodes to { ok: false }; 1,000 seeded arbitrary strings never throw"
       ],
       "critical": true
     },
@@ -26782,7 +26782,7 @@
       "sensitivity_class": "synthetic",
       "preconditions": "Synthetic 32-byte cursor keys from tests/harness/pagination.ts; no environment variables, network, database or Redis",
       "expected_domain_postconditions": [
-        "A different key, key version, Operation, filter, mode or scope decodes to { ok: false }",
+        "A different key, key version, Operation, filter, mode or scope decodes to { ok: false }, including a binding that drops only the filter and keeps the mode",
         "Binding key order and undefined values do not matter; limit is not part of the binding"
       ],
       "critical": true
@@ -26791,7 +26791,7 @@
       "test_case_id": "TC-API-QRY-004-004",
       "level": "Security",
       "suite": "security",
-      "upstream_rule_ids": ["SEC-KEY-006", "SEC-ERR-003", "SEC-DEP-007"],
+      "upstream_rule_ids": ["SEC-KEY-001", "SEC-ERR-003", "SEC-DEP-007"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -26820,7 +26820,8 @@
         "API-QRY-004",
         "SEC-API-011",
         "SEC-ERR-002",
-        "SPEC-110-21"
+        "SPEC-110-21",
+        "SPEC-160-15"
       ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
@@ -26832,12 +26833,14 @@
       "expected_http": [200, 400],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
-      "expected_observability": [],
+      "expected_observability": [
+        "http.request.completed and every captured log line carry no query string, cursor token or query value; http_route is a route template (SPEC-160 §15)"
+      ],
       "sensitivity_class": "synthetic",
       "preconditions": "Synthetic 32-byte cursor keys from tests/harness/pagination.ts; no environment variables, network, database or Redis; harness GET /api/v1/test/list behind validateQuery and readCursor",
       "expected_domain_postconditions": [
         "No query is 200 with page { next_cursor: null, has_more: false } and the handler sees limit 30",
-        "Unknown, duplicate, out-of-range, empty or tampered cursor and filter-mismatched cursor are 400 VALIDATION_FAILED, retryable false, details null, request_id equal to X-Request-Id, no-store, handler not run, and the body echoes no cursor or query value",
+        "Unknown (including nameless ?=x), duplicate, out-of-range, empty or tampered cursor, filter-mismatched cursor and a cursor sent without its filter are 400 VALIDATION_FAILED, retryable false, details null, request_id equal to X-Request-Id, no-store, handler not run, and the body echoes no cursor or query value",
         "A valid cursor is 200 and the handler receives the decoded position"
       ],
       "critical": true
