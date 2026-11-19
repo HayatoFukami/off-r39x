@@ -522,7 +522,7 @@ describe("TC-DB-ARC-007-006 migration 0004 and the catalog of the two Karaoke ta
     const exclusion = (
       await admin.query(
         `SELECT pg_get_constraintdef(c.oid) AS definition, i.indpred IS NULL AS no_predicate,
-                am.amname AS method, c.conindid::regclass::text AS index_name
+                am.amname AS method, ic.relname AS index_name
            FROM pg_constraint c
            JOIN pg_index i ON i.indexrelid = c.conindid
            JOIN pg_class ic ON ic.oid = c.conindid
