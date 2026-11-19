@@ -362,7 +362,7 @@ export async function resolvePrincipal(
   return decision.principal;
 }
 /**
- * API-AUTH-003 (SPEC-110 §24.1 step 5, provisioning requirement): like `resolvePrincipal` with the
+ * API-AUTH-003 (SPEC-110 §24 step 5, provisioning requirement): like `resolvePrincipal` with the
  * Email check always on, except that "verified Email and no Business Profile" is a result, not a
  * refusal. Every other decision is shared with `resolvePrincipal` through `decidePrincipal`.
  */

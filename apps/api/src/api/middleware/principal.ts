@@ -79,7 +79,7 @@ async function resolveRequestPrincipal(
   }
 }
 /**
- * API-AUTH-003 guard (SPEC-110 §24.1 step 5, provisioning requirement). Lets through exactly one
+ * API-AUTH-003 guard (SPEC-110 §24 step 5, provisioning requirement). Lets through exactly one
  * case the regular guard refuses: a verified Email with no Business Profile. Token, directory, Email,
  * consistency and database refusals are decided by the same resolution and recorded the same way.
  * No Principal is set for a missing Profile; `provisioningSubject` is the verified subject only.

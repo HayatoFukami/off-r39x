@@ -1,8 +1,8 @@
 // PR-L2-1b C1 (TC-DB-AUTH-001-001, G4): HTTP contract of API-AUTH-003 POST /api/v1/self/profile/provision
 // on createApp with a stub Principal store, a recording CurrentProfileStore (AppDependencies.profiles) and
 // the in-memory rate limit. The success data has the shape of API-AUTH-002 ({ profile_ref, display_name,
-// updated_at }; a new Profile has display_name null), a decision of the project owner (UCR-110-010, to be
-// written into SPEC-110 by a separate specification PR). Every refusal also asserts that the store was
+// updated_at }; a new Profile has display_name null), as SPEC-110 v2.10.0 §25 API-AUTH-003 states
+// (UCR-110-010, INCORPORATED). Every refusal also asserts that the store was
 // not asked to provision (TST-GEN-002). Synthetic data only.
 import { describe, expect, it } from "vitest";
 import {

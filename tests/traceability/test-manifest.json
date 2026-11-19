@@ -26329,7 +26329,7 @@
       "system_invariant_ids": ["INV-010-08"],
       "api_operation_ids": ["API-AUTH-003"],
       "db_constraint_names": [],
-      "preconditions": "createApp with a stub Principal store, a recording CurrentProfileStore (AppDependencies.profiles) with DI fault injection and the in-memory rate limit; synthetic subjects and refs only; no database (G4 slice; the real PostgreSQL slice is TC-DB-AUTH-001-004/005/006). The success data has the shape of API-AUTH-002, a decision of the project owner recorded as UCR-110-010 (to be incorporated into SPEC-110 by a separate specification PR)",
+      "preconditions": "createApp with a stub Principal store, a recording CurrentProfileStore (AppDependencies.profiles) with DI fault injection and the in-memory rate limit; synthetic subjects and refs only; no database (G4 slice; the real PostgreSQL slice is TC-DB-AUTH-001-004/005/006). The success data has the shape of API-AUTH-002, as SPEC-110 v2.10.0 section 25 API-AUTH-003 states (UCR-110-010, INCORPORATED)",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
