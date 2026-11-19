@@ -18090,7 +18090,7 @@
       "test_case_id": "TC-HTTP-AUDIT-004",
       "level": "API",
       "suite": "api",
-      "upstream_rule_ids": ["REL-DB-011"],
+      "upstream_rule_ids": ["REL-DB-011", "DEV-API-010", "SEC-API-020"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
@@ -25890,11 +25890,11 @@
       "test_case_id": "TC-REL-DB-009-001",
       "level": "Unit",
       "suite": "unit",
-      "upstream_rule_ids": ["REL-DB-009", "DEV-DB-007", "REL-DB-001"],
+      "upstream_rule_ids": ["REL-DB-009", "DEV-DB-007", "REL-DB-001", "REL-DB-006"],
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "Fake pool with an injected connect() failure and a discarded connection; no real PostgreSQL",
+      "preconditions": "Fake pool with an injected connect() failure, a discarded connection, or a COMMIT failure; no real PostgreSQL",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -25905,12 +25905,14 @@
         "A connect or query failure that carries only a Node errno (ECONNRESET, ECONNREFUSED, EPIPE, ETIMEDOUT, ENOTFOUND, EHOSTUNREACH, ENETUNREACH, EAI_AGAIN) rejects with DatabaseUnavailableError carrying the original as cause",
         "An error that carries a connection SQLSTATE (08006), at query or connect, is rethrown as it is, and a codeless error from a healthy connection stays the callback's own error",
         "An errno (ECONNRESET, EPIPE, EAI_AGAIN, ECONNREFUSED, ETIMEDOUT) thrown by the callback itself on a healthy connection is rethrown as the identical original error, not DatabaseUnavailableError; db.availability.failed is not logged, ROLLBACK is issued, the healthy connection is released normally (not discarded) and no retry is scheduled",
-        "connectAttempts() counts every connect() call whether or not a connect hook is given"
+        "connectAttempts() counts every connect() call whether or not a connect hook is given",
+        "A five-letter Node errno (EBADF, EPERM, EBUSY, EPIPE) is never taken for a SQLSTATE: a COMMIT failing with it returns commit_unknown without ROLLBACK and discards the connection, and a query failing with it after a reported connection loss rejects with DatabaseUnavailableError carrying the original as cause"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
       "expected_observability": [
-        "db.availability.failed is logged once for a DB-originated connection failure and not at all for a callback's own error; db.transaction.retry_scheduled is not logged"
+        "db.availability.failed is logged once for a DB-originated connection failure and not at all for a callback's own error; db.transaction.retry_scheduled is not logged",
+        "reliability.unknown_result.opened is logged once for a COMMIT failing with a five-letter errno, and no log line carries a five-letter errno as sqlstate"
       ],
       "sensitivity_class": "synthetic",
       "critical": true
@@ -26013,7 +26015,8 @@
         "DEV-API-011",
         "SPEC-110-20",
         "SPEC-110-28",
-        "REL-DB-006"
+        "REL-DB-006",
+        "DEV-API-003"
       ],
       "system_invariant_ids": [],
       "api_operation_ids": [],

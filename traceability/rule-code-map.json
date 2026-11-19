@@ -3024,8 +3024,12 @@
     },
     {
       "rule_id": "REL-DB-006",
-      "code_paths": ["packages/db/src/transaction.ts", "apps/api/src/api/respond.ts"],
-      "test_case_ids": ["TC-DB-FOUNDATION-007", "TC-DEV-API-003-004"],
+      "code_paths": [
+        "packages/db/src/errors.ts",
+        "packages/db/src/transaction.ts",
+        "apps/api/src/api/respond.ts"
+      ],
+      "test_case_ids": ["TC-DB-FOUNDATION-007", "TC-DEV-API-003-004", "TC-REL-DB-009-001"],
       "notes": "Real COMMIT-ack loss is unknown and discards session"
     },
     {

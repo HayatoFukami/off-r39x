@@ -256,7 +256,7 @@ export async function transaction<T>(
           is_retry: attempt > 1,
           attempt_number: attempt,
           query_name: queryName,
-          ...(code && /^[0-9A-Z]{5}$/.test(code) ? { sqlstate: code } : {}),
+          ...(isSqlstate(code) ? { sqlstate: code } : {}),
           duration_ms: Math.floor(performance.now() - start),
         });
       // A retry attempt cut off by the shortened retry budget is exhaustion too: either the

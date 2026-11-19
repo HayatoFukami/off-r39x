@@ -31,9 +31,13 @@ export function sqlState(error: unknown): string | undefined {
     : undefined;
 }
 
-/** A server SQLSTATE: five characters of `[0-9A-Z]`; `EPIPE` is a Node errno that happens to fit. */
+/**
+ * A server SQLSTATE: five characters of `[0-9A-Z]` whose class does not start with "E". Node errno
+ * names all start with "E" and several have five characters (EPIPE, EBADF, EPERM, EBUSY, ...), while
+ * no PostgreSQL SQLSTATE class starts with "E" (Appendix A of the PostgreSQL manual).
+ */
 export function isSqlstate(code: string | undefined): code is string {
-  return code !== undefined && code !== "EPIPE" && /^[0-9A-Z]{5}$/.test(code);
+  return code !== undefined && /^[0-9A-DF-Z][0-9A-Z]{4}$/.test(code);
 }
 
 const UNAVAILABLE_CODES: ReadonlySet<string> = new Set([

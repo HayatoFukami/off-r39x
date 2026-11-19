@@ -458,6 +458,53 @@ describe("TC-REL-DB-009-001 transaction() types a codeless connection failure", 
     expect(fake.clients[0]?.queries).toContain("ROLLBACK");
   });
 
+  // Re-check after PR #66 review round 5: five uppercase characters do not make a SQLSTATE. Node
+  // errno such as EBADF / EPERM / EBUSY fit /^[0-9A-Z]{5}$/, but no PostgreSQL SQLSTATE class starts
+  // with "E", so they are never an authoritative server answer.
+  it.each(["EBADF", "EPERM", "EBUSY", "EPIPE"])(
+    "(g) a COMMIT failing with the five-letter errno %s is commit_unknown, not a server rejection",
+    async (code) => {
+      const fake = createFakePool(({ sql }) =>
+        sql === "COMMIT" ? syntheticSqlstateError(code, MARKER) : undefined,
+      );
+      const { logger, count, lines } = collector();
+      const result = await transaction(fake.pool, async () => "value", {
+        logger,
+        queryName: "unknown.commit.errno",
+      });
+      expect(result).toEqual({ status: "commit_unknown" });
+      expect(count("reliability.unknown_result.opened")).toBe(1);
+      for (const line of lines) expect(JSON.parse(line)).not.toHaveProperty("sqlstate");
+      expect(fake.clients[0]?.queries).not.toContain("ROLLBACK");
+      expect(fake.clients[0]?.releases).toEqual([true]);
+    },
+  );
+
+  it.each(["EBADF", "EPERM", "EBUSY"])(
+    "(h) a query failing with the five-letter errno %s after a reported connection loss is a DatabaseUnavailableError without a logged sqlstate",
+    async (code) => {
+      const cause = syntheticSqlstateError(code, MARKER);
+      const fake = createFakePool(({ sql }) => (sql === PROBE ? cause : undefined));
+      const { logger, lines } = collector();
+      const error = await settle(
+        transaction(
+          fake.pool,
+          async (client) => {
+            (client as unknown as EventEmitter).emit(
+              "error",
+              new Error("synthetic-connection-error"),
+            );
+            await client.query(PROBE);
+          },
+          { logger, queryName: "unavailable.query.errno5" },
+        ),
+      );
+      expect(error).toBeInstanceOf(DatabaseUnavailableError);
+      expect((error as DatabaseUnavailableError).cause).toBe(cause);
+      for (const line of lines) expect(JSON.parse(line)).not.toHaveProperty("sqlstate");
+    },
+  );
+
   it("DatabaseUnavailableError has a fixed message, a name, and the original as cause", () => {
     const cause = new Error(MARKER);
     const error = new DatabaseUnavailableError({ cause });
