@@ -1,8 +1,10 @@
 // PR-L2-1a C1 (TC-API-007-001, G4): HTTP contract of API-AUTH-002 (GET) and API-AUTH-004 (PATCH)
 // /api/v1/self/profile on createApp with a stub Principal store, a recording CurrentProfileStore
 // (AppDependencies.profiles) and the in-memory rate limit. Decisions of the user (plan, G-a): a store
-// not_found after the guard is 500 INTERNAL_ERROR (OI-2). A lone surrogate is not asserted (OI-1, waits
-// for the specification PR). Every refusal also asserts the store was not written (TST-GEN-002).
+// not_found after the guard is 500 INTERNAL_ERROR (OI-2). A display name that is not well-formed (a lone
+// surrogate sent as a JSON escape such as \uD800) is 400 VALIDATION_FAILED and is never stored as U+FFFD
+// (UCR-030-001, SPEC-110 v2.7.0 API-AUTH-004). Every refusal also asserts the store was not written
+// (TST-GEN-002).
 import { describe, expect, it } from "vitest";
 import {
   BAD,
@@ -172,6 +174,12 @@ describe("TC-API-007-001 PATCH refusals before the store (SPEC-110 §13/§16/§2
     ["a tab inside (JSON escape)", '{"display_name":"a\\tb"}'],
     ["U+0085 at the start (JSON escape)", '{"display_name":"\\u0085name"}'],
     ["Cc and too long", JSON.stringify({ display_name: "a\u0000".repeat(50) })],
+    // UCR-030-001: JSON.parse keeps a lone surrogate written as an escape; the bytes on the wire are ASCII.
+    ["a lone high surrogate (JSON escape \\uD800)", '{"display_name":"\\uD800"}'],
+    ["a lone low surrogate (JSON escape \\uDC00)", '{"display_name":"\\uDC00"}'],
+    ["a reversed pair (\\uDC00\\uD800)", '{"display_name":"\\uDC00\\uD800"}'],
+    ["a lone surrogate mixed with text", '{"display_name":"synthetic \\uD800 name"}'],
+    ["a lone surrogate after a valid pair", '{"display_name":"\\uD83D\\uDE00\\uDBFF"}'],
   ];
   it.each(invalid)("400 VALIDATION_FAILED for %s, no write, details null", async (_label, body) => {
     const r = selfProfileRig();
@@ -185,6 +193,24 @@ describe("TC-API-007-001 PATCH refusals before the store (SPEC-110 §13/§16/§2
     expect(r.store.row(SUBJECT)?.displayName).toBeNull();
     // Body validation comes after authentication (the Principal was resolved once).
     expect(r.principalReads()).toBe(1);
+  });
+
+  it("a lone surrogate leaves an existing name unchanged and is not replaced by U+FFFD (UCR-030-001)", async () => {
+    const r = selfProfileRig();
+    expect((await r.patch({ display_name: "synthetic name" })).status).toBe(200);
+    const res = await r.patchRaw('{"display_name":"synthetic \\uD800"}');
+    expect(res.status).toBe(400);
+    expect((await errorOf(res)).code).toBe("VALIDATION_FAILED");
+    expect(r.store.updates).toEqual([[SUBJECT, "synthetic name"]]);
+    expect(r.store.row(SUBJECT)?.displayName).toBe("synthetic name");
+  });
+
+  it("a correctly paired surrogate sent as JSON escapes is accepted as one code point (UCR-030-001)", async () => {
+    const r = selfProfileRig();
+    const res = await r.patchRaw('{"display_name":" a\\uD83D\\uDE00b "}');
+    expect(res.status).toBe(200);
+    expect((await res.json()).data.display_name).toBe("a\u{1F600}b");
+    expect(r.store.updates).toEqual([[SUBJECT, "a\u{1F600}b"]]);
   });
 
   const malformed: [label: string, body: string][] = [

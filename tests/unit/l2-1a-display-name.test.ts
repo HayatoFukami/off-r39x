@@ -1,8 +1,11 @@
 // PR-L2-1a C1 (TC-API-007-002, G1): the pure Display name rule of SPEC-030 §9.2 (BR-USR-001) as
 // normalizeDisplayName in @off-r39x/domain: ECMAScript trim(), empty -> NULL, 1..80 code points, no Cc in
-// the trimmed value (Cc is judged before the length), no Unicode normalization. Expected values come from
-// the plan's input table and the spec, not from the implementation. A lone surrogate is deliberately not
-// asserted (open issue OI-1: it waits for the specification PR). Synthetic strings only.
+// the trimmed value (Cc is judged before the length), no Unicode normalization, and well-formed Unicode
+// only (UCR-030-001, SPEC-030 v2.2.0: a lone surrogate is rejected, never replaced by U+FFFD or removed).
+// The well-formed check comes first; the specification fixes no order between the rules and every
+// refusal is the same 400 VALIDATION_FAILED with details null, so the order is not visible over HTTP.
+// Expected values come from the plan's input table and the spec, not from the implementation. Synthetic
+// strings only.
 import { DISPLAY_NAME_MAX_CODE_POINTS, normalizeDisplayName } from "@off-r39x/domain";
 import { describe, expect, it } from "vitest";
 
@@ -12,6 +15,7 @@ const normalize = (input: string | null): Normalized => normalizeDisplayName(inp
 const ok = (value: string | null): Normalized => ({ ok: true, value });
 const tooLong: Normalized = { ok: false, reason: "too_long" };
 const control: Normalized = { ok: false, reason: "control_character" };
+const notWellFormed: Normalized = { ok: false, reason: "not_well_formed" };
 
 const FAMILY = "\u{1F468}‍\u{1F469}‍\u{1F467}"; // 5 code points
 const KA = "が"; // か + combining dakuten, 2 code points
@@ -53,6 +57,18 @@ const CASES: readonly (readonly [label: string, input: string | null, expected: 
   ["Cc and too long: Cc is judged first", "a\u0000".repeat(50), control],
   ["Cf zero width space is allowed", "a​b", ok("a​b")],
   ["Cf zero width joiner is allowed", "a‍b", ok("a‍b")],
+  // UCR-030-001 (SPEC-030 §9.2 v2.2.0; SPEC-170 v2.6.0 TC-API-007-001): well-formed Unicode only.
+  ["lone high surrogate U+D800", "\uD800", notWellFormed],
+  ["lone low surrogate U+DC00", "\uDC00", notWellFormed],
+  ["reversed pair (low then high)", "\uDC00\uD800", notWellFormed],
+  ["lone high surrogate mixed with text", "a\uD800b", notWellFormed],
+  ["lone low surrogate U+DFFF at the end of text", "name\uDFFF", notWellFormed],
+  ["lone surrogate between spaces (trim does not remove it)", "  \uD800  ", notWellFormed],
+  ["a valid pair followed by a lone high surrogate", "😀\uD800", notWellFormed],
+  ["lone surrogate in an 81 code point value", `${"a".repeat(80)}\uD800`, notWellFormed],
+  ["lone surrogate together with a Cc", "\uD800\u0000", notWellFormed],
+  ["a correctly paired surrogate (U+1F600) is accepted", "😀", ok("\u{1F600}")],
+  ["a valid pair inside text is accepted", "a😀b", ok("a\u{1F600}b")],
 ];
 
 describe("TC-API-007-002 normalizeDisplayName (SPEC-030 §9.2, BR-USR-001, SEC-API-029, API-AUTH-004)", () => {
@@ -71,6 +87,14 @@ describe("TC-API-007-002 normalizeDisplayName (SPEC-030 §9.2, BR-USR-001, SEC-A
       expect(normalize(input)).toEqual(expected);
       expect(normalize(input)).toEqual(expected);
       expect(input).toBe(before);
+    }
+  });
+
+  it("never repairs a value that is not well-formed: no U+FFFD replacement and no removal (UCR-030-001)", () => {
+    for (const input of ["\uD800", "a\uD800b", "\uDC00\uD800"]) {
+      const result = normalize(input);
+      expect(result, JSON.stringify(input)).toEqual(notWellFormed);
+      expect("value" in result, JSON.stringify(input)).toBe(false);
     }
   });
 

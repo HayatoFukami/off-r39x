@@ -240,6 +240,11 @@ describe("TC-API-007-006 API-AUTH-002 / 004 against real PostgreSQL 17 (AR-ID-00
     ["81 characters", { display_name: "a".repeat(81) }],
     ["81 emoji", { display_name: "\u{1F600}".repeat(81) }],
     ["a control character", { display_name: "a\u0000b" }],
+    // UCR-030-001. JSON.stringify writes a lone surrogate as the escape \ud800, so the wire stays ASCII.
+    ["a lone high surrogate", { display_name: "\uD800" }],
+    ["a lone low surrogate", { display_name: "\uDC00" }],
+    ["a reversed pair", { display_name: "\uDC00\uD800" }],
+    ["a lone surrogate mixed with text", { display_name: "name\uD800" }],
   ])("PATCH with %s is 400 VALIDATION_FAILED and A is unchanged", async (_label, body) => {
     await resetRows();
     const before = await snapshot();
@@ -247,6 +252,33 @@ describe("TC-API-007-006 API-AUTH-002 / 004 against real PostgreSQL 17 (AR-ID-00
     expect(res.status).toBe(400);
     expect(await errorCode(res)).toBe("VALIDATION_FAILED");
     expect(await snapshot()).toEqual(before);
+  });
+
+  it("a lone surrogate keeps an existing name and nothing is stored as U+FFFD; a valid pair is stored as one code point (UCR-030-001)", async () => {
+    await resetRows();
+    await admin.query(
+      "UPDATE app.business_profiles SET display_name = 'old' WHERE auth_subject = $1",
+      [A],
+    );
+    const before = await snapshot();
+    const refused = await makeApp().patch(A, { display_name: "new\uD800" });
+    expect(refused.status).toBe(400);
+    expect(await errorCode(refused)).toBe("VALIDATION_FAILED");
+    expect(await snapshot()).toEqual(before);
+    expect((await rowOf(A))?.display_name).toBe("old");
+    const replaced = await admin.query(
+      "SELECT count(*)::int AS n FROM app.business_profiles WHERE strpos(display_name, U&'\\FFFD') > 0",
+    );
+    expect(replaced.rows[0].n).toBe(0);
+
+    const accepted = await makeApp().patch(A, { display_name: "😀" });
+    expect(accepted.status).toBe(200);
+    expect((await accepted.json()).data.display_name).toBe("\u{1F600}");
+    const stored = await admin.query(
+      "SELECT display_name, char_length(display_name) AS n FROM app.business_profiles WHERE auth_subject = $1",
+      [A],
+    );
+    expect(stored.rows[0]).toEqual({ display_name: "\u{1F600}", n: 1 });
   });
 });
 

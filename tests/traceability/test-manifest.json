@@ -25523,7 +25523,8 @@
       "expected_domain_postconditions": [
         "GET returns exactly { data: { profile_ref, display_name, updated_at }, meta: { request_id } } for the verified subject only; a NULL display name stays null and is not filled from the directory Email",
         "PATCH normalizes display_name (trim, empty to null, 80 code points) and calls the store once with (verified subject, normalized value); the response is the row the store returned",
-        "Unknown field, empty object, wrong type, 81 characters and Cc are 400 VALIDATION_FAILED; broken JSON, empty body and duplicate keys are 400 MALFORMED_REQUEST; non-JSON media types are 415; more than 64 KiB is 413; every one of them leaves the store unwritten and details null; body validation follows authentication (no token with a bad body is 401)",
+        "UCR-030-001: a lone surrogate leaves an existing name unchanged (never stored as U+FFFD); a correctly paired surrogate sent as JSON escapes is accepted, trimmed and stored as one code point",
+        "Unknown field, empty object, wrong type, 81 characters, Cc and a value that is not well-formed (a lone surrogate sent as a JSON escape: high, low, the reversed pair, mixed with text, after a valid pair) are 400 VALIDATION_FAILED; broken JSON, empty body and duplicate keys are 400 MALFORMED_REQUEST; non-JSON media types are 415; more than 64 KiB is 413; every one of them leaves the store unwritten and details null; body validation follows authentication (no token with a bad body is 401)",
         "401, 403 EMAIL_VERIFICATION_REQUIRED, 403 AUTHORIZATION_DENIED, 409 and a Principal store failure (503) never call the profile store",
         "Store unavailable and commit_unknown are 503 DATABASE_TEMPORARY_FAILURE (retryable); a store not_found after the guard is 500 INTERNAL_ERROR (OI-2, user decision); without the profiles dependency both routes are 503 TEMPORARY_UNAVAILABLE",
         "Idempotency-Key is ignored (two PATCHes with the same key write twice); PUT, POST and DELETE are 405 with Allow: GET, HEAD, PATCH",
@@ -25549,7 +25550,7 @@
       "system_invariant_ids": ["INV-010-08"],
       "api_operation_ids": ["API-AUTH-004"],
       "db_constraint_names": [],
-      "preconditions": "Static import of normalizeDisplayName and DISPLAY_NAME_MAX_CODE_POINTS from @off-r39x/domain; pure function, synthetic strings only; a lone surrogate is not asserted (open issue OI-1 waits for the specification PR)",
+      "preconditions": "Static import of normalizeDisplayName and DISPLAY_NAME_MAX_CODE_POINTS from @off-r39x/domain; pure function, synthetic strings only; lone surrogates per UCR-030-001 (SPEC-030 v2.2.0 §9.2)",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -25559,6 +25560,7 @@
         "null, empty and whitespace-only inputs (space, U+3000, tab, line feed, U+FEFF) normalize to null; surrounding whitespace is trimmed with ECMAScript trim()",
         "1, 80 and trimmed-80 code points are accepted; 81 is too_long, counted in code points for ASCII, emoji (160 UTF-16 units), combining sequences and ZWJ sequences; no Unicode normalization is applied",
         "A Cc character (NUL, BEL, U+001F, DEL, U+0080, NEL, U+009F, tab, line feed) in the trimmed value, inside or at either end, is control_character and is judged before the length; Cf characters (U+200B, U+200D) are accepted",
+        "UCR-030-001: a value that is not well-formed (lone high or low surrogate, reversed pair, a lone surrogate mixed with text, after a valid pair, between spaces, in an 81 code point value or with a Cc) is not_well_formed, judged first, and is never repaired (no U+FFFD, no removal); a correctly paired surrogate is accepted as one code point",
         "The function is pure: repeated calls give equal results and the input is unchanged"
       ],
       "expected_db_postconditions": [],
@@ -25707,10 +25709,11 @@
       "expected_http": [200, 400, 403],
       "expected_domain_postconditions": [
         "GET returns display_name null for A without the directory Email; PATCH with surrounding spaces returns the trimmed name and the next GET returns the same data; a role claim in the token and B's profile_ref in the body never reach B (400)",
-        "C is 403 EMAIL_VERIFICATION_REQUIRED and D is 403 AUTHORIZATION_DENIED for GET and PATCH; 81 characters, 81 emoji and a control character are 400 VALIDATION_FAILED"
+        "C is 403 EMAIL_VERIFICATION_REQUIRED and D is 403 AUTHORIZATION_DENIED for GET and PATCH; 81 characters, 81 emoji, a control character and a lone surrogate (high, low, reversed pair, mixed with text; UCR-030-001) are 400 VALIDATION_FAILED; a correctly paired surrogate is 200 and returned as one code point"
       ],
       "expected_db_postconditions": [
-        "Only A's row changes on a successful PATCH (display_name and updated_at); B and C are unchanged; every refusal leaves all rows unchanged; D never gets a Business Profile (row count stays 3)"
+        "Only A's row changes on a successful PATCH (display_name and updated_at); B and C are unchanged; every refusal leaves all rows unchanged; D never gets a Business Profile (row count stays 3)",
+        "UCR-030-001: a refused lone surrogate keeps A's existing display_name, no row contains U+FFFD, and an accepted valid pair is stored with char_length 1"
       ],
       "expected_provider_postconditions": [],
       "expected_observability": [],
