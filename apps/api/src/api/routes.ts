@@ -94,6 +94,18 @@ export const ROUTES: readonly RouteRegistration[] = Object.freeze([
     operationId: "API-AUTH-001",
     rateLimitClass: "self_read",
   },
+  {
+    method: "GET",
+    path: "/api/v1/self/profile",
+    operationId: "API-AUTH-002",
+    rateLimitClass: "self_read",
+  },
+  {
+    method: "PATCH",
+    path: "/api/v1/self/profile",
+    operationId: "API-AUTH-004",
+    rateLimitClass: "profile_mutation",
+  },
   ...authTransportRoutes,
 ]);
 assertRouteRegistry(ROUTES);

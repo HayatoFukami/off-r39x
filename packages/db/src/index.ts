@@ -21,3 +21,9 @@ export {
   transaction,
   withWorkerAdvisoryLock,
 } from "./transaction.ts";
+export type {
+  CurrentBusinessProfile,
+  CurrentProfileRead,
+  CurrentProfileUpdate,
+} from "./transactions/profile.ts";
+export { createCurrentProfileRepository } from "./transactions/profile.ts";

@@ -136,6 +136,9 @@ importers:
       '@off-r39x/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@off-r39x/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       '@off-r39x/observability':
         specifier: workspace:*
         version: link:../../packages/observability

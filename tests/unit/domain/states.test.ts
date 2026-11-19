@@ -53,8 +53,16 @@ describe("TC-DEV-TS-010-002 canonical state constants", () => {
     });
   }
 
-  it("exports only the documented constants and assertNever", () => {
-    expect(Object.keys(domain).sort()).toEqual([...Object.keys(canonical), "assertNever"].sort());
+  it("exports only the documented constants, assertNever and the SPEC-030 9.2 display-name policy", () => {
+    // PR-L2-1a adds the display-name normalization (SPEC-030 section 9.2) as the only new exports.
+    expect(Object.keys(domain).sort()).toEqual(
+      [
+        ...Object.keys(canonical),
+        "assertNever",
+        "DISPLAY_NAME_MAX_CODE_POINTS",
+        "normalizeDisplayName",
+      ].sort(),
+    );
   });
 
   it("derived union types accept canonical values (compile-time)", () => {
