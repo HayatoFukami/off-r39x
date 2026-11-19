@@ -209,8 +209,14 @@ export async function transaction<T>(
         return { status: "commit_unknown" };
       }
       const timeout = error instanceof TransactionDeadlineError || code === "57014";
+      // Unavailability is judged by origin, not by the discard flag (the deadline timer sets it too):
+      // the connection reported loss, or a database operation (connect, transaction control, a query
+      // on the callback's client) raised a connect failure or an unavailable-class code. An errno or
+      // codeless error thrown by the callback's own code on a healthy connection is not unavailable.
+      const dbRaised = isMarkable(error) && dbOriginated.has(error);
       const unavailable =
-        !timeout && (!client || discard || (!!code && isDatabaseUnavailableCode(code)));
+        !timeout &&
+        (connectionLost || ((!client || (!!code && isDatabaseUnavailableCode(code))) && dbRaised));
       if (unavailable) discard = true;
       const constraint = code === "23505" || code === "23P01";
       logDatabase(logger, {
@@ -261,14 +267,10 @@ export async function transaction<T>(
       const policy = isDatabaseRetryable(error) ? RETRY_POLICIES[error.code] : undefined;
       if (!policy || discard) {
         // A connection failure without a SQLSTATE (an errno or no code) is typed here so the API layer
-        // answers 503 from the boundary type alone (REL-DB-009), but only when a database operation
-        // raised it or the connection itself reported loss; an errno thrown by the callback's own
+        // answers 503 from the boundary type alone (REL-DB-009). `unavailable` already requires a
+        // database origin or a reported connection loss, so an errno thrown by the callback's own
         // code is rethrown as it is. 08xxx / 57P01-03 are rethrown as they are.
-        if (
-          unavailable &&
-          !isSqlstate(sqlState(error)) &&
-          ((isMarkable(error) && dbOriginated.has(error)) || connectionLost)
-        )
+        if (unavailable && !isSqlstate(sqlState(error)))
           throw new DatabaseUnavailableError({ cause: error });
         throw error;
       }

@@ -94,6 +94,9 @@ export function successResponse<S extends z.ZodType>(
   });
   // A schema mismatch is a defect in the producer: never send the data (DEV-API-003).
   if (!parsed.success) return errorResponse(c, "INTERNAL_ERROR");
+  // SPEC-110 section 19: `data` is required; undefined would be dropped by JSON serialization.
+  if (!("data" in parsed.data) || parsed.data.data === undefined)
+    return errorResponse(c, "INTERNAL_ERROR");
   c.header("Cache-Control", "no-store");
   return c.json(parsed.data, status);
 }
