@@ -154,7 +154,7 @@ export function enforceDecision(
   if (decision.result === "allowed") return;
   logDecision(c, classId, decision);
   if (decision.result === "rejected")
-    throw new ApiFailure("RATE_LIMIT_EXCEEDED", undefined, decision.retryAfterSeconds);
+    throw new ApiFailure("RATE_LIMIT_EXCEEDED", { retryAfterSeconds: decision.retryAfterSeconds });
   throw new ApiFailure("TEMPORARY_UNAVAILABLE");
 }
 
