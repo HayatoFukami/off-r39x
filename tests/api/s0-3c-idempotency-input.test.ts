@@ -46,6 +46,42 @@ async function expectFailure(
   expect(response.headers.get("Cache-Control"), label).toBe("no-store");
 }
 
+/**
+ * The manifest's expected_observability, asserted per case (SPEC-170 section 9): one completion log
+ * per request whose http_status matches the response, and no log line holds a sent raw key or the
+ * key / request digest of any context the handler saw (hex in both cases, base64).
+ */
+function expectCompletionAndRedaction(
+  rig: ReturnType<typeof idempotencyRig>,
+  responses: readonly Response[],
+  sentKeys: readonly string[],
+  label: string,
+): void {
+  const completions = rig.completions();
+  expect(completions, `${label} completions`).toHaveLength(responses.length);
+  expect(
+    completions.map((record) => record.http_status),
+    `${label} http_status`,
+  ).toEqual(responses.map((response) => response.status));
+  const logged = rig.lines.join("\n");
+  const keys = sentKeys.filter((key) => key.length > 0);
+  const forms = (digest: Uint8Array) => {
+    const buffer = Buffer.from(digest);
+    const hex = buffer.toString("hex");
+    return [hex, hex.toUpperCase(), buffer.toString("base64")];
+  };
+  const forbidden: string[] = [...keys];
+  for (const key of keys) forbidden.push(...forms(sha256(key)));
+  for (const seen of rig.seen) {
+    if (seen.context === undefined) continue;
+    const context = ctxOf(seen.context);
+    forbidden.push(...forms(context.keyDigest), ...forms(context.requestDigest));
+  }
+  for (const text of forbidden) {
+    expect(logged, `${label} log must not contain ${text.slice(0, 8)}...`).not.toContain(text);
+  }
+}
+
 describe("TC-API-IDM-011-002 Idempotency-Key through HTTP (API-IDM-011, Acceptance 47)", () => {
   const rejected: [label: string, headers: Record<string, string> | undefined][] = [
     ["(a) no header", undefined],
@@ -62,8 +98,7 @@ describe("TC-API-IDM-011-002 Idempotency-Key through HTTP (API-IDM-011, Acceptan
       const response = await rig.post(ROUTE, { headers });
       await expectFailure(response, 400, "VALIDATION_FAILED", label);
       expect(rig.seen, label).toHaveLength(0);
-      expect(rig.completions(), label).toHaveLength(1);
-      expect(rig.completions()[0]?.http_status, label).toBe(400);
+      expectCompletionAndRedaction(rig, [response], [headers?.["Idempotency-Key"] ?? ""], label);
     },
   );
 
@@ -82,6 +117,7 @@ describe("TC-API-IDM-011-002 Idempotency-Key through HTTP (API-IDM-011, Acceptan
     expect(context.principalProfileRef, label).toBe(PROFILE_REF);
     expect(Buffer.from(context.keyDigest).equals(sha256(key)), label).toBe(true);
     expect(context.requestDigest, label).toHaveLength(32);
+    expectCompletionAndRedaction(rig, [response], [key], label);
   });
 
   it("(j) surrounding spaces are removed by HTTP parsing; the parsed value is validated and hashed", async () => {
@@ -91,6 +127,7 @@ describe("TC-API-IDM-011-002 Idempotency-Key through HTTP (API-IDM-011, Acceptan
     expect(response.status).toBe(200);
     expect(rig.seen[0]?.header).toBe(key);
     expect(Buffer.from(ctxOf(rig.seen[0]?.context).keyDigest).equals(sha256(key))).toBe(true);
+    expectCompletionAndRedaction(rig, [response], [key], "(j)");
   });
 
   it("(k) two header fields of the same name are one concatenated value, not one of them", async () => {
@@ -109,6 +146,7 @@ describe("TC-API-IDM-011-002 Idempotency-Key through HTTP (API-IDM-011, Acceptan
     expect(received).not.toBe(a);
     expect(received).not.toBe(b);
     expect(Buffer.from(ctxOf(rig.seen[0]?.context).keyDigest).equals(sha256(received))).toBe(true);
+    expectCompletionAndRedaction(rig, [response], [a, b, received], "(k)");
   });
 
   it("(l) two valid 64-character fields whose concatenation exceeds 128 are rejected", async () => {
@@ -119,6 +157,7 @@ describe("TC-API-IDM-011-002 Idempotency-Key through HTTP (API-IDM-011, Acceptan
     const response = await rig.post(ROUTE, { headers });
     await expectFailure(response, 400, "VALIDATION_FAILED", "(l)");
     expect(rig.seen).toHaveLength(0);
+    expectCompletionAndRedaction(rig, [response], ["a".repeat(64), "b".repeat(64)], "(l)");
   });
 
   describe("order against other checks is not fixed (API-IDM-011 4.): either failure, no handler", () => {
@@ -127,24 +166,37 @@ describe("TC-API-IDM-011-002 Idempotency-Key through HTTP (API-IDM-011, Acceptan
       const response = await rig.post(ROUTE, { rawBody: JSON.stringify({ items: [] }) });
       await expectFailure(response, 400, "VALIDATION_FAILED", "(m)");
       expect(rig.seen).toHaveLength(0);
+      expectCompletionAndRedaction(rig, [response], [], "(m)");
     });
     it("(n) a malformed JSON body and no header", async () => {
       const rig = idempotencyRig();
       const response = await rig.post(ROUTE, { rawBody: "{" });
       const { error } = await readError(response.clone());
-      expect(response.status).toBe(400);
-      expect(["MALFORMED_REQUEST", "VALIDATION_FAILED"]).toContain(error.code);
+      expect(
+        [
+          [400, "MALFORMED_REQUEST"],
+          [400, "VALIDATION_FAILED"],
+        ],
+        "(n) (status, code)",
+      ).toContainEqual([response.status, error.code]);
       expect(error.details).toBeNull();
       expect(rig.seen).toHaveLength(0);
+      expectCompletionAndRedaction(rig, [response], [], "(n)");
     });
     it("(o) text/plain and no header", async () => {
       const rig = idempotencyRig();
       const response = await rig.post(ROUTE, { contentType: "text/plain" });
       const { error } = await readError(response.clone());
-      expect([415, 400]).toContain(response.status);
-      expect(["UNSUPPORTED_MEDIA_TYPE", "VALIDATION_FAILED"]).toContain(error.code);
+      expect(
+        [
+          [415, "UNSUPPORTED_MEDIA_TYPE"],
+          [400, "VALIDATION_FAILED"],
+        ],
+        "(o) (status, code)",
+      ).toContainEqual([response.status, error.code]);
       expect(error.details).toBeNull();
       expect(rig.seen).toHaveLength(0);
+      expectCompletionAndRedaction(rig, [response], [], "(o)");
     });
   });
 
@@ -156,6 +208,7 @@ describe("TC-API-IDM-011-002 Idempotency-Key through HTTP (API-IDM-011, Acceptan
       expect(response.status).toBe(401);
       expect(error.code).toBe("AUTHENTICATION_REQUIRED");
       expect(rig.seen).toHaveLength(0);
+      expectCompletionAndRedaction(rig, [response], [], "(p)");
     });
     it("(q) no Capability: 403 AUTHORIZATION_DENIED, not 400", async () => {
       const rig = idempotencyRig();
@@ -164,6 +217,7 @@ describe("TC-API-IDM-011-002 Idempotency-Key through HTTP (API-IDM-011, Acceptan
       expect(response.status).toBe(403);
       expect(error.code).toBe("AUTHORIZATION_DENIED");
       expect(rig.seen).toHaveLength(0);
+      expectCompletionAndRedaction(rig, [response], [], "(q)");
     });
   });
 });
@@ -171,6 +225,16 @@ describe("TC-API-IDM-011-002 Idempotency-Key through HTTP (API-IDM-011, Acceptan
 describe("TC-API-IDM-005-003 digests over HTTP (API-IDM-005, TST-IDM-002, SEC-API-023, DEV-API-006)", () => {
   const reordered = `{"flag":true,"note":"synthetic note","items":[ { "quantity" : 2, "ref":"${ORDER_REF}" } ]}`;
 
+  const responsesByRig = new WeakMap<object, Response[]>();
+  const keysByRig = new WeakMap<object, string[]>();
+  /** Completion-log and redaction check over every request this rig received. */
+  const checkLogs = (rig: ReturnType<typeof idempotencyRig>, label: string) =>
+    expectCompletionAndRedaction(
+      rig,
+      responsesByRig.get(rig) ?? [],
+      keysByRig.get(rig) ?? [],
+      label,
+    );
   async function send(
     rig: ReturnType<typeof idempotencyRig>,
     key: string,
@@ -181,6 +245,8 @@ describe("TC-API-IDM-005-003 digests over HTTP (API-IDM-005, TST-IDM-002, SEC-AP
       ...(options.rawBody === undefined ? {} : { rawBody: options.rawBody }),
     });
     expect(response.status).toBe(200);
+    responsesByRig.set(rig, [...(responsesByRig.get(rig) ?? []), response]);
+    keysByRig.set(rig, [...(keysByRig.get(rig) ?? []), key]);
     return ctxOf(rig.seen[rig.seen.length - 1]?.context);
   }
   const same = (a: Uint8Array, b: Uint8Array) => Buffer.from(a).equals(Buffer.from(b));
@@ -196,12 +262,15 @@ describe("TC-API-IDM-005-003 digests over HTTP (API-IDM-005, TST-IDM-002, SEC-AP
       await send(rig, GOOD_KEY, { extra: { Authorization: "synthetic-credential-a" } }),
       await send(rig, GOOD_KEY, { extra: { Authorization: "synthetic-credential-b" } }),
       await send(rig, GOOD_KEY, { path: `/api/v1/test/idempotent/${ORDER_REF.toUpperCase()}` }),
+      await send(rig, GOOD_KEY, { extra: { Cookie: "synthetic=a" } }),
+      await send(rig, GOOD_KEY, { extra: { Cookie: "synthetic=b" } }),
     ];
     for (const [i, variant] of variants.entries()) {
       expect(same(variant.keyDigest, reference.keyDigest), `key ${i}`).toBe(true);
       expect(same(variant.requestDigest, reference.requestDigest), `request ${i}`).toBe(true);
     }
     expect(goodBody.items[0]?.ref).toBe(ORDER_REF);
+    checkLogs(rig, "(a)-(d)");
   });
   it("(e) another key with the same body: the request digest is the same, the key digest differs", async () => {
     const rig = idempotencyRig();
@@ -209,6 +278,7 @@ describe("TC-API-IDM-005-003 digests over HTTP (API-IDM-005, TST-IDM-002, SEC-AP
     const second = await send(rig, "synthetic-idem-key-0002");
     expect(same(second.requestDigest, first.requestDigest)).toBe(true);
     expect(same(second.keyDigest, first.keyDigest)).toBe(false);
+    checkLogs(rig, "(e)");
   });
   it("(f) the same key with another quantity: the key digest is the same, the request digest differs", async () => {
     const rig = idempotencyRig();
@@ -218,6 +288,7 @@ describe("TC-API-IDM-005-003 digests over HTTP (API-IDM-005, TST-IDM-002, SEC-AP
     });
     expect(same(second.keyDigest, first.keyDigest)).toBe(true);
     expect(same(second.requestDigest, first.requestDigest)).toBe(false);
+    checkLogs(rig, "(f)");
   });
   it("the context carries exactly four members and none holds the request id or the raw key", async () => {
     const rig = idempotencyRig();
@@ -233,6 +304,7 @@ describe("TC-API-IDM-005-003 digests over HTTP (API-IDM-005, TST-IDM-002, SEC-AP
       expect(value).not.toBe(GOOD_KEY);
       expect(String(value)).not.toContain(requestId);
     }
+    checkLogs(rig, "context");
   });
 });
 
@@ -247,6 +319,7 @@ describe("TC-DEV-API-007-002 a wiring defect fails closed with 500 (DEV-API-007,
     const response = await rig.post(`/api/v1/test/fc/${name}/${ORDER_REF}`);
     await expectFailure(response, 500, "INTERNAL_ERROR", label);
     expect(rig.seen, label).toHaveLength(0);
+    expectCompletionAndRedaction(rig, [response], [], label);
   });
 
   const normalizeFaults: [label: string, name: string][] = [
