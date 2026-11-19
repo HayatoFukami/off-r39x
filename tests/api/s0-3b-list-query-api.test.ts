@@ -1,0 +1,138 @@
+import { listDataSchema, listQuerySchema } from "@off-r39x/api-contract";
+import { expect, expectTypeOf, it } from "vitest";
+import { z } from "zod";
+import { createApp } from "../../apps/api/src/api/app.ts";
+import { validateQuery } from "../../apps/api/src/api/middleware/query.ts";
+import { defineListCursor, readListCursor } from "../../apps/api/src/api/pagination.ts";
+import { successResponse } from "../../apps/api/src/api/respond.ts";
+import { createLogger } from "../../packages/observability/src/index.ts";
+import { syntheticCursorKey } from "../harness/pagination.ts";
+
+const REF = "00000000-0000-4000-8000-0000000000a1";
+const TIMESTAMP = "2026-11-20T00:00:00.000000Z";
+const K1 = syntheticCursorKey(0x11, 1);
+const cursorDef = defineListCursor({
+  operationId: "API-ADM-ORD-001",
+  keys: z.tuple([z.string()]),
+});
+const querySchema = listQuerySchema({ state: z.enum(["CONFIRMED", "CANCELED"]).optional() });
+
+function build() {
+  const lines: string[] = [];
+  const logger = createLogger(
+    { service: "API", environment: "test", actor_type: "GUEST" },
+    (line) => {
+      lines.push(line);
+    },
+  );
+  const app = createApp({ webOrigin: "https://web.example.test", ready: async () => true, logger });
+  const handled: { limit: number; position: unknown }[] = [];
+  // Harness-only route; the production app mounts no list Operation (plan A7). Order: validate, then
+  // read the cursor with the validated filter as binding, then the handler. The handler reads the
+  // query through the same middleware instance, typed from its schema (PR #74 review): no cast.
+  const listQuery = validateQuery(querySchema);
+  app.get("/api/v1/test/list", listQuery, (c) => {
+    const query = listQuery.read(c);
+    expectTypeOf(query).toEqualTypeOf<z.output<typeof querySchema>>();
+    expect(c.get("validatedQuery")).toBe(query);
+    const position = readListCursor(cursorDef, K1, query);
+    handled.push({ limit: query.limit, position });
+    return successResponse(c, listDataSchema(z.strictObject({})), {
+      items: [],
+      page: { next_cursor: null, has_more: false },
+    });
+  });
+  // Wiring error: a handler reading through an instance that did not run is a 500, never data.
+  const otherQuery = validateQuery(querySchema);
+  app.get("/api/v1/test/miswired", listQuery, (c) => {
+    otherQuery.read(c);
+    return c.text("unreachable");
+  });
+  const requestIds: string[] = [];
+  const get = async (query: string) => {
+    const res = await app.request(`/api/v1/test/list${query}`, {
+      headers: { Origin: "https://web.example.test" },
+    });
+    requestIds.push(res.headers.get("X-Request-Id") ?? "");
+    return res;
+  };
+  return { app, get, handled, lines, requestIds };
+}
+
+it("TC-API-QRY-001-002 list query: unknown, duplicate, out-of-range and tampered input is 400 VALIDATION_FAILED before the handler", async () => {
+  const { app, get, handled, lines, requestIds } = build();
+
+  const first = await get("");
+  expect(first.status).toBe(200);
+  expect((await first.json()).data.page).toEqual({ next_cursor: null, has_more: false });
+  expect(handled).toEqual([{ limit: 30, position: undefined }]);
+  handled.length = 0;
+
+  const good = cursorDef.encode(K1, { keys: [TIMESTAMP], publicRef: REF }, { state: "CONFIRMED" });
+  const tampered = `${good.slice(0, -2)}${good.endsWith("AA") ? "BB" : "AA"}`;
+  const bad = [
+    "?foo=1",
+    "?sort=created_at",
+    "?offset=0",
+    "?order_by=x",
+    "?limit=0",
+    "?limit=101",
+    "?limit=1&limit=2",
+    // F-1: nameless parameters are unknown queries, not dropped (API-QRY-001).
+    "?=x",
+    "?=",
+    "?limit=1&=x",
+    "?&=1",
+    "?cursor=",
+    `?cursor=${tampered}`,
+    `?state=CANCELED&cursor=${good}`,
+    // F-4: a cursor made under a state filter is refused when the filter is absent.
+    `?cursor=${good}`,
+  ];
+  for (const query of bad) {
+    const res = await get(query);
+    expect(res.status, query).toBe(400);
+    const body = await res.json();
+    expect(body.error, query).toMatchObject({
+      code: "VALIDATION_FAILED",
+      retryable: false,
+      details: null,
+    });
+    expect(body.error.request_id, query).toBe(res.headers.get("X-Request-Id"));
+    expect(res.headers.get("Cache-Control"), query).toBe("no-store");
+    const text = JSON.stringify(body);
+    for (const echoed of ["created_at", "foo", tampered, good]) expect(text).not.toContain(echoed);
+  }
+  expect(handled).toEqual([]);
+
+  const ok = await get(`?state=CONFIRMED&cursor=${good}`);
+  expect(ok.status).toBe(200);
+  expect(handled).toEqual([{ limit: 30, position: { keys: [TIMESTAMP], publicRef: REF } }]);
+
+  // (e) SPEC-160-15: every request has one http.request.completed line (matched by request_id),
+  // and no logged line carries the query, a cursor or a query value.
+  expect(requestIds.length).toBe(bad.length + 2);
+  const records = lines.map((line) => JSON.parse(line) as Record<string, unknown>);
+  for (const id of requestIds) {
+    const done = records.filter(
+      (r) => r.event_name === "http.request.completed" && r.request_id === id,
+    );
+    expect(done, id).toHaveLength(1);
+    expect(String(done[0]?.http_route)).not.toContain("?");
+  }
+  for (const line of lines) {
+    for (const secret of [good, tampered, "foo", "created_at", "?"]) {
+      expect(line).not.toContain(secret);
+    }
+  }
+
+  // Wiring error (PR #74 review): reading through a validateQuery instance that did not run for the
+  // request is 500 INTERNAL_ERROR, never another schema's data.
+  const miswired = await app.request("/api/v1/test/miswired?state=CONFIRMED", {
+    headers: { Origin: "https://web.example.test" },
+  });
+  expect(miswired.status).toBe(500);
+  const failure = (await miswired.json()) as { error: { code: string } };
+  expect(failure.error.code).toBe("INTERNAL_ERROR");
+  expect(handled).toHaveLength(1);
+});

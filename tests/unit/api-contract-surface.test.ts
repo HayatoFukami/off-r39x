@@ -124,8 +124,9 @@ function buildApp(
 
 describe("TC-DEV-API-002-001 public surface of @off-r39x/api-contract", () => {
   // S0-3a adds errorRetryable (SPEC-110 section 21 Retryable column); L2-1a adds the two profile
-  // schemas. The five earlier values are unchanged.
-  it("exports exactly the eight runtime values", async () => {
+  // schemas. The five earlier values are unchanged. S0-3b: SPEC-110 section 12 / 48.3 list schemas
+  // (listDataSchema, listQuerySchema, pageQuery) are added (a change by the specification).
+  it("exports exactly the eleven runtime values", async () => {
     const surface = await import("@off-r39x/api-contract");
     expect(Object.keys(surface).sort()).toEqual([
       "createPublicRpc",
@@ -133,6 +134,9 @@ describe("TC-DEV-API-002-001 public surface of @off-r39x/api-contract", () => {
       "errorRetryable",
       "errorSchema",
       "errorStatuses",
+      "listDataSchema",
+      "listQuerySchema",
+      "pageQuery",
       "principalNavigationSchema",
       "successSchema",
       "updateCurrentProfileRequestSchema",
