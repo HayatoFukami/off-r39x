@@ -3485,7 +3485,6 @@
         "TC-RPC-AUDIT-001",
         "TC-DEV-API-003-001",
         "TC-API-007-003",
-        "TC-API-007-004",
         "TC-DEV-API-003-002",
         "TC-DEV-API-003-003",
         "TC-DEV-API-003-004"
@@ -3507,8 +3506,6 @@
         "TC-RPC-AUDIT-001",
         "TC-DEV-API-002-001",
         "TC-DEV-API-002-002",
-        "TC-API-007-003",
-        "TC-API-007-004",
         "TC-API-007-009"
       ],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
@@ -4344,7 +4341,8 @@
         "TC-RLM-004-262",
         "TC-RLM-004-263",
         "TC-RLM-005-224",
-        "TC-SEC-ABU-017-001"
+        "TC-SEC-ABU-017-001",
+        "TC-API-007-004"
       ],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
@@ -4538,7 +4536,7 @@
     {
       "rule_id": "API-RLC-002",
       "code_paths": ["packages/security/src/rate-limit/operations.ts"],
-      "test_case_ids": ["TC-RLM-007-001"],
+      "test_case_ids": ["TC-RLM-007-001", "TC-API-007-004"],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
     {
@@ -4752,7 +4750,13 @@
         "apps/api/src/api/app.ts",
         "packages/security/src/rate-limit/limiter.ts"
       ],
-      "test_case_ids": ["TC-RLM-007-002", "TC-RLM-007-003", "TC-RLM-004-290", "TC-RLM-004-293"],
+      "test_case_ids": [
+        "TC-RLM-007-002",
+        "TC-RLM-007-003",
+        "TC-RLM-004-290",
+        "TC-RLM-004-293",
+        "TC-API-007-004"
+      ],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
     {
@@ -5031,7 +5035,7 @@
     {
       "rule_id": "API-RLC-005",
       "code_paths": ["packages/security/src/rate-limit/operations.ts"],
-      "test_case_ids": ["TC-RLM-007-202"],
+      "test_case_ids": ["TC-RLM-007-202", "TC-API-007-004"],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
     {
@@ -5268,8 +5272,14 @@
         "apps/api/src/api/respond.ts",
         "packages/db/src/transactions/profile.ts"
       ],
-      "test_case_ids": ["TC-REL-DB-009-001", "TC-REL-DB-009-002", "TC-REL-DB-009-003"],
-      "notes": "Backend foundation only; no business Operation uses this yet"
+      "test_case_ids": [
+        "TC-REL-DB-009-001",
+        "TC-REL-DB-009-002",
+        "TC-REL-DB-009-003",
+        "TC-API-007-005",
+        "TC-API-007-008"
+      ],
+      "notes": "Backend foundation; the self profile repository (API-AUTH-002 / API-AUTH-004) is the first business use: pool acquisition timeout and codeless connection failures return unavailable"
     }
   ]
 }

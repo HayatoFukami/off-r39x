@@ -25654,7 +25654,8 @@
         "AR-OWN-006",
         "SPEC-100-14.1",
         "SPEC-110-50",
-        "SPEC-110-51"
+        "SPEC-110-51",
+        "REL-DB-009"
       ],
       "system_invariant_ids": ["INV-010-08"],
       "api_operation_ids": [],
@@ -25777,7 +25778,8 @@
         "API-AUTH-004",
         "DEV-DB-002",
         "SPEC-110-50",
-        "SPEC-110-51"
+        "SPEC-110-51",
+        "REL-DB-009"
       ],
       "system_invariant_ids": ["INV-010-08"],
       "api_operation_ids": ["API-AUTH-002", "API-AUTH-004"],
@@ -25995,7 +25997,8 @@
         "An array carrying an own enumerable non-index key (an extra property, or an own toJSON function) is not losslessly representable: it answers 500 INTERNAL_ERROR with details null and neither the body nor the log contains the extra or replacement values, while an ordinary array of elements stays 200",
         "An object with an undefined optional property, null, an empty array and nested plain objects stay 200 with data present (an undefined property is simply absent in JSON)",
         "The sent data is a JSON-only copy built during validation, so the check and the bytes agree: a plain object (top-level, nested or null-prototype) with a non-enumerable toJSON, an array with a non-enumerable index or a non-enumerable extra key, and an object with an enumerable getter answer 500 INTERNAL_ERROR with details null and neither the body nor the log contains the values",
-        "An object with an own string-valued toJSON key stays 200 with the key sent as data, and a non-enumerable own property is not sent (as in JSON); each property is read once, so a Proxy whose value changes on every get is sent with the first value and is not re-read after the check"
+        "An object with an own string-valued toJSON key stays 200 with the key sent as data, and a non-enumerable own property is not sent (as in JSON); each property is read once, so a Proxy whose value changes on every get is sent with the first value and is not re-read after the check",
+        "Data whose reported prototype chain revisits an object or does not reach null within the bound (a Proxy whose getPrototypeOf returns itself, top-level, nested or wrapping an array, or returns a fresh object each time) answers 500 INTERNAL_ERROR with details null without hanging; the walk stops after fewer than 100 getPrototypeOf calls and neither the body nor the log contains the data values"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
