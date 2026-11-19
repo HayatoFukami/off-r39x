@@ -350,6 +350,34 @@ describe("TC-REL-DB-009-001 transaction() types a codeless connection failure", 
     },
   );
 
+  // PR #66 review round 2: an errno thrown by the callback itself on a healthy connection is not
+  // proof that the database failed (it may come from a provider call), so it is rethrown unchanged.
+  it.each(["ECONNRESET", "EPIPE", "EAI_AGAIN", "ECONNREFUSED", "ETIMEDOUT"])(
+    "(f) errno %s thrown by the callback itself on a healthy connection is rethrown unchanged",
+    async (code) => {
+      const fake = createFakePool();
+      const { logger, count } = collector();
+      const original = syntheticSqlstateError(code, MARKER);
+      let calls = 0;
+      const error = await settle(
+        transaction(
+          fake.pool,
+          async () => {
+            calls++;
+            throw original;
+          },
+          { logger, queryName: "unavailable.callback.errno" },
+        ),
+      );
+      expect(error).toBe(original);
+      expect(error).not.toBeInstanceOf(DatabaseUnavailableError);
+      expect(calls).toBe(1);
+      expect(fake.connectAttempts()).toBe(1);
+      expect(count("db.availability.failed")).toBe(1);
+      expect(count("db.transaction.retry_scheduled")).toBe(0);
+    },
+  );
+
   it("(c2) a connect() failing with SQLSTATE 08006 is rethrown as it is, not typed", async () => {
     const cause = syntheticSqlstateError("08006", MARKER);
     const fake = createFakePool(undefined, {

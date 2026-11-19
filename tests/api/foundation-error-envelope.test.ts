@@ -7,8 +7,9 @@ import {
   errorSchema,
   errorStatuses,
 } from "../../packages/api-contract/src/index.ts";
-import { DatabaseUnavailableError } from "../../packages/db/src/index.ts";
+import { DatabaseUnavailableError, transaction } from "../../packages/db/src/index.ts";
 import { createLogger } from "../../packages/observability/src/index.ts";
+import { createFakePool } from "../harness/db/fake-pool.ts";
 
 // PR-S0-3a C1: the error envelope, the success envelope and the domain-result mapping of apps/api,
 // driven through harness-only routes added to a test app (TST-GEN-006: nothing is added to the
@@ -465,6 +466,57 @@ describe("TC-REL-DB-009-002 database availability failures are 503, never a leak
     expect(text).not.toContain(MARKER);
     expect(logged).toHaveLength(1);
     expect(logged[0]?.http_status).toBe(500);
+  });
+
+  // PR #66 review round 2: through the real transaction() boundary, an errno from the callback's
+  // client.query() is DB-originated (503), but an errno the callback throws itself is not (500).
+  describe("through transaction() on a fake pool", () => {
+    const PROBE = "SELECT synthetic_probe";
+    async function callTx(mode: "query" | "own") {
+      const { app, completions, lines } = rig();
+      const original = Object.assign(new Error(MARKER), { code: "ECONNRESET" });
+      const fake = createFakePool(({ sql }) =>
+        mode === "query" && sql === PROBE ? original : undefined,
+      );
+      app.get("/api/v1/test/tx-failure", async (c) => {
+        await transaction(
+          fake.pool,
+          async (client) => {
+            if (mode === "query") await client.query(PROBE);
+            else throw original;
+          },
+          { queryName: "test.tx.errno" },
+        );
+        return c.json({ ok: true });
+      });
+      const response = await app.request("/api/v1/test/tx-failure");
+      const { text, error } = await readError(response);
+      return { response, text, error, logged: completions(String(error.request_id)), lines };
+    }
+
+    it("a failing client.query() inside the callback is 503 DATABASE_TEMPORARY_FAILURE", async () => {
+      const { response, text, error, logged, lines } = await callTx("query");
+      expectEnvelope(response, text, "DATABASE_TEMPORARY_FAILURE");
+      expect(error).toMatchObject({ retryable: true, details: null });
+      for (const leaked of [MARKER, "ECONNRESET"]) {
+        expect(text).not.toContain(leaked);
+        expect(lines.join(" ")).not.toContain(leaked);
+      }
+      expect(logged).toHaveLength(1);
+      expect(logged[0]?.http_status).toBe(503);
+    });
+
+    it("an errno thrown by the callback itself is 500 INTERNAL_ERROR", async () => {
+      const { response, text, error, logged, lines } = await callTx("own");
+      expectEnvelope(response, text, "INTERNAL_ERROR");
+      expect(error).toMatchObject({ retryable: false, details: null });
+      for (const leaked of [MARKER, "ECONNRESET"]) {
+        expect(text).not.toContain(leaked);
+        expect(lines.join(" ")).not.toContain(leaked);
+      }
+      expect(logged).toHaveLength(1);
+      expect(logged[0]?.http_status).toBe(500);
+    });
   });
 
   it("an error with no SQLSTATE and no typed wrapper is a defect: 500 INTERNAL_ERROR, not 503", async () => {

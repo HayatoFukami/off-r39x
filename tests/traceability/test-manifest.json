@@ -17683,7 +17683,8 @@
       ],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "Fail closed within the canonical boundary; no unintended business mutation"
+        "Fail closed within the canonical boundary; no unintended business mutation",
+        "An errno (ECONNRESET, EPIPE) thrown by the callback itself is rethrown unchanged with one db.availability.failed log and no retry"
       ],
       "expected_db_postconditions": [
         "A throwing logger leaves one committed row and a committed result"
@@ -25279,6 +25280,7 @@
         "A codeless pool connect failure or a codeless failure on a discarded connection rejects with DatabaseUnavailableError carrying the original as cause and a fixed message; the callback does not run for a connect failure; no retry is scheduled",
         "A connect or query failure that carries only a Node errno (ECONNRESET, ECONNREFUSED, EPIPE, ETIMEDOUT, ENOTFOUND, EHOSTUNREACH, ENETUNREACH, EAI_AGAIN) rejects with DatabaseUnavailableError carrying the original as cause",
         "An error that carries a connection SQLSTATE (08006), at query or connect, is rethrown as it is, and a codeless error from a healthy connection stays the callback's own error",
+        "An errno (ECONNRESET, EPIPE, EAI_AGAIN, ECONNREFUSED, ETIMEDOUT) thrown by the callback itself on a healthy connection is rethrown as the identical original error, not DatabaseUnavailableError; db.availability.failed is logged once and no retry is scheduled",
         "connectAttempts() counts every connect() call whether or not a connect hook is given"
       ],
       "expected_db_postconditions": [],
@@ -25421,6 +25423,7 @@
       "expected_domain_postconditions": [
         "Connection-class SQLSTATE (08006, 57P01) and DatabaseUnavailableError answer 503 DATABASE_TEMPORARY_FAILURE with retryable true, details null and no SQLSTATE or message in the body",
         "A bare Node errno (ECONNRESET, EAI_AGAIN) thrown by a handler answers 500 INTERNAL_ERROR with no errno or message in the body, since SPEC-110 section 51 makes only a database connection failure a 503",
+        "Through transaction() on a fake pool, an errno from the callback's client.query() answers 503 DATABASE_TEMPORARY_FAILURE and an errno thrown by the callback itself answers 500 INTERNAL_ERROR; neither the errno nor the marker appears in the body or the logs",
         "A plain Error without SQLSTATE answers 500 INTERNAL_ERROR; 57014 stays 500 INTERNAL_ERROR in this change"
       ],
       "expected_db_postconditions": [],
