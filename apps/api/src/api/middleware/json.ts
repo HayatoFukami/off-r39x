@@ -28,8 +28,13 @@ export function rejectDuplicateKeys(raw: string): void {
     }
   }
 }
-/** Mount only on a canonical JSON operation, after streaming bodyLimit. */
-export function validateJson<T extends z.ZodType>(schema: T): MiddlewareHandler<ApiEnvironment> {
+/**
+ * Mount only on a canonical JSON operation, after streaming bodyLimit. The type carries the request
+ * body as Hono's `in` input for hc<AppType> only; the parsed value is read from `validatedJson`.
+ */
+export function validateJson<T extends z.ZodType>(
+  schema: T,
+): MiddlewareHandler<ApiEnvironment, string, { in: { json: z.input<T> } }> {
   return async (c, next) => {
     if (!/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(c.req.header("Content-Type") ?? ""))
       throw new ApiFailure("UNSUPPORTED_MEDIA_TYPE");
