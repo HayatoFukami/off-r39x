@@ -25560,7 +25560,7 @@
         "null, empty and whitespace-only inputs (space, U+3000, tab, line feed, U+FEFF) normalize to null; surrounding whitespace is trimmed with ECMAScript trim()",
         "1, 80 and trimmed-80 code points are accepted; 81 is too_long, counted in code points for ASCII, emoji (160 UTF-16 units), combining sequences and ZWJ sequences; no Unicode normalization is applied",
         "A Cc character (NUL, BEL, U+001F, DEL, U+0080, NEL, U+009F, tab, line feed) in the trimmed value, inside or at either end, is control_character and is judged before the length; Cf characters (U+200B, U+200D) are accepted",
-        "UCR-030-001: a value that is not well-formed (lone high or low surrogate, reversed pair, a lone surrogate mixed with text, after a valid pair, between spaces, in an 81 code point value or with a Cc) is not_well_formed, judged first, and is never repaired (no U+FFFD, no removal); a correctly paired surrogate is accepted as one code point",
+        "UCR-030-001: a value that is not well-formed (lone high or low surrogate, reversed pair, a lone surrogate mixed with text, after a valid pair, between spaces, in an 81 code point value or with a Cc) is not_well_formed, judged first, and is never repaired (no U+FFFD, no removal); a correctly paired surrogate is accepted as one code point; the judgment agrees with String.prototype.isWellFormed() for single and paired code units around the surrogate range",
         "The function is pure: repeated calls give equal results and the input is unchanged"
       ],
       "expected_db_postconditions": [],

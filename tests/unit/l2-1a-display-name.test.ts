@@ -98,6 +98,21 @@ describe("TC-API-007-002 normalizeDisplayName (SPEC-030 §9.2, BR-USR-001, SEC-A
     }
   });
 
+  it("agrees with String.prototype.isWellFormed() around the surrogate range (UCR-030-001: an equivalent)", () => {
+    const isWellFormed = (s: string) =>
+      (s as unknown as { isWellFormed(): boolean }).isWellFormed();
+    const units = [0xd7ff, 0xd800, 0xd83d, 0xdbff, 0xdc00, 0xde00, 0xdfff, 0xe000, 0x61];
+    for (const a of units) {
+      for (const b of [undefined, ...units]) {
+        const s = b === undefined ? String.fromCharCode(a) : String.fromCharCode(a, b);
+        const result = normalize(s);
+        const label = JSON.stringify(s);
+        if (isWellFormed(s)) expect(result.ok, label).toBe(true);
+        else expect(result, label).toEqual(notWellFormed);
+      }
+    }
+  });
+
   it("does not apply Unicode normalization (a decomposed sequence stays decomposed)", () => {
     const result = normalize(KA);
     expect(result).toEqual(ok(KA));
