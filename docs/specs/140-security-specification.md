@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-140
 title: Security Specification
-version: 2.4.1
+version: 2.5.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -789,6 +789,7 @@ RLSを追加のdefense-in-depthとして将来採用してよいが、Hono API a
 | Application signing/encryption key | S1 Critical | その用途のserver component only |
 | Rate limit store connection credential | S1 Critical | Hono rate limit component only（API serviceのみ。Worker / Migrator / Purge / Backupへ配布しない） |
 | Rate limit counter HMAC key | S1 Critical | Hono rate limit component only（API serviceのみ） |
+| List cursor HMAC key | S1 Critical | Hono API list pagination component only（API serviceのみ。`SPEC-110` `API-QRY-005`、`SPEC-180` §28.3） |
 | CSRF token / OAuth state | S2 Ephemeral | Provider protocolの必要な当事者のみ。認証中継で保護しlogへ出さない |
 
 **SEC-KEY-001:** S1 Secretを`VITE_*`、Client-side environment、HTML、source map、analytics、error messageへ公開しない。Pagesの静的buildへserver Secretを渡さない。
@@ -810,6 +811,7 @@ RLSを追加のdefense-in-depthとして将来採用してよいが、Hono API a
 - QR HMAC / AEAD keys
 - application signing keys
 - Rate limit store credential / Rate limit counter HMAC key
+- List cursor HMAC key
 
 **SEC-KEY-005:** Production SecretをCI log、developer shell history、issue tracker、chat、test fixtureへコピーしない。
 
@@ -1510,6 +1512,7 @@ Production startup / readinessで最低限次を検証する。
 - duplicate QR key versionなし
 - rate limitがpositiveかつ§68上限以下（`SEC-ABU-010`。全Class IDの値が揃っていること）
 - rate limit store connection credentialとcounter HMAC key（current versionを含む）が存在し、storeへ接続でき、必要なscriptを実行できること
+- list cursor HMAC key（current versionを含む）が存在し、形式が正しいこと（`SPEC-180` `INF-SEC-007`）
 - Client IP導出のtrusted proxy設定が明示されていること（`SEC-API-030`）
 - Productionでdebug / public source map無効
 
@@ -1847,6 +1850,14 @@ Production startup / readinessで最低限次を検証する。
 - **PR #46 のレビューを受けた仕様の補足:** 既知のkeyのcache期限（10分）と単調時計（`SPEC-150` `REL-AUTH-002`、`SPEC-180` `INF-HLT-005`）、guard判定のClass ID（`SPEC-160` §24.1。Actorの記録は第8回レビューで修正）、`auth_form_proxy` の全ての早期拒否での接続切断（`SEC-ABU-031`）を明確にした。**本書側反映:** `SEC-ABU-031`。
 - **PR #41 第6回レビューによる追加（テストの期待値）:** 「存在する/しないresourceで同一結果」は、counter履歴が異なる場合に成り立たず、また段階3の後に `404` になる場合を扱えなかった。認可失敗は未記録、段階3の後の `404` / `409` は記録済み、同一履歴のkey間の比較を、別々に検証する（`SPEC-170` `TST-RLM-004`）。**本書側反映:** `SEC-ABU-029`。
 - 影響を受ける可能性がある仕様書: SPEC-110, SPEC-150, SPEC-170, SPEC-180
+
+### 101.6 UCR-180-002 — INCORPORATED
+
+`SPEC-180` が起票した一覧cursorの署名鍵の要求（`UCR-180-002`、`SPEC-180` §81）のうち、本書が所有する部分を本改訂（v2.5.0）で反映した。現在の契約は本文を正とする。
+
+- **Status:** `INCORPORATED`（`SPEC-180 v2.5.0` §28.3、`SPEC-140 v2.5.0`）
+- **本書側反映:** §44（List cursor HMAC keyの行）、§45、§85。§46のrotation baselineは変更しない（graceを明示しないため、既定どおりprevious keyを受け付けない）。
+- **残作業:** なし。
 
 ---
 
