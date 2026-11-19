@@ -25367,6 +25367,7 @@
         "successResponse and respond accept the schema input type and send the parsed output (a transform runs: input count \"3\" is sent as the number 3)",
         "successResponse with parsed data that is undefined (a transform to undefined) answers 500 INTERNAL_ERROR with details null instead of a 200 or 201 without data, and the input value is not echoed",
         "successResponse sends data only when the parsed data is losslessly JSON-representable (null, boolean, string, finite number, array of JSON values, plain object whose properties are JSON values or undefined); a top-level symbol, function, bigint, NaN, Infinity, Date or Map, a symbol property, an undefined array element or a bigint array element answers 500 INTERNAL_ERROR with details null and no echo of the value",
+        "An array carrying an own enumerable non-index key (an extra property, or an own toJSON function) is not losslessly representable: it answers 500 INTERNAL_ERROR with details null and neither the body nor the log contains the extra or replacement values, while an ordinary array of elements stays 200",
         "An object with an undefined optional property, null, an empty array and nested plain objects stay 200 with data present (an undefined property is simply absent in JSON)"
       ],
       "expected_db_postconditions": [],

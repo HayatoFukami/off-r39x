@@ -96,6 +96,15 @@ const unrepresentable: readonly (readonly [string, () => unknown])[] = [
   ["symbol property in an object", () => ({ label: MARKER_NESTED, bad: Symbol("synthetic") })],
   ["undefined array element", () => [MARKER_NESTED, undefined]],
   ["bigint array element", () => [MARKER_NESTED, 1n]],
+  // Review fix: JSON.stringify drops a non-index own key (extra) and calls an own toJSON (replaced).
+  [
+    "top-level array with a non-index own key",
+    () => Object.assign([MARKER_NESTED], { extra: "x" }),
+  ],
+  [
+    "array with an own toJSON inside an object property",
+    () => ({ label: MARKER_NESTED, list: Object.assign(["a"], { toJSON: () => "replaced" }) }),
+  ],
 ];
 const representable: readonly (readonly [string, () => unknown, unknown])[] = [
   [
@@ -105,6 +114,7 @@ const representable: readonly (readonly [string, () => unknown, unknown])[] = [
   ],
   ["null", () => null, null],
   ["empty array", () => [], []],
+  ["ordinary array (index elements only)", () => ["a", 1, null], ["a", 1, null]],
   [
     "nested plain objects and arrays",
     () => ({ a: { b: [1, "two", true, null, { c: 0 }] }, n: Object.create(null) }),
@@ -324,7 +334,13 @@ describe("TC-DEV-API-003-003 the success envelope is built in one place and vali
       expectEnvelope(response, text, "INTERNAL_ERROR", _label);
       expect(error).toMatchObject({ retryable: false, details: null, message: FIXED_MESSAGE });
       expect(Object.keys(JSON.parse(text) as Json)).toEqual(["error"]);
-      for (const leaked of [MARKER_NESTED, "synthetic-input-marker", "9007199254740993"]) {
+      for (const leaked of [
+        MARKER_NESTED,
+        "synthetic-input-marker",
+        "9007199254740993",
+        "extra",
+        "replaced",
+      ]) {
         expect(text, leaked).not.toContain(leaked);
         expect(lines.join("\n"), leaked).not.toContain(leaked);
       }
