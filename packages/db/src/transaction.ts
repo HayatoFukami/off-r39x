@@ -11,6 +11,7 @@ import type { Pool, PoolClient } from "pg";
 import {
   DatabaseUnavailableError,
   isDatabaseUnavailableCode,
+  isSqlstate,
   sqlState,
   TransactionDeadlineError,
 } from "./errors.ts";
@@ -25,9 +26,7 @@ function commitAcknowledgementUnknown(error: unknown): boolean {
   // proves COMMIT rejected. Node transport errors are never that evidence.
   return (
     error instanceof TransactionDeadlineError ||
-    !code ||
-    !/^[0-9A-Z]{5}$/.test(code) ||
-    code === "EPIPE" ||
+    !isSqlstate(code) ||
     code.startsWith("08") ||
     ["57P01", "57P02", "57P03"].includes(code)
   );
@@ -178,7 +177,7 @@ export async function transaction<T>(
         is_retry: attempt > 1,
         attempt_number: attempt,
         query_name: queryName,
-        ...(code && code !== "EPIPE" && /^[0-9A-Z]{5}$/.test(code) ? { sqlstate: code } : {}),
+        ...(isSqlstate(code) ? { sqlstate: code } : {}),
         duration_ms: Math.floor(performance.now() - start),
       });
       if (client && !discard) {
@@ -211,9 +210,9 @@ export async function transaction<T>(
         exhausted();
       const policy = isDatabaseRetryable(error) ? RETRY_POLICIES[error.code] : undefined;
       if (!policy || discard) {
-        // A connection failure that carries no SQLSTATE / errno is typed so the API layer can answer
-        // 503 instead of treating it as a defect (REL-DB-009). Coded errors are rethrown as they are.
-        if (unavailable && sqlState(error) === undefined)
+        // A connection failure without a SQLSTATE (an errno or no code) is typed here so the API layer
+        // answers 503 from the boundary type alone (REL-DB-009). 08xxx / 57P01-03 are rethrown as they are.
+        if (unavailable && !isSqlstate(sqlState(error)))
           throw new DatabaseUnavailableError({ cause: error });
         throw error;
       }

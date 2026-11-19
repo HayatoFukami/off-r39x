@@ -7,9 +7,10 @@ export class TransactionDeadlineError extends Error {
 }
 
 /**
- * The database could not be reached or a connection was lost, and the failure carried no SQLSTATE or
- * errno of its own (for example a pool acquisition timeout). The fixed message never repeats the
- * original error; that stays only in `cause` (REL-DB-009, SEC-ERR-003).
+ * The database could not be reached or a connection was lost, and the failure carried no SQLSTATE
+ * (a Node errno such as ECONNRESET, or no code at all, for example a pool acquisition timeout). The
+ * DB boundary types it so the API layer answers 503 without trusting a bare errno. The fixed message
+ * never repeats the original error; that stays only in `cause` (REL-DB-009, SEC-ERR-003).
  */
 export class DatabaseUnavailableError extends Error {
   constructor(options: { readonly cause: unknown }) {
@@ -27,6 +28,11 @@ export function sqlState(error: unknown): string | undefined {
     : undefined;
 }
 
+/** A server SQLSTATE: five characters of `[0-9A-Z]`; `EPIPE` is a Node errno that happens to fit. */
+export function isSqlstate(code: string | undefined): code is string {
+  return code !== undefined && code !== "EPIPE" && /^[0-9A-Z]{5}$/.test(code);
+}
+
 const UNAVAILABLE_CODES: ReadonlySet<string> = new Set([
   "57P01",
   "57P02",
@@ -38,10 +44,22 @@ const UNAVAILABLE_CODES: ReadonlySet<string> = new Set([
   "ENOTFOUND",
   "EHOSTUNREACH",
   "ENETUNREACH",
+  "EAI_AGAIN",
 ]);
-/** Connection-class SQLSTATE (`08xxx`), server shutdown (`57P01`-`57P03`) and Node connection errno. */
+/**
+ * Transaction-internal judgement: connection-class SQLSTATE (`08xxx`), server shutdown
+ * (`57P01`-`57P03`) and Node connection errno. Not the API classification, which accepts only
+ * typed errors and SQLSTATE (see `isUnavailableSqlstate`).
+ */
 export function isDatabaseUnavailableCode(code: string): boolean {
   return code.startsWith("08") || UNAVAILABLE_CODES.has(code);
+}
+
+function isUnavailableSqlstate(code: string): boolean {
+  return (
+    isSqlstate(code) &&
+    (code.startsWith("08") || code === "57P01" || code === "57P02" || code === "57P03")
+  );
 }
 
 export type ConstraintSqlstate = "23505" | "23P01" | "23503" | "23514";
@@ -69,7 +87,7 @@ export function classifyDatabaseError(error: unknown): DatabaseErrorClass {
   if (isDatabaseRetryable(error)) return { kind: "retryable", sqlstate: error.code };
   const code = sqlState(error);
   if (code === undefined) return { kind: "other" };
-  if (isDatabaseUnavailableCode(code)) return { kind: "unavailable" };
+  if (isUnavailableSqlstate(code)) return { kind: "unavailable" };
   if (code === "57014") return { kind: "statement_timeout" };
   if (isConstraintSqlstate(code)) {
     const constraint =

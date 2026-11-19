@@ -24,6 +24,12 @@ function messageFor(code: ErrorCode): string {
   return code === "RESOURCE_NOT_FOUND" ? "Requested resource was not found." : FIXED_MESSAGE;
 }
 
+/**
+ * Operations whose SPEC-110 section 28 contract defines `STATE_CONFLICT` details (`item_failures`):
+ * only `API-PUR-CART-001`. Details on any other operation (or none known) are a producer defect.
+ */
+const ITEM_FAILURE_OPERATIONS: ReadonlySet<string> = new Set(["API-PUR-CART-001"]);
+
 export function errorResponse<C extends ErrorCode>(
   c: AppContext,
   code: C,
@@ -31,16 +37,23 @@ export function errorResponse<C extends ErrorCode>(
 ) {
   c.header("Cache-Control", "no-store");
   const requestId = c.get("requestId");
-  const parsed = errorSchema.safeParse({
-    error: {
-      code,
-      message: messageFor(code),
-      request_id: requestId,
-      // A conditional Retryable (section 21) has no defined condition yet, so it resolves to false.
-      retryable: errorRetryable[code] === true,
-      details: options.details ?? null,
-    },
-  });
+  const operationId = c.get("operationId");
+  const scopedOut =
+    code === "STATE_CONFLICT" &&
+    options.details != null &&
+    (operationId === undefined || !ITEM_FAILURE_OPERATIONS.has(operationId));
+  const parsed = scopedOut
+    ? { success: false as const }
+    : errorSchema.safeParse({
+        error: {
+          code,
+          message: messageFor(code),
+          request_id: requestId,
+          // A conditional Retryable (section 21) has no defined condition yet, so it resolves to false.
+          retryable: errorRetryable[code] === true,
+          details: options.details ?? null,
+        },
+      });
   if (!parsed.success) {
     // Fail closed without echoing the original code, details or schema issues.
     return c.json(
@@ -72,7 +85,7 @@ export function errorResponse<C extends ErrorCode>(
 export function successResponse<S extends z.ZodType>(
   c: AppContext,
   dataSchema: S,
-  data: z.output<S>,
+  data: z.input<S>,
   status: 200 | 201 = 200,
 ) {
   const parsed = successSchema(dataSchema).safeParse({
@@ -88,7 +101,7 @@ export function successResponse<S extends z.ZodType>(
 /** SPEC-110 section 58 step 5: a service result becomes exactly one response. */
 export function respond<S extends z.ZodType>(
   c: AppContext,
-  result: ServiceResult<z.output<S>>,
+  result: ServiceResult<z.input<S>>,
   dataSchema: S,
 ) {
   switch (result.kind) {
