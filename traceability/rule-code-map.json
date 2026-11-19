@@ -2873,8 +2873,18 @@
     },
     {
       "rule_id": "DB-ARC-007",
-      "code_paths": ["packages/db/src/schema", "packages/db/migrations/0001_foundation.sql"],
-      "test_case_ids": ["TC-DB-FOUNDATION-001", "TC-DB-FOUNDATION-009", "TC-DB-ARC-007-001"],
+      "code_paths": [
+        "packages/db/src/schema",
+        "packages/db/migrations/0001_foundation.sql",
+        "packages/db/migrations/0003_public_content_sales.sql"
+      ],
+      "test_case_ids": [
+        "TC-DB-FOUNDATION-001",
+        "TC-DB-FOUNDATION-009",
+        "TC-DB-ARC-007-001",
+        "TC-DB-ARC-007-003",
+        "TC-DB-ARC-007-004"
+      ],
       "notes": "Explicit named constraints and lossless bigint schema"
     },
     {
@@ -2888,6 +2898,100 @@
       "code_paths": ["packages/db/migrations/0001_foundation.sql"],
       "test_case_ids": ["TC-DB-FOUNDATION-001"],
       "notes": "Required pgcrypto/btree_gist extensions"
+    },
+    {
+      "rule_id": "DB-STA-002",
+      "code_paths": [
+        "packages/db/migrations/0003_public_content_sales.sql",
+        "packages/db/src/schema/public-content.ts",
+        "packages/db/src/schema/sales.ts"
+      ],
+      "test_case_ids": ["TC-DB-STA-002-001", "TC-DB-ARC-007-003"],
+      "notes": "implementation mapping only: CHECK constraints allow the Publication State (DRAFT, PUBLISHED, ARCHIVED) and Sale Control State (ENABLED, SUSPENDED) values only"
+    },
+    {
+      "rule_id": "DB-TIM-001",
+      "code_paths": [
+        "packages/db/migrations/0003_public_content_sales.sql",
+        "packages/db/src/schema/public-content.ts",
+        "packages/db/src/schema/sales.ts",
+        "packages/db/src/schema/goods.ts"
+      ],
+      "test_case_ids": ["TC-DB-TIM-001-001", "TC-DB-ARC-007-004"],
+      "notes": "implementation mapping only: every time column of the public content and sales tables is timestamptz"
+    },
+    {
+      "rule_id": "DB-TIM-002",
+      "code_paths": [
+        "packages/db/migrations/0003_public_content_sales.sql",
+        "packages/db/src/schema/public-content.ts",
+        "packages/db/src/schema/sales.ts",
+        "packages/db/src/schema/goods.ts"
+      ],
+      "test_case_ids": ["TC-DB-TIM-001-001", "TC-DB-ARC-007-004"],
+      "notes": "implementation mapping only: created_at and updated_at default to transaction_timestamp(); no trigger maintains them"
+    },
+    {
+      "rule_id": "DB-SAL-002",
+      "code_paths": [
+        "packages/db/migrations/0003_public_content_sales.sql",
+        "packages/db/src/schema/public-content.ts"
+      ],
+      "test_case_ids": ["TC-DB-SAL-002-001"],
+      "notes": "implementation mapping only: sponsor_logos display name, image URL and link URL length CHECKs and the published_at requirement; URL shape validation belongs to the API"
+    },
+    {
+      "rule_id": "DB-FK-002",
+      "code_paths": [
+        "packages/db/migrations/0003_public_content_sales.sql",
+        "packages/db/src/schema/public-content.ts",
+        "packages/db/src/schema/sales.ts",
+        "packages/db/src/schema/goods.ts"
+      ],
+      "test_case_ids": ["TC-DB-FK-002-001"],
+      "notes": "implementation mapping only: Event and Goods foreign keys are ON DELETE RESTRICT, never cascade"
+    },
+    {
+      "rule_id": "DB-GDS-001",
+      "code_paths": [
+        "packages/db/migrations/0003_public_content_sales.sql",
+        "packages/db/src/schema/goods.ts"
+      ],
+      "test_case_ids": ["TC-DB-GDS-001-001"],
+      "notes": "implementation mapping only: PK on goods_id and the goods foreign key only; creating the inventory row in the same transaction as Goods belongs to the creating path"
+    },
+    {
+      "rule_id": "DB-GDS-003",
+      "code_paths": [
+        "packages/db/migrations/0003_public_content_sales.sql",
+        "packages/db/src/schema/goods.ts"
+      ],
+      "test_case_ids": ["TC-DB-GDS-003-001"],
+      "notes": "implementation mapping only: ck_goods_inventory_capacity keeps held + committed within saleable_capacity"
+    },
+    {
+      "rule_id": "DI-030-004",
+      "code_paths": [
+        "packages/db/migrations/0003_public_content_sales.sql",
+        "packages/db/src/schema/sales.ts"
+      ],
+      "test_case_ids": ["TC-DB-005-002"],
+      "notes": "implementation mapping only: ck_entry_ticket_offerings_capacity keeps held + committed within sales_capacity"
+    },
+    {
+      "rule_id": "DI-030-006",
+      "code_paths": [
+        "packages/db/migrations/0003_public_content_sales.sql",
+        "packages/db/src/schema/goods.ts"
+      ],
+      "test_case_ids": ["TC-DB-GDS-003-001"],
+      "notes": "implementation mapping only: ck_goods_inventory_capacity keeps held + committed within saleable_capacity"
+    },
+    {
+      "rule_id": "SEC-DB-001",
+      "code_paths": ["packages/db/migrations/0003_public_content_sales.sql"],
+      "test_case_ids": ["TC-SEC-DB-001-001"],
+      "notes": "implementation mapping only: runtime role grants on the eight 0003 tables only (app_api_runtime SELECT / INSERT / UPDATE as needed; no DELETE or TRUNCATE for any runtime role)"
     },
     {
       "rule_id": "INF-DB-008",
