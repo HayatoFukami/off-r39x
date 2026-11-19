@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-110
 title: API Specification
-version: 2.9.0
+version: 2.10.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -628,6 +628,7 @@ rate limit（`SPEC-140` Part XIII）は上記の番号付き手順に次の位�
 - **Body:** `{}`
 - **DB primitive:** `INSERT ... ON CONFLICT (auth_subject)` + existing row reselect, `READ COMMITTED`。
 - **Success:** `200` if existing, `201` if newly created。
+- **Response 201 / 200:** `API-AUTH-002`と同形のprofile（`{ profile_ref, display_name, updated_at }`）。新規作成時の `display_name` は `null` とし、Neon Authの氏名・Emailから補完しない（`SPEC-030` §9.2）。既存の場合は既存行を変更せずに返す（`UCR-110-010`）。
 - **Idempotency:** Domain key=`auth_subject`。Transport key不要。
 - **Trace:** `AR-ID-004`, `DB-TXN matrix: Business Profile provisioning`.
 
@@ -2542,6 +2543,16 @@ retry count / backoff / queue / operator RunbookはSPEC-150。本書§48.5はSPE
 - 理由: 上流 `SPEC-060` §18（Identity検証 → Email確認 → Business Profile）と §8.3、および `API-AUTH-003`（Business Profileがない状態でEmail確認済みを要求する）と整合させるため。手順3をDBより前に置くためにJWTのclaimで判定すると §23 と `AR-AUTH-005` に反し、手順5の後に置くとEmail未確認でBusiness Profileのない利用者へ `403 AUTHORIZATION_DENIED` を返してEmail確認へ誘導できない。
 - 変更しない場合の影響: 実装が §23 と §24 のどちらかに反する。Email未確認の利用者に返るerror codeが、Business Profileの有無で変わる。
 - 影響を受ける可能性がある仕様書: SPEC-060, SPEC-140, SPEC-170（いずれも本文の変更は不要。`SEC-ABU-017` の段階2は引き続きDB accessの前にある）
+
+### UCR-110-010 — INCORPORATED
+
+- **Status:** `INCORPORATED`。本改訂（v2.10.0）で §25 `API-AUTH-003` へ反映した（プロジェクト所有者の決定、2026-11-19。`SPEC-000` §8）。新しいerror code・state・Capability・Operationは追加していない。現在の契約は本文を正とし、以下の要求はその経緯の記録である。
+- 対象: SPEC-110 §25 `API-AUTH-003`。§9、§16、§19、§55、`SPEC-030` §9.2 に関連する。
+- 現在の仕様（改訂前）: `API-AUTH-003` は Method、Path、Auth、Body `{}`、DB primitive、Success（既存 `200`、新規 `201`）、Idempotency、Trace を定めるが、成功応答の `data` の形を定めていなかった。§19 は単一resourceの成功応答を `{ data, meta.request_id }` とし、§16 は主要success responseをZodで定義することを求める。`API-AUTH-004` は応答を「`API-AUTH-002` と同形」と明記している。
+- 要求する変更: `API-AUTH-003` に、Response 201 / 200 として `API-AUTH-002` と同形のprofile（`{ profile_ref, display_name, updated_at }`）を返すこと、新規作成時の `display_name` は `null` としNeon Authの氏名・Emailから補完しないこと（`SPEC-030` §9.2）、既存の場合は既存行を変更せずに返すことを追加する。新しいerror code・state・Capability・Operationは追加しない。
+- 理由: 応答の形がないと、実装は §16 / `SPEC-190` `DEV-API-003` のZod応答schemaを仕様なしに決めることになる。`API-AUTH-002` と同形にすれば新しいschemaを増やさず（`API-AUTH-004` と同じ扱い）、Clientはprovision直後に `profile_ref` を得られる。返すのは本人の行だけで §55 に収まり、Internal IDを含まない（§9）。
+- 変更しない場合の影響: 実装が `API-AUTH-003` の応答を推測で決めて仕様と乖離する。§16 / `DEV-API-003` のZod応答schemaが実装ごとに決まり、Clientがprovisionの応答から `profile_ref` を得られるかが実装に依存する。
+- 影響を受ける可能性がある仕様書: SPEC-170（本文の変更は不要。Test Case IDとmanifestは実装のWork Planが `SPEC-170` §5 に従って割り当てる）、SPEC-200（`ACC-API-004` は変更不要）、SPEC-040 / SPEC-050（provision後の画面遷移。読んだ結果、応答の形に依存する記述はなく変更不要）
 
 ### UCR-110-011 — INCORPORATED
 
