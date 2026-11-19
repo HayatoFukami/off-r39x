@@ -31,6 +31,36 @@ function commitAcknowledgementUnknown(error: unknown): boolean {
     ["57P01", "57P02", "57P03"].includes(code)
   );
 }
+function isMarkable(error: unknown): error is object {
+  return typeof error === "object" && error !== null;
+}
+
+/**
+ * Hands the callback a client whose query() rejections are recorded as database-originated, so an
+ * errno thrown by the callback's own code is not mistaken for a database failure. Only query() is
+ * wrapped; every other member comes from the real client (functions bound to it). A query() that
+ * does not return a Promise (callback form, submittable) is passed through unmarked, which keeps
+ * the conservative 500 outcome.
+ */
+function observeClient(client: PoolClient, markDbError: (error: unknown) => void): PoolClient {
+  return new Proxy(client, {
+    get(target, property) {
+      // Reflect.get is typed any; keep it unknown and narrow, so no type assertion is needed.
+      const member: unknown = Reflect.get(target, property, target);
+      if (typeof member !== "function") return member;
+      if (property !== "query") return member.bind(target);
+      return (...args: unknown[]) => {
+        const result: unknown = Reflect.apply(member, target, args);
+        if (!(result instanceof Promise)) return result;
+        return result.catch((error: unknown) => {
+          markDbError(error);
+          throw error;
+        });
+      };
+    },
+  });
+}
+
 /** Callback must contain database work only; no provider side effects. */
 export async function transaction<T>(
   pool: Pool,
@@ -57,6 +87,22 @@ export async function transaction<T>(
     // an in-flight ROLLBACK, where the caught error is still the original SQLSTATE error.
     let budgetDeadlineReached = false;
     let committing = false;
+    // Errors that came out of a database operation of this attempt (connect, internal queries and
+    // the callback client's query()). The callback's own throws are never in this set.
+    const dbOriginated = new WeakSet<object>();
+    const markDbError = (error: unknown) => {
+      if (isMarkable(error)) dbOriginated.add(error);
+    };
+    const fromDb = async <R>(operationPromise: Promise<R>): Promise<R> => {
+      try {
+        return await operationPromise;
+      } catch (error) {
+        markDbError(error);
+        throw error;
+      }
+    };
+    // Set only by the connection's own error/end events (not by the deadline timer's discard).
+    let connectionLost = false;
     let detachConnectionListeners = () => {};
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
@@ -81,7 +127,7 @@ export async function transaction<T>(
       });
       const work = async (): Promise<TransactionResult<T>> => {
         const acquiring = performance.now();
-        const acquired = await pool.connect();
+        const acquired = await fromDb(pool.connect());
         logDatabase(logger, {
           event_name: "db.pool.acquire.completed",
           level: "INFO",
@@ -99,9 +145,11 @@ export async function transaction<T>(
         // Checked-out clients are not covered by the pool's idle error listener.
         // Keep this listener until physical close for late transport failures.
         const onConnectionError = () => {
+          connectionLost = true;
           discard = true;
         };
         const onConnectionEnd = () => {
+          connectionLost = true;
           discard = true;
           detachConnectionListeners();
         };
@@ -111,17 +159,19 @@ export async function transaction<T>(
         };
         acquired.on("error", onConnectionError);
         acquired.once("end", onConnectionEnd);
-        await acquired.query("BEGIN ISOLATION LEVEL READ COMMITTED");
-        await acquired.query(
-          `SET LOCAL statement_timeout = '${TIMEOUTS.statementMs}ms'; SET LOCAL lock_timeout = '${TIMEOUTS.lockMs}ms'; SET LOCAL timezone = 'UTC'`,
+        await fromDb(acquired.query("BEGIN ISOLATION LEVEL READ COMMITTED"));
+        await fromDb(
+          acquired.query(
+            `SET LOCAL statement_timeout = '${TIMEOUTS.statementMs}ms'; SET LOCAL lock_timeout = '${TIMEOUTS.lockMs}ms'; SET LOCAL timezone = 'UTC'`,
+          ),
         );
         if (discard || performance.now() >= deadlineAt) throw new TransactionDeadlineError();
-        const value = await operation(acquired);
+        const value = await operation(observeClient(acquired, markDbError));
         // Check the monotonic budget as well as the timer: a callback may keep
         // the event loop busy past expiry before the timer gets its turn.
         if (discard || performance.now() >= deadlineAt) throw new TransactionDeadlineError();
         committing = true;
-        await acquired.query("COMMIT");
+        await fromDb(acquired.query("COMMIT"));
         return { status: "committed", value };
       };
       const result = await Promise.race([work(), deadline]);
@@ -182,7 +232,7 @@ export async function transaction<T>(
       });
       if (client && !discard) {
         try {
-          await client.query("ROLLBACK");
+          await fromDb(client.query("ROLLBACK"));
         } catch {
           discard = true;
         }
@@ -211,8 +261,14 @@ export async function transaction<T>(
       const policy = isDatabaseRetryable(error) ? RETRY_POLICIES[error.code] : undefined;
       if (!policy || discard) {
         // A connection failure without a SQLSTATE (an errno or no code) is typed here so the API layer
-        // answers 503 from the boundary type alone (REL-DB-009). 08xxx / 57P01-03 are rethrown as they are.
-        if (unavailable && !isSqlstate(sqlState(error)))
+        // answers 503 from the boundary type alone (REL-DB-009), but only when a database operation
+        // raised it or the connection itself reported loss; an errno thrown by the callback's own
+        // code is rethrown as it is. 08xxx / 57P01-03 are rethrown as they are.
+        if (
+          unavailable &&
+          !isSqlstate(sqlState(error)) &&
+          ((isMarkable(error) && dbOriginated.has(error)) || connectionLost)
+        )
           throw new DatabaseUnavailableError({ cause: error });
         throw error;
       }

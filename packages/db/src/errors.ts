@@ -9,8 +9,11 @@ export class TransactionDeadlineError extends Error {
 /**
  * The database could not be reached or a connection was lost, and the failure carried no SQLSTATE
  * (a Node errno such as ECONNRESET, or no code at all, for example a pool acquisition timeout). The
- * DB boundary types it so the API layer answers 503 without trusting a bare errno. The fixed message
- * never repeats the original error; that stays only in `cause` (REL-DB-009, SEC-ERR-003).
+ * DB boundary types it only when a database operation raised it (connect, transaction control, or
+ * the callback client's query) or the connection itself reported loss; an errno thrown by the
+ * callback's own code on a healthy connection is not typed. The API layer answers 503 without
+ * trusting a bare errno. The fixed message never repeats the original error; that stays only in
+ * `cause` (REL-DB-009, SEC-ERR-003).
  */
 export class DatabaseUnavailableError extends Error {
   constructor(options: { readonly cause: unknown }) {
