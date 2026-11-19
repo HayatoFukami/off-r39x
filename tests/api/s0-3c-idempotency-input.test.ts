@@ -48,7 +48,8 @@ async function expectFailure(
 
 /**
  * The manifest's expected_observability, asserted per case (SPEC-170 section 9): one completion log
- * per request whose http_status matches the response, and no log line holds a sent raw key or the
+ * per request whose http_status matches the response, and no log line holds a sent raw key (as is or
+ * JSON-escaped) or the
  * key / request digest of any context the handler saw (hex in both cases, base64).
  */
 function expectCompletionAndRedaction(
@@ -71,7 +72,8 @@ function expectCompletionAndRedaction(
     return [hex, hex.toUpperCase(), buffer.toString("base64")];
   };
   const forbidden: string[] = [...keys];
-  for (const key of keys) forbidden.push(...forms(sha256(key)));
+  // A log line is JSON, so a key with a character JSON escapes (HTAB, for example) shows up escaped.
+  for (const key of keys) forbidden.push(JSON.stringify(key).slice(1, -1), ...forms(sha256(key)));
   for (const seen of rig.seen) {
     if (seen.context === undefined) continue;
     const context = ctxOf(seen.context);
