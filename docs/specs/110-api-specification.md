@@ -405,7 +405,7 @@ Check-inはHeaderを受けてもよいが、Ticket consume-onceがCanonical idem
 1. 形式: 16文字以上128文字以下で、すべての文字が印字可能なASCII（0x20〜0x7E）であること。制御文字（0x00〜0x1F）、DEL（0x7F）、非ASCII（0x80以上。UTF-8の多byte文字を含む）を1文字でも含む値は形式に合わないものとする。
 2. 検証する値: HTTPの構文解析（RFC 9110 §5.5 の前後の空白の除去を含む）を経てアプリケーションへ渡されたfield valueを、trim、大文字小文字の変換、その他の正規化をせずにそのまま検証する。この値は `API-IDM-005` のkey digestの入力と同じである。HTTP層で拒否されアプリケーションに届かないrequestは本規則の対象外とする。同名のheaderが複数ある場合は、それらを連結した1つのfield value（RFC 9110 §5.3）を1つの値として検証し、いずれか1つの値を選んで使わない。連結の区切りはHTTP実装の結合に従い、本書では固定しない。
 3. 欠落・形式不正: headerが欠落している場合、または1の形式に合わない場合は `400 VALIDATION_FAILED`（`details: null`）を返す。Domain stateを変更せず、記録（§18.1）を作らない（`API-IDM-004` の「最初の業務commit前の拒否」に当たる）。新しいerror codeを追加しない。
-4. 順序: 認証・認可（§24の手順2〜7）で失敗するrequestは、その失敗（`401`、`403`、self operationの `404` など）を本検証より先に返す。
+4. 順序: 認証・認可（§24の手順2〜7）で失敗するrequestは、その失敗（`401`、`403`、self operationの `404` など）を本検証より先に返す。本検証と、認証・認可以外の検証（§13のrequest size上限、`415 UNSUPPORTED_MEDIA_TYPE`、`400 MALFORMED_REQUEST`、bodyのZod検証）および §24.1 の段階3（resource keyのrate limit）との前後は、本規則では定めない。これらと本検証の両方に当たるrequestは、そのいずれかの失敗を返す。どの順でもDomain stateと記録（§18.1）は変更しない。
 
 Transport key replay時は、同じPrincipal + Operation ID + normalized request fingerprintに一致する場合だけ同じtransport resultを返してよい。異なるpayloadで同じkeyを再利用した場合は `409 IDEMPOTENCY_KEY_REUSED`。
 
@@ -2564,6 +2564,7 @@ retry count / backoff / queue / operator RunbookはSPEC-150。本書§48.5はSPE
 - 要求する変更: §18 の対象一覧に「reservation cancellation（`API-ADM-KRK-007`）」を追加する（`API-IDM-003` により記録の対象にもなる）。検討した別案（§48.5 の `Idempotency-Key` requiredの適用範囲を絞り、KRK-007 には §43 の契約を適用する）は採らなかった。
 - 理由: §48.5 が既にrequiredと定めており、§18 をその厳しい側へ揃えるので既存の規則を緩めない。Domain single-useなgoods handoff completionも §18 にあり、同じ扱いになる。Web AdminはAdministrator mutationと同じくkeyを常に送れ、`SPEC-150` `REL-ADM-002` と `SPEC-130` §55 の運用規則にそのまま乗る。記録の保存は `SPEC-100` §43.1 の一般規則（`DB-IDM-002`）で決まり、replayは §43 の既存の取消結果の再利用に従う（`API-IDM-007`）。
 - 変更しない場合の影響: `API-ADM-KRK-007` でheaderを必須にするか、記録を作るかが実装の判断になり、`SPEC-190` `DEV-API-007`（対象Operationだけで受理）を実装できない。
+- 範囲外として残す事項: §43 は `API-ADM-KRK-007` の初回とreplayのHTTP status・response bodyを定めていない。このため `API-IDM-007`「そのOperationが定めるreplay用のHTTP status」が本文から決まらない。本UCRでは扱わず、`API-ADM-KRK-007` のrouteを実装する前に、後続のUCRで §43 に定める必要がある。
 - 影響を受ける可能性がある仕様書: SPEC-100（§43.1・§48。`operation_id` の列挙・CHECKがなく、変更不要）、SPEC-130（§27・§55。変更不要）、SPEC-150（§45・§51・`REL-ADM-002`。変更不要）、SPEC-170（§27.1・§28.1。変更不要）
 
 ### UCR-030-001 — INCORPORATED
