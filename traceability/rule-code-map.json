@@ -2444,7 +2444,7 @@
         "TC-INV-010-04-001",
         "TC-CON-001-001"
       ],
-      "notes": "implementation mapping only: S4 public pages (UI mock, not API/DB/provider coverage); DB: ex_karaoke_slots_scope_occupancy (PR-GK-1); Hold / Reservation side is PR-GK-2"
+      "notes": "implementation mapping only: two separate mappings. (1) S4 public pages: UI mock code paths, not API/DB/provider coverage. (2) DB: ex_karaoke_slots_scope_occupancy in migration 0004 (PR-GK-1), verified on real PostgreSQL. The Hold / Reservation side is PR-GK-2"
     },
     {
       "rule_id": "INV-010-10",
@@ -2936,7 +2936,7 @@
         "TC-KRK-001-001",
         "TC-DB-ARC-007-006"
       ],
-      "notes": "implementation mapping only: every time column of the public content and sales tables is timestamptz"
+      "notes": "implementation mapping only: every time column of the public content and sales tables (0003) and the Karaoke Exclusive Scope and Slot tables (0004) is timestamptz"
     },
     {
       "rule_id": "DB-TIM-002",
@@ -2971,7 +2971,7 @@
         "packages/db/src/schema/karaoke.ts"
       ],
       "test_case_ids": ["TC-DB-FK-002-001", "TC-DB-FK-002-002"],
-      "notes": "implementation mapping only: Event and Goods foreign keys are ON DELETE RESTRICT, never cascade"
+      "notes": "implementation mapping only: Event and Goods foreign keys (0003) and the Karaoke foreign keys fk_karaoke_exclusive_scopes_event, fk_karaoke_slots_exclusive_scope and fk_karaoke_slots_sales_configuration (0004) are ON DELETE RESTRICT, never cascade"
     },
     {
       "rule_id": "DB-GDS-001",
