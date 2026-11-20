@@ -32,3 +32,15 @@ export type {
   CurrentProfileUpdate,
 } from "./transactions/profile.ts";
 export { createCurrentProfileRepository } from "./transactions/profile.ts";
+export type {
+  PublicAnnouncementRead,
+  PublicAnnouncementRow,
+  PublicEntryOfferingRow,
+  PublicEntryOfferingsRead,
+  PublicEventRead,
+  PublicEventRow,
+  PublicFaqRow,
+  PublicListRead,
+  PublicSponsorLogoRow,
+} from "./transactions/public-content.ts";
+export { createPublicContentRepository } from "./transactions/public-content.ts";
