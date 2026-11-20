@@ -130,7 +130,9 @@ export function canonicalRequestJson(request: NormalizedRequest): string {
     const body = ownDataValue(request, "body");
     const params = ownDataValue(request, "params");
     const query = ownDataValue(request, "query");
-    if (body === undefined || !isRecord(params) || !isRecord(query)) {
+    // params and query must be plain objects: a Map or a class instance keeps its entries outside
+    // its own properties, so they would vanish and different requests would share one digest.
+    if (body === undefined || !isPlainRecord(params) || !isPlainRecord(query)) {
       throw new Error(NOT_CANONICALIZABLE);
     }
     // Each params value is read once and the checked string itself goes into the copy, so a value
@@ -148,6 +150,13 @@ export function canonicalRequestJson(request: NormalizedRequest): string {
   }
   if (!copy.ok) throw new Error(NOT_CANONICALIZABLE);
   return serialize(copy.value);
+}
+
+/** An object whose prototype is Object.prototype or null (what a literal or Zod output is). */
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (!isRecord(value)) return false;
+  const prototype = Reflect.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
 /** The own data property `key` of `record`, read without invoking an accessor. */

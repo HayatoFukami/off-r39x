@@ -321,6 +321,41 @@ describe("TC-API-IDM-005-002 a request that is not JSON-representable is refused
       expect(message).not.toContain(MARKER);
     }
   });
+  it("params or query that is not a plain object is refused, so no path parameter is silently dropped", () => {
+    // A Map (or a class instance) passes a bare typeof check but its entries are not own properties:
+    // two different order_ref values would otherwise share the digest of {}.
+    class Params {
+      order_ref = REF_A1;
+    }
+    const notPlain: [label: string, value: unknown][] = [
+      ["Map", new Map([["order_ref", REF_A1]])],
+      ["class instance", new Params()],
+      ["Date", new Date(0)],
+      ["URLSearchParams", new URLSearchParams({ order_ref: REF_A1 })],
+    ];
+    for (const [label, value] of notPlain) {
+      for (const request of [
+        { params: value, query: {}, body: null },
+        { params: {}, query: value, body: null },
+      ]) {
+        let thrown: unknown;
+        try {
+          digestOf(request);
+        } catch (error) {
+          thrown = error;
+        }
+        expect(thrown, label).toBeInstanceOf(Error);
+        expect((thrown as Error).message, label).toBe("Request is not canonicalizable");
+      }
+    }
+    // A null-prototype object is plain data and is accepted with the same digest as a literal.
+    const bare = Object.assign(Object.create(null) as Record<string, string>, {
+      order_ref: REF_A1,
+    });
+    expect(hexOf({ params: bare, query: {}, body: null })).toBe(
+      hexOf({ params: { order_ref: REF_A1 }, query: {}, body: null }),
+    );
+  });
   it("an accessor or a throwing trap anywhere in the request is refused without being invoked, with the fixed message", () => {
     // A getter that answers differently on each read must not let one value pass the check and
     // another reach the digest (the canonical form covers exactly what was checked).

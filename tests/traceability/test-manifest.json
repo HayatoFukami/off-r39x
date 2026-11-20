@@ -26917,7 +26917,7 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "Every such value (undefined body, NaN, Infinity, bigint, Date, Map, class instance, function, symbol, cycle, hole, getter, toJSON, non-string params) throws a fixed message that does not contain the value",
-        "An accessor for body, params, query or a params value, and a proxy whose trap throws, are refused with the same fixed message and no cause; no accessor is invoked, so a getter cannot pass one value to the check and another to the digest; a params value is read once and the checked string is the value hashed, even when its descriptor changes between reads"
+        "An accessor for body, params, query or a params value, and a proxy whose trap throws, are refused with the same fixed message and no cause; no accessor is invoked, so a getter cannot pass one value to the check and another to the digest; a params value is read once and the checked string is the value hashed, even when its descriptor changes between reads; params or query that is not a plain object (Map, class instance, Date, URLSearchParams) is refused rather than hashed as {}, while a null-prototype object has the digest of the equal literal"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
