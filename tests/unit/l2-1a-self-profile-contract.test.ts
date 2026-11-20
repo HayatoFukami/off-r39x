@@ -149,6 +149,36 @@ describe("TC-API-007-003 request and response schemas (DEV-API-003, SPEC-110 §8
     expect(currentProfileSchema.safeParse(withoutName).success).toBe(false);
   });
 
+  // PR #66 round 6: SPEC-110 §9 returns a Public Reference as a lower-case canonical UUID; z.uuid()
+  // alone accepts upper case, so the response schema pins the case.
+  it.each([
+    ["all upper case", "ABCDEF00-0000-4000-8000-0000000000B1"],
+    ["mixed case", "abcdef00-0000-4000-8000-0000000000B1"],
+    ["one upper-case hex digit", "abcdef00-0000-4000-8000-0000000000bF"],
+  ])("response rejects a profile_ref in %s", (_label, ref) => {
+    expect(currentProfileSchema.safeParse({ ...validProfile, profile_ref: ref }).success).toBe(
+      false,
+    );
+    expect(
+      currentProfileSchema.safeParse({ ...validProfile, profile_ref: ref.toLowerCase() }).success,
+    ).toBe(true);
+  });
+
+  // PR #71 review: SPEC-110 §17 defines the canonical UUID (§9 uses it): version digit 1-8, variant
+  // digit 8, 9, a or b, and neither the nil nor the max UUID, both of which z.uuid() accepts.
+  it.each([
+    ["the nil UUID", "00000000-0000-0000-0000-000000000000"],
+    ["the max UUID", "ffffffff-ffff-ffff-ffff-ffffffffffff"],
+    ["version digit 0", "00000000-0000-0000-8000-0000000000b1"],
+    ["version digit 9", "00000000-0000-9000-8000-0000000000b1"],
+    ["variant digit c", "00000000-0000-4000-c000-0000000000b1"],
+    ["variant digit 7", "00000000-0000-4000-7000-0000000000b1"],
+  ])("response rejects a profile_ref that is %s (SPEC-110 §17)", (_label, ref) => {
+    expect(currentProfileSchema.safeParse({ ...validProfile, profile_ref: ref }).success).toBe(
+      false,
+    );
+  });
+
   it("response rejects a profile_ref that is not a UUID and a missing updated_at", () => {
     expect(
       currentProfileSchema.safeParse({ ...validProfile, profile_ref: "not-a-uuid" }).success,
