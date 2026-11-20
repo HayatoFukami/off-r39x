@@ -476,10 +476,16 @@ describe("TC-INF-HLT-006-009 readSchemaState retry budget (REL-DB-011, INF-HLT-0
     expect((await run(inside.client)).status).toBe("consistent");
   });
 
-  it("TC-INF-HLT-006-009 does not cut the first attempt even if it runs past 5 s", async () => {
+  it("TC-INF-HLT-006-009 returns exhausted when the first attempt ends after 5 s even though it is consistent", async () => {
     useFake();
-    const fake = fakeClient([{ step: "ok", now: T0 + 7000, at: "journal2" }], clock);
-    expect((await run(fake.client)).status).toBe("consistent");
+    // INF-HLT-006: a consistent read must be obtained within 5 s of the first attempt's start; the
+    // first attempt is not exempt.
+    const fake = fakeClient([{ step: "ok", now: T0 + 5001, at: "journal2" }], clock);
+    expect(await run(fake.client)).toEqual({ status: "exhausted" });
+    expect(fake.attempts()).toBe(1);
+    // Control: the first attempt finishing inside the budget is consistent.
+    const inside = fakeClient([{ step: "ok", now: T0 + 4000, at: "journal2" }], clock);
+    expect((await run(inside.client)).status).toBe("consistent");
   });
 
   it("TC-INF-HLT-006-009 rethrows an error that is not 55P03", async () => {

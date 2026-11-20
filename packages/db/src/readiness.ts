@@ -118,8 +118,9 @@ export async function readSchemaState(
       if (sqlState(error) !== "55P03") throw error;
     }
     if (consistent) {
-      if (attempt > 1 && performance.now() > start + policy.maxElapsedMs)
-        return { status: "exhausted" };
+      // The consistent read must end within the budget measured from the first attempt's start,
+      // the first attempt included (INF-HLT-006, REL-DB-011).
+      if (performance.now() > start + policy.maxElapsedMs) return { status: "exhausted" };
       return { status: "consistent", ...consistent };
     }
     if (attempt >= policy.maxAttempts) return { status: "exhausted" };
