@@ -3152,12 +3152,20 @@
       "rule_id": "INF-DEP-001",
       "code_paths": [
         "scripts/build-backend.mts",
+        "scripts/build-git-identity.mts",
         "infra/backend.Dockerfile",
         ".github/workflows/backend-foundation.yml",
         "packages/config/src/build.ts"
       ],
-      "test_case_ids": ["TC-INF-DEP-001-001"],
-      "notes": "Configuration check plus separately recorded actual build; no production deployment performed"
+      "test_case_ids": [
+        "TC-INF-DEP-001-001",
+        "TC-INF-DEP-001-002",
+        "TC-INF-DEP-001-003",
+        "TC-INF-DEP-001-004",
+        "TC-INF-DEP-001-005",
+        "TC-INF-DEP-001-006"
+      ],
+      "notes": "Configuration check plus separately recorded actual build; backend-build.json records the source git_sha (SPEC-180 §44 value, DEV-AI-003 build-tooling decision; the release manifest itself is not generated); no production deployment performed"
     },
     {
       "rule_id": "DEV-REP-001",

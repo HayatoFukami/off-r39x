@@ -3,7 +3,11 @@ FROM node:24-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054f
 WORKDIR /app
 RUN corepack enable
 COPY . .
-RUN pnpm install --frozen-lockfile && pnpm build:backend
+RUN pnpm install --frozen-lockfile
+# .dockerignore drops .git, so the image build passes the source commit (40-hex) explicitly:
+#   docker build --build-arg R39X_BUILD_GIT_SHA=<commit> ...  Without it the backend build fails.
+ARG R39X_BUILD_GIT_SHA
+RUN pnpm build:backend
 
 FROM node:24-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205
 ENV NODE_ENV=production TZ=UTC
