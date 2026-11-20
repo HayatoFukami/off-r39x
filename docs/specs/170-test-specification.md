@@ -616,7 +616,7 @@ Migration Testは空DBから全migrationを順番に適用し、次をassertす�
 6. migrationを二重適用するのではなく、migration historyに従い1回だけ適用される。
 7. migration失敗時にservice schema versionを成功扱いしない。
 8. supported previous released schema fixtureからforward migrationしてhistorical rowを失わない。
-9. 前のrelease相当のmigration setとrequired catalogを同梱したartifactのreadinessが、後続のexpand-only migrationの適用後も成立する。required要素の削除・定義の変更、required tableへのNOT NULLでdefault・identity・generatedのない追加列、journalの先頭の不一致（hashの相違、同梱済みの行の欠落・間への挿入）、journalの不足ではReadyにならず、journalが同梱setと同じ長さのときは追加のobjectでもReadyにならない（`SPEC-180` `INF-HLT-006`）。
+9. 前のrelease相当のmigration setとrequired catalogを同梱したartifactのreadinessが、後続のexpand-only migrationの適用後もReadyになる。required制約の `VALIDATE CONSTRAINT`（検証状態のfalseからtrue）の後もReadyになる。required要素の削除・属性の変更（required列への `SET NOT NULL` を含む）、required tableへのNOT NULLでdefault・identity・generatedのない追加列、journalの先頭の不一致（hashの相違、同梱済みの行の欠落・間への挿入）、journalの不足ではReadyにならず、journalが同梱setと同じ長さのときは追加のobjectでもReadyにならない（`SPEC-180` `INF-HLT-006`）。
 
 **TST-DB-003:** Down migrationをProduction rollback authorityとして要求しない。Deployment rollbackのschema compatibilityは`SPEC-180`が定義する。
 

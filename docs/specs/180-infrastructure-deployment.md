@@ -527,7 +527,7 @@ extension pgcrypto exists
 extension btree_gist exists
 bundled migration set matches release manifest
 bundled migration versions/hashes are an exact prefix of app.schema_migrations
-required catalog is present with exact definitions (INF-HLT-006)
+required catalog matches exactly, or is contained when the journal is ahead (INF-HLT-006)
 ```
 
 「exact」は、各項目が求める要素（同梱したmigrationのversion / source hash、required catalogの各要素の定義と状態）に対する一致である。後続releaseのexpand-only migration（§45.2 手順5）が足したjournal行とobjectを、不一致として扱わない。migrationとschemaの判定は `INF-HLT-006`（§40）による（`UCR-180-003`）。
@@ -986,7 +986,7 @@ Common:
 4. DB connection acquire within upstream 2s boundary
 5. TLS connection verified
 6. `app` schema exists
-7. release-required migration hash / schema version present（artifactが同梱したmigration setとrequired catalogが `INF-HLT-006` の判定で成立する）
+7. release-required migration hash / schema version present（artifactが同梱したmigration setとrequired catalogについて、`INF-HLT-006` の1〜4を満たす）
 8. `pgcrypto`, `btree_gist` present
 9. DB timezone UTC
 10. security configuration valid
@@ -1021,15 +1021,16 @@ Reconciliation Worker additionally:
 
 **INF-HLT-005:** `/internal/health/ready` は、requestごとにDB・Redis・外部serviceを呼ばない。APIは本節のreadiness検査（Commonの1〜10とAPI additionally）を、requestとは独立した背景のprobeが最大30秒間隔で、process内に同時に1件だけ実行し、結果をprocess内のreadiness snapshotとして保持する。`/internal/health/ready` はsnapshotだけを返す。成功時は `200 {"status":"ok"}`、失敗時は内部状態を含まない `503` とする。processの起動直後で最初のprobeが完了するまではReadyにしない。最後に成功したprobeの完了から90秒を超えてsnapshotが更新されない場合は、probe自体の停止とみなしてReady=falseにする（`INF-HLT-002`）。外部から `/internal/health/ready` を連打しても、DB / Redisへの検査は増えない（`SPEC-140` `SEC-ABU-018`）。Railway deploy healthcheckのtimeout（§41、180秒）は、最初のprobeの完了より十分長い。`r39x_rate_limit_store_ready` は、このsnapshotのrate limit store項目から、export時に算出する（`INF-HLT-004`）。最後に成功したprobeから90秒を超えた場合は、probeが停止していても0とする。processごとに、起動時に生成する低カーディナリティの `instance` labelを付け、replicaごとに別seriesとする（`SPEC-160` §42）。経過時間（30秒の間隔、90秒の失効判定）は単調時計で測り、壁時計の補正（NTP等）の影響を受けない。
 
-**INF-HLT-006:** Common 7のmigrationとschemaの確認は、artifactが同梱したmigration set（§44 `migration_set_sha256` の対象）と、source-controlledなrequired catalog（`app` / `auth_read` のschema owner、`app` のtable、列の型・NOT NULL・default・identity・generated、制約の定義と検証状態、indexの定義と有効状態、sequence）を基準とし、次をすべて満たすときだけ成立する（`UCR-180-003`）。
+**INF-HLT-006:** Common 7のmigrationとschemaの確認は、artifactが同梱したmigration set（§44 `migration_set_sha256` の対象）と、source-controlledなrequired catalogを基準とする。required catalogは、`app` / `auth_read` のschemaとそのowner、`app` のtable（種類・owner・row security）、列（型・NOT NULL・identity・generated・default）、制約（種類・定義・検証状態・deferrable・initially deferred）、index（定義・valid・ready・live）、sequence（型・owner）を記録する。Common 7は、次の1〜4をすべて満たすときだけReadyになる（`UCR-180-003`）。
 
-1. `app.schema_migrations` をversion順に並べた先頭の行が、同梱した各migrationのversion / source hashと順に一致する。先頭の食い違い、同梱済みの行の欠落、同梱済みの行の間への行の挿入、source hashの相違はReadyにしない。
-2. journalが同梱setより短い（DBがartifactより古い）場合はReadyにしない（§47）。
-3. journalが同梱setと同じ長さなら、catalogはrequired catalogと完全に一致する。追加のobjectもReadyにしない。
-4. journalが同梱setより長い（後続releaseのexpand-only migrationが適用済み）なら、required catalogの各要素が同一の定義・状態で存在すればよく、追加のtable・列・制約・index・sequenceと、同梱setより後のjournal行を許容する。許容するjournal行の数に上限を設けない。ただし、required tableへの追加列がNOT NULLで、default・identity・generatedのいずれも持たない場合はReadyにしない（`SPEC-100` §60）。required要素の削除と定義の変更（contract migration、CHECKの定義の変更を含む）はReadyにしない。
-5. artifact自身のmigration set hashとrelease manifestの一致（§44）、および権限・role・Directory・extension・timezone・PostgreSQL major・environment markerの確認は、journalの長さに関わらず従来どおり適用する。
+1. `app.schema_migrations` の行をversionの昇順（byte順）に並べた先頭が、同梱した各migration（ファイル名のbyte順）のversion / source hashと順に一致する。先頭の食い違い、同梱済みの行の欠落、同梱済みの行の間への行の挿入、source hashの相違ではReadyにならない。
+2. journalが同梱setより短い（DBがartifactより古い）場合はReadyにならない（§47）。
+3. journalが同梱setと同じ長さなら、catalogがrequired catalogと完全に一致する。追加のobjectがあればReadyにならない。
+4. journalが同梱setより長い（後続releaseのmigrationが適用済み）なら、required catalogの各要素が同一の属性で存在すればよい。追加のtable・列・制約・index・sequenceと、同梱setより後のjournal行を許容し、許容するjournal行の数に上限を設けない。required制約の検証状態がfalseからtrueへ変わったこと（`VALIDATE CONSTRAINT`）は、他の属性が同一なら同一とみなす。次の場合はReadyにならない。required要素の削除。required要素の属性の変更（contract migration、CHECKの定義の変更、required列への `SET NOT NULL` を含む）。required tableへの追加列がNOT NULLで、default・identity・generatedのいずれも持たない場合（`SPEC-100` §60）。
 
-失敗は既存のreadiness failureとして記録し、新しいfailure名を追加しない。同梱setより後のjournal行の内容は、そのartifactでは検証しない（後続releaseのartifactとmigrationが検証する）。旧artifactのmigration実行は、同梱setより長いjournalに対して拒否したままとする（§24、`INF-DB-008`）。
+本Ruleは、Common 7のmigrationとschemaの確認だけを定める。artifact自身のmigration set hashとrelease manifestの一致（§44。完全一致）と、Commonの他の項目、service別の確認は変えない。失敗は既存のreadiness failureとして記録し、新しいfailure名を追加しない。同梱setより後のjournal行の内容は、そのartifactでは検証しない（後続releaseのartifactとmigrationが検証する）。
+
+既知の制約は次の2つとする。(a) 後続releaseのmigrationがrequired要素を変える場合、旧artifactは4によりReadyにならない（§45.2の注記、`INF-RBK-002`）。(b) transactionの外で実行するmigration step（`CREATE INDEX CONCURRENTLY` 等。§47）では、objectがjournalの行より先に現れるため、その間は旧artifactが3によりReadyにならない。現在のmigrationは、DDLとjournalの行を1つのtransactionでCOMMITする。transactionの外で実行するmigration stepを導入するときは、本Ruleでの扱いを先に決める。
 
 ## 41. Railway deploy healthcheck
 
@@ -1138,9 +1139,9 @@ Production releaseは次順序を固定する。
 14. project-owner承認後、検査済みの同一outputをProduction branchへDirect Uploadし、production deployment ID / hashを記録（別deploymentでありpreviewの昇格ではない）
 15. post-deploy smoke
 16. deployment observation window **10分**
-17. active CRITICAL/HIGH alert、readiness failure、schema mismatch、Critical smoke failureがなければrelease accepted
+17. active CRITICAL/HIGH alert、readiness failure、schema mismatch（`INF-HLT-006`）、Critical smoke failureがなければrelease accepted
 
-手順5〜10（§45.1も手順5〜10）の間も稼働している旧API・旧Workerは、`INF-HLT-006` によりReadyを保つ。手順6（§45.1では手順8）のschema readiness checkは、deployする新artifactのmigration setとrequired catalogを基準に判定する。
+手順5のmigrationがrequired要素を変えない（`INF-HLT-006` 4の範囲にある）場合、手順5〜10（§45.1も手順5〜10）の間も稼働している旧API・旧WorkerはReadyのままである。手順5のmigrationがrequired要素を変える（削除または属性の変更を含む）場合、旧API・旧Workerは、手順5の完了から手順8〜10で新artifactに置き換わるまでReadyにならず（`503`）、そのmigrationの適用後は旧artifactへrollbackしない（`INF-RBK-002`）。手順6（§45.1では手順8）のschema readiness checkは、deployする新artifactのmigration setとrequired catalogを基準に判定する。
 
 **INF-DEP-003:** Webを先に切り替えて新API contractだけを要求するdeploymentをしない。APIはold/new Webが共存できる後方互換性を先に持つ。
 
@@ -1221,14 +1222,14 @@ previous known-good OCI image digestへserviceを戻す。
 - schema defectはforward-fixを基本とする。
 - historical financial / entitlement / audit rowをrollbackで削除しない。
 
-**INF-RBK-002:** application rollback対象artifactがcurrent schemaを読めない場合はrollback禁止とし、forward-fixまたはcompatible intermediate artifactを使用する。`INF-HLT-006` の判定でReadyにならないartifactは、current schemaを読めないartifactとして扱う。`INF-HLT-006` でReadyになることはrollbackの必要条件であり、十分条件ではない。expandが旧artifactの書き込みを拒否しないこと（追加のCHECK・UNIQUE・FK等）は、migration review（`SPEC-100` §60、`SPEC-190` `DEV-DB-013〜014`）で確認する。
+**INF-RBK-002:** application rollback対象artifactがcurrent schemaを読めない場合はrollback禁止とし、forward-fixまたはcompatible intermediate artifactを使用する。`INF-HLT-006` の1〜4を満たさないartifactは、current schemaを読めないartifactとして扱う。1〜4を満たすことはrollbackの必要条件であり、十分条件ではない。expandが旧artifactの書き込みを拒否しないこと（追加のCHECK・UNIQUE・FK等）は、migration review（`SPEC-100` §60、`SPEC-190` `DEV-DB-014`）で確認する。
 
 ## 51. Worker rollback
 
 Worker deployだけ失敗した場合:
 
 1. API / Webのcompatibilityを確認
-2. previous worker digestがcurrent schemaとcompatible（`INF-HLT-006` でReadyになり、`INF-RBK-002` を満たす）ならworkerだけrollback
+2. previous worker digestがcurrent schemaとcompatible（`INF-HLT-006` の1〜4を満たし、`INF-RBK-002` を満たす）ならworkerだけrollback
 3. claim lease / advisory lock / Provider unknown itemはcurrent DB stateから再開
 4. in-flight Provider resultを再送で推測しない
 
@@ -1717,7 +1718,7 @@ G2は少なくとも次をProduction deploy前に成功させる。
 - Audit append-only grants
 - runtime / migrator / audit / purge role grants
 - schema readiness check
-- 前のrelease相当のmigration set / required catalogによるreadinessが、後続のexpand-only migrationの適用後も成立し、required要素の削除・定義の変更、journalの先頭の不一致、journalの不足では成立しないこと（`INF-HLT-006`）
+- 旧artifactのreadiness（`SPEC-170` §22 項目9、`INF-HLT-006`）
 
 ## 74.1 Rate limit store gate
 
@@ -1838,7 +1839,7 @@ SPEC-180は次をすべて満たしたとき受入可能とする。
 7. Production DB TLS certificate verificationが有効である。
 8. `app_runtime`相当runtime roleがDDL / GRANT / superuser権限を持たない。
 9. migration failure時にProduction deploymentが停止する。
-10. schema / extension mismatchをReadyとして扱わない。
+10. schema / extension mismatchをReadyとして扱わない（schema mismatchの判定は `INF-HLT-006`）。
 11. invalid Security Configuration、missing current Secret、unknown QR key versionをwarning-onlyにしない。
 12. Hono API、Email Worker、Reconciliation Workerが独立Railway serviceである。
 13. Worker public domainが存在しない。
@@ -1886,7 +1887,7 @@ SPEC-180は次をすべて満たしたとき受入可能とする。
 55. Release Manifestの `mounted_operation_ids` がbuild時にroute registryから生成され、stagingとProductionで一致する（`INF-DEP-006`）。
 56. 初期データ（EventとEntry Ticket Offering）が、専用の運用コマンドだけで、migration jobの `app_migrator` により、schema readiness checkの後・API deployの前に投入される。入力は環境別のprotected Environment Secretから渡り、実値がsource・log・artifact・release evidenceに出ない。対象が0件のときだけ作り、再実行で行が増えず、Offeringは `SUSPENDED` で作られ、`FAILED` と `UNKNOWN_RESULT` ではdeploymentが停止し、結果不明の場合は再実行で再照合できる（`INF-SEED-001〜006`）。
 57. `LIST_CURSOR_HMAC_KEY` がAPI serviceだけに配置され、他serviceやClientへ出ず、他のSecretと共有されず、他のSecretから導出されない。鍵またはversionの欠落・形式不正でAPI readinessがfalseになり、署名しないcursorへfallbackしない（`INF-SEC-007`）。
-58. 旧artifactのreadinessが、後続releaseのexpand-only migrationの適用後も成立し、required要素の削除・定義の変更、journalの先頭の不一致、journalの不足ではReadyにならない（`INF-HLT-006`）。
+58. 旧artifactのreadinessが、後続releaseのexpand-only migrationの適用後もReadyになり、`INF-HLT-006` の1〜4を満たさない場合（required要素の削除・属性の変更、required tableへのNOT NULLでdefault等のない追加列、journalの先頭の不一致・不足、journalが同じ長さでの追加object）はReadyにならない。`SPEC-170` §22 項目9のTestがG2でPassする。
 
 ---
 
@@ -1935,20 +1936,20 @@ SPEC-180は次をすべて満たしたとき受入可能とする。
 ### UCR-180-003 — INCORPORATED
 
 - **Status:** `INCORPORATED`（本改訂 v2.6.0、`SPEC-170` v2.8.0）。現在の契約は本文を正とし、本記録は経緯である。
-- **対象:** SPEC-180 §20、§40（Common 7）。§45.2、§50、§51、§74、§78、§80 に及ぶ。`SPEC-170` §22 に関連する。
+- **対象:** SPEC-180 §20、§40（Common 7）。§45.1・§45.2、§50、§51、§74、§78、§80 に及ぶ。`SPEC-170` §22 に関連する。
 - **現在の仕様（改訂前）:** §20 は「Readinessは次をexactに確認する」とし、その一項目を「required migration version/hash matches release manifest」とする。§40 Common 7 は「release-required migration hash / schema version present」とする。§45.2 は手順5で expand-only / backward-compatible migration を実行し、手順8〜10で API・Worker をdeployするため、その間は旧artifactが新しいschemaの上で稼働する。§47 `INF-DEP-005` は旧applicationがschema-compatibleなら継続するとし、§50 は backward-compatible expand schemaを残したままapplication rollbackするとし、`INF-RBK-002` はcurrent schemaを読めないartifactへのrollbackを禁止し、§51 はprevious worker digestがcurrent schemaとcompatibleならworkerだけrollbackするとする。§41 により、rollbackを含む新しいdeploymentはreadinessが2xxを返すまでactiveにならない。§20の「exact」を「DBのschemaとmigration journalの全体がartifactと完全に一致する」と読むか、「artifactが必要とする要素がexactに存在する」と読むかが本文から決まらない。`SPEC-150` `REL-DB-012` は「required schema / constraint / extensionが欠ける場合」にReadyにしないとだけ定める。
 - **要求する変更:**
   1. readinessのmigration / schemaの確認の基準を、artifactが同梱したmigration setとrequired catalogとする（新Rule `INF-HLT-006`。§40）。
   2. migration journalは、同梱した各migrationのversion / source hashがjournalの先頭に順に一致することを要求する。同梱setより後の行は許容する。journalが同梱setより短い場合、先頭が食い違う場合、途中に行が挟まる場合、hashが違う場合はReadyにしない。
-  3. catalogは、journalが同梱setと同じ長さなら完全一致を要求する。journalが長い場合は、required catalogの各要素が同一の定義で存在することを要求し、追加のobjectを許容する。required tableへの追加列がNOT NULLでdefault・identity・generatedを持たない場合はReadyにしない。required要素の削除・定義の変更はReadyにしない。
+  3. catalogは、journalが同梱setと同じ長さなら完全一致を要求する。journalが長い場合は、required catalogの各要素が同一の定義で存在することを要求し、追加のobjectを許容する。required制約の検証状態がfalseからtrueへ変わったこと（`VALIDATE CONSTRAINT`）は同一とみなす。required tableへの追加列がNOT NULLでdefault・identity・generatedを持たない場合はReadyにしない。required要素の削除・属性の変更（required列への `SET NOT NULL` を含む）はReadyにしない。
   4. 権限・role・Directory・extension・timezone・PostgreSQL major・environment markerの確認と、artifact自身のmigration set hashとrelease manifestの一致（§44）は従来どおりとする。
-  5. §20・§40 Common 7の文言を上記に合わせて明確化し、§45.2、§50 `INF-RBK-002`、§51 から `INF-HLT-006` を参照する。`INF-HLT-006` でReadyにならないartifactはrollback対象にしない。Readyはrollbackの必要条件であり、expandが旧artifactの書き込みを拒否しないことはmigration reviewで確認する。
+  5. §20・§40 Common 7の文言を上記に合わせて明確化し、§45.1・§45.2（注記）、§50 `INF-RBK-002`、§51 から `INF-HLT-006` を参照する。後続releaseのmigrationがrequired要素を変える場合は、旧artifactがその間Readyにならず、rollback対象にならないことを明記する。`INF-HLT-006` の1〜4を満たさないartifactはrollback対象にしない。1〜4を満たすことはrollbackの必要条件であり、expandが旧artifactの書き込みを拒否しないことはmigration reviewで確認する。
   6. §74 G2、§78、§80 に対応する確認・trace・受入項目を加え、`SPEC-170` §22 にMigration Testの項目を加える。
 - **理由:** §20を完全一致と読むと、§45.2の手順5〜10で旧API・Workerが必ずNot Readyになり、§47 `INF-DEP-005`、§50、§51、`INF-RBK-002`、§80 項目37（rollbackがschema backward compatibilityを検証する）が成立しない。後続のmigrationが表とjournalの行を足すたびに旧artifactへのrollbackが不可能になり、§46 contract実行条件2（旧artifactへのrollbackの要否の確認）の前提も失われる。判定をartifactが必要とする要素に限れば、required要素の欠落・変更（`REL-DB-012`）は引き続きfail closedで検出でき、rollbackの可否がreadinessで機械的に決まる（§41のhealthcheckが互換の確認として働く）。新しいState・API・Capability・schema・DB role・metadataを必要としない。
 - **変更しない場合の影響:** staging・Productionでexpand migrationを適用してから新artifactがReadyになるまで、旧API・旧Workerのreadinessが `503` を返す。expandの適用後は旧artifactへのapplication / worker rollbackがreadinessで常に拒否され、forward-fixしか選べない。実装者が§20と§40のどちらかを独自に選ぶと、readinessの判定が実装ごとに分かれる。
-- **影響を受ける可能性がある仕様書:** SPEC-170（§22。変更した）。SPEC-200、SPEC-150、SPEC-100、SPEC-190は、読んだうえで変更不要と判断した（`SPEC-200` `ACC-DB-011` / `ACC-INF-007` / `ACC-INF-008` / `ACC-INF-020` / `ACC-INF-022` の汎用の基準がCurrentの `INF-HLT-006` を含む。`SPEC-150` `REL-DB-012`、`SPEC-100` §60、`SPEC-190` `DEV-DB-013〜014` は参照のみ）。
-- **反映先:** 本書 §20、§40（Common 7、`INF-HLT-006`）、§45.2、§50（`INF-RBK-002`）、§51、§74、§78、§80 項目58。`SPEC-170` v2.8.0 §22 項目9・§78。新しいState・Operation・Capability・error code・DB role・schema・readiness failure名は追加していない。
-- **決定（利用者、2026-11-20）:** 方式は前方一致と包含（journalが同梱setより長いときだけ包含、同じ長さなら完全一致）、required tableへのNOT NULLでdefault等のない追加列はReadyにしない、既存CHECKの定義を変えるexpandで旧artifactがReadyにならないことは受け入れる、先行するjournal行の数に上限を設けない、failure名は既存のものを使う、`SPEC-170` §22に項目を加える、直前のreleaseの実artifactによる確認は今回はG2に入れない、`SPEC-200`・`SPEC-150`・`SPEC-100`・`SPEC-190` は変更しない。本改訂の効果は改訂後にbuildしたartifactにだけ及ぶため、本改訂を実装したreleaseを、次の新しいmigrationを含むreleaseより先にstaging・Productionへ出す。
+- **影響を受ける可能性がある仕様書:** SPEC-170（§22。変更した）。SPEC-200、SPEC-150、SPEC-100、SPEC-190は、読んだうえで変更不要と判断した（`SPEC-200` `ACC-DB-011` / `ACC-DB-012` / `ACC-INF-007` / `ACC-INF-008` / `ACC-INF-020` / `ACC-INF-022` の汎用の基準がCurrentの `INF-HLT-006` を含む。`SPEC-150` `REL-DB-012`、`SPEC-100` §60、`SPEC-190` `DEV-DB-014` は参照のみ）。
+- **反映先:** 本書 §20、§40（Common 7、`INF-HLT-006`）、§45.2（§45.1にも及ぶ注記と手順17）、§50（`INF-RBK-002`）、§51、§74、§78、§80 項目10・58。`SPEC-170` v2.8.0 §22 項目9・§78。新しいState・Operation・Capability・error code・DB role・schema・readiness failure名は追加していない。
+- **決定（利用者、2026-11-20）:** 方式は前方一致と包含（journalが同梱setより長いときだけ包含、同じ長さなら完全一致）、required tableへのNOT NULLでdefault等のない追加列はReadyにしない、後続releaseのmigrationがrequired要素を変える場合（既存CHECKの定義の変更を含む）に、旧artifactが§45.2の手順5〜10の間Readyにならず、rollback対象にならないことは受け入れて本文に明記する、required制約の `VALIDATE CONSTRAINT`（検証状態のfalseからtrue）は同一とみなし、required列への `SET NOT NULL` はReadyにしない、transactionの外で実行するmigration stepの扱いは既知の制約として記し、導入時に決める、先行するjournal行の数に上限を設けない、failure名は既存のものを使う、`SPEC-170` §22に項目を加える、直前のreleaseの実artifactによる確認は今回はG2に入れない、`SPEC-200`・`SPEC-150`・`SPEC-100`・`SPEC-190` は変更しない。本改訂の効果は改訂後にbuildしたartifactにだけ及ぶため、本改訂を実装したreleaseを、次の新しいmigrationを含むreleaseより先にstaging・Productionへ出す（この順序は移行期の一度だけの制約であり、本文には置かず、実装のWork PlanとPull Requestで管理する）。
 
 本仕様は、Infrastructure Ownerとして明示的に委譲されたEnvironment、DB principal、Secret placement、scheduler、health、deployment、Audit access/purge、observability backend、backup / restore、Test gateの具体化だけを行っている。
 
