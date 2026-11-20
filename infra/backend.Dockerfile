@@ -4,8 +4,10 @@ WORKDIR /app
 RUN corepack enable
 COPY . .
 RUN pnpm install --frozen-lockfile
-# .dockerignore drops .git, so the image build passes the source commit (40-hex) explicitly:
-#   docker build --build-arg R39X_BUILD_GIT_SHA=<commit> ...  Without it the backend build fails.
+# .dockerignore drops .git, so the source commit (40-hex) arrives as a build argument; without it
+# the backend build fails. Build with `pnpm build:backend:image --commit <tested revision>`: it
+# resolves the commit once and streams `git archive <sha>` as the context with the same sha here.
+# Do not pair this argument with a working-tree context: the sha would not prove what was built.
 ARG R39X_BUILD_GIT_SHA
 RUN pnpm build:backend
 

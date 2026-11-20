@@ -225,7 +225,7 @@ it("TC-INF-DEP-001-006 wires the git identity into backend-build.json and the OC
   // .dockerignore drops .git, so the image build receives the commit as a build argument.
   expect(container).toMatch(/^ARG R39X_BUILD_GIT_SHA$/m);
   expect(container.indexOf("ARG R39X_BUILD_GIT_SHA")).toBeLessThan(
-    container.indexOf("pnpm build:backend"),
+    container.search(/^RUN pnpm build:backend$/m),
   );
   expect(workflow).toContain("dist/backend-build.json");
 });

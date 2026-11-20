@@ -4,12 +4,13 @@
 // Sources, in order:
 // - A git checkout whose top level is the build root: HEAD, plus whether the tree has changes.
 // - R39X_BUILD_GIT_SHA, for a build context without .git (the OCI build: .dockerignore drops .git).
-//   When both exist they must agree.
+//   When both exist they must agree. A root with .git that git cannot inspect is an error, not a
+//   context without .git. scripts/build-backend-image.mts builds the context from the same sha.
 // Neither, a malformed value or a disagreement fails the build: an artifact that cannot name its
 // commit is never emitted.
 import { spawnSync } from "node:child_process";
-import { realpathSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, realpathSync } from "node:fs";
+import { join, resolve } from "node:path";
 
 /**
  * - `clean`: built from a git checkout of `git_sha` with no tracked, staged or untracked change.
@@ -75,29 +76,55 @@ interface Checkout {
 }
 
 function readCheckout(root: string, executable: string): Checkout | undefined {
+  // A .git directory, or the .git file of a linked worktree, means the root is a checkout. Then
+  // a failing inspection (no git, unsafe ownership, a broken worktree link) stops the build: it
+  // must not fall back to the unverified build argument.
+  const hasGitEntry = existsSync(join(root, ".git"));
   const top = runGit(executable, root, ["rev-parse", "--show-toplevel"]);
-  // No git executable, no repository, or a repository that only encloses the build root.
-  if (top === undefined || !samePath(top.trim(), root)) return undefined;
+  if (!top.ok) {
+    if (hasGitEntry) throw uninspectable(root, top.reason);
+    return undefined; // No git executable or no repository: the OCI build context.
+  }
+  if (!samePath(top.stdout.trim(), root)) {
+    if (hasGitEntry) throw uninspectable(root, `git reports top level ${top.stdout.trim()}`);
+    return undefined; // A repository that only encloses the build root.
+  }
   const head = runGit(executable, root, ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
-  const sha = head?.trim();
+  const sha = head.ok ? head.stdout.trim() : undefined;
   if (sha === undefined || !SHA.test(sha)) {
     throw new Error(`build git identity: the git checkout at ${root} has no HEAD commit`);
   }
   const status = runGit(executable, root, ["status", "--porcelain=v1", "--untracked-files=all"]);
-  if (status === undefined) {
-    throw new Error(`build git identity: git status failed in ${root}`);
-  }
-  return { head: sha, dirty: status.trim() !== "" };
+  if (!status.ok) throw uninspectable(root, status.reason);
+  return { head: sha, dirty: status.stdout.trim() !== "" };
 }
 
-function runGit(executable: string, cwd: string, args: readonly string[]): string | undefined {
+function uninspectable(root: string, reason: string): Error {
+  return new Error(
+    `build git identity: ${join(root, ".git")} exists but the checkout cannot be inspected (${reason}); ` +
+      `fix the checkout instead of relying on ${VARIABLE}`,
+  );
+}
+
+type GitResult =
+  | { readonly ok: true; readonly stdout: string }
+  | { readonly ok: false; readonly reason: string };
+
+function runGit(executable: string, cwd: string, args: readonly string[]): GitResult {
   const result = spawnSync(executable, [...args], {
     cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   });
-  if (result.error !== undefined || result.status !== 0) return undefined;
-  return result.stdout;
+  if (result.error !== undefined) return { ok: false, reason: result.error.message };
+  if (result.status !== 0) {
+    const detail = (result.stderr ?? "").trim().split(/\r?\n/)[0] ?? "";
+    return {
+      ok: false,
+      reason: `git ${args[0]} exited ${result.status}${detail ? `: ${detail}` : ""}`,
+    };
+  }
+  return { ok: true, stdout: result.stdout };
 }
 
 function samePath(a: string, b: string): boolean {
