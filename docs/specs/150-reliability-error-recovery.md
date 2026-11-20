@@ -761,8 +761,10 @@ r150:AUTH_PROFILE_RELATION_INCONSISTENT:auth_subject:<auth_subject>:epoch-<n>
 ```
 
 - `<auth_subject>` は小文字のcanonical UUIDとする。
-- `<n>` は、同じreason・同じ `auth_subject` のresolved Case（`resolved_at IS NOT NULL`）の件数 + 1（10進、先頭0なし）とする。件数は、再selectで0件を観測した後の文で数える。resolved Caseは削除されず（`SPEC-100` §12）、resolveは一方向なので、unresolvedの間は同じ値になる（このreasonのCaseの `resolved_at` を設定するのは `API-ADM-REC-007`（`REL-REC-017`）だけであり、`resolved_at` をNULLに戻す操作は定義されていない。`SPEC-110` §49はmark-fixed only / generic state writeを提供しない）。
-- 同時実行は同じ `<n>` を計算し、`UNIQUE(dedupe_key)` で1件に収束する。resolve後の再発は `<n>+1` で新しいCaseになる（`REL-REC-013`）。件数を数えた直後に同じepochのCaseがresolveされ、INSERTがそのresolved Caseの `dedupe_key` と競合した場合は、`REL-AUTH-009` のとおり既存Caseへ収束して409とする。
+- `<n>` は、同じreason・同じ `auth_subject` のresolved Case（`resolved_at IS NOT NULL`）の件数 + 1（10進、先頭0なし）とする。件数は、0件を観測した再selectと同じ文（同じsnapshot）で数える。resolved Caseは削除されず（`SPEC-100` §12）、resolveは一方向なので、unresolvedの間は同じ値になる（このreasonのCaseの `resolved_at` を設定するのは `API-ADM-REC-007`（`REL-REC-017`）だけであり、`resolved_at` をNULLに戻す操作は定義されていない。`SPEC-110` §49はmark-fixed only / generic state writeを提供しない）。
+- 同時実行は同じ `<n>` を計算し、`UNIQUE(dedupe_key)` で1件に収束する。resolve後の再発は `<n>+1` で新しいCaseになる（`REL-REC-013`）。
+- 0件の観測とresolveが競合しても、同じincidentのCaseは増えない。件数と0件の観測は同じsnapshotなので、観測のsnapshotより後にcommitされたresolveは件数に入らない。そのrequestはresolveされたCaseと同じ `<n>` を計算し、INSERTがそのresolved Caseの `dedupe_key` と競合して、`REL-AUTH-009` のとおり既存Caseへ収束して409とする（resolve前の観測）。観測のsnapshotより前にcommitされたresolveは件数に入り、そのrequestは新しい `<n>` のCaseを作る（resolve後の再発。`REL-REC-013`）。
+- 後者が再発である理由: 件数に入ったresolveが `REL-REC-017` (i) によるなら、Business APIはProfileを削除せず `auth_subject` を更新しない（`SPEC-100` §12、`DB-AUTH-003`）ので、そのProfile rowは観測の文からも見える。それでも0件を観測したなら、`REL-REC-017` の収束確認の読取りより後に起きた、別のout-of-bandな削除・変更である。(ii) によるときも、0件の観測はresolveより後なので再発として扱う。
 - この `dedupe_key` はraw Auth Subjectを含むため、API応答・`details`・log・metric・alert・Audit Event（target refを含む）・dashboard・trace attributeへ出さない（`SPEC-100` `DB-XFN-004`）。HMAC指紋（`SPEC-160` §11）は使わない（`OBS-COR-005`）。
 
 ---
@@ -1182,7 +1184,7 @@ SPEC-160は少なくとも次のReliability semanticを観測可能にする。
 50. SPEC-160が観測可能なReliability semanticをemit可能にするがlog / audit schemaを本書で固定しない。
 51. `INV-010-01〜10`、関連`FR-*`、`BR-*`、`DI-030-*`、`AR-*`、`PAY-*`、`TQR-*`、`KRK-*`、`DB-*`、`API-*`、`EML-*`、`ADM-*` / `STF-*` / `OPS-*`、`SEC-*`へ追跡できる。
 52. Manual Recovery Runbookは §46〜§48 / §53 / §55 / §56 のcanonical operation（`API-ADM-REC-003〜007`, `API-ADM-GDS-005`, `API-ADM-EML-004〜005`, `API-ADM-TQR-001`, `API-ADM-KRK-007`, `API-ADM-PAY-001`）だけを使用し、new route / state / retry / capability / lock / generic commandを追加しない。
-53. Profile再select 0件を観測したtransactionでは、`API-AUTH-003` はProfileを作らず、Caseをcommitしてから409を返す（`REL-AUTH-009`）。同じincidentでCaseを増やさず、resolve後の再発は新Caseになる（`REL-REC-016`）。`REL-REC-017` の収束条件でだけresolveする。
+53. Profile再select 0件を観測したtransactionでは、`API-AUTH-003` はProfileを作らず、Caseをcommitしてから409を返す（`REL-AUTH-009`）。同じincidentでCaseを増やさず（0件の観測と既存Caseのresolveが競合した場合を含む）、resolve後の再発は新Caseになる（`REL-REC-016`）。`REL-REC-017` の収束条件でだけresolveする。
 
 ---
 
