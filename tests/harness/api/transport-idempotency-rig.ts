@@ -9,6 +9,7 @@ import {
 import { ApiFailure } from "../../../apps/api/src/api/failure.ts";
 import { requireTransportIdempotency } from "../../../apps/api/src/api/middleware/idempotency.ts";
 import { validateJson } from "../../../apps/api/src/api/middleware/json.ts";
+import { markAuthorizationConfirmed } from "../../../apps/api/src/api/rate-limit.ts";
 import { createLogger } from "../../../packages/observability/src/index.ts";
 
 // PR-S0-3c test harness (TST-GEN-006): a test app with harness-only routes that mount
@@ -60,6 +61,16 @@ function harnessContext(operationId: string): MiddlewareHandler<ApiEnvironment> 
       emailVerified: true,
       roles: [],
     });
+    await next();
+  };
+}
+/**
+ * Stand-in for the owner-relation check (SPEC-110 section 24 step 6) that a self operation's route
+ * mounts; it records success the way the real check does (SEC-ABU-029).
+ */
+function ownerChecked(): MiddlewareHandler<ApiEnvironment> {
+  return async (c, next) => {
+    markAuthorizationConfirmed(c);
     await next();
   };
 }
@@ -126,10 +137,12 @@ export function idempotencyRig() {
     return c.json({ ok: true });
   };
 
-  // Recommended mounting: guard, then path and body validation, then the idempotency middleware.
+  // Recommended mounting: guard (authentication, then the owner relation or Capability), then path
+  // and body validation, then the idempotency middleware.
   app.post(
     "/api/v1/test/idempotent/:ref",
     harnessContext("API-ORD-002"),
+    ownerChecked(),
     path.middleware,
     validateJson(bodySchema),
     requireTransportIdempotency("API-ORD-002", normalizeStandard),
@@ -140,6 +153,7 @@ export function idempotencyRig() {
     "/api/v1/test/idempotent-a/:ref",
     operationOnly("API-ORD-002"),
     requireVerifiedEmail(),
+    ownerChecked(),
     path.middleware,
     validateJson(bodySchema),
     requireTransportIdempotency("API-ORD-002", normalizeStandard),
@@ -159,6 +173,7 @@ export function idempotencyRig() {
   app.post(
     "/api/v1/test/plain/:ref",
     harnessContext("API-ORD-002"),
+    ownerChecked(),
     path.middleware,
     validateJson(bodySchema),
     handler,
@@ -168,24 +183,35 @@ export function idempotencyRig() {
   app.post(
     "/api/v1/test/fc/no-principal/:ref",
     operationOnly("API-ORD-002"),
+    ownerChecked(),
     requireTransportIdempotency("API-ORD-002", () => ({ params: {}, query: {}, body: null })),
     handler,
   );
   app.post(
     "/api/v1/test/fc/no-operation/:ref",
     principalOnly(),
+    ownerChecked(),
     requireTransportIdempotency("API-ORD-002", () => ({ params: {}, query: {}, body: null })),
     handler,
   );
   app.post(
     "/api/v1/test/fc/mismatch/:ref",
     harnessContext("API-CHK-001"),
+    ownerChecked(),
+    requireTransportIdempotency("API-ORD-002", () => ({ params: {}, query: {}, body: null })),
+    handler,
+  );
+  // Authenticated, but no owner-relation / Capability check ran (a forgotten authorization step).
+  app.post(
+    "/api/v1/test/fc/no-authorization/:ref",
+    harnessContext("API-ORD-002"),
     requireTransportIdempotency("API-ORD-002", () => ({ params: {}, query: {}, body: null })),
     handler,
   );
   app.post(
     "/api/v1/test/fc/normalize-zod/:ref",
     harnessContext("API-ORD-002"),
+    ownerChecked(),
     requireTransportIdempotency("API-ORD-002", () => {
       z.strictObject({ name: z.number() }).parse({ name: MARKER });
       return { params: {}, query: {}, body: null };
@@ -195,6 +221,7 @@ export function idempotencyRig() {
   app.post(
     "/api/v1/test/fc/normalize-pg/:ref",
     harnessContext("API-ORD-002"),
+    ownerChecked(),
     requireTransportIdempotency("API-ORD-002", () => {
       throw Object.assign(new Error(MARKER), { code: "08006", message: MARKER });
     }),
@@ -203,6 +230,7 @@ export function idempotencyRig() {
   app.post(
     "/api/v1/test/fc/normalize-undefined/:ref",
     harnessContext("API-ORD-002"),
+    ownerChecked(),
     requireTransportIdempotency("API-ORD-002", () => ({
       params: {},
       query: {},
@@ -213,6 +241,7 @@ export function idempotencyRig() {
   app.post(
     "/api/v1/test/fc/normalize-date/:ref",
     harnessContext("API-ORD-002"),
+    ownerChecked(),
     requireTransportIdempotency("API-ORD-002", () => ({
       params: {},
       query: {},
@@ -224,6 +253,7 @@ export function idempotencyRig() {
   app.post(
     "/api/v1/test/fc/normalize-body-marker/:ref",
     harnessContext("API-ORD-002"),
+    ownerChecked(),
     validateJson(bodySchema),
     requireTransportIdempotency("API-ORD-002", (c) => {
       throw new Error(JSON.stringify(c.get("validatedJson")));

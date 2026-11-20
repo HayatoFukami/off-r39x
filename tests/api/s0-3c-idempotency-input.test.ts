@@ -413,6 +413,8 @@ describe("TC-DEV-API-007-002 a wiring defect fails closed with 500 (DEV-API-007,
     ["(a) no Principal", "no-principal"],
     ["(b) no Operation ID", "no-operation"],
     ["(c) Operation ID differs from the middleware's", "mismatch"],
+    // API-IDM-011 4.: the key is checked only after authorization (section 24 steps 2-7) succeeded.
+    ["(h) no owner-relation / Capability check ran", "no-authorization"],
   ];
   it.each(cases)("%s: 500 even without a header (not 400)", async (label, name) => {
     const rig = idempotencyRig();
@@ -421,6 +423,18 @@ describe("TC-DEV-API-007-002 a wiring defect fails closed with 500 (DEV-API-007,
     expect(rig.seen, label).toHaveLength(0);
     expectCompletionAndRedaction(rig, [response], [], label);
   });
+  it.each(cases)(
+    "%s: 500 with a valid key too, and the handler never runs",
+    async (label, name) => {
+      const rig = idempotencyRig();
+      const response = await rig.post(`/api/v1/test/fc/${name}/${ORDER_REF}`, {
+        headers: rig.withKey(GOOD_KEY),
+      });
+      await expectFailure(response, 500, "INTERNAL_ERROR", label);
+      expect(rig.seen, label).toHaveLength(0);
+      expectCompletionAndRedaction(rig, [response], [GOOD_KEY], label);
+    },
+  );
 
   const normalizeFaults: [label: string, name: string][] = [
     ["(d) normalize throws a ZodError carrying a marker", "normalize-zod"],

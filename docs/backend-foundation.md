@@ -86,7 +86,7 @@ Worker の停止は、新規処理を止めて協調終了を待ち、15秒を�
 ## Idempotency-Key の入力検証（API-IDM-011）
 
 - `apps/api/src/api/middleware/idempotency.ts` の `requireTransportIdempotency` が、`API-IDM-011` の対象 Operation（42件。`TRANSPORT_IDEMPOTENCY_OPERATIONS`）について `Idempotency-Key`（HTTP 構文解析後の値。16〜128文字・印字可能 ASCII 0x20〜0x7E）を検証する。欠落・形式不正は `400 VALIDATION_FAILED`。key digest（検証した値そのものの SHA-256）と request digest（Zod 検証後の request の canonical JSON の SHA-256）を context の `transportIdempotency` に載せる。raw key は載せない。
-- 業務 route への配線と replay 記録（`app.idempotency_records`、`409 IDEMPOTENCY_KEY_REUSED`）は未実装（PR-S0-3d 以降）。認証・認可の後に付ける。
+- 業務 route への配線と replay 記録（`app.idempotency_records`、`409 IDEMPOTENCY_KEY_REUSED`）は未実装（PR-S0-3d 以降）。認証・認可の後に付ける。owner relation の確認または `requireCapability` が `markAuthorizationConfirmed` を呼んでいない request は、配線不備として `500 INTERNAL_ERROR` で止める（key を検証せず、handler にも進まない）。
 
 ## 検証記録
 

@@ -175,7 +175,9 @@ const TARGETS: readonly string[] = TRANSPORT_IDEMPOTENCY_OPERATIONS;
 
 /**
  * Validates `Idempotency-Key` and puts the key digest and request digest in the context. Mount it
- * after authentication and authorization (API-IDM-011 4.) on a target Operation's route.
+ * after authentication and authorization (API-IDM-011 4.) on a target Operation's route: the owner
+ * relation check or `requireCapability` must have called `markAuthorizationConfirmed` first, or the
+ * request ends in 500 INTERNAL_ERROR (a wiring defect).
  */
 export function requireTransportIdempotency(
   operationId: TransportIdempotencyOperationId,
@@ -188,6 +190,10 @@ export function requireTransportIdempotency(
     if (c.get("operationId") !== operationId) throw new ApiFailure("INTERNAL_ERROR");
     const principal = c.get("principal");
     if (principal === undefined) throw new ApiFailure("INTERNAL_ERROR");
+    // API-IDM-011 4.: authentication and authorization (section 24 steps 2-7) come first. A Principal
+    // alone does not show the owner relation or Capability passed; without that record
+    // (SEC-ABU-029) the route is miswired, so neither a 400 nor the handler may follow.
+    if (c.get("authorizationConfirmed") !== true) throw new ApiFailure("INTERNAL_ERROR");
     const parsed = parseIdempotencyKey(c.req.header("Idempotency-Key"));
     if (!parsed.ok) throw new ApiFailure("VALIDATION_FAILED");
     let digest: Uint8Array;

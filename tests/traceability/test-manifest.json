@@ -27022,7 +27022,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "Harness-only routes with a missing Principal, a missing or mismatched Operation ID, and a normalize that throws or returns an unrepresentable value; harness-only routes on a test app (not in the production route table), synthetic values only; no DB or Redis",
+      "preconditions": "Harness-only routes with a missing Principal, a missing or mismatched Operation ID, no owner-relation / Capability check (authorization not confirmed), and a normalize that throws or returns an unrepresentable value; harness-only routes on a test app (not in the production route table), synthetic values only; no DB or Redis",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -27034,7 +27034,7 @@
       ],
       "expected_http": [500],
       "expected_domain_postconditions": [
-        "Each case answers 500 INTERNAL_ERROR (retryable false, details null) without running the handler, even with no header (not 400); a database-like error is not 503; no body, header or log line contains the marker, the code or ZodError; one completion log with http_status 500"
+        "Each case answers 500 INTERNAL_ERROR (retryable false, details null) without running the handler, even with no header (not 400) and, for the wiring cases, with a valid key; a database-like error is not 503; no body, header or log line contains the marker, the code or ZodError; one completion log with http_status 500"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
