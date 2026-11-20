@@ -416,7 +416,7 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "each exported constant equals the canonical set with no duplicates",
-        "no extra exports beyond assertNever and the SPEC-030 9.2 display-name policy (DISPLAY_NAME_MAX_CODE_POINTS, normalizeDisplayName)"
+        "no extra exports beyond assertNever, the SPEC-030 9.2 display-name policy (DISPLAY_NAME_MAX_CODE_POINTS, normalizeDisplayName) and the PR-L2-3 public Entry sales state function evaluatePublicEntryAvailability"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -16568,7 +16568,7 @@
       "expected_domain_postconditions": [
         "@off-r39x/db/schema exports exactly app and the eleven table declarations (announcements, auditEvents, businessProfiles, entryTicketOfferings, events, faqItems, goods, goodsInventory, karaokeSalesConfigurations, roleAssignments, sponsorLogos) with no helper leaking through the barrel",
         "The app schema object and both tables use the schema name app",
-        "@off-r39x/db root exports exactly the 19 runtime names (including createCurrentProfileRepository from PR-L2-1a, classifyDatabaseError, DatabaseUnavailableError and isDatabaseUnavailableCode from PR-S0-3a, and isDatabaseTemporaryFailure and typeDirectQueryFailure from the PR #66 round 6 follow-up) and does not export the schema"
+        "@off-r39x/db root exports exactly the 20 runtime names (including createPublicContentRepository from PR-L2-3, createCurrentProfileRepository from PR-L2-1a, classifyDatabaseError, DatabaseUnavailableError and isDatabaseUnavailableCode from PR-S0-3a, and isDatabaseTemporaryFailure and typeDirectQueryFailure from the PR #66 round 6 follow-up) and does not export the schema"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],

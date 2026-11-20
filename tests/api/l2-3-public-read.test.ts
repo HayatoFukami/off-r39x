@@ -573,7 +573,11 @@ describe("TC-API-009-001 API-PUB-001..005 contract (SPEC-110 §26.1, API-PUB-REA
       const res = await listWith(body).get(pathOf("announcements"));
       expect(res.status).toBe(200);
       const [item] = (await res.json()).data.items as Record<string, unknown>[];
-      return item as { excerpt: string; excerpt_truncated: boolean };
+      const { excerpt, excerpt_truncated } = item as {
+        excerpt: string;
+        excerpt_truncated: boolean;
+      };
+      return { excerpt, excerpt_truncated };
     };
     const cp = (text: string) => [...text].length;
 
@@ -723,10 +727,11 @@ describe("TC-API-009-001 API-PUB-001..005 contract (SPEC-110 §26.1, API-PUB-REA
         });
         const res = await r.get(detail(ref));
         expect(res.status).toBe(404);
+        const copy = res.clone();
         const error = await errorOf(res);
         expect(error.code).toBe("RESOURCE_NOT_FOUND");
         expect(error.details).toBeNull();
-        const text = await res.clone().text();
+        const text = await copy.text();
         expect(text).not.toContain(ref);
         bodies.push(text.replace(/"request_id":"[^"]+"/, '"request_id":"-"'));
       }
@@ -760,7 +765,10 @@ describe("TC-API-009-001 API-PUB-001..005 contract (SPEC-110 §26.1, API-PUB-REA
       expect(res.status).toBe(200);
       const text = await res.text();
       expect(JSON.parse(text).data).toEqual({ items: offeringDtos() });
-      expect(text).not.toMatch(/capacity|held_|committed_|remaining|sale_control_state|checkin/i);
+      // Key names (quoted), not values: a fixture name may contain an ordinary word such as "remaining".
+      expect(text).not.toMatch(
+        /"[a-z_]*(capacity|held|committed|remaining|quantity|sale_control_state|checkin)[a-z_]*":/i,
+      );
     });
 
     it("on the current dev no Entry purchase route is registered, so an Offering inside its period is SALES_STOPPED, a suspended one too, and the period reasons come first", async () => {
