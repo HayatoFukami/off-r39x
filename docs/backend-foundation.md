@@ -87,6 +87,7 @@ Worker の停止は、新規処理を止めて協調終了を待ち、15秒を�
 
 - `apps/api/src/api/middleware/idempotency.ts` の `requireTransportIdempotency` が、`API-IDM-011` の対象 Operation（42件。`TRANSPORT_IDEMPOTENCY_OPERATIONS`）について `Idempotency-Key`（HTTP 構文解析後の値。16〜128文字・印字可能 ASCII 0x20〜0x7E）を検証する。欠落・形式不正は `400 VALIDATION_FAILED`。key digest（検証した値そのものの SHA-256）と request digest（Zod 検証後の request の canonical JSON の SHA-256）を context の `transportIdempotency` に載せる。raw key は載せない。
 - 業務 route への配線と replay 記録（`app.idempotency_records`、`409 IDEMPOTENCY_KEY_REUSED`）は未実装（PR-S0-3d 以降）。認証・認可の後に付ける。owner relation の確認または `requireCapability` が `markAuthorizationConfirmed` を呼んでいない request は、配線不備として `500 INTERNAL_ERROR` で止める（key を検証せず、handler にも進まない）。
+- `normalize` の戻り値は、route 自身のレビュー済みコードが返す Zod 検証後の値（通常のオブジェクト・配列・JSON の値）として信頼する。request digest の計算は、JSON で表せない値と、読むたびに答えが変わりうる値（accessor、すべての Proxy、Array のサブクラス、通常でないオブジェクト、symbol キー、列挙不可・`undefined` のプロパティ）を拒否する。Zod の出力に現れない、それ以外の特殊なオブジェクト（基底クラスのコンストラクターの戻り値で付けた状態、WeakMap やクロージャーに持つデータなど）は扱わない。そうした `normalize` は route の配線不備として、その route のレビューで防ぐ。
 
 ## 検証記録
 

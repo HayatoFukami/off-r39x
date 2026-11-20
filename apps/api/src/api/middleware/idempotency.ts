@@ -77,7 +77,18 @@ export interface TransportIdempotencyInput {
   readonly requestDigest: Uint8Array;
 }
 
-/** The validated request (after Zod transforms and defaults) that the request digest covers. */
+/**
+ * The validated request (after Zod transforms and defaults) that the request digest covers.
+ *
+ * Trust boundary: `normalize` is the route's own reviewed code, not client input, and returns the
+ * Zod-validated values (plain objects, plain arrays and JSON primitives). The canonical form refuses
+ * what JSON cannot represent and anything that could answer a read differently (accessors, every
+ * Proxy, Array subclasses, non-plain objects, symbol keys, non-enumerable or undefined properties).
+ * Other exotic objects that do not occur in Zod output are out of scope and are not defended
+ * against: for example, state attached to a plain object through a base-class constructor's return
+ * override, or data kept outside the value (a WeakMap, a closure). Such a normalize is a wiring
+ * defect of the route, to be caught in its review, not here.
+ */
 export interface NormalizedRequest {
   readonly params: Readonly<Record<string, string>>;
   readonly query: Readonly<Record<string, unknown>>;
@@ -122,7 +133,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * API-IDM-005 / TST-IDM-004 (4): deterministic canonical form `{"body":..,"params":..,"query":..}`
  * with keys sorted by UTF-16 code unit and no whitespace. Throws a fixed message for anything JSON
  * cannot represent. Every property is read once, from its descriptor (an accessor is refused, never
- * invoked), and the checks run on that copy, so the digest covers exactly what was checked.
+ * invoked), and the checks run on that copy, so the digest covers exactly what was checked. See
+ * `NormalizedRequest` for the trust boundary (Proxy is refused; other exotic objects are out of scope).
  */
 export function canonicalRequestJson(request: NormalizedRequest): string {
   let copy: ReturnType<typeof copyJsonValue>;
