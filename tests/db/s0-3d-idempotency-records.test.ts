@@ -4,7 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createDatabase, runMigrations } from "../../packages/db/src/index.ts";
 import { migrationIdentities } from "../../packages/db/src/migrations.ts";
 import { catalogQuery, requiredCatalog } from "../../packages/db/src/schema-contract.ts";
-import { prepareFoundationDatabase } from "../harness/db/foundation.ts";
+import { installSyntheticDirectory, prepareFoundationDatabase } from "../harness/db/foundation.ts";
 import {
   claimInput,
   claimInTransaction,
@@ -67,6 +67,7 @@ beforeAll(async () => {
   admin = new Client({ connectionString: url });
   await admin.connect();
   await prepareFoundationDatabase(admin);
+  await installSyntheticDirectory(admin);
   await installSyntheticBusiness(admin);
   profileA = await insertProfile(admin, PROFILE_A);
   profileB = await insertProfile(admin, PROFILE_B);
