@@ -364,7 +364,10 @@ export async function runSeedCli(
   for (const [key, value] of Object.entries(env)) childEnv[key] = value;
   for (const key of Object.keys(childEnv)) if (childEnv[key] === undefined) delete childEnv[key];
   return await new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [CLI_PATH], {
+    // Node 24 releases that still mark type stripping experimental print an ExperimentalWarning
+    // line on stderr at startup. It comes from the runtime, not from the command, so it is
+    // silenced here to keep the stderr contract check (one JSON log event per line) about the CLI.
+    const child = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", CLI_PATH], {
       cwd: CLI_CWD,
       env: childEnv as NodeJS.ProcessEnv,
       stdio: ["ignore", "pipe", "pipe"],
