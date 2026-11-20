@@ -26355,7 +26355,8 @@
         "The update sends exactly one statement inside BEGIN, SET LOCAL and COMMIT: UPDATE app.business_profiles SET display_name = $1, updated_at = transaction_timestamp() WHERE auth_subject = $2 RETURNING public_ref, display_name, updated_at, with the name (or null) and the subject as values; the connection is released normally",
         "Neither statement contains INSERT, ON CONFLICT, DELETE or a row lock clause",
         "Rows map to the profile with updated_at truncated to milliseconds (YYYY-MM-DDTHH:mm:ss.sssZ); no row is not_found; more than one row throws a cardinality violation",
-        "A driver error on the UPDATE is rethrown as the driver's own error (SQLSTATE 23514 kept), not as drizzle's DrizzleQueryError"
+        "A driver error on the UPDATE is rethrown as the driver's own error (SQLSTATE 23514 kept), not as drizzle's DrizzleQueryError",
+        "An error drizzle throws while mapping rows the database answered (a TypeError without a code) is thrown by both read and update; the read does not type it as unavailable, because only the driver's rejection wrapped in DrizzleQueryError is a database failure"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],

@@ -59,12 +59,16 @@ export function createCurrentProfileRepository(pool: Pool) {
           .from(businessProfiles)
           .where(eq(businessProfiles.authSubject, authSubject));
       } catch (caught) {
-        const error = driverError(caught);
         // SPEC-110 §50/§51: the same classification as the HTTP boundary (errorFromException), so a
-        // failure is answered the same way here and on the update path. The read is one statement on
-        // the pool, so a rejection without a SQLSTATE (EAI_AGAIN, a pool acquisition timeout, a dropped
-        // connection) is typed as unavailable first, as transaction() does.
-        if (isDatabaseTemporaryFailure(typeDirectQueryFailure(error)))
+        // failure is answered the same way here and on the update path. Only the driver's rejection
+        // (the cause drizzle wraps in DrizzleQueryError) came from the database: the read is one
+        // statement on the pool, so such a rejection without a SQLSTATE (EAI_AGAIN, a pool
+        // acquisition timeout, a dropped connection) is typed as unavailable first, as transaction()
+        // does. An error drizzle throws itself, such as while mapping rows the database answered, is
+        // not typed and so is not a temporary failure.
+        const fromDriver = caught instanceof DrizzleQueryError && caught.cause !== undefined;
+        const error = fromDriver ? caught.cause : caught;
+        if (isDatabaseTemporaryFailure(fromDriver ? typeDirectQueryFailure(error) : error))
           return { status: "unavailable" };
         throw error;
       }

@@ -153,6 +153,28 @@ describe("TC-API-007-010 self profile repository statements come from the Drizzl
     ).rejects.toThrow("Business Profile cardinality violation");
   });
 
+  // PR #71 review: drizzle wraps only the driver's rejection in DrizzleQueryError; an error while it
+  // maps a row the database did answer is thrown as it is. Such an error is a code defect, not a DB
+  // outage, so the read must not type it as unavailable (503) just because it has no SQLSTATE: both
+  // read and update throw it, and the HTTP boundary answers 500 on GET and PATCH alike.
+  it("an error while drizzle maps the answered rows is thrown on read and update, not typed as unavailable", async () => {
+    // A row that is not an array makes drizzle's row mapping throw a TypeError without a code.
+    const read = createCurrentProfileRepository(recordingPool([null as unknown as unknown[]]).pool);
+    const readError = await read.readCurrentBusinessProfile(SUBJECT).then(
+      (value) => ({ resolved: value }),
+      (error: unknown) => error,
+    );
+    expect(readError).toBeInstanceOf(TypeError);
+    expect(readError).not.toHaveProperty("code");
+
+    const update = createCurrentProfileRepository(
+      recordingPool([null as unknown as unknown[]]).pool,
+    );
+    await expect(update.updateCurrentBusinessProfile(SUBJECT, "x")).rejects.toBeInstanceOf(
+      TypeError,
+    );
+  });
+
   it("a driver error keeps its SQLSTATE through Drizzle: 23514 on the UPDATE is rethrown as the driver's own error", async () => {
     const failure = Object.assign(new Error("synthetic-check-violation"), { code: "23514" });
     const fake = recordingPool([]);
