@@ -16591,7 +16591,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "Drizzle declaration names for the constraints and indexes of the declared tables equal schema-contract.json by name and kind; the contract lists idempotency_records among its tables (the exact names and shape of its constraints and indexes are checked by TC-DB-IDM-001-002)",
+        "The contract's app tables (excluding schema_migrations) equal exactly the twelve listed names, including idempotency_records (its constraint and index names are checked by TC-DB-IDM-001-002)",
         "Drizzle declaration names for business_profiles and role_assignments constraints and indexes equal schema-contract.json by name and kind",
         "Column order, SQL type, NOT NULL, identity always and default presence equal schema-contract.json; default SQL expressions (transaction_timestamp(), gen_random_uuid()) equal the pre-refactor golden and the contract",
         "CHECK expressions serialised by PgDialect equal the pre-refactor golden exactly and match the contract definitions by referenced columns, literals, numbers and NULL tests",
