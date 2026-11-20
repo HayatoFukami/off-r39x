@@ -16788,7 +16788,7 @@
       "expected_domain_postconditions": [
         "Invalid actor_ref per actor_type, unsafe reference text (Email, URL, raw QR and other values with a dot, slash, at sign or whitespace; the format cannot tell a Secret without such characters, which stays the caller's duty under SPEC-160 section 12), non UUID, bad fingerprint, reason_code, capability and non allowlisted enum values are refused before any statement is sent, and the error message omits the input",
         "A change is accepted only when issued by a per-operation change spec (enum, public reference, count or integer values) and only for the operation IDs that spec was defined for; forged, copied or plain objects, a change issued for another operation, free text and out-of-spec keys, states, fields and values are refused",
-        "operation_id accepts only a SPEC-110 API-* Operation ID or one of the 21 SPEC-160 section 9.1 internal keys (for example RECOVERY.ADMIN_BOOTSTRAP); free labels, reference-like values and unknown keys are refused",
+        "operation_id accepts only a SPEC-110 API-* Operation ID or one of the 22 SPEC-160 section 9.1 internal keys (for example RECOVERY.ADMIN_BOOTSTRAP, PROVISION.INITIAL_DATA_SEED); free labels, reference-like values and unknown keys are refused",
         "An accepted event sends exactly one bound INSERT into app.audit_events with no RETURNING, BEGIN or COMMIT, no timestamp and no generated id",
         "A database error is rethrown as the same object after a single attempt, with no retry (writer level only for OBS-AUD-008; no Provider flow is exercised)",
         "Unsafe change input is also a compile time error, checked by pnpm typecheck"
@@ -16851,6 +16851,967 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": false
+    },
+    {
+      "test_case_id": "TC-TST-SEED-001-001",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "DB-SEED-001",
+        "DB-SEED-003",
+        "DB-SEED-004",
+        "INF-SEED-004",
+        "INV-010-07",
+        "TST-SEED-001",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [
+        "INV-010-07"
+      ],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real PostgreSQL 17 test database created per test file with migrations 0001-0003 applied by app_migrator; synthetic Event and Offering values only; acquireMigrationLock then seedInitialData on a dedicated app_migrator connection; no Provider; empty app.events and app.entry_ticket_offerings",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The result is CREATED and its created Public References equal the stored public_ref values"
+      ],
+      "expected_db_postconditions": [
+        "One events row and one row per input Offering exist; business_timezone is Asia/Tokyo, sale_control_state is SUSPENDED, held and committed quantities are 0, created_at equals updated_at",
+        "public_ref is a DB generated v4 UUID, distinct per row and absent from the input; stored values and instants equal the input",
+        "A minimal input leaves every omitted nullable column NULL"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-TST-SEED-001-003",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "SEC-DB-001",
+        "TST-SEED-001",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real PostgreSQL 17 test database created per test file with migrations 0001-0003 applied by app_migrator; synthetic Event and Offering values only; acquireMigrationLock then seedInitialData on a dedicated app_migrator connection; no Provider; connection as app_api_runtime",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The check is a database privilege check only; it is not an API check (API-PUB-001 and API-PUB-005 are not implemented, so TST-SEED-001 (3) stays unexecuted)"
+      ],
+      "expected_db_postconditions": [
+        "app_api_runtime can SELECT the seeded Event and Offerings, which are SUSPENDED"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-TST-SEED-001-004",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "DB-SEED-003",
+        "TST-UNT-003",
+        "TST-SEED-001",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Node unit test with no database; synthetic input values only",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "sale_control_state, held_quantity, committed_quantity, id, public_ref, event_id, business_timezone, created_at and updated_at are each rejected in the Event object and in an Offering object with INITIAL_DATA_INPUT_INVALID and no input value in the result"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-TST-SEED-002-001",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "DB-SEED-001",
+        "INF-SEED-004",
+        "REL-DB-007",
+        "TST-SEED-002",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real PostgreSQL 17 test database created per test file with migrations 0001-0003 applied by app_migrator; synthetic Event and Offering values only; acquireMigrationLock then seedInitialData on a dedicated app_migrator connection; no Provider; seeded once",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The second run is NOOP and the input is never read"
+      ],
+      "expected_db_postconditions": [
+        "Every column of every row of the three tables, including updated_at, and the Audit Event count are unchanged"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-TST-SEED-002-002",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "DB-SEED-001",
+        "REL-DB-007",
+        "TST-SEED-002",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real PostgreSQL 17 test database created per test file with migrations 0001-0003 applied by app_migrator; synthetic Event and Offering values only; acquireMigrationLock then seedInitialData on a dedicated app_migrator connection; no Provider; seeded once, then Event name, Offering unit_amount and sale_control_state changed by the superuser",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The re-run is NOOP and the changed values are not reverted"
+      ],
+      "expected_db_postconditions": [
+        "The changed name, unit_amount 4242 and ENABLED state remain and the table snapshot is unchanged"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-TST-SEED-002-003",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "DB-SEED-001",
+        "OBS-AUD-014",
+        "TST-SEED-002",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real PostgreSQL 17 test database created per test file with migrations 0001-0003 applied by app_migrator; synthetic Event and Offering values only; acquireMigrationLock then seedInitialData on a dedicated app_migrator connection; no Provider; one Event inserted by the superuser, then one Event with one Offering",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "With only an Event, only the Offerings are created and no Event Audit Event is written; with one Offering and a three Offering input, the result is NOOP and the input is not read"
+      ],
+      "expected_db_postconditions": [
+        "The existing Event row is unchanged and the new Offerings reference it",
+        "The Offering count stays 1 and the Audit Event count stays 0 in the NOOP case"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-TST-SEED-002-004",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "DB-SEED-001",
+        "API-RLC-007",
+        "REL-DB-007",
+        "TST-SEED-002",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real PostgreSQL 17 test database created per test file with migrations 0001-0003 applied by app_migrator; synthetic Event and Offering values only; acquireMigrationLock then seedInitialData on a dedicated app_migrator connection; no Provider; two events rows inserted by the superuser",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The result is FAILED with CONSISTENCY_FAILURE and INITIAL_DATA_EVENT_NOT_UNIQUE and the input is never read"
+      ],
+      "expected_db_postconditions": [
+        "No row is created or updated and no Audit Event is written"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-TST-SEED-002-005",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "DB-SEED-002",
+        "INF-SEED-003",
+        "INF-DB-008",
+        "INV-010-07",
+        "TST-SEED-002",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [
+        "INV-010-07"
+      ],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real PostgreSQL 17 test database created per test file with migrations 0001-0003 applied by app_migrator; synthetic Event and Offering values only; acquireMigrationLock then seedInitialData on a dedicated app_migrator connection; no Provider; eight connections start together behind a barrier",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": "barrier start of 8 concurrent runs; no random seed",
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Exactly one run is CREATED and seven are NOOP; the input is read once in total"
+      ],
+      "expected_db_postconditions": [
+        "One Event, the input count of Offerings and one set of Audit Events exist, all with the CREATED run's operation_execution_id"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-TST-SEED-003-001",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "DB-SEED-003",
+        "TST-UNT-003",
+        "TST-SEED-003",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Node unit test with no database; synthetic input values only",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Unknown keys, wrong types, CHECK-equivalent ordering and range violations, lowercase or four letter currency, empty Event name, timestamps without an offset, unsafe integers, lone surrogates, empty or non-array Offerings and non-JSON text are rejected with an error code only",
+        "Valid full, minimal and null-valued inputs and many Offerings are accepted; an absent or empty input is reported as missing"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-TST-SEED-003-002",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "DB-SEED-003",
+        "DB-TXN-002",
+        "REL-DB-002",
+        "INV-010-07",
+        "TST-SEED-003",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [
+        "INV-010-07"
+      ],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real PostgreSQL 17 test database created per test file with migrations 0001-0003 applied by app_migrator; synthetic Event and Offering values only; acquireMigrationLock then seedInitialData on a dedicated app_migrator connection; no Provider; an input whose second of three Offerings is invalid, and an input refused by a probe CHECK added by the superuser on the third Offering",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Both runs are FAILED (INITIAL_DATA_INPUT_INVALID and INITIAL_DATA_CONSTRAINT_REJECTED, PERMANENT_FAILURE) and the constraint violation is not retried"
+      ],
+      "expected_db_postconditions": [
+        "Event, Offering and Audit Event counts are all 0 after each run, and the probe CHECK is removed afterwards"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-TST-SEED-003-003",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "DB-SEED-005",
+        "OBS-AUD-007",
+        "REL-DB-002",
+        "TST-SEED-003",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real PostgreSQL 17 test database created per test file with migrations 0001-0003 applied by app_migrator; synthetic Event and Offering values only; acquireMigrationLock then seedInitialData on a dedicated app_migrator connection; no Provider; INSERT on app.audit_events revoked from app_migrator by the superuser for the run and granted back",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "FP.AUDIT.INSERT_FAILURE"
+      ],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The result is FAILED with AUDIT_WRITE_FAILED and PERMANENT_FAILURE"
+      ],
+      "expected_db_postconditions": [
+        "No Event, Offering or Audit Event row remains, the Event INSERT was issued once (no retry), and the INSERT privilege is restored"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-TST-SEED-003-004",
+      "level": "Integration",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "INF-SEED-004",
+        "INF-DEP-005",
+        "INF-SEED-005",
+        "OBS-LOG-005",
+        "TST-SEED-003",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "CLI child process over TLS (NODE_EXTRA_CA_CERTS) against the isolated real PostgreSQL 17 database as app_migrator, port 5432; UNKNOWN_RESULT exit code 3 is not reachable here and is covered by TC-TST-SEED-005-006 and the 006 cases",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "CREATED and NOOP exit 0 and are told apart by the outcome; FAILED exits 2; invalid configuration exits 2 with CONFIGURATION_INVALID before any connection"
+      ],
+      "expected_db_postconditions": [
+        "Rows and Audit Events exist only after CREATED; NOOP does not need INITIAL_DATA_SEED_JSON; two Events, a missing input and every invalid configuration leave nothing created"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "stdout carries exactly one JSON result line for each run"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-TST-SEED-003-005",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "INF-SEED-002",
+        "INF-SEED-004",
+        "DB-SEED-002",
+        "REL-DB-007",
+        "TST-SEED-003",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real PostgreSQL 17 test database created per test file with migrations 0001-0003 applied by app_migrator; synthetic Event and Offering values only; acquireMigrationLock then seedInitialData on a dedicated app_migrator connection; no Provider",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "With rows to skip, a missing or malformed input is not read and the result is NOOP; with rows to create it is FAILED (INITIAL_DATA_INPUT_MISSING or INITIAL_DATA_INPUT_INVALID) and nothing is created"
+      ],
+      "expected_db_postconditions": [
+        "pg_advisory_xact_lock(hashtext('app:initial-data-seed')) is issued before the first SELECT from app.events"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-TST-SEED-004-001",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "OBS-AUD-014",
+        "DB-SEED-005",
+        "OBS-AUD-007",
+        "TST-SEED-004",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real PostgreSQL 17 test database created per test file with migrations 0001-0003 applied by app_migrator; synthetic Event and Offering values only; acquireMigrationLock then seedInitialData on a dedicated app_migrator connection; no Provider",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The result's auditEventIds equal the stored audit_event_id values"
+      ],
+      "expected_db_postconditions": [
+        "One Audit Event per created row with BUSINESS_EFFECT, INFRASTRUCTURE_OPERATOR, the actor ref, PROVISION.INITIAL_DATA_SEED, the result's operation_execution_id, PASSED and COMMITTED",
+        "target_type is PUBLIC_CONTENT for the Event and ENTRY_TICKET_OFFERING for each Offering, target_ref is the row's public_ref, an Offering after_state is SUSPENDED and occurred_at equals the row's created_at"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-TST-SEED-004-002",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "OBS-AUD-014",
+        "OBS-AUD-009",
+        "TST-SEED-004",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real PostgreSQL 17 test database created per test file with migrations 0001-0003 applied by app_migrator; synthetic Event and Offering values only; acquireMigrationLock then seedInitialData on a dedicated app_migrator connection; no Provider",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "NOOP, two Events and invalid input do not add an Audit Event"
+      ],
+      "expected_db_postconditions": [
+        "The Audit Event count is unchanged by a NOOP run and is 0 after each rolled-back FAILED run"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-TST-SEED-004-003",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "OBS-AUD-014",
+        "OBS-AUD-006",
+        "TST-SEED-004",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real PostgreSQL 17 test database created per test file with migrations 0001-0003 applied by app_migrator; synthetic Event and Offering values only; acquireMigrationLock then seedInitialData on a dedicated app_migrator connection; no Provider",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "changed_fields lists field names only"
+      ],
+      "expected_db_postconditions": [
+        "changed_fields equals the created input columns plus business_timezone (Event) or sale_control_state, held_quantity and committed_quantity (Offering); omitted nullable columns are not listed",
+        "safe_change_summary is {} and no Audit Event column text contains an input string, number, timestamp, JPY or Asia/Tokyo"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-TST-SEED-005-001",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "DB-SEED-006",
+        "INF-SEED-002",
+        "TST-SEED-005",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Node unit test with no database; synthetic input values only; reads packages/db/seed/initial-data.example.json",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The example parses with the command's strict parser, every free text value says it is synthetic data, timestamps are in 2030, and it has no URL, phone-number shape or non-reserved e-mail domain (secret-scan is run separately)"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-TST-SEED-005-002",
+      "level": "Integration",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "INF-SEED-005",
+        "INF-SEC-001",
+        "OBS-LOG-005",
+        "TST-UNT-003",
+        "TST-SEED-005",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "CLI child process over TLS against the isolated real PostgreSQL 17 database; a synthetic URL password and per-run probe strings and numbers",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "stdout is exactly one JSON line with the nine result keys; stderr lines are JSON with the common log fields and the result and failure_class mapping of INF-SEED-005"
+      ],
+      "expected_db_postconditions": [
+        "CREATED result line matches the stored public_ref and audit_event_id values"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "No input value, connection string, password, host, parser message, raw exception message or stack appears in stdout or stderr for CREATED, NOOP, FAILED, malformed input and an unreachable host"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-TST-SEED-005-003",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "INF-SEED-001",
+        "DB-SEED-007",
+        "TST-SEED-005",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Node unit test with no database; synthetic input values only; reads packages/db/migrations/*.sql",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "No migration contains an INSERT INTO app.events or app.entry_ticket_offerings (comments excluded; the detector is first checked against sample spellings)"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-TST-SEED-005-004",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "INF-SEED-003",
+        "SEC-DB-001",
+        "INF-AUD-001",
+        "TST-SEED-005",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real PostgreSQL 17 test database created per test file with migrations 0001-0003 applied by app_migrator; synthetic Event and Offering values only; acquireMigrationLock then seedInitialData on a dedicated app_migrator connection; no Provider; statements recorded by wrapping Client.query (SQL text only); app_api_runtime, app_email_runtime and app_reconciliation_runtime connections",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "A lock handle that acquireMigrationLock did not issue, or one already released, is refused before any SQL"
+      ],
+      "expected_db_postconditions": [
+        "CREATED, NOOP and FAILED issue only BEGIN, SET, SELECT current_user, advisory lock calls, SELECT and INSERT on the three tables, COMMIT and ROLLBACK",
+        "The three runtime roles get 42501 on INSERT into events and entry_ticket_offerings, and a runtime connection cannot acquire the migration lock (MigrationPrincipalError) and sends no INSERT"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-TST-SEED-005-005",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "INF-SEED-001",
+        "INF-SEED-006",
+        "TST-SEED-005",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Node unit test with no database; synthetic input values only; reads the mounted ROUTES registry",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Admin event and entry-offerings routes expose only GET and PATCH and no route creates or replaces an Event or an Offering"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-TST-SEED-005-006",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "INF-SEED-004",
+        "INF-SEED-005",
+        "TST-SEED-005",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Node unit test with no database; synthetic input values only",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "CREATED and NOOP exit 0, FAILED exits 2, UNKNOWN_RESULT exits 3; the two failure codes differ and are neither 0 nor 1"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "CREATED maps to SUCCESS, NOOP to NOOP, FAILED to FAILED with its failure class, UNKNOWN_RESULT to PENDING with failure_class UNKNOWN_RESULT, at levels INFO, INFO, ERROR and WARN"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-TST-SEED-005-007",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "OBS-LOG-001",
+        "OBS-LOG-003",
+        "INF-SEED-005",
+        "TST-SEED-005",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Node unit test with no database; synthetic input values only; the strict logger from packages/observability",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "EVENT_NAMES lists provision.initial_data_seed.completed once"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "The strict logger accepts the completion record with service RECOVERY, INFRASTRUCTURE_OPERATOR and PROVISION.INITIAL_DATA_SEED"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-TST-SEED-006-001",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "DB-SEED-002",
+        "REL-DB-006",
+        "REL-DB-007",
+        "OBS-DB-004",
+        "TST-SEED-006",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real PostgreSQL 17 test database created per test file with migrations 0001-0003 applied by app_migrator; synthetic Event and Offering values only; acquireMigrationLock then seedInitialData on a dedicated app_migrator connection; no Provider; real TCP fault proxy in front of the original connection (plain transport; TLS is not carried); re-check and retries on direct connections; mode drop_ack",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "FP.DB.AFTER_COMMIT_SENT_BEFORE_ACK"
+      ],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The re-check finds this run's Audit Event and the result is CREATED"
+      ],
+      "expected_db_postconditions": [
+        "One set of rows and Audit Events, all with the result's operation_execution_id, and the fault fired once"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "reliability.unknown_result.opened (WARN, PENDING, UNKNOWN_RESULT) then reliability.unknown_result.resolved (SUCCESS)"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-TST-SEED-006-002",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "DB-SEED-002",
+        "REL-DB-008",
+        "REL-DB-006",
+        "TST-SEED-006",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real PostgreSQL 17 test database created per test file with migrations 0001-0003 applied by app_migrator; synthetic Event and Offering values only; acquireMigrationLock then seedInitialData on a dedicated app_migrator connection; no Provider; real TCP fault proxy in front of the original connection (plain transport; TLS is not carried); re-check and retries on direct connections; mode drop_request; another seed run completes before the re-check connection is handed back",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "FP.DB.AFTER_COMMIT_SENT_BEFORE_ACK"
+      ],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The result is NOOP"
+      ],
+      "expected_db_postconditions": [
+        "Rows and Audit Events are the other run's single set and none carries this run's execution id"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "reliability.unknown_result.resolved with result NOOP"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-TST-SEED-006-003",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "DB-SEED-002",
+        "REL-DB-005",
+        "REL-DB-006",
+        "TST-SEED-006",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real PostgreSQL 17 test database created per test file with migrations 0001-0003 applied by app_migrator; synthetic Event and Offering values only; acquireMigrationLock then seedInitialData on a dedicated app_migrator connection; no Provider; real TCP fault proxy in front of the original connection (plain transport; TLS is not carried); re-check and retries on direct connections; mode drop_request",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "FP.DB.AFTER_COMMIT_SENT_BEFORE_ACK"
+      ],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The re-check finds neither rows nor an Audit Event, the migration lock is taken again on the new connection and the retry is CREATED"
+      ],
+      "expected_db_postconditions": [
+        "One set of rows and Audit Events carrying the second attempt's operation_execution_id; none carries the first attempt's id; the Event INSERT was issued twice in total"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "reliability.unknown_result.opened then resolved with FAILED and TEMPORARY_FAILURE"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-TST-SEED-006-004",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "DB-SEED-002",
+        "REL-DB-005",
+        "REL-DB-006",
+        "TST-SEED-006",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real PostgreSQL 17 test database created per test file with migrations 0001-0003 applied by app_migrator; synthetic Event and Offering values only; acquireMigrationLock then seedInitialData on a dedicated app_migrator connection; no Provider; real TCP fault proxy in front of the original connection (plain transport; TLS is not carried); re-check and retries on direct connections; mode drop_request; an Event already exists",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "FP.DB.AFTER_COMMIT_SENT_BEFORE_ACK"
+      ],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "An existing Event alone is not treated as success: zero Offerings means uncommitted and the retry creates the Offerings"
+      ],
+      "expected_db_postconditions": [
+        "The Event row is unchanged, the Offerings reference it and only Offering Audit Events exist"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-TST-SEED-006-005",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "DB-SEED-002",
+        "REL-DB-006",
+        "REL-DB-007",
+        "TST-SEED-006",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real PostgreSQL 17 test database created per test file with migrations 0001-0003 applied by app_migrator; synthetic Event and Offering values only; acquireMigrationLock then seedInitialData on a dedicated app_migrator connection; no Provider; real TCP fault proxy in front of the original connection (plain transport; TLS is not carried); re-check and retries on direct connections; mode hold_request: the COMMIT is withheld until the re-check connection is seen waiting on an advisory lock in pg_stat_activity",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "FP.DB.AFTER_COMMIT_SENT_BEFORE_ACK"
+      ],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "After the withheld COMMIT is released the re-check sees the committed rows and the result is CREATED, not a false uncommitted"
+      ],
+      "expected_db_postconditions": [
+        "Nothing is visible before the release; afterwards one set of rows and Audit Events with the result's operation_execution_id"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "reliability.unknown_result.resolved with result SUCCESS"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-TST-SEED-006-006",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "INF-SEED-004",
+        "OBS-AUD-014",
+        "REL-DB-007",
+        "OBS-DB-004",
+        "TST-SEED-006",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real PostgreSQL 17 test database created per test file with migrations 0001-0003 applied by app_migrator; synthetic Event and Offering values only; acquireMigrationLock then seedInitialData on a dedicated app_migrator connection; no Provider; real TCP fault proxy in front of the original connection (plain transport; TLS is not carried); re-check and retries on direct connections; (a) drop_ack and every re-check connection fails; (b) drop_request and a superuser session holds the seed xact lock beyond the retry budget",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "FP.DB.AFTER_COMMIT_SENT_BEFORE_ACK"
+      ],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The result is UNKNOWN_RESULT (COMMIT_RESULT_UNKNOWN) with exit code 3, PENDING and failure_class UNKNOWN_RESULT; (a) makes 3 connection attempts"
+      ],
+      "expected_db_postconditions": [
+        "(a) The committed rows and Audit Events remain untouched and none is added; (b) nothing was committed and nothing exists",
+        "Only INSERTs into the three seeded tables are issued, once per original attempt; no Consistency Review Case is created"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "reliability.unknown_result.opened is logged once"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-TST-SEED-006-007",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "INF-SEED-004",
+        "REL-DB-007",
+        "DB-SEED-002",
+        "TST-SEED-006",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real PostgreSQL 17 test database created per test file with migrations 0001-0003 applied by app_migrator; synthetic Event and Offering values only; acquireMigrationLock then seedInitialData on a dedicated app_migrator connection; no Provider; real TCP fault proxy in front of the original connection (plain transport; TLS is not carried); re-check and retries on direct connections; re-run after each 006-006 scenario",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "FP.DB.AFTER_COMMIT_SENT_BEFORE_ACK"
+      ],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "After (a) the same command is NOOP and does not read the input; after (b) it is CREATED, then NOOP"
+      ],
+      "expected_db_postconditions": [
+        "Rows and Audit Events are never duplicated"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
     },
     {
       "test_case_id": "TC-DB-ARC-007-003",

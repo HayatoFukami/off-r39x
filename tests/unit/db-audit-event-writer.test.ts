@@ -258,8 +258,9 @@ describe("TC-OBS-AUD-006-001 writer input checks (rejections reach no database)"
       "RECOVERY.AUTOMATIC",
       "RECOVERY.MANUAL",
       "RECOVERY.ADMIN_BOOTSTRAP",
+      "PROVISION.INITIAL_DATA_SEED",
     ];
-    expect(internalKeys).toHaveLength(21);
+    expect(internalKeys).toHaveLength(22);
     const apiIds = [
       "API-ADM-ROL-001",
       "API-ADM-CNT-007",
