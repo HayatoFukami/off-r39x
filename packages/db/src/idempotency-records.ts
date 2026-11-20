@@ -13,7 +13,6 @@ import type { PoolClient } from "pg";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const OPERATION_ID = /^API-[A-Z0-9]+(?:-[A-Z0-9]+)*$/;
-const OPERATION_ID_MAX_LENGTH = 64;
 // A token, never free text, so a result type cannot carry an Email address, a URL or other PII.
 // The set of values and the lookup of each type belong to each Operation (SPEC-100 §43.1).
 const RESULT_REF_TYPE = /^[A-Z][A-Z0-9_]{0,63}$/;
@@ -86,11 +85,7 @@ export async function claimTransportIdempotency(
   if (typeof input !== "object" || input === null) return reject("input");
   const { principalProfileRef, operationId, keyDigest, requestDigest } = input;
   if (!isUuid(principalProfileRef)) return reject("principalProfileRef");
-  if (
-    typeof operationId !== "string" ||
-    operationId.length > OPERATION_ID_MAX_LENGTH ||
-    !OPERATION_ID.test(operationId)
-  )
+  if (typeof operationId !== "string" || !OPERATION_ID.test(operationId))
     return reject("operationId");
   if (!isDigest(keyDigest)) return reject("keyDigest");
   if (!isDigest(requestDigest)) return reject("requestDigest");
