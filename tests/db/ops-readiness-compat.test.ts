@@ -665,6 +665,17 @@ describe("readiness reads while a migration commits (real PostgreSQL 17)", () =>
     });
     const events = observe(instrumented.pool);
     try {
+      // TST-DB-002: the readiness connection itself (max 1) carries the isolation under test; only
+      // TC-INF-HLT-006-007 makes it repeatable read. The migration and fixture connections are
+      // asserted read committed by commitMigration and createScenario.
+      const isolation = options === REPEATABLE_READ_OPTIONS ? "repeatable read" : "read committed";
+      expect(
+        (await real.query("SHOW default_transaction_isolation")).rows[0]
+          .default_transaction_isolation,
+      ).toBe(isolation);
+      expect((await real.query("SHOW transaction_isolation")).rows[0].transaction_isolation).toBe(
+        isolation,
+      );
       const result = await oldBuildReadiness(scenario, instrumented.pool);
       return { result, instrumented, events, real };
     } finally {
@@ -789,7 +800,6 @@ describe("readiness reads while a migration commits (real PostgreSQL 17)", () =>
   it(
     "TC-INF-HLT-006-007 INF-HLT-006 TST-DB-002 a repeatable-read readiness session is Ready after a compatible commit between the reads",
     async () => {
-      await assertRepeatableReadSession();
       await compatibleCommit(REPEATABLE_READ_OPTIONS);
     },
     TIMEOUT,
@@ -802,25 +812,6 @@ describe("readiness reads while a migration commits (real PostgreSQL 17)", () =>
     },
     TIMEOUT,
   );
-
-  async function assertRepeatableReadSession() {
-    // TST-DB-002: only the readiness connection is repeatable read; the others are read committed
-    // (commitMigration and createScenario assert that for the migration and fixture connections).
-    const scenario = await createScenario({ expanded: false });
-    const probe = readinessPool(scenario, REPEATABLE_READ_OPTIONS);
-    try {
-      expect(
-        (await probe.query("SHOW default_transaction_isolation")).rows[0]
-          .default_transaction_isolation,
-      ).toBe("repeatable read");
-      expect((await probe.query("SHOW transaction_isolation")).rows[0].transaction_isolation).toBe(
-        "repeatable read",
-      );
-    } finally {
-      await probe.end();
-      await scenario.close();
-    }
-  }
 });
 
 describe("readiness while a migration's COMMIT is delayed (real PostgreSQL 17)", () => {

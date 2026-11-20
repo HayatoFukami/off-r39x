@@ -27274,7 +27274,9 @@
       "api_operation_ids": [],
       "db_constraint_names": [],
       "preconditions": "Independent real PG17 database per scenario; repository migration set applied; journal equals the repository set; readiness evaluated once with a build set one migration longer and once with the same set plus an additional index in a rolled-back transaction",
-      "fixture_ids": [],
+      "fixture_ids": [
+        "tests/fixtures/migrations/compat-expand.sql"
+      ],
       "clock_instant": null,
       "concurrency_seed": null,
       "fault_points": [

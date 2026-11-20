@@ -81,8 +81,9 @@ bigint-mode tables; reviewed SQL lives in `migrations/`.
    Only pending migrations are applied; altered, missing or unknown history fails.
    Readiness requires the bundled set (filename byte order) to be an exact prefix of
    the journal ordered by version byte order; later journal rows and additional
-   catalog objects are tolerated only when the journal is ahead (SPEC-180
-   INF-HLT-006). It reads journal, catalog, journal outside a transaction and judges
+   catalog objects are tolerated only when the journal is ahead, except a NOT NULL
+   column without default, identity or generation added to a required table
+   (SPEC-180 INF-HLT-006). It reads journal, catalog, journal outside a transaction and judges
    only when both journal reads agree, retrying within the SPEC-150 55P03 budget;
    an exhausted budget is a `release_schema_contract` failure.
    `computeMigrationSetHash()` returns
