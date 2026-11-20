@@ -6,6 +6,7 @@ import {
   requireCapability,
   requireVerifiedEmail,
 } from "../../../apps/api/src/api/app.ts";
+import { ApiFailure } from "../../../apps/api/src/api/failure.ts";
 import { requireTransportIdempotency } from "../../../apps/api/src/api/middleware/idempotency.ts";
 import { validateJson } from "../../../apps/api/src/api/middleware/json.ts";
 import { createLogger } from "../../../packages/observability/src/index.ts";
@@ -80,8 +81,32 @@ function principalOnly(): MiddlewareHandler<ApiEnvironment> {
   };
 }
 
+export const pathSchema = z.strictObject({ ref: z.uuid().transform(lower) });
+
+/**
+ * Stand-in for the route's path validation (SPEC-110 section 21: an invalid path parameter is
+ * 400 VALIDATION_FAILED). It runs before the idempotency middleware, so normalize only reads the
+ * validated value and has nothing left to reject.
+ */
+function validatePath() {
+  const validated = new WeakMap<Context<ApiEnvironment>, z.output<typeof pathSchema>>();
+  const middleware: MiddlewareHandler<ApiEnvironment> = async (c, next) => {
+    const result = pathSchema.safeParse(c.req.param());
+    if (!result.success) throw new ApiFailure("VALIDATION_FAILED");
+    validated.set(c, result.data);
+    await next();
+  };
+  const read = (c: Context<ApiEnvironment>) => {
+    const value = validated.get(c);
+    if (value === undefined) throw new Error("validatePath did not run for this request");
+    return value;
+  };
+  return { middleware, read };
+}
+const path = validatePath();
+
 const normalizeStandard = (c: Context<ApiEnvironment>): NormalizedRequest => ({
-  params: { order_ref: z.uuid().transform(lower).parse(c.req.param("ref")) },
+  params: { order_ref: path.read(c).ref },
   query: {},
   body: c.get("validatedJson"),
 });
@@ -101,10 +126,11 @@ export function idempotencyRig() {
     return c.json({ ok: true });
   };
 
-  // Recommended mounting: guard, then validateJson, then the idempotency middleware.
+  // Recommended mounting: guard, then path and body validation, then the idempotency middleware.
   app.post(
     "/api/v1/test/idempotent/:ref",
     harnessContext("API-ORD-002"),
+    path.middleware,
     validateJson(bodySchema),
     requireTransportIdempotency("API-ORD-002", normalizeStandard),
     handler,
@@ -114,6 +140,7 @@ export function idempotencyRig() {
     "/api/v1/test/idempotent-a/:ref",
     operationOnly("API-ORD-002"),
     requireVerifiedEmail(),
+    path.middleware,
     validateJson(bodySchema),
     requireTransportIdempotency("API-ORD-002", normalizeStandard),
     handler,
@@ -123,6 +150,7 @@ export function idempotencyRig() {
     "/api/v1/test/idempotent-b/:ref",
     harnessContext("API-ADM-CNT-005"),
     requireCapability("public_content.manage"),
+    path.middleware,
     validateJson(bodySchema),
     requireTransportIdempotency("API-ADM-CNT-005", normalizeStandard),
     handler,
@@ -131,6 +159,7 @@ export function idempotencyRig() {
   app.post(
     "/api/v1/test/plain/:ref",
     harnessContext("API-ORD-002"),
+    path.middleware,
     validateJson(bodySchema),
     handler,
   );

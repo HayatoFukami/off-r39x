@@ -383,6 +383,39 @@ describe("TC-API-IDM-005-002 a request that is not JSON-representable is refused
     }
     expect(reads).toBe(0);
   });
+  it("a params value is read once: the value that passed the string check is the one hashed", () => {
+    // A proxy whose descriptor answers a string for the first `n` reads and a number afterwards: for
+    // every `n`, the digest covers the checked string or the request is refused, never the number.
+    for (let n = 1; n <= 6; n += 1) {
+      let calls = 0;
+      const params = new Proxy(
+        {},
+        {
+          ownKeys: () => ["order_ref"],
+          getOwnPropertyDescriptor: () => {
+            calls += 1;
+            return {
+              value: calls <= n ? REF_A1 : 1,
+              writable: true,
+              enumerable: true,
+              configurable: true,
+            };
+          },
+        },
+      );
+      let canonical: string | undefined;
+      try {
+        canonical = canonicalOf({ params, query: {}, body: null });
+      } catch (error) {
+        expect((error as Error).message, `n=${n}`).toBe("Request is not canonicalizable");
+      }
+      if (canonical !== undefined) {
+        expect(canonical, `n=${n}`).toBe(
+          `{"body":null,"params":{"order_ref":"${REF_A1}"},"query":{}}`,
+        );
+      }
+    }
+  });
   it("canonicalRequestJson refuses the same requests", () => {
     expect(() => canonicalOf({ params: {}, query: {}, body: undefined })).toThrow();
     expect(() => canonicalOf({ params: {}, query: {}, body: { n: Number.NaN } })).toThrow();

@@ -203,6 +203,15 @@ describe("TC-API-IDM-011-002 Idempotency-Key through HTTP (API-IDM-011, Acceptan
       expect(rig.seen).toHaveLength(0);
       expectCompletionAndRedaction(rig, [response], [], "(o)");
     });
+    it("(u) an invalid path parameter: 400 VALIDATION_FAILED (SPEC-110 section 21), never a 500, with or without a valid key", async () => {
+      for (const headers of [{ "Idempotency-Key": GOOD_KEY }, {}]) {
+        const rig = idempotencyRig();
+        const response = await rig.post("/api/v1/test/idempotent/not-a-uuid", { headers });
+        await expectFailure(response, 400, "VALIDATION_FAILED", "(u)");
+        expect(rig.seen).toHaveLength(0);
+        expectCompletionAndRedaction(rig, [response], [GOOD_KEY], "(u)");
+      }
+    });
   });
 
   describe("authentication and authorization failures come first (API-IDM-011 4.)", () => {

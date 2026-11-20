@@ -133,10 +133,15 @@ export function canonicalRequestJson(request: NormalizedRequest): string {
     if (body === undefined || !isRecord(params) || !isRecord(query)) {
       throw new Error(NOT_CANONICALIZABLE);
     }
+    // Each params value is read once and the checked string itself goes into the copy, so a value
+    // cannot be a string for the check and something else for the digest.
+    const checkedParams: Record<string, string> = {};
     for (const key of Object.keys(params)) {
-      if (typeof ownDataValue(params, key) !== "string") throw new Error(NOT_CANONICALIZABLE);
+      const value = ownDataValue(params, key);
+      if (typeof value !== "string") throw new Error(NOT_CANONICALIZABLE);
+      Object.defineProperty(checkedParams, key, { value, enumerable: true });
     }
-    copy = copyJsonValue({ body, params, query });
+    copy = copyJsonValue({ body, params: checkedParams, query });
   } catch {
     // A proxy trap or anything else that throws must not leak its message (SEC-ERR-003).
     throw new Error(NOT_CANONICALIZABLE);
