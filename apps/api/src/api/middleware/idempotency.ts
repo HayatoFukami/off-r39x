@@ -143,7 +143,9 @@ export function canonicalRequestJson(request: NormalizedRequest): string {
       if (typeof value !== "string") throw new Error(NOT_CANONICALIZABLE);
       Object.defineProperty(checkedParams, key, { value, enumerable: true });
     }
-    copy = copyJsonValue({ body, params: checkedParams, query });
+    // strict: an explicit undefined in body or query is refused, not dropped, so it never shares
+    // the digest of a request that omits the field.
+    copy = copyJsonValue({ body, params: checkedParams, query }, { strict: true });
   } catch {
     // A proxy trap or anything else that throws must not leak its message (SEC-ERR-003).
     throw new Error(NOT_CANONICALIZABLE);

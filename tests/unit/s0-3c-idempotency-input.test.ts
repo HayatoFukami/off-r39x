@@ -321,6 +321,32 @@ describe("TC-API-IDM-005-002 a request that is not JSON-representable is refused
       expect(message).not.toContain(MARKER);
     }
   });
+  it("an explicit undefined inside body or query is refused, never hashed like an omitted field", () => {
+    // A transform that yields { note: undefined } must not share the digest of a request without
+    // `note`: a route where presence changes the meaning would replay the wrong result.
+    const explicit: [label: string, request: unknown][] = [
+      ["body property", { params: {}, query: {}, body: { note: undefined } }],
+      ["nested body property", { params: {}, query: {}, body: { items: [{ note: undefined }] } }],
+      ["query property", { params: {}, query: { cursor: undefined }, body: null }],
+    ];
+    for (const [label, request] of explicit) {
+      let thrown: unknown;
+      try {
+        digestOf(request);
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown, label).toBeInstanceOf(Error);
+      expect((thrown as Error).message, label).toBe("Request is not canonicalizable");
+    }
+    // An omitted field is still accepted, and differs from an explicit null.
+    expect(canonicalOf({ params: {}, query: {}, body: {} })).toBe(
+      '{"body":{},"params":{},"query":{}}',
+    );
+    expect(hexOf({ params: {}, query: {}, body: { note: null } })).not.toBe(
+      hexOf({ params: {}, query: {}, body: {} }),
+    );
+  });
   it("params or query that is not a plain object is refused, so no path parameter is silently dropped", () => {
     // A Map (or a class instance) passes a bare typeof check but its entries are not own properties:
     // two different order_ref values would otherwise share the digest of {}.
