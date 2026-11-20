@@ -130,8 +130,11 @@ function copyJsonNode(value: unknown, active: WeakSet<object>, strict: boolean):
     if (Array.isArray(value)) {
       const length = value.length;
       for (const key of Reflect.ownKeys(value)) {
-        if (typeof key === "string" && key !== "length" && !isIndexKey(key, length))
-          return REJECTED;
+        if (typeof key !== "string") {
+          if (strict) return REJECTED; // a symbol key JSON would drop
+          continue;
+        }
+        if (key !== "length" && !isIndexKey(key, length)) return REJECTED;
       }
       const items: unknown[] = [];
       for (let i = 0; i < length; i += 1) {
@@ -148,14 +151,21 @@ function copyJsonNode(value: unknown, active: WeakSet<object>, strict: boolean):
     if (prototype !== Object.prototype && prototype !== null) return REJECTED;
     const entries: [string, unknown][] = [];
     for (const key of Reflect.ownKeys(value)) {
-      if (typeof key !== "string") continue; // JSON drops symbol keys
-      const descriptor = Object.getOwnPropertyDescriptor(value, key);
-      if (descriptor === undefined) continue;
-      if (!("value" in descriptor)) return REJECTED;
-      if (!descriptor.enumerable) continue; // omitted, as in JSON
-      if (descriptor.value === undefined) {
+      // In strict mode nothing JSON would drop silently is allowed: a symbol key, a vanished or
+      // non-enumerable property, and an undefined value are refused instead of omitted.
+      if (typeof key !== "string") {
         if (strict) return REJECTED;
-        continue; // an omitted optional field, as in JSON
+        continue; // JSON drops symbol keys
+      }
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (descriptor === undefined) {
+        if (strict) return REJECTED;
+        continue;
+      }
+      if (!("value" in descriptor)) return REJECTED;
+      if (!descriptor.enumerable || descriptor.value === undefined) {
+        if (strict) return REJECTED;
+        continue; // omitted, as in JSON (an undefined value is an omitted optional field)
       }
       const entry = copyJsonNode(descriptor.value, active, strict);
       if (!entry.ok) return REJECTED;
@@ -180,8 +190,9 @@ function copyJsonNode(value: unknown, active: WeakSet<object>, strict: boolean):
  * may have only index keys. Symbol keys and non-enumerable object properties are dropped, as JSON
  * does. Values are never logged or thrown.
  *
- * With `strict`, an `undefined` object property is rejected instead of skipped, so a value that
- * says "present but undefined" never has the same copy as one without the property (a request
+ * With `strict`, everything that JSON would drop silently is rejected instead of skipped: an
+ * `undefined` object property, a non-enumerable property and a symbol key (on an object or an
+ * array). A value with such a property then never has the same copy as one without it (a request
  * digest input, API-IDM-005).
  */
 export function copyJsonValue(

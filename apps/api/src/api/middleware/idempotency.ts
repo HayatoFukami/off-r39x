@@ -138,13 +138,18 @@ export function canonicalRequestJson(request: NormalizedRequest): string {
     // Each params value is read once and the checked string itself goes into the copy, so a value
     // cannot be a string for the check and something else for the digest.
     const checkedParams: Record<string, string> = {};
-    for (const key of Object.keys(params)) {
+    for (const key of Reflect.ownKeys(params)) {
+      // A symbol key or a non-enumerable property would vanish from the digest: refuse it.
+      if (typeof key !== "string") throw new Error(NOT_CANONICALIZABLE);
+      if (Object.getOwnPropertyDescriptor(params, key)?.enumerable !== true) {
+        throw new Error(NOT_CANONICALIZABLE);
+      }
       const value = ownDataValue(params, key);
       if (typeof value !== "string") throw new Error(NOT_CANONICALIZABLE);
       Object.defineProperty(checkedParams, key, { value, enumerable: true });
     }
-    // strict: an explicit undefined in body or query is refused, not dropped, so it never shares
-    // the digest of a request that omits the field.
+    // strict: an explicit undefined, a non-enumerable property or a symbol key in body or query is
+    // refused, not dropped, so it never shares the digest of a request that omits the field.
     copy = copyJsonValue({ body, params: checkedParams, query }, { strict: true });
   } catch {
     // A proxy trap or anything else that throws must not leak its message (SEC-ERR-003).

@@ -339,6 +339,39 @@ describe("TC-API-IDM-005-002 a request that is not JSON-representable is refused
       expect(thrown, label).toBeInstanceOf(Error);
       expect((thrown as Error).message, label).toBe("Request is not canonicalizable");
     }
+    // Nothing JSON would drop silently may reach the digest: a non-enumerable property or a symbol
+    // key (on an object, an array or params) is refused as well, never hashed like an absent field.
+    const hidden = Object.defineProperty({}, "note", { value: undefined });
+    const hiddenString = Object.defineProperty({}, "note", { value: MARKER });
+    const withSymbol = { [Symbol(MARKER)]: 1 };
+    const arrayWithSymbol = Object.assign([MARKER], { [Symbol(MARKER)]: 1 });
+    const dropped: [label: string, request: unknown][] = [
+      ["non-enumerable body property (undefined)", { params: {}, query: {}, body: hidden }],
+      ["non-enumerable body property (string)", { params: {}, query: {}, body: hiddenString }],
+      ["nested non-enumerable property", { params: {}, query: {}, body: { items: [hidden] } }],
+      ["symbol key in body", { params: {}, query: {}, body: withSymbol }],
+      ["symbol key on an array", { params: {}, query: {}, body: arrayWithSymbol }],
+      ["non-enumerable query property", { params: {}, query: hiddenString, body: null }],
+      [
+        "non-enumerable params property",
+        {
+          params: Object.defineProperty({}, "order_ref", { value: REF_A1 }),
+          query: {},
+          body: null,
+        },
+      ],
+      ["symbol key in params", { params: { [Symbol(MARKER)]: REF_A1 }, query: {}, body: null }],
+    ];
+    for (const [label, request] of dropped) {
+      let thrown: unknown;
+      try {
+        digestOf(request);
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown, label).toBeInstanceOf(Error);
+      expect((thrown as Error).message, label).toBe("Request is not canonicalizable");
+    }
     // An omitted field is still accepted, and differs from an explicit null.
     expect(canonicalOf({ params: {}, query: {}, body: {} })).toBe(
       '{"body":{},"params":{},"query":{}}',
