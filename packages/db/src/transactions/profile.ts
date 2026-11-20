@@ -4,7 +4,7 @@
 // (AR-OWN-006, DB-ID-002); there is no INSERT path (Profile provisioning is API-AUTH-003).
 import { DrizzleQueryError, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
-import type { Pool } from "pg";
+import { type Pool, types } from "pg";
 import { isDatabaseTemporaryFailure, typeDirectQueryFailure } from "../errors.ts";
 import { businessProfiles } from "../schema/identity.ts";
 import { transaction } from "../transaction.ts";
@@ -26,11 +26,16 @@ export type CurrentProfileUpdate =
   | { status: "unavailable" };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// node-postgres's own timestamptz parser (pg-types / postgres-date). drizzle maps a timestamptz
+// column with `new Date(text)`, which reads a year below 0100 as 19xx / 20xx; this parser keeps the
+// year, the offset and the BC era of the text PostgreSQL sends.
+const parseTimestamptz = types.getTypeParser(types.builtins.TIMESTAMPTZ) as (text: string) => Date;
 // The three columns both statements return; their types come from the table declaration (DEV-DB-004).
+// updated_at is the same column, decoded with node-postgres's parser instead of drizzle's.
 const profileColumns = {
   publicRef: businessProfiles.publicRef,
   displayName: businessProfiles.displayName,
-  updatedAt: businessProfiles.updatedAt,
+  updatedAt: sql<Date>`${businessProfiles.updatedAt}`.mapWith(parseTimestamptz),
 };
 type Row = { publicRef: string; displayName: string | null; updatedAt: Date };
 const toProfile = (row: Row): CurrentBusinessProfile => ({

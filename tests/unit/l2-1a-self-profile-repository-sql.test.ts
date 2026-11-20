@@ -153,6 +153,31 @@ describe("TC-API-007-010 self profile repository statements come from the Drizzl
     ).rejects.toThrow("Business Profile cardinality violation");
   });
 
+  // PR #71 review: drizzle's own timestamptz mapping is `new Date(text)`, which reads a year below
+  // 0100 as 19xx / 20xx (V8's legacy date parsing). updated_at must keep its year as node-postgres's
+  // own timestamptz parser does, on read and on update.
+  it.each([
+    ["0001-01-02 03:04:05.678912+00", "0001-01-02T03:04:05.678Z"],
+    ["0099-12-31 23:59:59.999+00", "0099-12-31T23:59:59.999Z"],
+    ["1000-01-01 00:00:00+00", "1000-01-01T00:00:00.000Z"],
+    ["2026-01-02 03:04:05.678912+09", "2026-01-01T18:04:05.678Z"],
+  ])("updated_at %s keeps its year and instant: %s", async (pgText, iso) => {
+    const read = await createCurrentProfileRepository(
+      recordingPool([[REF, null, pgText]]).pool,
+    ).readCurrentBusinessProfile(SUBJECT);
+    expect(read).toEqual({
+      status: "found",
+      profile: { publicRef: REF, displayName: null, updatedAt: iso },
+    });
+    const updated = await createCurrentProfileRepository(
+      recordingPool([[REF, null, pgText]]).pool,
+    ).updateCurrentBusinessProfile(SUBJECT, null);
+    expect(updated).toEqual({
+      status: "updated",
+      profile: { publicRef: REF, displayName: null, updatedAt: iso },
+    });
+  });
+
   // PR #71 review: drizzle wraps only the driver's rejection in DrizzleQueryError; an error while it
   // maps a row the database did answer is thrown as it is. Such an error is a code defect, not a DB
   // outage, so the read must not type it as unavailable (503) just because it has no SQLSTATE: both
