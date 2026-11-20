@@ -144,7 +144,7 @@ describe("TC-TST-IDM-002-001 X-Request-Id and a different key do not create a se
       body,
       requestId: REQUEST_ID_1,
     });
-    expect([200, 201]).toContain(otherKey.status);
+    expect(otherKey.status).toBe(200);
     expect(((await readJson(otherKey)).json as Success).data.ref).toBe(created.ref);
     expect(await effectRows(admin)).toHaveLength(1);
 

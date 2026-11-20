@@ -16591,7 +16591,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "Drizzle declaration names for the constraints and indexes of the declared tables equal schema-contract.json by name and kind; the contract declares exactly the app tables of the committed migrations, including idempotency_records",
+        "Drizzle declaration names for the constraints and indexes of the declared tables equal schema-contract.json by name and kind; the contract lists idempotency_records among its tables (the exact names and shape of its constraints and indexes are checked by TC-DB-IDM-001-002)",
         "Drizzle declaration names for business_profiles and role_assignments constraints and indexes equal schema-contract.json by name and kind",
         "Column order, SQL type, NOT NULL, identity always and default presence equal schema-contract.json; default SQL expressions (transaction_timestamp(), gen_random_uuid()) equal the pre-refactor golden and the contract",
         "CHECK expressions serialised by PgDialect equal the pre-refactor golden exactly and match the contract definitions by referenced columns, literals, numbers and NULL tests",
@@ -27333,7 +27333,7 @@
         "SPEC-170-28"
       ],
       "system_invariant_ids": ["INV-010-10"],
-      "api_operation_ids": ["API-ORD-002"],
+      "api_operation_ids": [],
       "db_constraint_names": ["ux_idempotency_records_principal_operation_key"],
       "preconditions": "Independent real PostgreSQL 17 database (TLS) migrated with 0001 to the idempotency_records migration; synthetic Business Profiles and a synthetic_business.effects table outside the app schema; synthetic values only; harness-only route on a test app (not in the production route table) over the production Transport Idempotency middleware",
       "fixture_ids": [],
@@ -27357,7 +27357,7 @@
       "suite": "db",
       "upstream_rule_ids": ["TST-IDM-002", "SPEC-170-28", "SEC-API-023"],
       "system_invariant_ids": ["INV-010-10"],
-      "api_operation_ids": ["API-ORD-002"],
+      "api_operation_ids": [],
       "db_constraint_names": [],
       "preconditions": "Independent real PostgreSQL 17 database (TLS) migrated with 0001 to the idempotency_records migration; synthetic Business Profiles and a synthetic_business.effects table outside the app schema; synthetic values only; harness-only route as TC-API-IDM-007-001",
       "fixture_ids": [],
@@ -27423,7 +27423,7 @@
       "preconditions": "Independent real PostgreSQL 17 database (TLS) migrated with 0001 to the idempotency_records migration; synthetic Business Profiles and a synthetic_business.effects table outside the app schema; synthetic values only; eight independent app_api_runtime pools synchronised by a barrier; a lock held by another transaction for the timeout case",
       "fixture_ids": [],
       "clock_instant": "DB time: transaction_timestamp() read inside the transaction under test; the fixture sets expiry relative to that instant, no JavaScript clock",
-      "concurrency_seed": "barrier of 8 concurrent transactions on 8 pools; no random seed",
+      "concurrency_seed": "barrier of 8 concurrent transactions on 8 pools; the transaction whose claim is first is held before COMMIT until pg_stat_activity shows 7 sessions waiting for a lock; no random seed",
       "fault_points": ["row_lock_held", "transaction_rollback"],
       "expected_http": null,
       "expected_domain_postconditions": [
@@ -27449,7 +27449,7 @@
       "preconditions": "Independent real PostgreSQL 17 database (TLS) migrated with 0001 to the idempotency_records migration; synthetic Business Profiles and a synthetic_business.effects table outside the app schema; synthetic values only; eight pools claiming for the same Profile after locking it FOR UPDATE; the control uses raw sessions with lock_timeout 0 and a short deadlock_timeout",
       "fixture_ids": [],
       "clock_instant": null,
-      "concurrency_seed": "barrier of 8 concurrent transactions on 8 pools; no random seed",
+      "concurrency_seed": "barrier of 8 concurrent transactions on 8 pools; the first session to hold the Profile lock is held before its claim until pg_stat_activity shows 7 sessions waiting for a lock; no random seed",
       "fault_points": ["lock_order_inversion"],
       "expected_http": null,
       "expected_domain_postconditions": [
@@ -27475,7 +27475,7 @@
         "REL-DB-009"
       ],
       "system_invariant_ids": [],
-      "api_operation_ids": ["API-ORD-002"],
+      "api_operation_ids": [],
       "db_constraint_names": ["ux_idempotency_records_principal_operation_key"],
       "preconditions": "Independent real PostgreSQL 17 database (TLS) migrated with 0001 to the idempotency_records migration; synthetic Business Profiles and a synthetic_business.effects table outside the app schema; synthetic values only; the lost COMMIT acknowledgement uses the commit proxy; harness-only route for the HTTP mapping",
       "fixture_ids": [],
@@ -27487,7 +27487,7 @@
         "row_lock_held",
         "business_constraint_violation"
       ],
-      "expected_http": [503],
+      "expected_http": [503, 200],
       "expected_domain_postconditions": [
         "A business failure after the claim, a connection terminated before the claim or before COMMIT, and a claim kept waiting past the 55P03 retry budget leave no record and no effect and answer 503 DATABASE_TEMPORARY_FAILURE",
         "A lost COMMIT acknowledgement is commit_unknown (503): afterwards the record and the effect both exist, and the same key replays; no new error code appears"

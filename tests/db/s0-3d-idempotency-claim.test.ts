@@ -168,7 +168,12 @@ describe("TC-API-IDM-006-001 the three decisions of the claim primitive (real Po
         pool(),
         claimInput(ref(0xdead), "synthetic-idem-key-decide-0003", "synthetic-request-x"),
       ),
-    ).rejects.toBeDefined();
+    ).rejects.toSatisfy(
+      (error: unknown) =>
+        error instanceof Error &&
+        error.message === "Transport idempotency principal profile not found" &&
+        isDatabaseTemporaryFailure(error) === false,
+    );
     expect(await recordCount(admin)).toBe(1);
   });
 
@@ -365,6 +370,14 @@ describe("TC-API-IDM-009-001 N concurrent requests are serialised by the unique 
       if (attempt === 1) await gate.wait();
     },
   });
+  // Only the transaction whose claim was `first` reaches afterResult. It is held there, before COMMIT, until
+  // the other N - 1 sessions are observed waiting for its lock, so that the race is real: the losers are
+  // blocked on the winner's uncommitted record (or row) and decide only after it commits.
+  const holdWinnerUntilLosersWait = {
+    afterResult: async () => {
+      await waitForLockWaiters(admin, N - 1);
+    },
+  };
 
   it("TC-API-IDM-009-001 (a) the same key and request from N sessions: exactly one first, the others replay the one result, one effect, no 23505", async () => {
     const key = "synthetic-idem-key-race-a-0001";
@@ -376,7 +389,7 @@ describe("TC-API-IDM-009-001 N concurrent requests are serialised by the unique 
         Array.from({ length: N }, (_, i) =>
           settle(
             nonLockingEffect(pool(i), effectInput(P1, key, "synthetic-request-a", cause), {
-              hooks: gateAtStart(gate),
+              hooks: { ...gateAtStart(gate), ...holdWinnerUntilLosersWait },
               logger: collector.logger,
             }),
           ),
@@ -413,7 +426,7 @@ describe("TC-API-IDM-009-001 N concurrent requests are serialised by the unique 
         labels.map((label, i) =>
           settle(
             nonLockingEffect(pool(i), effectInput(P1, key, label, causes[label] as string), {
-              hooks: gateAtStart(gate),
+              hooks: { ...gateAtStart(gate), ...holdWinnerUntilLosersWait },
               logger: collector.logger,
             }),
           ),
@@ -514,7 +527,7 @@ describe("TC-API-IDM-009-001 N concurrent requests are serialised by the unique 
         labels.map((label, i) =>
           settle(
             nonLockingEffect(pool(i), effectInput(P1, key, label, causes[label] as string), {
-              hooks: gateAtStart(gate),
+              hooks: { ...gateAtStart(gate), ...holdWinnerUntilLosersWait },
               logger: collector.logger,
             }),
           ),
@@ -601,6 +614,9 @@ describe("TC-DB-IDM-002-001 the claim is placed after the Profile lock, so no de
   it("TC-DB-IDM-002-001 N concurrent requests of one Profile with different keys all succeed: N records, N effects, no 40P01 in the log", async () => {
     const collector = logCollector();
     const gate = barrier(N);
+    // The first session to hold the Profile lock waits (after FOR UPDATE, before its claim) until the
+    // other N - 1 sessions are observed waiting for that Profile lock; later sessions pass straight through.
+    let held = false;
     const outcomes = (
       await Promise.all(
         Array.from({ length: N }, (_, i) =>
@@ -617,6 +633,11 @@ describe("TC-DB-IDM-002-001 the claim is placed after the Profile lock, so no de
                 hooks: {
                   start: async (_client, attempt) => {
                     if (attempt === 1) await gate.wait();
+                  },
+                  beforeClaim: async () => {
+                    if (held) return;
+                    held = true;
+                    await waitForLockWaiters(admin, N - 1);
                   },
                 },
                 logger: collector.logger,
