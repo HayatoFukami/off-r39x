@@ -1,5 +1,5 @@
 import { AuthFailure } from "@off-r39x/auth";
-import { classifyDatabaseError } from "@off-r39x/db";
+import { isDatabaseTemporaryFailure } from "@off-r39x/db";
 import type { Context } from "hono";
 import type { z } from "zod";
 import { type ApiEnvironment, ApiFailure } from "./failure.ts";
@@ -243,13 +243,10 @@ export function errorFromException(
       error.retryAfterSeconds === undefined ? {} : { retryAfterSeconds: error.retryAfterSeconds },
     );
   if (error instanceof AuthFailure) return errorResponse(c, authCodes[error.kind]);
-  switch (classifyDatabaseError(error).kind) {
-    case "retryable":
-    case "deadline":
-    case "unavailable":
-      // SPEC-110 sections 50-51 / REL-DB-009 / REL-DB-011: never 404 / 409 / 500.
-      return errorResponse(c, "DATABASE_TEMPORARY_FAILURE");
-    default:
-      return errorResponse(c, "INTERNAL_ERROR");
-  }
+  // SPEC-110 sections 50-51 / REL-DB-009 / REL-DB-011: never 404 / 409 / 500. The same predicate
+  // decides a repository's "unavailable" result, so both answer a failure the same way.
+  return errorResponse(
+    c,
+    isDatabaseTemporaryFailure(error) ? "DATABASE_TEMPORARY_FAILURE" : "INTERNAL_ERROR",
+  );
 }

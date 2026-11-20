@@ -5,7 +5,9 @@
 // surrogate sent as a JSON escape such as \uD800) is 400 VALIDATION_FAILED and is never stored as U+FFFD
 // (UCR-030-001, SPEC-110 v2.7.0 API-AUTH-004). Every refusal also asserts the store was not written
 // (TST-GEN-002).
+import type { Pool } from "pg";
 import { describe, expect, it } from "vitest";
+import { createCurrentProfileRepository } from "../../packages/db/src/index.ts";
 import {
   BAD,
   bearer,
@@ -22,6 +24,7 @@ import {
   UPDATED_AT,
   WEB,
 } from "../harness/api/self-profile.ts";
+import { createFakePool } from "../harness/db/fake-pool.ts";
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const completion = (records: Record<string, unknown>[]) =>
@@ -400,4 +403,74 @@ describe("TC-API-007-001 store results map to the SPEC-110 §21/§51 errors (OI-
       expect(r.store.updates, method).toEqual([]);
     }
   });
+});
+
+// PR #66 round 6 (F1 / Issue #69): with the real repository behind the route, the same DB failure gets
+// the same answer on GET and PATCH, and the answer is the common boundary's: a temporary DNS failure
+// (EAI_AGAIN) is 503 DATABASE_TEMPORARY_FAILURE (retryable) and a statement timeout (57014) is
+// 500 INTERNAL_ERROR. No DNS and no PostgreSQL: the pool rejects with a synthetic error.
+describe("TC-API-007-001 the real repository's DB failures answer like the common boundary (SPEC-110 §21/§50/§51, Issue #69)", () => {
+  const CONTROL = /^(BEGIN|SET LOCAL|COMMIT|ROLLBACK)\b/;
+  const repositoryFailingWith = (code: string) => {
+    const failure = () => Object.assign(new Error("synthetic-db-failure"), { code });
+    const fake = createFakePool(({ sql }) =>
+      typeof sql === "string" && CONTROL.test(sql) ? undefined : failure(),
+    );
+    const pool = Object.assign(fake.pool, {
+      query: async () => {
+        throw failure();
+      },
+    }) as unknown as Pool;
+    return createCurrentProfileRepository(pool);
+  };
+  const cases = [
+    ["EAI_AGAIN", 503, "DATABASE_TEMPORARY_FAILURE", true],
+    ["08006", 503, "DATABASE_TEMPORARY_FAILURE", true],
+    ["57014", 500, "INTERNAL_ERROR", false],
+    // PR #71 review: too many connections is PostgreSQL refusing the connection (SPEC-110 §51).
+    ["53300", 503, "DATABASE_TEMPORARY_FAILURE", true],
+    // PR #71 review: PostgreSQL closed the idle session the pool handed out (idle_session_timeout).
+    ["57P05", 503, "DATABASE_TEMPORARY_FAILURE", true],
+    ["53200", 500, "INTERNAL_ERROR", false],
+  ] as const;
+  for (const method of ["GET", "PATCH"] as const) {
+    it.each(cases)(`${method}: %s is %i %s`, async (code, status, errorCode, retryable) => {
+      const r = selfProfileRig({ profiles: repositoryFailingWith(code) });
+      const res =
+        method === "GET" ? await r.get() : await r.patch({ display_name: "synthetic name" });
+      expect(res.status).toBe(status);
+      const error = await errorOf(res);
+      expect(error.code).toBe(errorCode);
+      expect(error.retryable).toBe(retryable);
+      expect(error.details).toBeNull();
+      expect(r.lines.join("\n")).not.toContain("synthetic-db-failure");
+    });
+  }
+});
+
+// PR #66 round 6: SPEC-110 §9 returns profile_ref as a lower-case canonical UUID. A store that hands
+// back an upper- or mixed-case reference is a producer defect: GET and PATCH answer 500 INTERNAL_ERROR
+// through the common error envelope and never send the reference.
+describe("TC-API-007-001 a profile_ref that is not lower case is never sent (SPEC-110 §9/§19)", () => {
+  const refs = [
+    ["upper case", PROFILE_REF.toUpperCase().replace(/^[0-9]{8}/, "ABCDEF00")],
+    ["mixed case", `abcdef00${PROFILE_REF.slice(8, -1)}F`],
+  ] as const;
+  for (const method of ["GET", "PATCH"] as const) {
+    it.each(refs)(`${method}: %s is 500 INTERNAL_ERROR`, async (_label, ref) => {
+      expect(ref).not.toBe(ref.toLowerCase());
+      const store = createRecordingProfileStore({
+        [SUBJECT]: { publicRef: ref, displayName: null, updatedAt: UPDATED_AT },
+      });
+      const r = selfProfileRig({ store });
+      const res =
+        method === "GET" ? await r.get() : await r.patch({ display_name: "synthetic name" });
+      expect(res.status).toBe(500);
+      const text = await res.text();
+      expect(text).not.toContain(ref);
+      const error = (JSON.parse(text) as { error: { code: string; details: unknown } }).error;
+      expect(error.code).toBe("INTERNAL_ERROR");
+      expect(error.details).toBeNull();
+    });
+  }
 });

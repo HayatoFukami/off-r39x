@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { isoUtcTimestampSchema } from "./common.ts";
+import { isoUtcTimestampSchema, lowerCaseUuidSchema } from "./common.ts";
 
 export const principalNavigationSchema = z.strictObject({
-  profile_ref: z.uuid(),
+  profile_ref: lowerCaseUuidSchema,
   capabilities: z.array(z.string()),
   has_staff_role: z.boolean(),
   has_administrator_role: z.boolean(),
@@ -11,7 +11,7 @@ export type PrincipalNavigation = z.infer<typeof principalNavigationSchema>;
 
 /** API-AUTH-002 response (and the API-AUTH-004 response, which has the same shape). */
 export const currentProfileSchema = z.strictObject({
-  profile_ref: z.uuid(),
+  profile_ref: lowerCaseUuidSchema,
   display_name: z.string().nullable(),
   updated_at: isoUtcTimestampSchema,
 });

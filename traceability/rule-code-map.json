@@ -3596,7 +3596,8 @@
         "TC-DEV-API-003-002",
         "TC-DEV-API-003-003",
         "TC-DEV-API-003-004",
-        "TC-DEV-API-003-005"
+        "TC-DEV-API-003-005",
+        "TC-DEV-API-002-001"
       ],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
     },
@@ -5257,7 +5258,8 @@
         "TC-API-007-004",
         "TC-API-007-005",
         "TC-API-007-006",
-        "TC-API-007-008"
+        "TC-API-007-008",
+        "TC-API-007-010"
       ],
       "notes": "implementation mapping only: PR-L2-1a self Profile read and update; synthetic evidence, G8 (production-like E2E) not executed"
     },
@@ -5282,7 +5284,8 @@
         "TC-API-007-006",
         "TC-API-007-007",
         "TC-API-007-008",
-        "TC-API-007-009"
+        "TC-API-007-009",
+        "TC-API-007-010"
       ],
       "notes": "implementation mapping only: PR-L2-1a self Profile read and update; synthetic evidence, G8 (production-like E2E) not executed"
     },
@@ -5293,7 +5296,13 @@
         "apps/api/src/api/services/self-profile.ts",
         "packages/db/src/transactions/profile.ts"
       ],
-      "test_case_ids": ["TC-API-007-001", "TC-API-007-005", "TC-API-007-006", "TC-API-007-007"],
+      "test_case_ids": [
+        "TC-API-007-001",
+        "TC-API-007-005",
+        "TC-API-007-006",
+        "TC-API-007-007",
+        "TC-API-007-010"
+      ],
       "notes": "implementation mapping only: PR-L2-1a self Profile read and update; synthetic evidence, G8 (production-like E2E) not executed"
     },
     {
@@ -5319,7 +5328,7 @@
     {
       "rule_id": "DB-TIM-003",
       "code_paths": ["packages/db/src/transactions/profile.ts"],
-      "test_case_ids": ["TC-API-007-005"],
+      "test_case_ids": ["TC-API-007-005", "TC-API-007-010"],
       "notes": "implementation mapping only: PR-L2-1a self Profile read and update; synthetic evidence, G8 (production-like E2E) not executed"
     },
     {
@@ -5333,6 +5342,12 @@
       "code_paths": ["packages/db/src/transactions/profile.ts"],
       "test_case_ids": ["TC-API-007-005"],
       "notes": "implementation mapping only: PR-L2-1a self Profile read and update; synthetic evidence, G8 (production-like E2E) not executed"
+    },
+    {
+      "rule_id": "DEV-DB-004",
+      "code_paths": ["packages/db/src/transactions/profile.ts"],
+      "test_case_ids": ["TC-API-007-010"],
+      "notes": "implementation mapping only: the self Profile SELECT and UPDATE ... RETURNING are built from the Drizzle table declaration; transaction_timestamp() stays an SQL expression in the same UPDATE"
     },
     {
       "rule_id": "DEV-API-010",
@@ -5444,9 +5459,10 @@
         "TC-REL-DB-009-002",
         "TC-REL-DB-009-003",
         "TC-API-007-005",
-        "TC-API-007-008"
+        "TC-API-007-008",
+        "TC-API-007-001"
       ],
-      "notes": "Backend foundation; the self profile repository (API-AUTH-002 / API-AUTH-004) is the first business use: pool acquisition timeout and codeless connection failures return unavailable"
+      "notes": "Backend foundation; the self profile repository (API-AUTH-002 / API-AUTH-004) is the first business use: pool acquisition timeout, codeless and errno connection failures (EAI_AGAIN included) return unavailable, and the repository and the HTTP boundary share isDatabaseTemporaryFailure"
     },
     {
       "rule_id": "API-IDM-011",

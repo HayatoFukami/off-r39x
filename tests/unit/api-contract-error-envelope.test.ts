@@ -93,11 +93,28 @@ function uuidN(n: number): string {
   return `00000000-0000-4000-8000-${n.toString(16).padStart(12, "0")}`;
 }
 const passes = (input: unknown) => errorSchema.safeParse(input).success;
+const NON_CANONICAL_UUIDS: [string, string][] = [
+  ["the nil UUID", "00000000-0000-0000-0000-000000000000"],
+  ["the max UUID", "ffffffff-ffff-ffff-ffff-ffffffffffff"],
+  ["version digit 0", "00000000-0000-0000-8000-00000000000a"],
+  ["variant digit c", "00000000-0000-4000-c000-00000000000a"],
+];
 
 describe("TC-DEV-API-003-002 errorSchema variants, retryable and details allowlist", () => {
   it("errorRetryable matches the SPEC-110 section 21 Retryable column, in errorStatuses order", () => {
     expect(Object.entries(errorRetryable)).toEqual(SPEC_RETRYABLE);
   });
+
+  it.each([...NON_CANONICAL_UUIDS, ["in upper case", "00000000-0000-4000-8000-00000000000A"]])(
+    "request_id that is %s is refused for every code (SPEC-110 section 17)",
+    (_l, requestId) => {
+      for (const [code, retryable] of SPEC_RETRYABLE) {
+        expect(passes(envelope(code, retryable === true, null, { request_id: requestId }))).toBe(
+          false,
+        );
+      }
+    },
+  );
 
   it.each(SPEC_RETRYABLE)(
     "%s: a null-details envelope with the section 21 retryable parses",
@@ -202,6 +219,17 @@ describe("TC-DEV-API-003-002 errorSchema variants, retryable and details allowli
         passes(stateConflict({ item_failures: [failureItem({ target_ref: TARGET_A })] })),
       ).toBe(true);
     });
+
+    // PR #71 review: SPEC-110 §17's canonical UUID excludes the nil and max UUIDs, which z.uuid()
+    // accepts, and pins the version (1-8) and variant (8, 9, a, b) digits.
+    it.each(NON_CANONICAL_UUIDS)(
+      "rejects a target_ref that is %s (SPEC-110 section 17)",
+      (_l, ref) => {
+        expect(passes(stateConflict({ item_failures: [failureItem({ target_ref: ref })] }))).toBe(
+          false,
+        );
+      },
+    );
 
     it("rejects an unknown reason, empty reasons, duplicates and an order that differs from ELG", () => {
       for (const reasons of [
