@@ -44,7 +44,7 @@ describe("TC-API-009-003 evaluatePublicEntryAvailability: the sales period is [s
     expect(evaluatePublicEntryAvailability(base({ nowMs }))).toEqual(expected);
   });
 
-  it("compares instants, not strings: a time written with a different year digit count or millisecond part orders correctly", () => {
+  it("compares instants down to the millisecond: a period of 100 ms is judged correctly at 99, 150 and 200 ms", () => {
     const wide = base({
       salesStartsAt: "2030-06-01T00:00:00.100Z",
       salesEndsAt: "2030-06-01T00:00:00.200Z",

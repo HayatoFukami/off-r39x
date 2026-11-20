@@ -27210,7 +27210,7 @@
       "clock_instant": "2030-06-15T00:00:00.000Z",
       "concurrency_seed": null,
       "fault_points": ["FP.DB.INSIDE_STATEMENT", "FP.RATELIMIT.STORE_UNAVAILABLE"],
-      "expected_http": [200, 400, 403, 404, 405, 429, 500, 503],
+      "expected_http": [200, 400, 404, 405, 429, 500, 503],
       "expected_domain_postconditions": [
         "Each of API-PUB-001..005 answers exactly { data, meta: { request_id } } with Cache-Control no-store, calls only its own store method once, answers HEAD with no body and POST / PUT / PATCH / DELETE with 405 METHOD_NOT_ALLOWED and Allow: GET, HEAD without a store call",
         "Query is an empty strict object: limit, cursor, state, sort, a duplicated key, a nameless key and identity-like keys are 400 VALIDATION_FAILED (details null) with no store call; no query and an empty query are 200; without the publicContent dependency every route is 503 TEMPORARY_UNAVAILABLE, also for an invalid query",
@@ -27221,7 +27221,8 @@
         "API-PUB-005: the sales state is derived from the store's now ([start, end): a row ending at now is SALES_CLOSED, one starting at now is in period); without an Entry purchase route an in-period Offering is SALES_STOPPED whether ENABLED, SUSPENDED or without remaining capacity, an earlier or later period keeps SALES_NOT_STARTED / SALES_CLOSED; unit_price.amount keeps 9007199254740993 as a string; no capacity, held, committed, remaining, control state or check-in value is sent",
         "A store row carrying Internal IDs, a state, counters or admin timestamps never reaches the response (the DTO is built field by field)",
         "A row the response schema refuses (published_at NULL or without milliseconds, an upper-case ref, a non-integer or int32-overflowing sort_order, a business_timezone other than Asia/Tokyo, an offset timestamp, a leading-zero or negative amount, a lower-case currency) makes the whole Operation 503 TEMPORARY_UNAVAILABLE (retryable, details null) with no row sent (API-PUB-READ-006)",
-        "No token is verified, no Principal is read and no stage 2 evaluation happens whatever Authorization / Cookie says; one rate limit store evaluation (admit: per-IP 20 / 10 s and 120 / 60 s, public_read.global 10000 / 60 s); the 21st request in 10 s is 429 RATE_LIMIT_EXCEEDED with an integer Retry-After and 20 store calls; a rate limit store failure is 503 TEMPORARY_UNAVAILABLE with no public store call"
+        "No token is verified, no Principal is read and no stage 2 evaluation happens whatever Authorization / Cookie says; one rate limit store evaluation (admit: per-IP 20 / 10 s and 120 / 60 s, public_read.global 10000 / 60 s); the 21st request in 10 s is 429 RATE_LIMIT_EXCEEDED with an integer Retry-After and 20 store calls; a rate limit store failure is 503 TEMPORARY_UNAVAILABLE with no public store call",
+        "When API-PUR-ENTRY-001 is added to the ROUTES that routes/public.ts reads (module mock), API-PUB-005 answers the harness Offerings as SALES_NOT_STARTED, SALES_CLOSED, AVAILABLE with a null reason, SALES_STOPPED (SUSPENDED) and SOLD_OUT, so the response follows the route registry and not a constant"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -27266,7 +27267,7 @@
       "clock_instant": null,
       "concurrency_seed": null,
       "fault_points": ["FP.DB.INSIDE_STATEMENT", "FP.RATELIMIT.STORE_UNAVAILABLE"],
-      "expected_http": [200, 400, 403, 405, 429, 500, 503],
+      "expected_http": [200, 400, 405, 429, 500, 503],
       "expected_domain_postconditions": [
         "API-PUB-012 answers { items: [{ logo_ref, display_name, image_url, link_url, sort_order }] } with link_url null kept, in the order the store returned, Cache-Control no-store, one store call; 0 Logos is 200 with items: []; HEAD has no body; POST / PUT / PATCH / DELETE are 405 with Allow: GET, HEAD",
         "An empty strict query: limit, cursor, state and the other keys are 400 VALIDATION_FAILED with no store call; without the dependency the route is 503 TEMPORARY_UNAVAILABLE",
@@ -27373,7 +27374,6 @@
         "SPEC-030-7.6",
         "SPEC-030-10.4",
         "SPEC-100-8.4",
-        "UCR-110-004",
         "API-PUR-ELG-001"
       ],
       "system_invariant_ids": [],

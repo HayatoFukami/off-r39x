@@ -283,8 +283,7 @@ describe("TC-API-009-005 listPublishedAnnouncements and readPublishedAnnouncemen
     // Either a rejected non-UUID parameter (22P02) or a not_found: never a deletion, never a found row.
     expect(
       (outcome as { status?: string }).status === "not_found" ||
-        (outcome as { code?: string }).code === "22P02" ||
-        outcome instanceof Error,
+        (outcome as { code?: string }).code === "22P02",
     ).toBe(true);
     expect((await admin.query("SELECT count(*)::int AS n FROM app.announcements")).rows[0].n).toBe(
       6,

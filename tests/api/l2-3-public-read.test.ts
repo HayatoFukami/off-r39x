@@ -3,7 +3,7 @@
 // (AppDependencies.publicContent) and the in-memory rate limit. No database: what the repository selects
 // (PUBLISHED only, order, nullable columns) is TC-API-009-005 / TC-API-006-101 on a real PG17. Every refusal
 // also asserts the store was not called (TST-GEN-002). Synthetic data only.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   ANNOUNCEMENT_REFS,
   announcementDetailDto,
@@ -809,6 +809,53 @@ describe("TC-API-009-001 API-PUB-001..005 contract (SPEC-110 §26.1, API-PUB-REA
 
 describe("TC-API-009-001 invalid rows from the store (API-PUB-READ-006, SPEC-110 §26 end, FR-PUB-013)", () => {
   invalidRowCases((key) => key !== "sponsorLogos");
+});
+
+describe("TC-API-009-001 API-PUB-005 follows the Entry purchase route registry (SPEC-110 section 26.1 API-PUB-005, UCR-110-004)", () => {
+  it("with API-PUR-ENTRY-001 in ROUTES an Offering in its period is AVAILABLE, SUSPENDED is SALES_STOPPED, no remaining capacity is SOLD_OUT, and the period reasons are unchanged", async () => {
+    // Only the ROUTES that routes/public.ts reads is replaced: the registry plus the purchase route of
+    // SPEC-110 section 56.1 / API-RLC-006 (class purchase_checkout, Stage 3 reference offering_ref).
+    vi.resetModules();
+    vi.doMock("../../apps/api/src/api/routes.ts", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("../../apps/api/src/api/routes.ts")>();
+      return {
+        ...actual,
+        ROUTES: Object.freeze([
+          ...actual.ROUTES,
+          {
+            method: "POST",
+            path: "/api/v1/self/purchases/entry",
+            operationId: "API-PUR-ENTRY-001",
+            rateLimitClass: "purchase_checkout",
+            resourceReferences: ["offering_ref"],
+          },
+        ]),
+      };
+    });
+    try {
+      const harness = await import("../harness/api/public-read.ts");
+      const r = harness.publicReadRig();
+      const res = await r.get(harness.PUBLIC_OPERATIONS[4].path);
+      expect(res.status).toBe(200);
+      const items = (await res.json()).data.items as {
+        offering_ref: string;
+        availability: string;
+        unavailable_reason: string | null;
+      }[];
+      expect(
+        items.map((item) => [item.offering_ref, item.availability, item.unavailable_reason]),
+      ).toEqual([
+        [OFFERING_REFS[0], "UNAVAILABLE", "SALES_NOT_STARTED"],
+        [OFFERING_REFS[1], "UNAVAILABLE", "SALES_CLOSED"],
+        [OFFERING_REFS[2], "AVAILABLE", null],
+        [OFFERING_REFS[3], "UNAVAILABLE", "SALES_STOPPED"],
+        [OFFERING_REFS[4], "UNAVAILABLE", "SOLD_OUT"],
+      ]);
+    } finally {
+      vi.doUnmock("../../apps/api/src/api/routes.ts");
+      vi.resetModules();
+    }
+  });
 });
 
 describe("TC-API-006-001 API-PUB-012 Sponsor Logo contract (SPEC-110 §26 API-PUB-012, API-PUB-READ-001..006, FR-PUB-015, BR-EVT-005)", () => {
