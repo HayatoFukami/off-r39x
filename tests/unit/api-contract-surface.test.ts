@@ -27,6 +27,8 @@ import { z } from "zod";
 
 const PROFILE_REF = "00000000-0000-4000-8000-000000000001";
 const REQUEST_ID = "00000000-0000-4000-8000-000000000002";
+const NIL_UUID = "00000000-0000-0000-0000-000000000000";
+const MAX_UUID = "ffffffff-ffff-ffff-ffff-ffffffffffff";
 // PR-L2-1a C1: the profile Operations (API-AUTH-002/004, SPEC-110 §25) widen the surface. These
 // expectations changed by the specification (two new routes and their schemas), not by the
 // implementation: the exports, route list and builder dependencies below follow the plan.
@@ -280,6 +282,9 @@ describe("TC-DEV-API-002-001 public surface of @off-r39x/api-contract", () => {
     ["not a UUID", "not-a-request-id"],
     ["an upper-case UUID", REQUEST_ID.toUpperCase().replace("0000-4000", "ABCD-4000")],
     ["empty", ""],
+    // PR #71 review: SPEC-110 section 17's canonical UUID excludes nil and max (z.uuid() accepts both).
+    ["the nil UUID", NIL_UUID],
+    ["the max UUID", MAX_UUID],
   ])("a request_id that is %s fails every route closed (500, no data)", async (_label, id) => {
     const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
     try {
@@ -305,6 +310,8 @@ describe("TC-DEV-API-002-001 public surface of @off-r39x/api-contract", () => {
   it.each([
     ["upper case", PROFILE_REF.toUpperCase().replace(/^0{8}/, "ABCDEF00")],
     ["mixed case", "abcdef00-0000-4000-8000-00000000000A"],
+    ["nil UUID", NIL_UUID],
+    ["max UUID", MAX_UUID],
   ])(
     "a %s profile_ref fails the profile and principal routes closed (500)",
     async (_label, ref) => {
@@ -385,6 +392,16 @@ describe("TC-DEV-API-003-001 error table and envelope schemas", () => {
       { success: false, issues: [["invalid_format", ["error", "request_id"]]] },
     ],
     [
+      "request_id that is the nil UUID (SPEC-110 section 17)",
+      errorEnvelope({ request_id: NIL_UUID }),
+      { success: false, issues: [["invalid_format", ["error", "request_id"]]] },
+    ],
+    [
+      "request_id that is the max UUID (SPEC-110 section 17)",
+      errorEnvelope({ request_id: MAX_UUID }),
+      { success: false, issues: [["invalid_format", ["error", "request_id"]]] },
+    ],
+    [
       "missing retryable",
       {
         error: {
@@ -419,6 +436,26 @@ describe("TC-DEV-API-003-001 error table and envelope schemas", () => {
     [
       "meta.request_id that is not a UUID",
       successEnvelope({ meta: { request_id: "not-a-uuid" } }),
+      { success: false, issues: [["invalid_format", ["meta", "request_id"]]] },
+    ],
+    [
+      "meta.request_id that is the nil UUID (SPEC-110 section 17)",
+      successEnvelope({ meta: { request_id: NIL_UUID } }),
+      { success: false, issues: [["invalid_format", ["meta", "request_id"]]] },
+    ],
+    [
+      "meta.request_id that is the max UUID (SPEC-110 section 17)",
+      successEnvelope({ meta: { request_id: MAX_UUID } }),
+      { success: false, issues: [["invalid_format", ["meta", "request_id"]]] },
+    ],
+    [
+      "meta.request_id with version digit 0 (SPEC-110 section 17)",
+      successEnvelope({ meta: { request_id: "00000000-0000-0000-8000-000000000002" } }),
+      { success: false, issues: [["invalid_format", ["meta", "request_id"]]] },
+    ],
+    [
+      "meta.request_id with variant digit c (SPEC-110 section 17)",
+      successEnvelope({ meta: { request_id: "00000000-0000-4000-c000-000000000002" } }),
       { success: false, issues: [["invalid_format", ["meta", "request_id"]]] },
     ],
     [
@@ -463,6 +500,16 @@ describe("TC-DEV-API-003-001 error table and envelope schemas", () => {
     [
       "profile_ref in upper case (SPEC-110 section 9: lower-case canonical UUID)",
       { ...principal, profile_ref: "ABCDEF00-0000-4000-8000-000000000001" },
+      { success: false, issues: [["invalid_format", ["profile_ref"]]] },
+    ],
+    [
+      "profile_ref that is the nil UUID (SPEC-110 section 17: not a canonical UUID)",
+      { ...principal, profile_ref: NIL_UUID },
+      { success: false, issues: [["invalid_format", ["profile_ref"]]] },
+    ],
+    [
+      "profile_ref that is the max UUID (SPEC-110 section 17: not a canonical UUID)",
+      { ...principal, profile_ref: MAX_UUID },
       { success: false, issues: [["invalid_format", ["profile_ref"]]] },
     ],
     [

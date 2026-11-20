@@ -17585,7 +17585,8 @@
         "ErrorCode, PrincipalNavigation, CurrentProfile, UpdateCurrentProfileRequest and AppType keep their compile-time shapes, including the hc client members self.principal.$get, self.profile.$get and self.profile.$patch (enforced by pnpm typecheck)",
         "createPublicRpc registers only GET /api/v1/self/principal, GET /api/v1/self/profile and PATCH /api/v1/self/profile (guard, body validator and handler entries) and answers them with the data/meta envelope built from the injected principal, profile and request ID; a principal or profile with an extra key, or a profile updated_at without milliseconds, is rejected by the strict schema with 500; POST and PUT on the profile path and other paths are not registered",
         "Every route of createPublicRpc validates the whole success envelope with successSchema: a request_id that is not a UUID, an upper-case UUID or empty makes GET principal, GET profile and PATCH profile answer 500 with no data",
-        "An upper- or mixed-case profile_ref from the principal or the profile dependency makes the three routes answer 500 without the reference"
+        "An upper- or mixed-case profile_ref from the principal or the profile dependency makes the three routes answer 500 without the reference",
+        "A request_id or profile_ref that is the nil UUID or the max UUID makes GET principal, GET profile and PATCH profile answer 500 without the value"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -17602,7 +17603,8 @@
         "SEC-API-022",
         "SPEC-110-19",
         "SPEC-110-20",
-        "SPEC-110-21"
+        "SPEC-110-21",
+        "SPEC-110-17"
       ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
@@ -17616,7 +17618,8 @@
       "expected_domain_postconditions": [
         "errorStatuses keeps the 26 codes in order with their HTTP statuses, including METHOD_NOT_ALLOWED 405 and UNSUPPORTED_MEDIA_TYPE 415, and errorSchema's discriminated-union variants carry those codes in the same order",
         "errorSchema, successSchema and principalNavigationSchema accept and reject the fixed inputs with the same parsed data and issue codes/paths as before, except that an unknown code is an invalid_union at the code path and a missing retryable is an invalid_value (S0-3a discriminated union, SPEC-110 section 16)",
-        "principalNavigationSchema rejects an upper-case profile_ref with one invalid_format issue on profile_ref; successSchema rejects meta.request_id that is not a UUID with one issue"
+        "principalNavigationSchema rejects an upper-case profile_ref with one invalid_format issue on profile_ref; successSchema rejects meta.request_id that is not a UUID with one issue",
+        "errorSchema and successSchema refuse a request_id, and principalNavigationSchema a profile_ref, that is the nil UUID or the max UUID (SPEC-110 section 17: not canonical UUIDs); successSchema also refuses version digit 0 and variant digit c, each with one invalid_format issue"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -26073,7 +26076,8 @@
         "SPEC-110-54",
         "SPEC-110-10",
         "SPEC-110-8",
-        "SPEC-110-9"
+        "SPEC-110-9",
+        "SPEC-110-17"
       ],
       "system_invariant_ids": [],
       "api_operation_ids": ["API-AUTH-002", "API-AUTH-004"],
@@ -26088,7 +26092,8 @@
         "updateCurrentProfileRequestSchema accepts { display_name: string | null } only; an empty object, wrong types, non-object bodies, a parsed __proto__ key and every unknown field (profile_ref, auth_subject, role, roles, owner, profile_id, user_id, email, name, updated_at, public_ref, id, capabilities) are rejected",
         "currentProfileSchema is strict (profile_ref UUID, display_name nullable but required, updated_at YYYY-MM-DDTHH:mm:ss.sssZ); an extra auth_subject, id or email, a missing display_name and updated_at without milliseconds, with an offset or with microseconds are rejected",
         "updated_at must be a real UTC instant (SPEC-110 §10): nonexistent days (2026-02-30, 2026-02-29, 2026-04-31, 1900-02-29), months 13 and 00, days 00 and 32, hours 24 and 25, minute 60, second 60, a lowercase z and a space instead of T are rejected, through currentProfileSchema and through its updated_at field schema; 2024-02-29T23:59:59.999Z, 2000-02-29T00:00:00.000Z, 2026-12-31T23:59:59.999Z, 2026-01-01T00:00:00.000Z and Date#toISOString output are accepted",
-        "currentProfileSchema rejects a profile_ref in all upper case, in mixed case or with one upper-case hex digit, and accepts the same value in lower case (SPEC-110 section 9)"
+        "currentProfileSchema rejects a profile_ref in all upper case, in mixed case or with one upper-case hex digit, and accepts the same value in lower case (SPEC-110 section 9)",
+        "currentProfileSchema rejects a profile_ref that is the nil UUID, the max UUID, version digit 0 or 9, or variant digit c or 7 (SPEC-110 section 17 canonical UUID)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -26369,7 +26374,8 @@
         "SPEC-110-16",
         "SPEC-110-20",
         "SPEC-110-21",
-        "SPEC-110-28"
+        "SPEC-110-28",
+        "SPEC-110-17"
       ],
       "system_invariant_ids": [],
       "api_operation_ids": [],
@@ -26384,7 +26390,8 @@
         "errorRetryable equals the SPEC-110 section 21 Retryable column in errorStatuses order; the 24 codes with a fixed Retryable reject the opposite value and the two conditional codes accept both booleans",
         "STATE_CONFLICT alone accepts details null or a strict item_failures of 1 to 50 entries ({ kind ENTRY|GOODS, target_ref lowercase UUID, reasons }) with reasons non-empty, unique and in API-PUR-ELG-001 order and no repeated (kind, target_ref); every other code accepts details null only",
         "Extra keys, unknown reasons and kinds, uppercase or non-UUID target_ref, and field or item_failures details on other codes are rejected; the parsed code type equals ErrorCode",
-        "The type of details is fixed per code by the type system: ErrorDetails of SOLD_OUT is null and a ServiceResult rejected with SOLD_OUT and item_failures does not compile"
+        "The type of details is fixed per code by the type system: ErrorDetails of SOLD_OUT is null and a ServiceResult rejected with SOLD_OUT and item_failures does not compile",
+        "Every error code refuses a request_id that is the nil UUID, the max UUID, version digit 0, variant digit c or upper case, and STATE_CONFLICT refuses the same non-canonical values as target_ref (SPEC-110 sections 9 and 17)"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],

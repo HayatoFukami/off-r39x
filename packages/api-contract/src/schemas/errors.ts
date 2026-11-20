@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { lowerCaseUuidSchema } from "./common.ts";
 
 export const errorStatuses = {
   MALFORMED_REQUEST: 400,
@@ -77,10 +78,10 @@ const purchaseReasons = [
   "PAYMENT_WINDOW_TOO_SHORT",
 ] as const;
 
-// API-PUR-CART-001 Business conflict: { kind, target_ref, reasons } (SPEC-110 section 9: lowercase UUID).
+// API-PUR-CART-001 Business conflict: { kind, target_ref, reasons } (SPEC-110 sections 9 and 17: lower-case canonical UUID).
 const itemFailureSchema = z.strictObject({
   kind: z.enum(["ENTRY", "GOODS"]),
-  target_ref: z.uuid().refine((value) => value === value.toLowerCase(), "Expected lowercase UUID"),
+  target_ref: lowerCaseUuidSchema,
   reasons: z
     .array(z.enum(purchaseReasons))
     .min(1)
@@ -125,7 +126,7 @@ function variant<C extends ErrorCode, R extends z.ZodType, D extends z.ZodType>(
   return z.strictObject({
     code: z.literal(code),
     message: z.string(),
-    request_id: z.uuid(),
+    request_id: lowerCaseUuidSchema,
     retryable,
     details,
   });

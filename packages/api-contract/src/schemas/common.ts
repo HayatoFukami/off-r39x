@@ -1,11 +1,14 @@
 import { z } from "zod";
 
 /**
- * A lower-case canonical UUID: SPEC-110 section 9 (Public Reference) and section 17 (request ID).
- * z.uuid() alone accepts upper-case hex digits, so the case is pinned on top of it: the extra check
- * only refuses upper-case letters, so a value that is not a UUID at all still reports one issue.
+ * A canonical UUID as SPEC-110 section 17 defines it (section 9 Public References use the same
+ * form): 36 lower-case hex digits and hyphens (8-4-4-4-12), version digit 1-8 and variant digit 8,
+ * 9, a or b. The nil and max UUIDs are not canonical, and upper case is refused, not normalised.
+ * z.uuid() is not used: it accepts upper case and both the nil and max UUIDs.
  */
-export const lowerCaseUuidSchema = z.uuid().regex(/^[^A-Z]*$/);
+export const lowerCaseUuidSchema = z
+  .string()
+  .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
 
 export const successSchema = <T extends z.ZodType>(data: T) =>
   z.strictObject({ data, meta: z.strictObject({ request_id: lowerCaseUuidSchema }) });
