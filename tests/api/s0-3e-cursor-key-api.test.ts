@@ -71,13 +71,25 @@ it("TC-API-QRY-005-001 without a cursor key a list route fails closed with 503; 
   }
   expect(without.reads).toEqual([]);
 
-  const withKey = build({ listCursorKey: KEY });
-  const first = await withKey.get("");
-  expect(first.status).toBe(200);
-  const next = (await first.json()).data.page.next_cursor as string;
-  expect(next).toEqual(expect.any(String));
-  const second = await withKey.get(`?cursor=${next}`);
-  expect(second.status).toBe(200);
-  expect(withKey.reads).toEqual([undefined, { keys: [TIMESTAMP], publicRef: REF }]);
-  expect(Buffer.from(KEY.key).equals(Buffer.alloc(32, 13))).toBe(true);
+  // A Node.js Buffer is a Uint8Array whose slice() shares memory, so the copy must hold for it too.
+  const injected: Record<string, CursorKey> = {
+    Uint8Array: KEY,
+    Buffer: Object.freeze({ version: 1, key: Buffer.alloc(32, 13) }),
+  };
+  for (const [kind, listCursorKey] of Object.entries(injected)) {
+    const withKey = build({ listCursorKey });
+    const first = await withKey.get("");
+    expect(first.status, kind).toBe(200);
+    const next = (await first.json()).data.page.next_cursor as string;
+    expect(next, kind).toEqual(expect.any(String));
+    const second = await withKey.get(`?cursor=${next}`);
+    expect(second.status, kind).toBe(200);
+    expect(withKey.reads, kind).toEqual([undefined, { keys: [TIMESTAMP], publicRef: REF }]);
+    expect(Buffer.from(listCursorKey.key).equals(Buffer.alloc(32, 13)), kind).toBe(true);
+
+    const copy = requireListCursorKey(listCursorKey);
+    expect(copy.key.buffer, kind).not.toBe(listCursorKey.key.buffer);
+    copy.key.fill(0);
+    expect(Buffer.from(listCursorKey.key).equals(Buffer.alloc(32, 13)), kind).toBe(true);
+  }
 });
