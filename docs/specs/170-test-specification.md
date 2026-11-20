@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-170
 title: Test Specification
-version: 2.7.0
+version: 2.8.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -616,6 +616,7 @@ Migration Testは空DBから全migrationを順番に適用し、次をassertす�
 6. migrationを二重適用するのではなく、migration historyに従い1回だけ適用される。
 7. migration失敗時にservice schema versionを成功扱いしない。
 8. supported previous released schema fixtureからforward migrationしてhistorical rowを失わない。
+9. 前のrelease相当のmigration setとrequired catalogを同梱したartifactのreadinessが、後続のexpand-only migrationの適用後も成立する。required要素の削除・定義の変更、required tableへのNOT NULLでdefault・identity・generatedのない追加列、journalの先頭の不一致（hashの相違、同梱済みの行の欠落・間への挿入）、journalの不足ではReadyにならず、journalが同梱setと同じ長さのときは追加のobjectでもReadyにならない（`SPEC-180` `INF-HLT-006`）。
 
 **TST-DB-003:** Down migrationをProduction rollback authorityとして要求しない。Deployment rollbackのschema compatibilityは`SPEC-180`が定義する。
 
@@ -2092,6 +2093,7 @@ SPEC-170に準拠したTest implementationは、少なくとも次をすべて�
 - `UCR-140-003`: `INCORPORATED`（`SPEC-140` Part XIII / `SEC-API-030`、`SPEC-110` §21 / §24.1 / §56.1、`SPEC-150` §58.1、`SPEC-160` §24.1 / §42 / `OBS-ALT-041〜042`、`SPEC-180` §17.1〜§17.2 / §28.1〜§28.2、§47.1のTest）
 - `UCR-170-001`: `INCORPORATED`（`SPEC-110 §41 / §46〜§48` のOperation ID completeness gap解消）
 - `UCR-180-001`: `INCORPORATED`（`SPEC-180 §45.3` `INF-SEED-001〜006`、`SPEC-100 §13.5` `DB-SEED-001〜007`、`SPEC-160 §37` `OBS-AUD-014`、本書 §22.1 `TST-SEED-001〜006`のTest）
+- `UCR-180-003`: `INCORPORATED`（`SPEC-180 §40` `INF-HLT-006`、本書 §22 項目9のTest）
 
 Canonical化済みoperationは §27.1／§27.2 のoperation-family Test対象とし、上記既知UCRのうち `UCR-130-005` のみ未反映として期待値を先取りしない。反映済みoperationへTest Caseを追加し、存在しないoperationを発明しない。新たなUCRはOwner本文への反映状況を個別確認し、自動的にINCORPORATEDと推定しない。
 
