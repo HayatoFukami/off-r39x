@@ -3102,7 +3102,13 @@
         "tests/vitest.backend.config.mts",
         "tests/harness/db/isolated-database.ts"
       ],
-      "test_case_ids": ["TC-DB-FOUNDATION-006", "TC-STARTUP-AUDIT-001"],
+      "test_case_ids": [
+        "TC-DB-FOUNDATION-006",
+        "TC-STARTUP-AUDIT-001",
+        "TC-INF-SEC-007-002",
+        "TC-INF-SEC-007-003",
+        "TC-INF-SEC-007-006"
+      ],
       "notes": "Missing deployment mapping/schema/extension/hash/grant not ready"
     },
     {
@@ -3336,13 +3342,18 @@
     {
       "rule_id": "INF-SEC-003",
       "code_paths": ["packages/config/src/index.ts"],
-      "test_case_ids": ["TC-COMMON-007", "TC-RLM-006-106"],
+      "test_case_ids": ["TC-COMMON-007", "TC-RLM-006-106", "TC-INF-SEC-007-005"],
       "notes": "Per-process secret reader boundary"
     },
     {
       "rule_id": "DEV-SEC-001",
       "code_paths": ["packages/config/src/index.ts"],
-      "test_case_ids": ["TC-COMMON-006"],
+      "test_case_ids": [
+        "TC-COMMON-006",
+        "TC-INF-SEC-007-001",
+        "TC-INF-SEC-007-002",
+        "TC-INF-SEC-007-003"
+      ],
       "notes": "Fail-closed server environment schema"
     },
     {
@@ -3353,7 +3364,10 @@
         "TC-COMMON-006",
         "TC-COMMON-007",
         "TC-COMMON-011",
-        "TC-COMMON-012"
+        "TC-COMMON-012",
+        "TC-INF-SEC-007-002",
+        "TC-INF-SEC-007-003",
+        "TC-INF-SEC-007-006"
       ],
       "notes": "No warning-only invalid security configuration"
     },
@@ -5420,7 +5434,7 @@
         "TC-API-QRY-004-004",
         "TC-API-QRY-001-002"
       ],
-      "notes": "Signed opaque cursor bound to Operation, mode and filters; key injected by caller (secret placement pending UCR)"
+      "notes": "Signed opaque cursor bound to Operation, mode and filters; key from LIST_CURSOR_HMAC_KEY via bootstrap (API-QRY-005)"
     },
     {
       "rule_id": "SEC-API-018",
@@ -5498,6 +5512,55 @@
       "code_paths": ["apps/api/src/api/middleware/idempotency.ts", "apps/api/src/api/failure.ts"],
       "test_case_ids": ["TC-API-IDM-005-003", "TC-SEC-ERR-001-002"],
       "notes": "Backend foundation only; no business Operation mounts this middleware yet; replay records are PR-S0-3d"
+    },
+    {
+      "rule_id": "INF-SEC-007",
+      "code_paths": [
+        "packages/config/src/index.ts",
+        "apps/api/src/bootstrap/index.ts",
+        "apps/api/src/api/app.ts",
+        "apps/api/src/api/pagination.ts"
+      ],
+      "test_case_ids": [
+        "TC-INF-SEC-007-001",
+        "TC-INF-SEC-007-002",
+        "TC-INF-SEC-007-003",
+        "TC-INF-SEC-007-004",
+        "TC-INF-SEC-007-005",
+        "TC-INF-SEC-007-006",
+        "TC-INF-SEC-007-007",
+        "TC-API-QRY-005-001"
+      ],
+      "notes": "LIST_CURSOR_HMAC_KEY(_VERSION): API-only startup validation, injected by bootstrap; list routes fail closed without it"
+    },
+    {
+      "rule_id": "API-QRY-005",
+      "code_paths": [
+        "apps/api/src/api/pagination.ts",
+        "packages/config/src/index.ts",
+        "apps/api/src/bootstrap/index.ts"
+      ],
+      "test_case_ids": [
+        "TC-INF-SEC-007-001",
+        "TC-INF-SEC-007-007",
+        "TC-API-QRY-005-001",
+        "TC-API-QRY-004-001",
+        "TC-API-QRY-004-003",
+        "TC-API-QRY-001-002"
+      ],
+      "notes": "Cursor signed with LIST_CURSOR_HMAC_KEY and carrying its version (codec from S0-3b); no list Operation is mounted yet"
+    },
+    {
+      "rule_id": "SEC-KEY-006",
+      "code_paths": ["packages/config/src/index.ts", "apps/api/src/bootstrap/index.ts"],
+      "test_case_ids": ["TC-INF-SEC-007-002", "TC-INF-SEC-007-003", "TC-INF-SEC-007-006"],
+      "notes": "Missing or malformed list cursor key/version fails startup"
+    },
+    {
+      "rule_id": "SEC-KEY-003",
+      "code_paths": ["packages/config/src/index.ts"],
+      "test_case_ids": ["TC-INF-SEC-007-005"],
+      "notes": "Workers refuse the list cursor key"
     }
   ]
 }
