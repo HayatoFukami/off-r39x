@@ -2462,7 +2462,7 @@ resolveConsistencyReviewCase()
 47. `API-IDM-011` の対象Operation（§18の対象一覧と `API-ADM-EML-004/005`）で `Idempotency-Key` が欠落、または16〜128文字の印字可能ASCII（0x20〜0x7E）でない場合は、認証・認可の失敗を先に返したうえで `400 VALIDATION_FAILED`（`details: null`）とし、Domain stateと記録（§18.1）を変更しない。受信した値は正規化せずに検証し、同名headerの複数指定は連結した1つの値として扱う（`API-IDM-011`）。
 48. Owner / Admin listのcursorは §12 `API-QRY-005` のとおり署名・検証し、形式・長さ・署名・鍵version・Operation ID・sort mode・filterの不一致を `400 VALIDATION_FAILED`（`details: null`）とし、先頭pageへ黙って戻さない。
 49. `API-AUTH-003` の再select 0件は500ではなく、Caseをcommitした後の `409 CONSISTENCY_REVIEW_REQUIRED` であり、0件を観測したtransactionではProfileを作らず、内部reason・Auth Subjectを返さない（`REL-AUTH-009`）。
-50. `API-PUB-001`〜`005`・`012` は §26.1 のとおり、`PUBLISHED` の行だけをserver-sideのquery条件で返し、未設定値を `null` のまま返す。0件は `items: []`、非公開と不存在のAnnouncementは区別せず `404`、Eventが2件以上なら行を選ばず `500`、DB障害は `503 DATABASE_TEMPORARY_FAILURE`、schemaを満たさない行は `503 TEMPORARY_UNAVAILABLE` であり、空成功に偽装しない。
+50. `API-PUB-001`〜`005`・`012` は §26.1 のとおり返す。FAQ・Announcement・Sponsor Logoは `PUBLISHED` の行だけをserver-sideのquery条件で返し、Publication Stateを持たないEventとEntry Ticket Offeringは当該Eventの行を返す。未設定値は `null` のまま返す。Eventが0件のとき、一覧（`002`・`003`・`005`・`012`）は `items: []`、単一resource（`001`・`004`）は `404`。非公開と不存在のAnnouncementは区別せず `404`。Eventが2件以上なら行を選ばず `500`、未知queryは `400`、DB障害は `503 DATABASE_TEMPORARY_FAILURE`、schemaを満たさない行は `503 TEMPORARY_UNAVAILABLE` であり、空成功に偽装しない。
 
 ---
 
