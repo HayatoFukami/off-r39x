@@ -141,10 +141,12 @@ export function canonicalRequestJson(request: NormalizedRequest): string {
   try {
     // A proxy (the request, params or query here; anything inside body and query in the strict
     // copy) could answer the reads below differently each time: refuse it before its traps run.
-    if (!isRecord(request) || types.isProxy(request)) throw new Error(NOT_CANONICALIZABLE);
-    const body = ownDataValue(request, "body");
-    const params = ownDataValue(request, "params");
-    const query = ownDataValue(request, "query");
+    if (types.isProxy(request) || !isPlainRecord(request)) throw new Error(NOT_CANONICALIZABLE);
+    // The request itself gets the strict rules too: a plain object whose three fields are
+    // enumerable data properties (a class instance or a hidden field is a wiring defect).
+    const body = requestField(request, "body");
+    const params = requestField(request, "params");
+    const query = requestField(request, "query");
     // params and query must be plain objects: a Map or a class instance keeps its entries outside
     // its own properties, so they would vanish and different requests would share one digest.
     if (
@@ -190,11 +192,16 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return prototype === Object.prototype || prototype === null;
 }
 
-/** The own data property `key` of `record`, read without invoking an accessor. */
-function ownDataValue(record: object, key: string): unknown {
-  const descriptor = Object.getOwnPropertyDescriptor(record, key);
-  if (descriptor !== undefined && !("value" in descriptor)) throw new Error(NOT_CANONICALIZABLE);
-  return descriptor?.value;
+/**
+ * The own enumerable data property `key` of `request`, read once and without invoking an accessor.
+ * A missing, non-enumerable or accessor property is refused.
+ */
+function requestField(request: object, key: string): unknown {
+  const descriptor = Object.getOwnPropertyDescriptor(request, key);
+  if (descriptor === undefined || !("value" in descriptor) || descriptor.enumerable !== true) {
+    throw new Error(NOT_CANONICALIZABLE);
+  }
+  return descriptor.value;
 }
 
 /** SHA-256 of the canonical request. Headers are not an input (TST-IDM-002, SEC-API-023). */

@@ -526,6 +526,41 @@ describe("TC-API-IDM-005-002 a request that is not JSON-representable is refused
     }
     expect(reads).toBe(0);
   });
+  it("the request object itself must be plain, with body, params and query as enumerable data properties", () => {
+    class Normalized {
+      params = {};
+      query = {};
+      body = null;
+    }
+    const hiddenField = (key: "body" | "params" | "query") => {
+      const request: Record<string, unknown> = { params: {}, query: {}, body: null };
+      Object.defineProperty(request, key, { value: request[key], enumerable: false });
+      return request;
+    };
+    const notPlain: [label: string, request: unknown][] = [
+      ["class instance", new Normalized()],
+      ["non-enumerable body", hiddenField("body")],
+      ["non-enumerable params", hiddenField("params")],
+      ["non-enumerable query", hiddenField("query")],
+    ];
+    for (const [label, request] of notPlain) {
+      let thrown: unknown;
+      try {
+        digestOf(request);
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown, label).toBeInstanceOf(Error);
+      expect((thrown as Error).message, label).toBe("Request is not canonicalizable");
+    }
+    // A null-prototype request is plain data and has the digest of the equal literal.
+    const bare = Object.assign(Object.create(null) as Record<string, unknown>, {
+      params: {},
+      query: {},
+      body: null,
+    });
+    expect(hexOf(bare)).toBe(hexOf({ params: {}, query: {}, body: null }));
+  });
   it("plain params: the checked string itself is the value hashed", () => {
     expect(canonicalOf({ params: { order_ref: REF_A1 }, query: {}, body: null })).toBe(
       `{"body":null,"params":{"order_ref":"${REF_A1}"},"query":{}}`,
