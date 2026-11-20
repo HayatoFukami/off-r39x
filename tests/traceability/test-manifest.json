@@ -26673,6 +26673,39 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-DB-AUTH-001-010",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "DB-AUTH-001",
+        "AR-ID-004",
+        "REL-AUTH-005",
+        "DEV-DB-004",
+        "API-AUTH-003"
+      ],
+      "system_invariant_ids": ["INV-010-08"],
+      "api_operation_ids": ["API-AUTH-003"],
+      "db_constraint_names": [],
+      "preconditions": "createCurrentProfileRepository over a recording pool that answers each statement in node-postgres array row mode; no PostgreSQL (what the database does with the statements is TC-DB-AUTH-001-004/005)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "A new subject sends exactly one statement inside BEGIN, SET LOCAL and COMMIT, built from the Drizzle table: INSERT INTO app.business_profiles (id, public_ref, auth_subject, display_name, created_at, updated_at) VALUES (default, default, $1, default, default, default) ON CONFLICT (auth_subject) DO NOTHING RETURNING public_ref, display_name, updated_at, with the verified subject as the only value, and returns created",
+        "An existing subject (the INSERT returns no row) sends one reselect SELECT public_ref, display_name, updated_at FROM app.business_profiles WHERE auth_subject = $1 in the same transaction and returns existing with the row unchanged",
+        "No statement contains DELETE, DO UPDATE or a row lock clause",
+        "A reselect with zero or several rows throws the reselect cardinality violation after exactly two statements, without COMMIT and without a second INSERT (REL-AUTH-005: never re-created)",
+        "updated_at is decoded with node-postgres's timestamptz parser on both results: year 0001 keeps its year and an offset other than +00 gives the same instant in UTC"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
       "test_case_id": "TC-API-007-010",
       "level": "Unit",
       "suite": "unit",

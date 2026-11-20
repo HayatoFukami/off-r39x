@@ -5387,7 +5387,12 @@
     {
       "rule_id": "DB-AUTH-001",
       "code_paths": ["packages/db/src/transactions/profile.ts"],
-      "test_case_ids": ["TC-DB-AUTH-001-004", "TC-DB-AUTH-001-005", "TC-DB-AUTH-001-006"],
+      "test_case_ids": [
+        "TC-DB-AUTH-001-004",
+        "TC-DB-AUTH-001-005",
+        "TC-DB-AUTH-001-006",
+        "TC-DB-AUTH-001-010"
+      ],
       "notes": "implementation mapping only: PR-L2-1b self Profile provisioning (API-AUTH-003); synthetic evidence, G8 (production-like E2E) not executed"
     },
     {
@@ -5400,7 +5405,8 @@
         "TC-DB-AUTH-001-001",
         "TC-DB-AUTH-001-004",
         "TC-DB-AUTH-001-005",
-        "TC-DB-AUTH-001-006"
+        "TC-DB-AUTH-001-006",
+        "TC-DB-AUTH-001-010"
       ],
       "notes": "implementation mapping only: PR-L2-1b self Profile provisioning (API-AUTH-003); synthetic evidence, G8 (production-like E2E) not executed"
     },
@@ -5413,8 +5419,8 @@
     {
       "rule_id": "REL-AUTH-005",
       "code_paths": ["packages/db/src/transactions/profile.ts"],
-      "test_case_ids": ["TC-DB-AUTH-001-004", "TC-DB-AUTH-001-008"],
-      "notes": "implementation mapping only: PR-L2-1b self Profile provisioning (API-AUTH-003); synthetic evidence, G8 (production-like E2E) not executed"
+      "test_case_ids": ["TC-DB-AUTH-001-004", "TC-DB-AUTH-001-008", "TC-DB-AUTH-001-010"],
+      "notes": "implementation mapping only: PR-L2-1b self Profile provisioning (API-AUTH-003); synthetic evidence, G8 (production-like E2E) not executed; the missing-row case is not re-created but answered 500; handing it to Consistency Review (SPEC-150 section 43 AUTH_PROFILE_RELATION_INCONSISTENT) is not implemented because SPEC-100 section 43 has no Business Profile target (UCR pending)"
     },
     {
       "rule_id": "AR-ID-001",
@@ -5435,7 +5441,7 @@
     {
       "rule_id": "DEV-DB-004",
       "code_paths": ["packages/db/src/transactions/profile.ts"],
-      "test_case_ids": ["TC-API-007-010"],
+      "test_case_ids": ["TC-API-007-010", "TC-DB-AUTH-001-010"],
       "notes": "implementation mapping only: the self Profile SELECT, UPDATE ... RETURNING and the provisioning INSERT ... ON CONFLICT DO NOTHING RETURNING and reselect are built from the Drizzle table declaration; transaction_timestamp() stays an SQL expression in the same UPDATE"
     },
     {
