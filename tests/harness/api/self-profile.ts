@@ -211,6 +211,8 @@ export interface RigOptions {
   /** Pass no `profiles` dependency to createApp (fail-closed case). */
   readonly omitProfiles?: boolean;
   readonly store?: RecordingProfileStore;
+  /** Mount this profile store instead of the recording one (for example the real repository on a fake pool). */
+  readonly profiles?: CurrentProfileStore;
   readonly principal?: () => PrincipalRecord;
   readonly verifier?: TokenVerifier;
   readonly overrides?: Record<string, unknown>;
@@ -283,7 +285,7 @@ export function selfProfileRig(options: RigOptions = {}): SelfProfileRig {
       },
     },
     rateLimit: trs.rateLimit,
-    ...(options.omitProfiles ? {} : { profiles: store }),
+    ...(options.omitProfiles ? {} : { profiles: options.profiles ?? store }),
   });
   const send = async (path: string, init?: RequestInit): Promise<Response> =>
     app.request(path.startsWith("http") ? path : `${API}${path}`, init, peer());

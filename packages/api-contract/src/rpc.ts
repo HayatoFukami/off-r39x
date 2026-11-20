@@ -1,5 +1,6 @@
 import { type Context, type Env, Hono, type MiddlewareHandler } from "hono";
 import type { z } from "zod";
+import { successSchema } from "./schemas/common.ts";
 import {
   type CurrentProfile,
   currentProfileSchema,
@@ -20,6 +21,15 @@ type ProfileUpdateInput = {
 type ProfileProvisionInput = {
   in: { json: z.input<typeof provisionCurrentProfileRequestSchema> };
 };
+
+/**
+ * SPEC-110 section 19 / DEV-API-003: the whole success envelope, meta.request_id included, is checked
+ * by the shared successSchema before it is sent; a mismatch throws, so the route answers 500 and never
+ * sends the data. The data schema is the route's strict response schema.
+ */
+function envelope<S extends z.ZodType>(schema: S, data: unknown, requestId: string) {
+  return successSchema(schema).parse({ data, meta: { request_id: requestId } });
+}
 
 // The server mounts this same builder: no parallel route declaration or import
 // of server authority into the client-visible contract package.
@@ -52,16 +62,18 @@ export function createPublicRpc<E extends Env>(dependencies: {
 }) {
   return new Hono<E>()
     .get("/api/v1/self/principal", dependencies.guard, (c: Context<E>) =>
-      c.json({
-        data: principalNavigationSchema.parse(dependencies.principal(c)),
-        meta: { request_id: dependencies.requestId(c) },
-      }),
+      c.json(
+        envelope(principalNavigationSchema, dependencies.principal(c), dependencies.requestId(c)),
+      ),
     )
     .get("/api/v1/self/profile", dependencies.profileRead.guard, async (c: Context<E>) =>
-      c.json({
-        data: currentProfileSchema.parse(await dependencies.profileRead.load(c)),
-        meta: { request_id: dependencies.requestId(c) },
-      }),
+      c.json(
+        envelope(
+          currentProfileSchema,
+          await dependencies.profileRead.load(c),
+          dependencies.requestId(c),
+        ),
+      ),
     )
     .patch(
       "/api/v1/self/profile",
@@ -70,10 +82,13 @@ export function createPublicRpc<E extends Env>(dependencies: {
       // The handler repeats the Input; annotating it as plain Context<E> would make Hono infer {} and
       // drop the JSON input from AppType.
       async (c: Context<E, "/api/v1/self/profile", ProfileUpdateInput>) =>
-        c.json({
-          data: currentProfileSchema.parse(await dependencies.profileUpdate.save(c)),
-          meta: { request_id: dependencies.requestId(c) },
-        }),
+        c.json(
+          envelope(
+            currentProfileSchema,
+            await dependencies.profileUpdate.save(c),
+            dependencies.requestId(c),
+          ),
+        ),
     )
     .post(
       "/api/v1/self/profile/provision",
@@ -82,10 +97,7 @@ export function createPublicRpc<E extends Env>(dependencies: {
       async (c: Context<E, "/api/v1/self/profile/provision", ProfileProvisionInput>) => {
         const result = await dependencies.profileProvision.provision(c);
         return c.json(
-          {
-            data: currentProfileSchema.parse(result.profile),
-            meta: { request_id: dependencies.requestId(c) },
-          },
+          envelope(currentProfileSchema, result.profile, dependencies.requestId(c)),
           result.created ? 201 : 200,
         );
       },

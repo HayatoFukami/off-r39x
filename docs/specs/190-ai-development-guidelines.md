@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-190
 title: AI Development Guidelines
-version: 2.2.0
+version: 2.3.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -520,6 +520,7 @@ Resend webhook secret
 QR HMAC / AEAD keyring
 OBS_CORRELATION_HMAC_KEY
 Rate limit store connection credential / RATE_LIMIT_HMAC_KEY
+LIST_CURSOR_HMAC_KEY
 Environment identity markers / provider expected identity
 ```
 

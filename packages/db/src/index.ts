@@ -8,9 +8,11 @@ export type { DatabaseErrorClass } from "./errors.ts";
 export {
   classifyDatabaseError,
   DatabaseUnavailableError,
+  isDatabaseTemporaryFailure,
   isDatabaseUnavailableCode,
   sqlState,
   TransactionDeadlineError,
+  typeDirectQueryFailure,
 } from "./errors.ts";
 export {
   computeMigrationSetHash,
