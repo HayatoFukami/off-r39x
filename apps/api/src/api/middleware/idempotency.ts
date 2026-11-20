@@ -120,18 +120,36 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /**
  * API-IDM-005 / TST-IDM-004 (4): deterministic canonical form `{"body":..,"params":..,"query":..}`
  * with keys sorted by UTF-16 code unit and no whitespace. Throws a fixed message for anything JSON
- * cannot represent.
+ * cannot represent. Every property is read once, from its descriptor (an accessor is refused, never
+ * invoked), and the checks run on that copy, so the digest covers exactly what was checked.
  */
 export function canonicalRequestJson(request: NormalizedRequest): string {
-  if (!isRecord(request) || request.body === undefined) throw new Error(NOT_CANONICALIZABLE);
-  const { params, query, body } = request;
-  if (!isRecord(params) || !isRecord(query)) throw new Error(NOT_CANONICALIZABLE);
-  for (const value of Object.values(params)) {
-    if (typeof value !== "string") throw new Error(NOT_CANONICALIZABLE);
+  let copy: ReturnType<typeof copyJsonValue>;
+  try {
+    if (!isRecord(request)) throw new Error(NOT_CANONICALIZABLE);
+    const body = ownDataValue(request, "body");
+    const params = ownDataValue(request, "params");
+    const query = ownDataValue(request, "query");
+    if (body === undefined || !isRecord(params) || !isRecord(query)) {
+      throw new Error(NOT_CANONICALIZABLE);
+    }
+    for (const key of Object.keys(params)) {
+      if (typeof ownDataValue(params, key) !== "string") throw new Error(NOT_CANONICALIZABLE);
+    }
+    copy = copyJsonValue({ body, params, query });
+  } catch {
+    // A proxy trap or anything else that throws must not leak its message (SEC-ERR-003).
+    throw new Error(NOT_CANONICALIZABLE);
   }
-  const copy = copyJsonValue({ body, params, query });
   if (!copy.ok) throw new Error(NOT_CANONICALIZABLE);
   return serialize(copy.value);
+}
+
+/** The own data property `key` of `record`, read without invoking an accessor. */
+function ownDataValue(record: object, key: string): unknown {
+  const descriptor = Object.getOwnPropertyDescriptor(record, key);
+  if (descriptor !== undefined && !("value" in descriptor)) throw new Error(NOT_CANONICALIZABLE);
+  return descriptor?.value;
 }
 
 /** SHA-256 of the canonical request. Headers are not an input (TST-IDM-002, SEC-API-023). */

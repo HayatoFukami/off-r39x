@@ -321,6 +321,68 @@ describe("TC-API-IDM-005-002 a request that is not JSON-representable is refused
       expect(message).not.toContain(MARKER);
     }
   });
+  it("an accessor or a throwing trap anywhere in the request is refused without being invoked, with the fixed message", () => {
+    // A getter that answers differently on each read must not let one value pass the check and
+    // another reach the digest (the canonical form covers exactly what was checked).
+    let reads = 0;
+    const changingBody = Object.defineProperty({ params: {}, query: {} }, "body", {
+      enumerable: true,
+      get: () => {
+        reads += 1;
+        return reads === 1 ? { label: "checked" } : { label: MARKER };
+      },
+    });
+    const throwing = () => {
+      throw new Error(MARKER);
+    };
+    const cases: [label: string, request: unknown][] = [
+      ["body accessor", changingBody],
+      [
+        "params accessor",
+        Object.defineProperty({ query: {}, body: null }, "params", {
+          enumerable: true,
+          get: () => ({}),
+        }),
+      ],
+      [
+        "query accessor",
+        Object.defineProperty({ params: {}, body: null }, "query", {
+          enumerable: true,
+          get: () => ({}),
+        }),
+      ],
+      [
+        "params value accessor that throws",
+        {
+          params: Object.defineProperty({}, "order_ref", { enumerable: true, get: throwing }),
+          query: {},
+          body: null,
+        },
+      ],
+      [
+        "body proxy whose trap throws",
+        { params: {}, query: {}, body: new Proxy({}, { ownKeys: throwing }) },
+      ],
+      [
+        "request proxy whose trap throws",
+        new Proxy({}, { getOwnPropertyDescriptor: throwing, get: throwing }),
+      ],
+    ];
+    for (const [label, request] of cases) {
+      for (const run of [digestOf, canonicalOf]) {
+        let thrown: unknown;
+        try {
+          run(request);
+        } catch (error) {
+          thrown = error;
+        }
+        expect(thrown, label).toBeInstanceOf(Error);
+        expect((thrown as Error).message, label).toBe("Request is not canonicalizable");
+        expect((thrown as Error).cause, label).toBeUndefined();
+      }
+    }
+    expect(reads).toBe(0);
+  });
   it("canonicalRequestJson refuses the same requests", () => {
     expect(() => canonicalOf({ params: {}, query: {}, body: undefined })).toThrow();
     expect(() => canonicalOf({ params: {}, query: {}, body: { n: Number.NaN } })).toThrow();
