@@ -616,7 +616,7 @@ Migration Testは空DBから全migrationを順番に適用し、次をassertす�
 6. migrationを二重適用するのではなく、migration historyに従い1回だけ適用される。
 7. migration失敗時にservice schema versionを成功扱いしない。
 8. supported previous released schema fixtureからforward migrationしてhistorical rowを失わない。
-9. 前のrelease相当のmigration setとrequired catalogを同梱したartifactのreadinessを、後続のmigrationの適用後に確認する（`SPEC-180` `INF-HLT-006`）。後続のmigrationが `INF-HLT-006` 4の許容範囲にある場合（required要素を変えずにtable・列・制約・index・sequenceを足す場合と、required制約を `VALIDATE CONSTRAINT` する（検証状態がfalseからtrueになる）場合）はReadyになる。次の場合はReadyにならない。後方互換な変更（既存CHECKの緩和など）を含むrequired要素の削除・属性の変更（CHECKの定義の変更、required列への `SET NOT NULL` を含む）、required tableへのNOT NULLでdefault・identity・generatedのない追加列、journalの先頭の不一致（hashの相違、同梱済みの行の欠落・間への挿入）、journalの不足、journalが同梱setと同じ長さのときの追加のobject。readinessがcatalogを読んだ後、journalを読む前に許容範囲のmigrationがCOMMITされても、Readyのままである。
+9. 前のrelease相当のmigration setとrequired catalogを同梱したartifactのreadinessを、後続のmigrationの適用後に確認する（`SPEC-180` `INF-HLT-006`）。後続のmigrationが `INF-HLT-006` 4の許容範囲にある場合（required要素を変えずにtable・列・制約・index・sequenceを足す場合と、required制約を `VALIDATE CONSTRAINT` する（検証状態がfalseからtrueになる）場合）はReadyになる。次の場合はReadyにならない。後方互換な変更（既存CHECKの緩和など）を含むrequired要素の削除・属性の変更（CHECKの定義の変更、required列への `SET NOT NULL` を含む）、required tableへのNOT NULLでdefault・identity・generatedのない追加列、journalの先頭の不一致（hashの相違、同梱済みの行の欠落・間への挿入）、journalの不足、journalが同梱setと同じ長さのときの追加のobject。readinessの読み取りの間（catalogの読み取りの前後）にmigrationがCOMMITされた場合は、古いcatalogと新しいjournal（または新しいcatalogと古いjournal）の組み合わせで判定せず、COMMITされたmigrationが許容範囲の中ならReady、外ならReadyにならない。
 
 **TST-DB-003:** Down migrationをProduction rollback authorityとして要求しない。Deployment rollbackのschema compatibilityは`SPEC-180`が定義する。
 
