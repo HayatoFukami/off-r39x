@@ -526,68 +526,47 @@ describe("TC-API-IDM-005-002 a request that is not JSON-representable is refused
     }
     expect(reads).toBe(0);
   });
-  it("a params property's enumerability and value come from one descriptor", () => {
-    // A proxy reporting an enumerable descriptor for the first `n` reads and a non-enumerable one
-    // with another value afterwards: the hashed value must be the one whose descriptor passed the
-    // enumerability check, or the request is refused.
-    for (let n = 1; n <= 6; n += 1) {
-      let calls = 0;
-      const params = new Proxy(
-        {},
-        {
-          ownKeys: () => ["order_ref"],
-          getOwnPropertyDescriptor: () => {
-            calls += 1;
-            const enumerable = calls <= n;
-            return {
-              value: enumerable ? REF_A1 : REF_A2,
-              writable: true,
-              enumerable,
-              configurable: true,
-            };
-          },
-        },
-      );
-      let canonical: string | undefined;
-      try {
-        canonical = canonicalOf({ params, query: {}, body: null });
-      } catch (error) {
-        expect((error as Error).message, `n=${n}`).toBe("Request is not canonicalizable");
-      }
-      if (canonical !== undefined) expect(canonical, `n=${n}`).not.toContain(REF_A2);
-    }
+  it("plain params: the checked string itself is the value hashed", () => {
+    expect(canonicalOf({ params: { order_ref: REF_A1 }, query: {}, body: null })).toBe(
+      `{"body":null,"params":{"order_ref":"${REF_A1}"},"query":{}}`,
+    );
   });
-  it("a params value is read once: the value that passed the string check is the one hashed", () => {
-    // A proxy whose descriptor answers a string for the first `n` reads and a number afterwards: for
-    // every `n`, the digest covers the checked string or the request is refused, never the number.
-    for (let n = 1; n <= 6; n += 1) {
+  it("a params proxy whose descriptor changes between reads is refused before any trap runs", () => {
+    // Enumerable with one string on the first read, then non-enumerable or a number: neither value
+    // may reach the digest, and the proxy is refused without its traps being called at all.
+    const variants: [label: string, later: PropertyDescriptor][] = [
+      ["becomes non-enumerable with another string", { value: REF_A2, enumerable: false }],
+      ["becomes a number", { value: 1, enumerable: true }],
+    ];
+    for (const [label, later] of variants) {
       let calls = 0;
       const params = new Proxy(
         {},
         {
-          ownKeys: () => ["order_ref"],
+          ownKeys: () => {
+            calls += 1;
+            return ["order_ref"];
+          },
           getOwnPropertyDescriptor: () => {
             calls += 1;
-            return {
-              value: calls <= n ? REF_A1 : 1,
-              writable: true,
-              enumerable: true,
-              configurable: true,
-            };
+            const descriptor = calls === 1 ? { value: REF_A1, enumerable: true } : later;
+            return { ...descriptor, writable: true, configurable: true };
+          },
+          getPrototypeOf: () => {
+            calls += 1;
+            return Object.prototype;
           },
         },
       );
-      let canonical: string | undefined;
+      let thrown: unknown;
       try {
-        canonical = canonicalOf({ params, query: {}, body: null });
+        canonicalOf({ params, query: {}, body: null });
       } catch (error) {
-        expect((error as Error).message, `n=${n}`).toBe("Request is not canonicalizable");
+        thrown = error;
       }
-      if (canonical !== undefined) {
-        expect(canonical, `n=${n}`).toBe(
-          `{"body":null,"params":{"order_ref":"${REF_A1}"},"query":{}}`,
-        );
-      }
+      expect(thrown, label).toBeInstanceOf(Error);
+      expect((thrown as Error).message, label).toBe("Request is not canonicalizable");
+      expect(calls, label).toBe(0);
     }
   });
   it("canonicalRequestJson refuses the same requests", () => {
