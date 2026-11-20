@@ -1,6 +1,7 @@
 import type { Principal } from "@off-r39x/auth";
 import type { createLogger } from "@off-r39x/observability";
 import type { RouteClassId } from "@off-r39x/security";
+import type { TransportIdempotencyInput } from "./middleware/idempotency.ts";
 import type { ErrorCode } from "./schemas/common.ts";
 
 export type ApiEnvironment = {
@@ -31,6 +32,11 @@ export type ApiEnvironment = {
      * after the token, the directory and the Email decision. Never filled from client input.
      */
     provisioningSubject: string | undefined;
+    /**
+     * SPEC-110 section 18 / API-IDM-005 / API-IDM-011: set only on a target Operation's route by
+     * requireTransportIdempotency. Carries digests, never the raw key.
+     */
+    transportIdempotency: TransportIdempotencyInput | undefined;
   };
 };
 

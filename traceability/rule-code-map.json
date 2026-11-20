@@ -3173,9 +3173,12 @@
     },
     {
       "rule_id": "OBS-COR-005",
-      "code_paths": ["packages/security/src/index.ts"],
-      "test_case_ids": ["TC-COMMON-001"],
-      "notes": "Canonical correlation fingerprint only; not authorization or idempotency authority"
+      "code_paths": [
+        "packages/security/src/index.ts",
+        "apps/api/src/api/middleware/idempotency.ts"
+      ],
+      "test_case_ids": ["TC-COMMON-001", "TC-API-IDM-011-001"],
+      "notes": "Canonical correlation fingerprint only; not authorization or idempotency authority. The idempotency middleware's digests are unkeyed SHA-256 and never use the HMAC fingerprint"
     },
     {
       "rule_id": "DEV-OBS-003",
@@ -5461,8 +5464,17 @@
     },
     {
       "rule_id": "SEC-ERR-001",
-      "code_paths": ["apps/api/src/api/respond.ts", "packages/api-contract/src/schemas/errors.ts"],
-      "test_case_ids": ["TC-SEC-ERR-001-001", "TC-DEV-API-011-001"],
+      "code_paths": [
+        "apps/api/src/api/respond.ts",
+        "packages/api-contract/src/schemas/errors.ts",
+        "apps/api/src/api/middleware/idempotency.ts"
+      ],
+      "test_case_ids": [
+        "TC-SEC-ERR-001-001",
+        "TC-DEV-API-011-001",
+        "TC-SEC-ERR-001-002",
+        "TC-DEV-API-007-002"
+      ],
       "notes": "Backend foundation only; no business Operation uses this yet"
     },
     {
@@ -5470,9 +5482,15 @@
       "code_paths": [
         "packages/api-contract/src/schemas/errors.ts",
         "apps/api/src/api/respond.ts",
-        "apps/api/src/api/middleware/query.ts"
+        "apps/api/src/api/middleware/query.ts",
+        "apps/api/src/api/middleware/idempotency.ts"
       ],
-      "test_case_ids": ["TC-DEV-API-003-002", "TC-DEV-API-003-004", "TC-API-QRY-001-002"],
+      "test_case_ids": [
+        "TC-DEV-API-003-002",
+        "TC-DEV-API-003-004",
+        "TC-API-QRY-001-002",
+        "TC-SEC-ERR-001-002"
+      ],
       "notes": "Backend foundation only; no business Operation uses this yet"
     },
     {
@@ -5543,6 +5561,41 @@
         "TC-API-007-001"
       ],
       "notes": "Backend foundation; the self profile repository (API-AUTH-002 / API-AUTH-004) is the first business use: pool acquisition timeout, codeless and errno connection failures (EAI_AGAIN included) return unavailable, and the repository and the HTTP boundary share isDatabaseTemporaryFailure"
+    },
+    {
+      "rule_id": "API-IDM-011",
+      "code_paths": ["apps/api/src/api/middleware/idempotency.ts"],
+      "test_case_ids": ["TC-API-IDM-011-001", "TC-API-IDM-011-002", "TC-DEV-API-007-001"],
+      "notes": "Backend foundation only; no business Operation mounts this middleware yet; replay records are PR-S0-3d"
+    },
+    {
+      "rule_id": "DEV-API-007",
+      "code_paths": ["apps/api/src/api/middleware/idempotency.ts"],
+      "test_case_ids": ["TC-DEV-API-007-001", "TC-DEV-API-007-002", "TC-API-IDM-011-002"],
+      "notes": "Backend foundation only; no business Operation mounts this middleware yet; replay records are PR-S0-3d"
+    },
+    {
+      "rule_id": "API-IDM-003",
+      "code_paths": ["apps/api/src/api/middleware/idempotency.ts"],
+      "test_case_ids": ["TC-DEV-API-007-001"],
+      "notes": "Backend foundation only; no business Operation mounts this middleware yet; replay records are PR-S0-3d"
+    },
+    {
+      "rule_id": "API-IDM-005",
+      "code_paths": ["apps/api/src/api/middleware/idempotency.ts", "apps/api/src/api/respond.ts"],
+      "test_case_ids": [
+        "TC-API-IDM-005-001",
+        "TC-API-IDM-005-002",
+        "TC-API-IDM-005-003",
+        "TC-API-IDM-011-001"
+      ],
+      "notes": "Backend foundation only; no business Operation mounts this middleware yet; replay records are PR-S0-3d"
+    },
+    {
+      "rule_id": "DEV-API-006",
+      "code_paths": ["apps/api/src/api/middleware/idempotency.ts", "apps/api/src/api/failure.ts"],
+      "test_case_ids": ["TC-API-IDM-005-003", "TC-SEC-ERR-001-002"],
+      "notes": "Backend foundation only; no business Operation mounts this middleware yet; replay records are PR-S0-3d"
     }
   ]
 }

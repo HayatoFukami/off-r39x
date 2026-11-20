@@ -1,3 +1,4 @@
+import { types } from "node:util";
 import { AuthFailure } from "@off-r39x/auth";
 import { isDatabaseTemporaryFailure } from "@off-r39x/db";
 import type { Context } from "hono";
@@ -111,7 +112,7 @@ function isIndexKey(key: string, length: number): boolean {
   return Number.isInteger(index) && index >= 0 && index < length && String(index) === key;
 }
 
-function copyJsonNode(value: unknown, active: WeakSet<object>): JsonCopy {
+function copyJsonNode(value: unknown, active: WeakSet<object>, strict: boolean): JsonCopy {
   if (value === null) return { ok: true, value };
   switch (typeof value) {
     case "boolean":
@@ -124,21 +125,52 @@ function copyJsonNode(value: unknown, active: WeakSet<object>): JsonCopy {
     default:
       return REJECTED;
   }
+  // A proxy's traps can answer each read differently or hide what a descriptor-based read would
+  // see, so strict mode refuses one before any trap runs (hasToJson already reads through it).
+  if (strict && types.isProxy(value)) return REJECTED;
+  // Strict mode checks the immediate prototype (read from the value, which is not a proxy, so no
+  // trap runs) before hasToJson walks the chain: a proxy as prototype is refused without its traps
+  // ever being called, and the walk then only meets Object.prototype or Array.prototype.
+  if (strict) {
+    const prototype = Reflect.getPrototypeOf(value);
+    const plain = Array.isArray(value)
+      ? prototype === Array.prototype
+      : prototype === Object.prototype || prototype === null;
+    if (!plain) return REJECTED;
+  }
   if (active.has(value) || hasToJson(value)) return REJECTED;
   active.add(value);
   try {
     if (Array.isArray(value)) {
-      const length = value.length;
-      for (const key of Reflect.ownKeys(value)) {
-        if (typeof key === "string" && key !== "length" && !isIndexKey(key, length))
+      let length: number;
+      if (strict) {
+        // Only a plain array: a subclass can carry state the copied elements lose. The length is
+        // read from its own data descriptor, never through a get trap that could hide elements.
+        if (Reflect.getPrototypeOf(value) !== Array.prototype) return REJECTED;
+        const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+        if (lengthDescriptor === undefined || !("value" in lengthDescriptor)) return REJECTED;
+        if (!Number.isSafeInteger(lengthDescriptor.value) || lengthDescriptor.value < 0) {
           return REJECTED;
+        }
+        length = lengthDescriptor.value;
+      } else {
+        length = value.length;
+      }
+      for (const key of Reflect.ownKeys(value)) {
+        if (typeof key !== "string") {
+          if (strict) return REJECTED; // a symbol key JSON would drop
+          continue;
+        }
+        if (key !== "length" && !isIndexKey(key, length)) return REJECTED;
       }
       const items: unknown[] = [];
       for (let i = 0; i < length; i += 1) {
         // JSON reads every index whether or not it is enumerable; a hole or accessor is rejected.
         const descriptor = Object.getOwnPropertyDescriptor(value, String(i));
         if (descriptor === undefined || !("value" in descriptor)) return REJECTED;
-        const item = copyJsonNode(descriptor.value, active);
+        // The copy's elements are all enumerable, so strict mode refuses a non-enumerable one.
+        if (strict && !descriptor.enumerable) return REJECTED;
+        const item = copyJsonNode(descriptor.value, active, strict);
         if (!item.ok) return REJECTED;
         items.push(item.value);
       }
@@ -148,12 +180,23 @@ function copyJsonNode(value: unknown, active: WeakSet<object>): JsonCopy {
     if (prototype !== Object.prototype && prototype !== null) return REJECTED;
     const entries: [string, unknown][] = [];
     for (const key of Reflect.ownKeys(value)) {
-      if (typeof key !== "string") continue; // JSON drops symbol keys
+      // In strict mode nothing JSON would drop silently is allowed: a symbol key, a vanished or
+      // non-enumerable property, and an undefined value are refused instead of omitted.
+      if (typeof key !== "string") {
+        if (strict) return REJECTED;
+        continue; // JSON drops symbol keys
+      }
       const descriptor = Object.getOwnPropertyDescriptor(value, key);
-      if (descriptor === undefined) continue;
+      if (descriptor === undefined) {
+        if (strict) return REJECTED;
+        continue;
+      }
       if (!("value" in descriptor)) return REJECTED;
-      if (!descriptor.enumerable || descriptor.value === undefined) continue; // omitted, as in JSON
-      const entry = copyJsonNode(descriptor.value, active);
+      if (!descriptor.enumerable || descriptor.value === undefined) {
+        if (strict) return REJECTED;
+        continue; // omitted, as in JSON (an undefined value is an omitted optional field)
+      }
+      const entry = copyJsonNode(descriptor.value, active, strict);
       if (!entry.ok) return REJECTED;
       entries.push([key, entry.value]);
     }
@@ -175,9 +218,18 @@ function copyJsonNode(value: unknown, active: WeakSet<object>): JsonCopy {
  * omitted optional field and is skipped; an `undefined` array element or a hole is rejected. Arrays
  * may have only index keys. Symbol keys and non-enumerable object properties are dropped, as JSON
  * does. Values are never logged or thrown.
+ *
+ * With `strict`, everything that JSON would drop silently is rejected instead of skipped: an
+ * `undefined` object property, a non-enumerable property or array element and a symbol key (on an
+ * object or an array). It also refuses any Proxy, accepts only plain arrays (Array.prototype, no
+ * subclass) and reads an array's length from its own data descriptor. A value with such a property then never has the same copy as one without it (a request
+ * digest input, API-IDM-005).
  */
-function copyJsonValue(value: unknown): JsonCopy {
-  return copyJsonNode(value, new WeakSet());
+export function copyJsonValue(
+  value: unknown,
+  options: { readonly strict?: boolean } = {},
+): JsonCopy {
+  return copyJsonNode(value, new WeakSet(), options.strict === true);
 }
 
 export function successResponse<S extends z.ZodType>(
