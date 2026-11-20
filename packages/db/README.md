@@ -16,6 +16,10 @@ bigint-mode tables; reviewed SQL lives in `migrations/`.
 - `src/schema/sales.ts`: `entry_ticket_offerings`, `karaoke_sales_configurations` and `goods` (SPEC-100 §15.1–15.3).
 - `src/schema/goods.ts`: `goods_inventory`. It is in its own file because SPEC-100 Part IX (§38) owns it; it
   references `goods` from `sales.ts`.
+- `src/schema/cross-functional.ts`: `idempotency_records` (SPEC-100 §43.1, Part X). Its `bytea` columns use a
+  file-local `customType` (`Uint8Array`) so that `common.ts` stays helpers for the shared column kinds only.
+  The file name is a repository decision (DEV-AI-003): SPEC-100 §55 names Part X Cross-functional.
+  Its migration number (`0005`) is provisional; fix it just before merging (see Migration numbering).
 - `src/audit-events.ts`: caller-transaction Audit writer (INSERT only, no RETURNING, no retry, per-operation change specs).
 - `src/schema/index.ts`: the barrel. It re-exports `app` and the tables by name,
   unchanged, and exports no helper (`DEV-DB-001`). To add a table, put it in the
