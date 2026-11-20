@@ -42,6 +42,7 @@ export const EVENT_NAMES = [
   "reconciliation.run.started",
   "reconciliation.run.completed",
   "recovery.automatic.completed",
+  "provision.initial_data_seed.completed",
 ] as const;
 const safe = z.string().regex(/^[A-Za-z0-9_./:-]{1,128}$/);
 const optionalSafe = safe.nullable().optional();

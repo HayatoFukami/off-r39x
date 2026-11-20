@@ -1,6 +1,6 @@
 import { DrizzleQueryError } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
-import type { PoolClient } from "pg";
+import type { Client, PoolClient } from "pg";
 import {
   AUDIT_ACTOR_TYPES,
   AUDIT_EVENT_TYPES,
@@ -52,6 +52,7 @@ export const AUDIT_TARGET_TYPES = [
   "ROLE_ASSIGNMENT",
   "CONSISTENCY_REVIEW",
   "PUBLIC_CONTENT",
+  "ENTRY_TICKET_OFFERING",
   "SECURITY_CONFIGURATION",
   "WEBHOOK_RECEIPT",
 ] as const;
@@ -103,6 +104,7 @@ export const AUDIT_INTERNAL_OPERATION_KEYS = [
   "RECOVERY.AUTOMATIC",
   "RECOVERY.MANUAL",
   "RECOVERY.ADMIN_BOOTSTRAP",
+  "PROVISION.INITIAL_DATA_SEED",
 ] as const;
 const API_OPERATION_ID = /^API-[A-Z0-9]+(?:-[A-Z0-9]+)*$/;
 const OPERATION_ID_MAX_LENGTH = 64;
@@ -170,7 +172,8 @@ const hasDuplicates = (values: readonly string[]): boolean =>
 /**
  * Declares which states, field names and summary entries one operation may record. The spec is
  * validated and frozen here; `change()` then builds the only values the writer accepts.
- * No operation spec is registered yet (SPEC-160 §35 does not name the summary keys).
+ * `initial-data/targets.ts` defines the spec for `PROVISION.INITIAL_DATA_SEED` (SPEC-160 §35 does not
+ * name summary keys).
  */
 export function defineAuditChange<
   const O extends string,
@@ -382,23 +385,7 @@ function actorRefFor(actorType: AuditActorType, value: unknown): string | null {
   }
 }
 
-/**
- * Appends one `app.audit_events` row on the caller's transaction.
- *
- * Call it with the client that `transaction()` passes to its callback. A client from a separate
- * connection, or one in autocommit mode, does not give the atomicity of SPEC-160 §36.1: the audit row
- * and the business write must commit or roll back together, so an INSERT failure must propagate and
- * abort the caller's transaction.
- *
- * The writer sends exactly one parameterised INSERT: no BEGIN / COMMIT, no RETURNING (the runtime
- * role has no SELECT), no retry and no log. `audit_event_id`, `occurred_at` and `created_at` are
- * assigned by the database (DB-TIM-002). A failure from PostgreSQL is rethrown as the driver's own
- * error object so that SQLSTATE based handling in `transaction()` keeps working.
- */
-export async function insertAuditEvent<const O extends string = string>(
-  client: PoolClient,
-  event: AuditEventInput<O>,
-): Promise<void> {
+function buildAuditRow<O extends string>(event: AuditEventInput<O>) {
   if (typeof event !== "object" || event === null) return rejectField("event");
 
   const auditEventType = oneOf(event.auditEventType, AUDIT_EVENT_TYPES, "auditEventType");
@@ -487,13 +474,57 @@ export async function insertAuditEvent<const O extends string = string>(
     consistencyReviewRef,
     recoveryExecutionId,
   };
+  return row;
+}
 
+/**
+ * Appends one `app.audit_events` row on the caller's transaction.
+ *
+ * Call it with the client that `transaction()` passes to its callback. A client from a separate
+ * connection, or one in autocommit mode, does not give the atomicity of SPEC-160 §36.1: the audit row
+ * and the business write must commit or roll back together, so an INSERT failure must propagate and
+ * abort the caller's transaction.
+ *
+ * The writer sends exactly one parameterised INSERT: no BEGIN / COMMIT, no RETURNING (the runtime
+ * role has no SELECT), no retry and no log. `audit_event_id`, `occurred_at` and `created_at` are
+ * assigned by the database (DB-TIM-002). A failure from PostgreSQL is rethrown as the driver's own
+ * error object so that SQLSTATE based handling in `transaction()` keeps working.
+ */
+export async function insertAuditEvent<const O extends string = string>(
+  client: PoolClient,
+  event: AuditEventInput<O>,
+): Promise<void> {
+  const row = buildAuditRow(event);
   try {
     await drizzle(client).insert(auditEvents).values(row);
   } catch (error) {
     // drizzle-orm wraps driver errors in DrizzleQueryError, whose message carries the SQL text and
     // the bound values and whose SQLSTATE sits on `cause`. Hand back the driver's own error so the
     // caller can classify it (`sqlState`) and so bound values do not leave through the message.
+    if (error instanceof DrizzleQueryError && error.cause !== undefined) throw error.cause;
+    throw error;
+  }
+}
+
+/**
+ * Same validation and the same single INSERT as `insertAuditEvent`, but returns the database-generated
+ * `audit_event_id` (RETURNING). For `app_migrator`, the table owner, only: a runtime role has no SELECT
+ * privilege on `app.audit_events`, so RETURNING fails with 42501 for it (INF-AUD-001, OBS-AUD-014). It is
+ * not exported from the package barrel.
+ */
+export async function insertAuditEventReturningId<const O extends string = string>(
+  client: Client | PoolClient,
+  event: AuditEventInput<O>,
+): Promise<string> {
+  const row = buildAuditRow(event);
+  try {
+    const [inserted] = await drizzle(client)
+      .insert(auditEvents)
+      .values(row)
+      .returning({ auditEventId: auditEvents.auditEventId });
+    if (inserted === undefined) throw new Error("Audit event was not returned");
+    return String(inserted.auditEventId);
+  } catch (error) {
     if (error instanceof DrizzleQueryError && error.cause !== undefined) throw error.cause;
     throw error;
   }
