@@ -25,3 +25,13 @@ export const isoUtcTimestampSchema = z
     const time = Date.parse(v);
     return !Number.isNaN(time) && new Date(time).toISOString() === v;
   });
+
+/**
+ * SPEC-110 §11 Money: `amount` is a non-negative integer as a decimal string (no leading zero, sign,
+ * fraction or exponent; lossless beyond Number.MAX_SAFE_INTEGER), `currency` is an upper-case ISO 4217
+ * alphabetic code. Internal to the package: only the response schemas that carry a price use it.
+ */
+export const moneySchema = z.strictObject({
+  amount: z.string().regex(/^(0|[1-9][0-9]*)$/),
+  currency: z.string().regex(/^[A-Z]{3}$/),
+});
