@@ -3,6 +3,7 @@ import { expect, it, vi } from "vitest";
 import { bootstrap } from "../../apps/api/src/bootstrap/index.ts";
 import { computeMigrationSetHash } from "../../packages/db/src/migrations.ts";
 import { installSyntheticDirectory, prepareFoundationDatabase } from "../harness/db/foundation.ts";
+import { listCursorEnv } from "../harness/pagination.ts";
 import { rateLimitEnv } from "../harness/rate-limit/api.ts";
 import { withFault } from "../harness/rate-limit/faults.ts";
 import { createMemoryStore } from "../harness/rate-limit/memory-store.ts";
@@ -97,6 +98,7 @@ it("TC-STARTUP-AUDIT-001 actual API bootstrap moves Ready->notReady->Ready on DB
     ALLOWED_HOSTS: "api.example.test",
     ALLOWED_ORIGINS: "https://web.example.test",
     ...rateLimitEnv(),
+    ...listCursorEnv(),
   };
   const store = withFault(createMemoryStore());
   let runtime: ReturnType<typeof bootstrap> | undefined;

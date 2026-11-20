@@ -27139,6 +27139,238 @@
       ],
       "sensitivity_class": "synthetic",
       "critical": true
+    },
+    {
+      "test_case_id": "TC-INF-SEC-007-001",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "INF-SEC-007",
+        "API-QRY-005",
+        "SPEC-180-28.3",
+        "DEV-SEC-001"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Synthetic env from tests/harness/config/api-env.ts and tests/harness/pagination.ts (key bytes built with Buffer.alloc at run time); no network, database or Redis",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "A valid API environment parses; listCursor is frozen, hmacKeyVersion equals the env value (1 and 2147483647), hmacKey() returns a fresh 32-byte copy equal to the decoded env key each call, and the key is neither derived from nor equal to the rate limit, OBS or QR keys"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-INF-SEC-007-002",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "INF-SEC-007",
+        "SEC-KEY-006",
+        "INF-HLT-002",
+        "SEC-ERR-005",
+        "DEV-SEC-001"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Synthetic env from tests/harness/config/api-env.ts and tests/harness/pagination.ts (key bytes built with Buffer.alloc at run time); no network, database or Redis",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "A missing, empty, unpadded, 31/33/16/48-byte, whitespace-padded, base64url, non-canonical or non-base64 LIST_CURSOR_HMAC_KEY makes the API configuration invalid (Invalid server configuration)"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-INF-SEC-007-003",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "INF-SEC-007",
+        "SEC-KEY-006",
+        "INF-HLT-002",
+        "SEC-ERR-005",
+        "DEV-SEC-001"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Synthetic env from tests/harness/config/api-env.ts and tests/harness/pagination.ts (key bytes built with Buffer.alloc at run time); no network, database or Redis",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "A missing, empty, zero, leading-zero, signed, spaced, fractional, exponent, hex, non-numeric or above-2147483647 LIST_CURSOR_HMAC_KEY_VERSION makes the API configuration invalid; 1 and 2147483647 are valid"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-INF-SEC-007-004",
+      "level": "Security",
+      "suite": "security",
+      "upstream_rule_ids": [
+        "SEC-KEY-001",
+        "INF-SEC-001",
+        "DEV-SEC-005",
+        "INF-SEC-007"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Synthetic env from tests/harness/config/api-env.ts and tests/harness/pagination.ts (key bytes built with Buffer.alloc at run time); no network, database or Redis",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The startup error for a rejected cursor key or version has the exact message Invalid server configuration, no cause, and its string, stack and JSON contain no marker, key base64, base64url or hex; a valid key combined with an invalid version is not leaked"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-INF-SEC-007-005",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "INF-SEC-003",
+        "SEC-KEY-003",
+        "INF-SEC-007",
+        "SPEC-180-26"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Synthetic env from tests/harness/config/api-env.ts and tests/harness/pagination.ts (key bytes built with Buffer.alloc at run time); no network, database or Redis",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Email and reconciliation workers parse without the cursor key and have no listCursor; adding LIST_CURSOR_HMAC_KEY makes them invalid; the non-secret version alone is accepted (decision G-d-B B-1)"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-INF-SEC-007-006",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "SEC-KEY-006",
+        "INF-SEC-007",
+        "INF-HLT-002",
+        "SEC-ERR-005",
+        "SPEC-140-84"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "bootstrap with vi.mock of @off-r39x/db (createDatabase / checkReadiness stubs) and a createApp spy wrapping the real one; memory rate limit store; listens on 127.0.0.1-reachable port 18932; no database or Redis",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "bootstrap throws Invalid server configuration synchronously for a missing key, a 33-byte key and version 0; createDatabase and createApp are not called and no server is started (the port can be bound)"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-INF-SEC-007-007",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "INF-SEC-007",
+        "API-QRY-005",
+        "SPEC-180-28.3",
+        "DEV-SEC-003"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "bootstrap with vi.mock of @off-r39x/db (createDatabase / checkReadiness stubs) and a createApp spy wrapping the real one; memory rate limit store; listens on 127.0.0.1-reachable port 18932; no database or Redis",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "bootstrap calls createApp once with listCursorKey { version: 4, key } where key equals the decoded env key and differs from the rate limit and OBS keys"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-API-QRY-005-001",
+      "level": "API",
+      "suite": "api",
+      "upstream_rule_ids": [
+        "API-QRY-005",
+        "INF-SEC-007",
+        "SEC-ERR-003",
+        "SPEC-140-84",
+        "SPEC-170-46"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "createApp with and without listCursorKey plus a harness-only list route; synthetic cursor keys; no environment variables, database or Redis",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [
+        200,
+        503
+      ],
+      "expected_domain_postconditions": [
+        "Without listCursorKey the list route is 503 TEMPORARY_UNAVAILABLE (retryable, details null, request_id matching X-Request-Id, no-store) with and without a cursor; no first page, no 400, no cursor in the body, handler data never read",
+        "With the key the first page is 200 with next_cursor that decodes on the next request; zeroing the key returned by requireListCursorKey does not change later requests (copy)"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
     }
   ]
 }

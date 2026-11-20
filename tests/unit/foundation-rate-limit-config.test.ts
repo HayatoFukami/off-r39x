@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseServerConfig } from "../../packages/config/src/index.ts";
 import { RATE_LIMIT_CLASS_IDS, RATE_LIMIT_REGISTRY } from "../../packages/security/src/index.ts";
+import { listCursorEnv } from "../harness/pagination.ts";
 import { ceilingConfigText, rateLimitEnv } from "../harness/rate-limit/api.ts";
 
 function url(role: string): string {
@@ -52,6 +53,7 @@ function apiEnv(
     ALLOWED_HOSTS: "api.example.test",
     ALLOWED_ORIGINS: "https://web.example.test",
     ...rateLimitEnv(),
+    ...listCursorEnv(),
     ...overrides,
   };
 }
@@ -295,6 +297,7 @@ describe("API startup validation of the rate limit configuration (TST-RLM-006, I
         "RESEND_WEBHOOK_SECRET",
         "RATE_LIMIT_REDIS_URL",
         "RATE_LIMIT_HMAC_KEY",
+        "LIST_CURSOR_HMAC_KEY",
       ])
         delete env[key];
       if (service === "email-worker") {
