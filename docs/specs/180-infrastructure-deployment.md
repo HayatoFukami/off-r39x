@@ -1887,7 +1887,7 @@ SPEC-180は次をすべて満たしたとき受入可能とする。
 55. Release Manifestの `mounted_operation_ids` がbuild時にroute registryから生成され、stagingとProductionで一致する（`INF-DEP-006`）。
 56. 初期データ（EventとEntry Ticket Offering）が、専用の運用コマンドだけで、migration jobの `app_migrator` により、schema readiness checkの後・API deployの前に投入される。入力は環境別のprotected Environment Secretから渡り、実値がsource・log・artifact・release evidenceに出ない。対象が0件のときだけ作り、再実行で行が増えず、Offeringは `SUSPENDED` で作られ、`FAILED` と `UNKNOWN_RESULT` ではdeploymentが停止し、結果不明の場合は再実行で再照合できる（`INF-SEED-001〜006`）。
 57. `LIST_CURSOR_HMAC_KEY` がAPI serviceだけに配置され、他serviceやClientへ出ず、他のSecretと共有されず、他のSecretから導出されない。鍵またはversionの欠落・形式不正でAPI readinessがfalseになり、署名しないcursorへfallbackしない（`INF-SEC-007`）。
-58. 旧artifactのreadinessが、後続releaseのexpand-only migrationの適用後もReadyになり、`INF-HLT-006` の1〜4を満たさない場合（required要素の削除・属性の変更、required tableへのNOT NULLでdefault等のない追加列、journalの先頭の不一致・不足、journalが同じ長さでの追加object）はReadyにならない。`SPEC-170` §22 項目9のTestがG2でPassする。
+58. 旧artifactのreadinessが、後続releaseのmigrationが `INF-HLT-006` 4の許容範囲にある場合はReadyになり、`INF-HLT-006` の1〜4を満たさない場合（後方互換な変更であってもrequired要素の削除・属性の変更に当たるもの（既存CHECKの緩和を含む）、required tableへのNOT NULLでdefault等のない追加列、journalの先頭の不一致・不足、journalが同じ長さでの追加object）はReadyにならない。`SPEC-170` §22 項目9のTestがG2でPassする。
 
 ---
 
