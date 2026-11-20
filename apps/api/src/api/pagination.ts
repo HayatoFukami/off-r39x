@@ -30,12 +30,13 @@ const publicRefSchema = z.string().regex(PUBLIC_REF);
 /**
  * API-QRY-005 / INF-SEC-007: the list cursor key of the app (AppDependencies.listCursorKey). Absent =>
  * 503 TEMPORARY_UNAVAILABLE (fail closed: no unsigned cursor, no default or borrowed key). Returns a
- * copy so a handler cannot change the key of later requests. List route factories call it in their
- * guard for every request (first page included), before the Principal store or the database.
+ * copy so a handler cannot change the key of later requests (Uint8Array.from, not slice(): a Node.js
+ * Buffer is a Uint8Array whose slice() shares memory). List route factories call it in their guard for
+ * every request (first page included), before the Principal store or the database.
  */
 export function requireListCursorKey(key: CursorKey | undefined): CursorKey {
   if (!key) throw new ApiFailure("TEMPORARY_UNAVAILABLE");
-  return Object.freeze({ version: key.version, key: key.key.slice() });
+  return Object.freeze({ version: key.version, key: Uint8Array.from(key.key) });
 }
 
 function assertKey(cursorKey: CursorKey): void {
