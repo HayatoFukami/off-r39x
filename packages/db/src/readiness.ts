@@ -1,9 +1,133 @@
+import { performance } from "node:perf_hooks";
+import { setTimeout as sleep } from "node:timers/promises";
 import { isDeepStrictEqual } from "node:util";
-import type { Pool } from "pg";
+import { RETRY_POLICIES, retryDelay } from "@off-r39x/reliability";
+import type { Pool, PoolClient } from "pg";
 import type { DirectorySourceMapping } from "./directory.ts";
+import { sqlState } from "./errors.ts";
 import { computeMigrationSetHash, migrationIdentities } from "./migrations.ts";
 import { databaseLogger, logDatabase } from "./observability.ts";
 import { catalogQuery, requiredCatalog } from "./schema-contract.ts";
+
+type JournalRow = { version: string; source_hash: string };
+
+/**
+ * Compares the bundled migration set with the journal (both in byte order). Every bundled
+ * migration must sit at the same position of the journal with the same version and hash.
+ */
+export function compareJournal(
+  journal: readonly JournalRow[],
+  migrations: readonly { version: string; hash: string }[],
+): "behind" | "mismatch" | "same" | "ahead" {
+  for (let index = 0; index < migrations.length; index++) {
+    if (index >= journal.length) return "behind";
+    const row = journal[index];
+    if (row?.version !== migrations[index]?.version || row?.source_hash !== migrations[index]?.hash)
+      return "mismatch";
+  }
+  return journal.length === migrations.length ? "same" : "ahead";
+}
+
+const NOT_VALID_SUFFIX = " NOT VALID";
+// A required NOT VALID constraint that has since been validated differs only in the validation
+// state (convalidated) and the NOT VALID suffix of pg_get_constraintdef.
+function validatedAfterNotValid(required: unknown[], live: unknown[]): boolean {
+  const definition = required[3];
+  return (
+    required[4] === false &&
+    live[4] === true &&
+    typeof definition === "string" &&
+    definition.endsWith(NOT_VALID_SUFFIX) &&
+    definition.slice(0, -NOT_VALID_SUFFIX.length) === live[3] &&
+    [0, 1, 2, 5, 6].every((position) => isDeepStrictEqual(required[position], live[position]))
+  );
+}
+
+function isTuples(value: unknown): value is unknown[][] {
+  return Array.isArray(value) && value.every(Array.isArray);
+}
+
+/**
+ * "exact": the live catalog equals the required one. "contains": every required tuple exists in
+ * the live catalog (additional objects are allowed), except that a NOT NULL column without a
+ * default added to a required table is rejected, because an older artifact cannot write to it.
+ */
+export function catalogSatisfies(
+  live: unknown,
+  required: Record<string, unknown[]>,
+  mode: "exact" | "contains",
+): boolean {
+  if (mode === "exact") return isDeepStrictEqual(live, required);
+  if (typeof live !== "object" || live === null || Array.isArray(live)) return false;
+  const liveCatalog = live as Record<string, unknown>;
+  for (const [key, requiredTuples] of Object.entries(required)) {
+    if (!(key in liveCatalog)) return false;
+    const liveTuples = liveCatalog[key] ?? [];
+    if (!isTuples(liveTuples) || !isTuples(requiredTuples)) return false;
+    for (const tuple of requiredTuples) {
+      const found = liveTuples.some(
+        (candidate) =>
+          isDeepStrictEqual(candidate, tuple) ||
+          (key === "constraints" && validatedAfterNotValid(tuple, candidate)),
+      );
+      if (!found) return false;
+    }
+  }
+  const liveColumns = liveCatalog.columns ?? [];
+  const liveTables = liveCatalog.tables ?? [];
+  if (!isTuples(liveColumns) || !isTuples(liveTables)) return false;
+  const requiredColumns = required.columns as unknown[][];
+  const requiredTables = new Set((required.tables as unknown[][]).map((table) => table[0]));
+  return !liveColumns.some(
+    ([relname, attname, , notNull, identity, generated, defaultExpr]) =>
+      requiredTables.has(relname) &&
+      !requiredColumns.some((column) => column[0] === relname && column[1] === attname) &&
+      notNull === true &&
+      identity === "" &&
+      generated === "" &&
+      defaultExpr === null,
+  );
+}
+
+const JOURNAL_QUERY =
+  'SELECT version, source_hash FROM app.schema_migrations ORDER BY version COLLATE "C"';
+
+/**
+ * Reads journal, catalog, journal as three separate statements outside an explicit transaction
+ * (a transaction would not help: pg_get_* functions read the latest catalog, and REPEATABLE READ
+ * would only make both journal reads the same snapshot). runMigrations COMMITs the DDL and the
+ * journal row in one transaction, so reading the journal first and last detects a COMMIT in
+ * between. Two equal journals are consistent. A differing journal or a 55P03 is retried within
+ * the SPEC-150 section 11 55P03 budget shared by all causes.
+ */
+export async function readSchemaState(
+  client: Pick<PoolClient, "query">,
+): Promise<
+  { status: "consistent"; journal: JournalRow[]; catalog: unknown } | { status: "exhausted" }
+> {
+  const policy = RETRY_POLICIES["55P03"];
+  const start = performance.now();
+  for (let attempt = 1; ; attempt++) {
+    let consistent: { journal: JournalRow[]; catalog: unknown } | undefined;
+    try {
+      const before = (await client.query(JOURNAL_QUERY)).rows as JournalRow[];
+      const catalog = (await client.query(catalogQuery)).rows[0].catalog;
+      const after = (await client.query(JOURNAL_QUERY)).rows as JournalRow[];
+      if (isDeepStrictEqual(before, after)) consistent = { journal: before, catalog };
+    } catch (error) {
+      if (sqlState(error) !== "55P03") throw error;
+    }
+    if (consistent) {
+      if (attempt > 1 && performance.now() > start + policy.maxElapsedMs)
+        return { status: "exhausted" };
+      return { status: "consistent", ...consistent };
+    }
+    if (attempt >= policy.maxAttempts) return { status: "exhausted" };
+    const delay = retryDelay(policy, attempt);
+    if (performance.now() + delay >= start + policy.maxElapsedMs) return { status: "exhausted" };
+    await sleep(delay);
+  }
+}
 
 export type ReadinessExpectations = {
   environment: string;
@@ -101,8 +225,7 @@ export async function checkReadiness(
       )
     ).rows;
     fail("extensions", extensions.length === 2);
-    const catalog = (await client.query(catalogQuery)).rows[0].catalog;
-    fail("release_schema_contract", isDeepStrictEqual(catalog, requiredCatalog));
+    const schemaState = await readSchemaState(client);
     const migrations = await migrationIdentities();
     if (!expected.migrationSetHash) failures.push("release_migration_hash_missing");
     else
@@ -110,18 +233,21 @@ export async function checkReadiness(
         "release_migration_hash",
         expected.migrationSetHash === (await computeMigrationSetHash()),
       );
-    const journal = (
-      await client.query("SELECT version, source_hash FROM app.schema_migrations ORDER BY version")
-    ).rows;
-    fail(
-      "migration_hash",
-      journal.length === migrations.length &&
-        journal.every(
-          (row, index) =>
-            row.version === migrations[index]?.version &&
-            row.source_hash === migrations[index]?.hash,
+    if (schemaState.status === "exhausted") {
+      // The journal could not be judged, so only the schema contract failure is recorded.
+      failures.push("release_schema_contract");
+    } else {
+      const state = compareJournal(schemaState.journal, migrations);
+      fail(
+        "release_schema_contract",
+        catalogSatisfies(
+          schemaState.catalog,
+          requiredCatalog,
+          state === "ahead" ? "contains" : "exact",
         ),
-    );
+      );
+      fail("migration_hash", state === "same" || state === "ahead");
+    }
     const directory = (
       await client.query(
         `SELECT c.relkind, c.reloptions, r.rolname, r.rolcanlogin FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace JOIN pg_roles r ON r.oid=c.relowner WHERE n.nspname='auth_read' AND c.relname='identity_directory'`,

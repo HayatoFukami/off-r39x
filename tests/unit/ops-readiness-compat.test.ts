@@ -27,7 +27,8 @@ describe("TC-INF-HLT-006-005 compareJournal (INF-HLT-006 1, 2, 3, 4)", () => {
     { version: "0003_c", hash: "h3" },
   ];
   const row = (version: string, source_hash: string) => ({ version, source_hash });
-  const same = [row("0001_a", "h1"), row("0002_b", "h2"), row("0003_c", "h3")];
+  type Row = ReturnType<typeof row>;
+  const same: [Row, Row, Row] = [row("0001_a", "h1"), row("0002_b", "h2"), row("0003_c", "h3")];
 
   it("TC-INF-HLT-006-005 classifies an empty journal as behind", () => {
     expect(compareJournal([], set)).toBe("behind");

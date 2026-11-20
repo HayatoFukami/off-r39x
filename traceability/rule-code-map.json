@@ -3106,6 +3106,22 @@
       "notes": "Missing deployment mapping/schema/extension/hash/grant not ready"
     },
     {
+      "rule_id": "INF-HLT-006",
+      "code_paths": ["packages/db/src/readiness.ts"],
+      "test_case_ids": [
+        "TC-INF-HLT-006-001",
+        "TC-INF-HLT-006-002",
+        "TC-INF-HLT-006-003",
+        "TC-INF-HLT-006-004",
+        "TC-INF-HLT-006-005",
+        "TC-INF-HLT-006-006",
+        "TC-INF-HLT-006-007",
+        "TC-INF-HLT-006-008",
+        "TC-INF-HLT-006-009"
+      ],
+      "notes": "Backward-compatible readiness: journal, catalog, journal read outside a transaction within the SPEC-150 55P03 budget; bundled migration set (byte order) is a prefix of the journal; required catalog contained in the live catalog only when the journal is ahead, exact otherwise; a required constraint validated after NOT VALID is accepted (UCR-180-003)"
+    },
+    {
       "rule_id": "REL-DB-012",
       "code_paths": [
         "packages/db/src/readiness.ts",
