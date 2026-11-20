@@ -128,6 +128,16 @@ function copyJsonNode(value: unknown, active: WeakSet<object>, strict: boolean):
   // A proxy's traps can answer each read differently or hide what a descriptor-based read would
   // see, so strict mode refuses one before any trap runs (hasToJson already reads through it).
   if (strict && types.isProxy(value)) return REJECTED;
+  // Strict mode checks the immediate prototype (read from the value, which is not a proxy, so no
+  // trap runs) before hasToJson walks the chain: a proxy as prototype is refused without its traps
+  // ever being called, and the walk then only meets Object.prototype or Array.prototype.
+  if (strict) {
+    const prototype = Reflect.getPrototypeOf(value);
+    const plain = Array.isArray(value)
+      ? prototype === Array.prototype
+      : prototype === Object.prototype || prototype === null;
+    if (!plain) return REJECTED;
+  }
   if (active.has(value) || hasToJson(value)) return REJECTED;
   active.add(value);
   try {

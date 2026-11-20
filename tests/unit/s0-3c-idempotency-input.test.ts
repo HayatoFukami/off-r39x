@@ -576,6 +576,37 @@ describe("TC-API-IDM-005-002 a request that is not JSON-representable is refused
     });
     expect(hexOf(bare)).toBe(hexOf({ params: {}, query: {}, body: null }));
   });
+  it("a nested value whose prototype is a proxy is refused before any trap runs", () => {
+    // The proxy's traps would set the value's prototype to Object.prototype on the first read, so
+    // a check made after walking the chain would pass: the prototype is checked before the walk.
+    for (const make of [() => ({}), () => [] as unknown[]]) {
+      let calls = 0;
+      const value = make();
+      const trap = () => {
+        calls += 1;
+        Reflect.setPrototypeOf(value, Array.isArray(value) ? Array.prototype : Object.prototype);
+        return undefined;
+      };
+      const prototype = new Proxy(Array.isArray(value) ? Array.prototype : Object.prototype, {
+        getOwnPropertyDescriptor: trap,
+        getPrototypeOf: () => {
+          trap();
+          return null;
+        },
+        get: trap,
+      });
+      Reflect.setPrototypeOf(value, prototype);
+      let thrown: unknown;
+      try {
+        digestOf({ params: {}, query: {}, body: { nested: value } });
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(Error);
+      expect((thrown as Error).message).toBe("Request is not canonicalizable");
+      expect(calls).toBe(0);
+    }
+  });
   it("plain params: the checked string itself is the value hashed", () => {
     expect(canonicalOf({ params: { order_ref: REF_A1 }, query: {}, body: null })).toBe(
       `{"body":null,"params":{"order_ref":"${REF_A1}"},"query":{}}`,
