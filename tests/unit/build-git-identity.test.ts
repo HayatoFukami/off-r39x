@@ -176,6 +176,26 @@ describe("TC-INF-DEP-001-005 fail closed when the commit cannot be identified", 
     );
   });
 
+  it("stops when the build root has .git but git cannot inspect it, even with R39X_BUILD_GIT_SHA", () => {
+    // Inspection failure (missing git, unsafe ownership, a broken worktree link) is not "no checkout".
+    const { root } = committedRepo();
+    const missingGit = { gitExecutable: join(root, "no-such-git") };
+    expect(() => resolveBuildGitIdentity(root, { R39X_BUILD_GIT_SHA: SHA_A }, missingGit)).toThrow(
+      /\.git.*cannot be inspected/,
+    );
+    expect(() => resolveBuildGitIdentity(root, {}, missingGit)).toThrow(/cannot be inspected/);
+  });
+
+  it("stops on a worktree .git file whose git directory is missing", () => {
+    const root = plainDir({
+      "README.md": "synthetic\n",
+      ".git": "gitdir: ./no-such-git-dir\n",
+    });
+    expect(() => resolveBuildGitIdentity(root, { R39X_BUILD_GIT_SHA: SHA_A })).toThrow(
+      /cannot be inspected/,
+    );
+  });
+
   it("rejects a git repository that has no commit yet", () => {
     const root = plainDir();
     git(root, "init", "--quiet");

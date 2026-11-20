@@ -16310,7 +16310,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "No git checkout and no or malformed R39X_BUILD_GIT_SHA, a build argument that disagrees with HEAD, or a repository without a commit",
+      "preconditions": "No git checkout and no or malformed R39X_BUILD_GIT_SHA, a build argument that disagrees with HEAD, a repository without a commit, or a build root whose .git (directory or worktree file) git cannot inspect",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -16348,6 +16348,29 @@
       "sensitivity_class": "synthetic",
       "critical": false,
       "verification_method": "config_validation"
+    },
+    {
+      "test_case_id": "TC-INF-DEP-001-007",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["INF-DEP-001"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Throwaway git repository with two commits and an annotated tag; image build plan only, Docker is not run",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The release revision resolves once to a 40-hex commit; git archive of that sha is the only build context and the same sha is the R39X_BUILD_GIT_SHA build argument; unknown, empty or option-shaped revisions are rejected"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
     },
     {
       "test_case_id": "TC-COMMON-001",
