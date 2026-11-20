@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { types } from "node:util";
 import type { OperationId } from "@off-r39x/security";
 import type { Context, MiddlewareHandler } from "hono";
 import { type ApiEnvironment, ApiFailure } from "../failure.ts";
@@ -126,13 +127,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export function canonicalRequestJson(request: NormalizedRequest): string {
   let copy: ReturnType<typeof copyJsonValue>;
   try {
-    if (!isRecord(request)) throw new Error(NOT_CANONICALIZABLE);
+    // A proxy (the request, params or query here; anything inside body and query in the strict
+    // copy) could answer the reads below differently each time: refuse it before its traps run.
+    if (!isRecord(request) || types.isProxy(request)) throw new Error(NOT_CANONICALIZABLE);
     const body = ownDataValue(request, "body");
     const params = ownDataValue(request, "params");
     const query = ownDataValue(request, "query");
     // params and query must be plain objects: a Map or a class instance keeps its entries outside
     // its own properties, so they would vanish and different requests would share one digest.
-    if (body === undefined || !isPlainRecord(params) || !isPlainRecord(query)) {
+    if (
+      body === undefined ||
+      types.isProxy(params) ||
+      types.isProxy(query) ||
+      !isPlainRecord(params) ||
+      !isPlainRecord(query)
+    ) {
       throw new Error(NOT_CANONICALIZABLE);
     }
     // Each params value is read once and the checked string itself goes into the copy, so a value

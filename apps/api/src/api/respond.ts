@@ -1,3 +1,4 @@
+import { types } from "node:util";
 import { AuthFailure } from "@off-r39x/auth";
 import { isDatabaseTemporaryFailure } from "@off-r39x/db";
 import type { Context } from "hono";
@@ -124,6 +125,9 @@ function copyJsonNode(value: unknown, active: WeakSet<object>, strict: boolean):
     default:
       return REJECTED;
   }
+  // A proxy's traps can answer each read differently or hide what a descriptor-based read would
+  // see, so strict mode refuses one before any trap runs (hasToJson already reads through it).
+  if (strict && types.isProxy(value)) return REJECTED;
   if (active.has(value) || hasToJson(value)) return REJECTED;
   active.add(value);
   try {
@@ -207,8 +211,8 @@ function copyJsonNode(value: unknown, active: WeakSet<object>, strict: boolean):
  *
  * With `strict`, everything that JSON would drop silently is rejected instead of skipped: an
  * `undefined` object property, a non-enumerable property or array element and a symbol key (on an
- * object or an array). It also accepts only plain arrays (Array.prototype, no subclass) and reads
- * an array's length from its own data descriptor. A value with such a property then never has the same copy as one without it (a request
+ * object or an array). It also refuses any Proxy, accepts only plain arrays (Array.prototype, no
+ * subclass) and reads an array's length from its own data descriptor. A value with such a property then never has the same copy as one without it (a request
  * digest input, API-IDM-005).
  */
 export function copyJsonValue(

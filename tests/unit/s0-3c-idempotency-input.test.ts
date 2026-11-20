@@ -355,6 +355,15 @@ describe("TC-API-IDM-005-002 a request that is not JSON-representable is refused
     }
     const sparse: unknown[] = [];
     sparse[2] = MARKER;
+    // A proxy reporting length 0 through its descriptor and hiding the elements from ownKeys: a
+    // descriptor-based read sees an empty array, so strict mode refuses every proxy outright.
+    const hidesElements = new Proxy([MARKER, MARKER], {
+      getOwnPropertyDescriptor: (target, key) =>
+        key === "length"
+          ? { value: 0, writable: true, enumerable: false, configurable: false }
+          : Reflect.getOwnPropertyDescriptor(target, key),
+      ownKeys: () => ["length"],
+    });
     const lengthLies = new Proxy(sparse, {
       get: (target, key, receiver) => (key === "length" ? 0 : Reflect.get(target, key, receiver)),
     });
@@ -365,6 +374,20 @@ describe("TC-API-IDM-005-002 a request that is not JSON-representable is refused
       ["symbol key in body", { params: {}, query: {}, body: withSymbol }],
       ["symbol key on an array", { params: {}, query: {}, body: arrayWithSymbol }],
       ["Array subclass", { params: {}, query: {}, body: { items: new TaggedItems(MARKER) } }],
+      [
+        "array proxy hiding its elements from the descriptor and ownKeys",
+        { params: {}, query: {}, body: { items: hidesElements } },
+      ],
+      [
+        "transparent object proxy in body",
+        { params: {}, query: {}, body: new Proxy({ note: MARKER }, {}) },
+      ],
+      ["transparent proxy as query", { params: {}, query: new Proxy({}, {}), body: null }],
+      [
+        "transparent proxy as params",
+        { params: new Proxy({ order_ref: REF_A1 }, {}), query: {}, body: null },
+      ],
+      ["transparent proxy as the request", new Proxy({ params: {}, query: {}, body: null }, {})],
       [
         "array proxy whose length get reports 0 for a sparse array",
         { params: {}, query: {}, body: { items: lengthLies } },
