@@ -13,6 +13,7 @@
     "start:email-worker": "node dist/workers/email-worker.js",
     "start:reconciliation-worker": "node dist/workers/reconciliation-worker.js",
     "db:migrate": "pnpm --filter @off-r39x/db migrate",
+    "db:seed-initial-data": "pnpm --filter @off-r39x/db seed:initial-data",
     "validate:migrations": "node scripts/validate-generated-migrations.mts",
     "lint": "biome check .",
     "format": "biome format --write .",

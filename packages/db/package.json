@@ -9,7 +9,8 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "migrate": "node src/migrate-cli.ts"
+    "migrate": "node src/migrate-cli.ts",
+    "seed:initial-data": "node src/seed-initial-data-cli.ts"
   },
   "dependencies": {
     "@off-r39x/reliability": "workspace:*",
