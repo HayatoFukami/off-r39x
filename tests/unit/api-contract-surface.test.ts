@@ -1,13 +1,22 @@
 import {
   type AppType,
+  announcementRefParamSchema,
   type CurrentProfile,
+  createPublicReadRpc,
   createPublicRpc,
   currentProfileSchema,
   type ErrorCode,
+  emptyPublicQuerySchema,
   errorSchema,
   errorStatuses,
   type PrincipalNavigation,
   principalNavigationSchema,
+  publicAnnouncementListSchema,
+  publicAnnouncementSchema,
+  publicEntryOfferingListSchema,
+  publicEventSchema,
+  publicFaqListSchema,
+  publicSponsorLogoListSchema,
   successSchema,
   type UpdateCurrentProfileRequest,
   updateCurrentProfileRequestSchema,
@@ -16,6 +25,14 @@ import type { Context, Env } from "hono";
 import { hc } from "hono/client";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import { z } from "zod";
+import {
+  announcementDetailDto,
+  announcementListDtos,
+  eventDto,
+  faqDtos,
+  logoDtos,
+  offeringDtos,
+} from "../harness/api/public-read.ts";
 
 // PR-S0-1a C1: pins the public surface and the envelope/Principal schemas of
 // @off-r39x/api-contract. The expected values were recorded by running the pre-split
@@ -125,15 +142,51 @@ function buildApp(
   });
 }
 
+// PR-L2-3 C1: the six public read Operations (API-PUB-001..005, API-PUB-012, SPEC-110 section 26 / 26.1)
+// widen the surface: nine runtime exports (the query and path schemas, the five response schemas, the Logo
+// list schema and the builder) and six routes. These expectations changed by the specification, not by the
+// implementation. moneySchema (SPEC-110 section 11) is internal to the package and is not exported
+// (assumption recorded in the PR-L2-3 test report).
+function buildPublicReadApp(requestId: () => string = () => REQUEST_ID) {
+  const pass = async (_c: Context<Env>, next: () => Promise<void>) => {
+    await next();
+  };
+  return createPublicReadRpc<Env>({
+    requestId: (_c: Context<Env>) => requestId(),
+    guard: pass,
+    query: pass,
+    event: { load: async (_c: Context<Env>) => eventDto() },
+    faqs: { load: async (_c: Context<Env>) => ({ items: faqDtos() }) },
+    announcements: { load: async (_c: Context<Env>) => ({ items: announcementListDtos() }) },
+    announcement: { load: async (_c: Context<Env>) => announcementDetailDto() },
+    entryOfferings: { load: async (_c: Context<Env>) => ({ items: offeringDtos() }) },
+    sponsorLogos: { load: async (_c: Context<Env>) => ({ items: logoDtos() }) },
+  });
+}
+const PUBLIC_READ_PATHS = [
+  ["/api/v1/public/event", () => eventDto()],
+  ["/api/v1/public/faqs", () => ({ items: faqDtos() })],
+  ["/api/v1/public/announcements", () => ({ items: announcementListDtos() })],
+  [
+    "/api/v1/public/announcements/00000000-0000-4000-8000-0000000000a1",
+    () => announcementDetailDto(),
+  ],
+  ["/api/v1/public/entry-offerings", () => ({ items: offeringDtos() })],
+  ["/api/v1/public/sponsor-logos", () => ({ items: logoDtos() })],
+] as const;
+
 describe("TC-DEV-API-002-001 public surface of @off-r39x/api-contract", () => {
   // S0-3a adds errorRetryable (SPEC-110 section 21 Retryable column); L2-1a adds the two profile
   // schemas. The five earlier values are unchanged. S0-3b: SPEC-110 section 12 / 48.3 list schemas
   // (listDataSchema, listQuerySchema, pageQuery) are added (a change by the specification).
-  it("exports exactly the eleven runtime values", async () => {
+  it("exports exactly the twenty runtime values", async () => {
     const surface = await import("@off-r39x/api-contract");
     expect(Object.keys(surface).sort()).toEqual([
+      "announcementRefParamSchema",
+      "createPublicReadRpc",
       "createPublicRpc",
       "currentProfileSchema",
+      "emptyPublicQuerySchema",
       "errorRetryable",
       "errorSchema",
       "errorStatuses",
@@ -141,9 +194,26 @@ describe("TC-DEV-API-002-001 public surface of @off-r39x/api-contract", () => {
       "listQuerySchema",
       "pageQuery",
       "principalNavigationSchema",
+      "publicAnnouncementListSchema",
+      "publicAnnouncementSchema",
+      "publicEntryOfferingListSchema",
+      "publicEventSchema",
+      "publicFaqListSchema",
+      "publicSponsorLogoListSchema",
       "successSchema",
       "updateCurrentProfileRequestSchema",
     ]);
+    for (const schema of [
+      announcementRefParamSchema,
+      emptyPublicQuerySchema,
+      publicAnnouncementListSchema,
+      publicAnnouncementSchema,
+      publicEntryOfferingListSchema,
+      publicEventSchema,
+      publicFaqListSchema,
+      publicSponsorLogoListSchema,
+    ])
+      expect(typeof schema.safeParse).toBe("function");
     expect(currentProfileSchema.safeParse(PROFILE).success).toBe(true);
     expect(updateCurrentProfileRequestSchema.safeParse({ display_name: null }).success).toBe(true);
   });
@@ -189,11 +259,17 @@ describe("TC-DEV-API-002-001 public surface of @off-r39x/api-contract", () => {
       updated_at: string;
     }>();
     expectTypeOf<UpdateCurrentProfileRequest>().toEqualTypeOf<{ display_name: string | null }>();
-    expectTypeOf<AppType>().toEqualTypeOf<ReturnType<typeof createPublicRpc>>();
+    // PR-L2-3: AppType is no longer the self builder alone; it carries the six public read routes too.
     const client = hc<AppType>("http://api.example.test");
     expectTypeOf(client.api.v1.self.principal.$get).toBeFunction();
     expectTypeOf(client.api.v1.self.profile.$get).toBeFunction();
     expectTypeOf(client.api.v1.self.profile.$patch).toBeFunction();
+    expectTypeOf(client.api.v1.public.event.$get).toBeFunction();
+    expectTypeOf(client.api.v1.public.faqs.$get).toBeFunction();
+    expectTypeOf(client.api.v1.public.announcements.$get).toBeFunction();
+    expectTypeOf(client.api.v1.public.announcements[":announcement_ref"].$get).toBeFunction();
+    expectTypeOf(client.api.v1.public["entry-offerings"].$get).toBeFunction();
+    expectTypeOf(client.api.v1.public["sponsor-logos"].$get).toBeFunction();
   });
 
   it("registers only GET /api/v1/self/principal, GET and PATCH /api/v1/self/profile (guard, body validator and handler entries)", () => {
@@ -207,6 +283,59 @@ describe("TC-DEV-API-002-001 public surface of @off-r39x/api-contract", () => {
       ["PATCH", "/api/v1/self/profile"],
     ]);
   });
+
+  it("createPublicReadRpc registers only GET on the six public read paths (guard, query validator and handler entries each), in the order of the Operation IDs", () => {
+    const entries = buildPublicReadApp().routes.map(({ method, path }) => [method, path]);
+    expect(entries).toEqual(
+      [
+        "/api/v1/public/event",
+        "/api/v1/public/faqs",
+        "/api/v1/public/announcements",
+        "/api/v1/public/announcements/:announcement_ref",
+        "/api/v1/public/entry-offerings",
+        "/api/v1/public/sponsor-logos",
+      ].flatMap((path) => [
+        ["GET", path],
+        ["GET", path],
+        ["GET", path],
+      ]),
+    );
+  });
+
+  it.each(PUBLIC_READ_PATHS)(
+    "createPublicReadRpc answers GET %s with the data/meta envelope built from the injected loader",
+    async (path, data) => {
+      const response = await buildPublicReadApp().request(path);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ data: data(), meta: { request_id: REQUEST_ID } });
+    },
+  );
+
+  it.each(PUBLIC_READ_PATHS)(
+    "createPublicReadRpc does not register other methods on %s (404 from the builder alone)",
+    async (path) => {
+      const app = buildPublicReadApp();
+      expect((await app.request(path)).status, `GET ${path}`).toBe(200);
+      for (const method of ["POST", "PUT", "PATCH", "DELETE"])
+        expect((await app.request(path, { method })).status, `${method} ${path}`).toBe(404);
+    },
+  );
+
+  it.each(PUBLIC_READ_PATHS)(
+    "createPublicReadRpc validates the whole success envelope: a request_id that is not a canonical UUID fails %s closed (500, no data)",
+    async (path) => {
+      const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      try {
+        for (const id of ["not-a-request-id", NIL_UUID, MAX_UUID, ""]) {
+          const response = await buildPublicReadApp(() => id).request(path);
+          expect(response.status, id).toBe(500);
+          expect(await response.text(), id).toBe("Internal Server Error");
+        }
+      } finally {
+        logged.mockRestore();
+      }
+    },
+  );
 
   it("answers GET and PATCH /api/v1/self/profile with the data/meta envelope built from the injected profile", async () => {
     const app = buildApp();

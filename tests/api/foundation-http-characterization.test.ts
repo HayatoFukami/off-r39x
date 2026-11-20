@@ -10,6 +10,10 @@
 // /api/v1/self/profile are new registered routes, so the http_route list (TC-TST-OBS-001-001) and the
 // mounted route list (TC-DEV-API-002-002) gain them. Those expectations changed by the specification;
 // every other recorded value is untouched.
+// Revised for PR-L2-3 (API-PUB-001..005, API-PUB-012, SPEC-110 section 26.1): the six public read routes are
+// registered, so the http_route list (TC-TST-OBS-001-001) and the mounted route list (TC-DEV-API-002-002)
+// gain them and the "no public path" check becomes "no public path but the six". These expectations
+// changed by the specification, not by the implementation; every other recorded value is untouched.
 import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   type ApiEnvironment,
@@ -23,6 +27,7 @@ import {
 import { createAuthProxy } from "../../apps/api/src/api/auth-proxy.ts";
 import { AuthFailure } from "../../packages/auth/src/index.ts";
 import { createLogger } from "../../packages/observability/src/index.ts";
+import { createRecordingPublicContentStore } from "../harness/api/public-read.ts";
 import { createRecordingProfileStore } from "../harness/api/self-profile.ts";
 import { createTestRateLimit, peer, type TestRateLimit } from "../harness/rate-limit/api.ts";
 
@@ -124,6 +129,7 @@ function rig(options: RigOptions = {}): Rig {
         updatedAt: "2026-11-01T00:00:00.000Z",
       },
     }),
+    publicContent: createRecordingPublicContentStore(),
     ...(trs ? { rateLimit: trs.rateLimit } : {}),
     ...(options.authProxy ? { authProxy: proxy } : {}),
     ...(options.drain ? { draining: () => state.draining } : {}),
@@ -574,10 +580,16 @@ describe("TC-TST-OBS-001-001 completion log and http_route (TST-OBS-001, SPEC-16
     ["POST", "email-otp/send-verification-otp"],
     ["POST", "email-otp/verify-email"],
   ];
-  /** The 19 values http_route may take; anything else is logged as "/". */
+  /** The 25 values http_route may take; anything else is logged as "/". */
   const ALLOWED_ROUTES = [
     "/internal/health/live",
     "/internal/health/ready",
+    "/api/v1/public/event",
+    "/api/v1/public/faqs",
+    "/api/v1/public/announcements",
+    "/api/v1/public/announcements/:announcement_ref",
+    "/api/v1/public/entry-offerings",
+    "/api/v1/public/sponsor-logos",
     "/api/v1/self/principal",
     "/api/v1/self/profile",
     "/auth/get-session",
@@ -645,6 +657,20 @@ describe("TC-TST-OBS-001-001 completion log and http_route (TST-OBS-001, SPEC-16
         200,
       ),
       make("4 principal 401", "/api/v1/self/principal", {}, "GET", "/api/v1/self/principal", 401),
+      ...(
+        [
+          ["API-PUB-001", "/api/v1/public/event", "/api/v1/public/event"],
+          ["API-PUB-002", "/api/v1/public/faqs", "/api/v1/public/faqs"],
+          ["API-PUB-003", "/api/v1/public/announcements", "/api/v1/public/announcements"],
+          [
+            "API-PUB-004",
+            "/api/v1/public/announcements/00000000-0000-4000-8000-0000000000a1",
+            "/api/v1/public/announcements/:announcement_ref",
+          ],
+          ["API-PUB-005", "/api/v1/public/entry-offerings", "/api/v1/public/entry-offerings"],
+          ["API-PUB-012", "/api/v1/public/sponsor-logos", "/api/v1/public/sponsor-logos"],
+        ] as const
+      ).map(([id, path, route]) => make(`public ${id} 200`, path, {}, "GET", route, 200)),
       make(
         "4b profile 200",
         "/api/v1/self/profile",
@@ -710,7 +736,7 @@ describe("TC-TST-OBS-001-001 completion log and http_route (TST-OBS-001, SPEC-16
       if (row.route !== "/") seenRoutes.add(row.route);
     }
     expect([...seenRoutes].sort()).toEqual([...ALLOWED_ROUTES].sort());
-    expect(ALLOWED_ROUTES).toHaveLength(19);
+    expect(ALLOWED_ROUTES).toHaveLength(25);
   });
 
   it("a route added after createApp is not in the registry and is logged as '/'", async () => {
@@ -974,6 +1000,20 @@ describe("TC-DEV-API-002-002 route table and public surface of app.ts (DEV-API-0
     ["ALL", "/*"],
     ["ALL", "/api/v1/*"],
     ["ALL", "/api/v1/*"],
+    // PR-L2-3: the six public read routes are mounted first (mountRpcRoutes), each as a guard entry, a
+    // query validator entry and a handler entry, in the order API-PUB-001, 002, 003, 004, 005, 012.
+    ...[
+      "/api/v1/public/event",
+      "/api/v1/public/faqs",
+      "/api/v1/public/announcements",
+      "/api/v1/public/announcements/:announcement_ref",
+      "/api/v1/public/entry-offerings",
+      "/api/v1/public/sponsor-logos",
+    ].flatMap((path) => [
+      ["GET", path],
+      ["GET", path],
+      ["GET", path],
+    ]),
     // The RPC route is registered as a guard entry and a handler entry.
     ["GET", "/api/v1/self/principal"],
     ["GET", "/api/v1/self/principal"],
@@ -1034,15 +1074,22 @@ describe("TC-DEV-API-002-002 route table and public surface of app.ts (DEV-API-0
     expect(routesOf(fullRig())).toEqual([...MIDDLEWARE_AND_RPC, ...authRoutes, ...HEALTH]);
   });
 
-  it("no public, staff, admin or webhook path and no self path other than principal and profile is mounted", () => {
+  it("no staff, admin or webhook path, no public path but the six public read paths and no self path other than principal and profile is mounted", () => {
+    const publicReadPaths = [
+      "/api/v1/public/event",
+      "/api/v1/public/faqs",
+      "/api/v1/public/announcements",
+      "/api/v1/public/announcements/:announcement_ref",
+      "/api/v1/public/entry-offerings",
+      "/api/v1/public/sponsor-logos",
+    ];
     for (const r of [minimalRig(), fullRig()]) {
-      for (const [, path] of routesOf(r) as [string, string][]) {
-        for (const prefix of [
-          "/api/v1/public",
-          "/api/v1/staff",
-          "/api/v1/admin",
-          "/api/v1/webhooks",
-        ])
+      for (const [method, path] of routesOf(r) as [string, string][]) {
+        if (path.startsWith("/api/v1/public")) {
+          expect(publicReadPaths, path).toContain(path);
+          expect(method, path).toBe("GET");
+        }
+        for (const prefix of ["/api/v1/staff", "/api/v1/admin", "/api/v1/webhooks"])
           expect(path.startsWith(prefix), path).toBe(false);
         if (path.startsWith("/api/v1/self/"))
           expect(["/api/v1/self/principal", "/api/v1/self/profile"]).toContain(path);
