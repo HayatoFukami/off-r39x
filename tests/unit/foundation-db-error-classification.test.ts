@@ -54,6 +54,11 @@ describe("TC-DEV-API-010-001 classifyDatabaseError", () => {
   // connection slots are used up, during connection start-up like 57P03. That is a connection
   // failure (SPEC-110 section 51), so it is unavailable; the other 53xxx resource errors (disk
   // full, out of memory, configuration limit) are raised on an open connection and stay other.
+  // PR #71 review: 57P05 (idle_session_timeout) is PostgreSQL closing an idle session, so a query
+  // sent on that connection meets a connection the server has dropped.
+  it("SQLSTATE 57P05 (idle session timeout) is unavailable", () => {
+    expect(classifyDatabaseError(syntheticSqlstateError("57P05"))).toEqual({ kind: "unavailable" });
+  });
   it("SQLSTATE 53300 (too many connections) is unavailable", () => {
     expect(classifyDatabaseError(syntheticSqlstateError("53300"))).toEqual({ kind: "unavailable" });
   });

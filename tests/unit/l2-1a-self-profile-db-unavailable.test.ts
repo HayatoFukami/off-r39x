@@ -150,6 +150,8 @@ describe("TC-API-007-008 coded DB failures follow the common classification on r
     ["SQLSTATE 57P01 (admin shutdown)", "57P01"],
     // PR #71 review: connection slots used up; PostgreSQL refuses the new connection.
     ["SQLSTATE 53300 (too many connections)", "53300"],
+    // PR #71 review: PostgreSQL closed the idle session (idle_session_timeout).
+    ["SQLSTATE 57P05 (idle session timeout)", "57P05"],
   ];
   it.each(unavailable)(
     "%s: read and update (query failure) return unavailable",

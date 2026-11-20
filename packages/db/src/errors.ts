@@ -45,6 +45,7 @@ const UNAVAILABLE_CODES: ReadonlySet<string> = new Set([
   "57P01",
   "57P02",
   "57P03",
+  "57P05",
   "ECONNRESET",
   "ECONNREFUSED",
   "EPIPE",
@@ -56,7 +57,8 @@ const UNAVAILABLE_CODES: ReadonlySet<string> = new Set([
 ]);
 /**
  * Transaction-internal judgement: connection-class SQLSTATE (`08xxx`), a connection refused for
- * want of slots (`53300`), server shutdown (`57P01`-`57P03`) and Node connection errno. Not the API classification, which accepts only
+ * want of slots (`53300`), server shutdown (`57P01`-`57P03`), a session the server closed as idle
+ * (`57P05`) and Node connection errno. Not the API classification, which accepts only
  * typed errors and SQLSTATE (see `isUnavailableSqlstate`).
  */
 export function isDatabaseUnavailableCode(code: string): boolean {
@@ -66,8 +68,9 @@ export function isDatabaseUnavailableCode(code: string): boolean {
 /**
  * SQLSTATEs that mean the database connection failed or was refused (SPEC-110 section 51):
  * connection exceptions (`08xxx`), `53300` too_many_connections, which PostgreSQL raises while
- * starting a new connection when the connection slots are used up, and `57P01`-`57P03` (shutdown,
- * cannot connect now). The other `53xxx` resource errors (disk full, out of memory, configuration
+ * starting a new connection when the connection slots are used up, `57P01`-`57P03` (shutdown,
+ * cannot connect now) and `57P05` idle_session_timeout, the server closing an idle session (a pooled
+ * connection can be handed out just as that happens). The other `53xxx` resource errors (disk full, out of memory, configuration
  * limit) are raised on an open connection and are not connection failures.
  */
 function isUnavailableSqlstate(code: string): boolean {
@@ -77,7 +80,8 @@ function isUnavailableSqlstate(code: string): boolean {
       code === "53300" ||
       code === "57P01" ||
       code === "57P02" ||
-      code === "57P03")
+      code === "57P03" ||
+      code === "57P05")
   );
 }
 
