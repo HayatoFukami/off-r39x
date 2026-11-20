@@ -831,7 +831,7 @@ Release Manifestの `mounted_operation_ids`（`SPEC-180 §44`）に含まれるO
 
 **TST-API-009:** 公開読取（`SPEC-110` §26.1）は `PUBLISHED` の行だけをserver-sideの条件で返し、未設定値・件数・障害を推測や空成功に置き換えない。
 
-`TC-API-009-001`: `API-PUB-001〜005`, `API-PUB-READ-001〜006`, `DB-SAL-001`, `BR-EVT-001〜002`, `FR-PUB-001〜007`。FAQ／Announcementの `DRAFT`・`ARCHIVED` が一覧・詳細に出ないこと、0件の空配列、順序と同値時の安定順、Eventの0件（`API-PUB-001`・`004` は404、一覧は空）と2件以上（行を選ばず500）、nullable列の `null` がそのまま返ること、Announcementの非公開と不存在が同じ404、UUIDでないrefと未知queryの400、`excerpt` の空白正規化・100 code point境界と `excerpt_truncated`、Entryの販売状態の判定順と境界（開始時刻を含み終了時刻を含まない、`SUSPENDED`、購入Operation未登録時の `SALES_STOPPED`、容量0）、counter・残数・Internal IDを返さないこと、DB障害の `503 DATABASE_TEMPORARY_FAILURE` とschemaを満たさない行の `503 TEMPORARY_UNAVAILABLE`、Rate Limit class `public_read` をreal PostgreSQLで検証する。G1/G3/G4/G5/G8 → `ACC-BIZ-010`。
+`TC-API-009-001`: `API-PUB-001〜005`, `API-PUB-012`, `API-PUB-READ-001〜006`, `DB-SAL-001`, `BR-EVT-001〜002`, `FR-PUB-001〜007`。FAQ／Announcementの `DRAFT`・`ARCHIVED` が一覧・詳細に出ないこと、0件の空配列、順序と同値時の安定順、Eventの0件（`API-PUB-001`・`004` は404、一覧は空）と2件以上（行を選ばず500）、nullable列の `null` がそのまま返ること、Announcementの非公開と不存在が同じ404、UUIDでないrefと未知queryの400、`excerpt` の空白正規化・100 code point境界と `excerpt_truncated`、Entryの販売状態の判定順と境界（開始時刻を含み終了時刻を含まない、`SUSPENDED`、購入Operation未登録時の `SALES_STOPPED`、容量0）、counter・残数・Internal IDを返さないこと、DB障害の `503 DATABASE_TEMPORARY_FAILURE` とschemaを満たさない行の `503 TEMPORARY_UNAVAILABLE`、Rate Limit class `public_read` をreal PostgreSQLで検証する。`API-PUB-012` についても、新たに適用する共通規則（Eventの0件で `items: []`、2件以上で500、未知queryの400、DB障害とschemaを満たさない行のcodeの区別）を同じ条件で検証する（Logo固有のcaseは `TC-API-006-001`）。G1/G3/G4/G5/G8 → `ACC-BIZ-010`、`ACC-BIZ-028`。
 
 ## 28. Transport Idempotency
 
