@@ -1023,14 +1023,14 @@ Reconciliation Worker additionally:
 
 **INF-HLT-006:** Common 7のmigrationとschemaの確認は、artifactが同梱したmigration set（§44 `migration_set_sha256` の対象）と、source-controlledなrequired catalogを基準とする。required catalogは、`app` / `auth_read` のschemaとそのowner、`app` のtable（種類・owner・row security）、列（型・NOT NULL・identity・generated・default）、制約（種類・定義・検証状態・deferrable・initially deferred）、index（定義・valid・ready・live）、sequence（型・owner）を記録する。Common 7は、次の1〜4をすべて満たすときだけReadyになる（`UCR-180-003`）。
 
-1. `app.schema_migrations` の行をversionの昇順（byte順）に並べた先頭が、同梱した各migration（ファイル名のbyte順）のversion / source hashと順に一致する。先頭の食い違い、同梱済みの行の欠落、同梱済みの行の間への行の挿入、source hashの相違ではReadyにならない。
+1. `app.schema_migrations` の行をversionの昇順（byte順）に並べた先頭が、同梱した各migration（versionのbyte順。versionはファイル名から `.sql` を除いたもの）のversion / source hashと順に一致する。先頭の食い違い、同梱済みの行の欠落、同梱済みの行の間への行の挿入、source hashの相違ではReadyにならない。
 2. journalが同梱setより短い（DBがartifactより古い）場合はReadyにならない（§47）。
 3. journalが同梱setと同じ長さなら、catalogがrequired catalogと完全に一致する。追加のobjectがあればReadyにならない。
 4. journalが同梱setより長い（後続releaseのmigrationが適用済み）なら、required catalogの各要素が同一の属性で存在すればよい。追加のtable・列・制約・index・sequenceと、同梱setより後のjournal行を許容し、許容するjournal行の数に上限を設けない。required制約の検証状態がfalseからtrueへ変わったこと（`VALIDATE CONSTRAINT`）は、他の属性が同一なら同一とみなす。次の場合はReadyにならない。required要素の削除。required要素の属性の変更（contract migration、CHECKの定義の変更、required列への `SET NOT NULL` を含む）。required tableへの追加列がNOT NULLで、default・identity・generatedのいずれも持たない場合（`SPEC-100` §60）。
 
 本Ruleは、Common 7のmigrationとschemaの確認だけを定める。artifact自身のmigration set hashとrelease manifestの一致（§44。完全一致）と、Commonの他の項目、service別の確認は変えない。失敗は既存のreadiness failureとして記録し、新しいfailure名を追加しない。同梱setより後のjournal行の内容は、そのartifactでは検証しない（後続releaseのartifactとmigrationが検証する）。
 
-既知の制約は次の2つとする。(a) 後続releaseのmigrationがrequired要素を変える場合、旧artifactは4によりReadyにならない（§45.2の注記、`INF-RBK-002`）。(b) transactionの外で実行するmigration step（`CREATE INDEX CONCURRENTLY` 等。§47）では、objectがjournalの行より先に現れるため、その間は旧artifactが3によりReadyにならない。現在のmigrationは、DDLとjournalの行を1つのtransactionでCOMMITする。transactionの外で実行するmigration stepを導入するときは、本Ruleでの扱いを先に決める。
+既知の制約は次の2つとする。(a) 後続releaseのmigrationが4の許容範囲を外れる場合（required要素の削除・属性の変更、required tableへのNOT NULLでdefault・identity・generatedのない列の追加と、追加した列をその状態へ変えること）、旧artifactは4によりReadyにならない（§45.2の注記、`INF-RBK-002`）。(b) transactionの外で実行するmigration step（`CREATE INDEX CONCURRENTLY` 等。§47）では、objectがjournalの行より先に現れるため、その間は旧artifactが3によりReadyにならない。現在のmigrationは、DDLとjournalの行を1つのtransactionでCOMMITする。transactionの外で実行するmigration stepを導入するときは、本Ruleでの扱いを先に決める。
 
 ## 41. Railway deploy healthcheck
 
@@ -1141,7 +1141,7 @@ Production releaseは次順序を固定する。
 16. deployment observation window **10分**
 17. active CRITICAL/HIGH alert、readiness failure、schema mismatch（`INF-HLT-006`）、Critical smoke failureがなければrelease accepted
 
-手順5のmigrationがrequired要素を変えない（`INF-HLT-006` 4の範囲にある）場合、手順5〜10（§45.1も手順5〜10）の間も稼働している旧API・旧WorkerはReadyのままである。手順5のmigrationがrequired要素を変える（削除または属性の変更を含む）場合、旧API・旧Workerは、手順5の完了から手順8〜10で新artifactに置き換わるまでReadyにならず（`503`）、そのmigrationの適用後は旧artifactへrollbackしない（`INF-RBK-002`）。手順6（§45.1では手順8）のschema readiness checkは、deployする新artifactのmigration setとrequired catalogを基準に判定する。
+手順5の後のcatalogが、旧artifactにとって `INF-HLT-006` 4の許容範囲にある場合、手順5〜10（§45.1も手順5〜10）の間も稼働している旧API・旧WorkerはReadyのままである。許容範囲を外れる場合（required要素の削除・属性の変更、required tableへのNOT NULLでdefault・identity・generatedのない列の追加と、追加した列をその状態へ変えること。過去のreleaseで追加した列への `SET NOT NULL` は、その列を知らない旧artifactにとって後者に当たる）、旧API・旧Workerは、手順5の完了から手順8〜10で新artifactに置き換わるまでReadyにならず（`503`）、そのmigrationの適用後は旧artifactへrollbackしない（`INF-RBK-002`）。手順6（§45.1では手順8）のschema readiness checkは、deployする新artifactのmigration setとrequired catalogを基準に判定する。
 
 **INF-DEP-003:** Webを先に切り替えて新API contractだけを要求するdeploymentをしない。APIはold/new Webが共存できる後方互換性を先に持つ。
 
