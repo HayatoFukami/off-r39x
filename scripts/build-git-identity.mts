@@ -96,7 +96,13 @@ function readCheckout(root: string, executable: string): Checkout | undefined {
   }
   const status = runGit(executable, root, ["status", "--porcelain=v1", "--untracked-files=all"]);
   if (!status.ok) throw uninspectable(root, status.reason);
-  return { head: sha, dirty: status.stdout.trim() !== "" };
+  // git status does not report a change to a file flagged assume-unchanged or skip-worktree, so
+  // any such flag means the tree cannot be shown to equal HEAD. `git ls-files -v` tags those
+  // entries with a lowercase letter (assume-unchanged) or S (skip-worktree).
+  const index = runGit(executable, root, ["ls-files", "-v", "-z"]);
+  if (!index.ok) throw uninspectable(root, index.reason);
+  const hidden = index.stdout.split("\0").some((entry) => /^(?:[a-z]|S) /.test(entry));
+  return { head: sha, dirty: hidden || status.stdout.trim() !== "" };
 }
 
 function uninspectable(root: string, reason: string): Error {

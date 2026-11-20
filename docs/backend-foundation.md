@@ -55,7 +55,7 @@ pnpm secret-scan --build-dir dist --require-build
 
 `dist/backend-build.json` は build 元の commit も記録する（`git_sha`: 40 桁の小文字 hex、`git_tree_state`）。SPEC-180 §44 の release manifest が持つ `git_sha` と同じ値で、manifest の生成はまだ実装していない（`DEV-AI-003` による build tooling の判断。仕様の変更ではない）。取得元と扱いは次のとおり（`scripts/build-git-identity.mts`）。
 
-- build root が git checkout の top level なら HEAD を使う。追跡・stage 済み・未追跡（ignore されていないもの）の変更があれば `dirty`、なければ `clean`。
+- build root が git checkout の top level なら HEAD を使う。追跡・stage 済み・未追跡（ignore されていないもの）の変更があれば `dirty`、なければ `clean`。`assume-unchanged` または `skip-worktree` の付いた追跡ファイルが 1 つでもあれば、`git status` がその変更を報告しないため、内容にかかわらず `dirty` とする。
 - `.git` がない build context（OCI build。`.dockerignore` が `.git` を除外する）では build arg `R39X_BUILD_GIT_SHA` を使い、`unverified` とする。build root に `.git`（ディレクトリ、または linked worktree の `.git` ファイル）があるのに git で検査できない場合（git がない、所有者の不一致、壊れた worktree の参照など）は、build arg に切り替えず、理由を示して build を止める。
 - image は `pnpm build:backend:image --commit <テスト済みの revision> [--tag <tag>]`（`scripts/build-backend-image.mts`）で build する。revision を 1 回だけ 40 桁の commit に解決し、その sha の `git archive` を唯一の build context として `docker build -` に渡し、同じ sha を `R39X_BUILD_GIT_SHA` にする。作業ツリーを context にしないので、古いファイルや未コミットの変更は image に入らず、記録される `git_sha` と build した tree が食い違わない。`docker build --build-arg R39X_BUILD_GIT_SHA=… .` のように build arg と作業ツリーの context を別々に指定する build は、この保証がないので release artifact にしない。
 - 両方あれば一致を要求する。どちらもない、値が 40 桁の小文字 hex でない（空は未設定と同じ）、HEAD がない、一致しない、のいずれかなら build を失敗させる（fail closed）。

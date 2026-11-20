@@ -5,7 +5,7 @@
 // `docker build -` as the only build context, and the same sha is passed as R39X_BUILD_GIT_SHA,
 // so the recorded git_sha cannot name a different tree than the one built. The working tree is
 // never the context: stale or uncommitted files cannot enter the image.
-import { spawn, spawnSync } from "node:child_process";
+import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -79,13 +79,60 @@ function parseArgs(argv: readonly string[]): { commit: string; tag: string | und
   return { commit, tag };
 }
 
-function waitFor(child: ReturnType<typeof spawn>, label: string): Promise<void> {
-  return new Promise((done, fail) => {
-    child.once("error", (error) => fail(new Error(`${label}: ${error.message}`)));
-    child.once("close", (code) =>
-      code === 0 ? done() : fail(new Error(`${label} exited ${code ?? "by signal"}`)),
-    );
+/** Resolves with a failure message, or undefined after a zero exit; never before the child ends. */
+function settle(child: ChildProcess, label: string): Promise<string | undefined> {
+  return new Promise((done) => {
+    let failure: string | undefined;
+    child.once("error", (error) => {
+      failure ??= `${label}: ${error.message}`;
+      if (child.pid === undefined) done(failure); // never started: no process to wait for
+    });
+    child.once("close", (code, signal) => {
+      done(failure ?? (code === 0 ? undefined : `${label} exited ${code ?? signal}`));
+    });
   });
+}
+
+/**
+ * Stream the archive into the build. A failure on either side stops the other child (a build
+ * that cannot start or stops reading must not leave the archive blocked on a full pipe), and the
+ * returned promise settles only after both children have ended, with the first failure.
+ */
+export async function runImageBuild(plan: ImageBuildPlan, cwd: string): Promise<void> {
+  const archive = spawn(plan.archive.command, [...plan.archive.args], {
+    cwd,
+    stdio: ["ignore", "pipe", "inherit"],
+  });
+  const build = spawn(plan.build.command, [...plan.build.args], {
+    cwd,
+    stdio: ["pipe", "inherit", "inherit"],
+  });
+  // EPIPE and similar stream errors are reported through the children's exit status instead.
+  archive.stdout.on("error", () => {});
+  build.stdin.on("error", () => {});
+  archive.stdout.pipe(build.stdin);
+  let first: string | undefined;
+  const stopArchive = () => {
+    archive.stdout.unpipe();
+    archive.stdout.destroy();
+    archive.kill();
+  };
+  const stopBuild = () => {
+    build.stdin.destroy();
+    build.kill();
+  };
+  const watch = (child: ChildProcess, label: string, stopOther: () => void) =>
+    settle(child, label).then((failure) => {
+      if (failure !== undefined) {
+        first ??= failure;
+        stopOther();
+      }
+    });
+  await Promise.all([
+    watch(archive, "git archive", stopBuild),
+    watch(build, "docker build", stopArchive),
+  ]);
+  if (first !== undefined) throw new Error(first);
 }
 
 async function main(): Promise<void> {
@@ -93,15 +140,7 @@ async function main(): Promise<void> {
   const { commit, tag } = parseArgs(process.argv.slice(2));
   const sha = resolveReleaseCommit(root, commit);
   const plan = imageBuildCommands(sha, tag ?? `r39x-backend:${sha}`);
-  const archive = spawn(plan.archive.command, [...plan.archive.args], {
-    cwd: root,
-    stdio: ["ignore", "pipe", "inherit"],
-  });
-  const build = spawn(plan.build.command, [...plan.build.args], {
-    cwd: root,
-    stdio: [archive.stdout ?? "ignore", "inherit", "inherit"],
-  });
-  await Promise.all([waitFor(archive, "git archive"), waitFor(build, "docker build")]);
+  await runImageBuild(plan, root);
   process.stdout.write(`OK backend image ${tag ?? `r39x-backend:${sha}`} from ${sha}\n`);
 }
 
