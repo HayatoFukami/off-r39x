@@ -5423,7 +5423,7 @@
       "rule_id": "REL-AUTH-005",
       "code_paths": ["packages/db/src/transactions/profile.ts"],
       "test_case_ids": ["TC-DB-AUTH-001-004", "TC-DB-AUTH-001-008", "TC-DB-AUTH-001-010"],
-      "notes": "implementation mapping only: PR-L2-1b self Profile provisioning (API-AUTH-003); synthetic evidence, G8 (production-like E2E) not executed; the missing-row case is not re-created but answered 500; handing it to Consistency Review (SPEC-150 section 43 AUTH_PROFILE_RELATION_INCONSISTENT) is not implemented because SPEC-100 section 43 has no Business Profile target (UCR pending)"
+      "notes": "implementation mapping only: PR-L2-1b self Profile provisioning (API-AUTH-003); synthetic evidence, G8 (production-like E2E) not executed; the missing-row case is not re-created but answered 500; the Consistency Review case and the 409 after commit (UCR-100-004, REL-AUTH-009, SPEC-110 section 25) are not implemented and follow in a separate PR after PR-L1-1c adds the case table"
     },
     {
       "rule_id": "AR-ID-001",
