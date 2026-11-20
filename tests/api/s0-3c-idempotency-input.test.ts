@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
+import { type AddressInfo, connect } from "node:net";
 import { describe, expect, it } from "vitest";
 import { errorSchema } from "../../packages/api-contract/src/index.ts";
 import {
@@ -10,6 +12,7 @@ import {
   PROFILE_REF,
   ROUTE,
   readError,
+  WEB,
 } from "../harness/api/transport-idempotency-rig.ts";
 
 // PR-S0-3c C1 (G4 API, no DB / Redis): the Idempotency-Key header through HTTP on harness-only routes
@@ -220,6 +223,92 @@ describe("TC-API-IDM-011-002 Idempotency-Key through HTTP (API-IDM-011, Acceptan
       expect(error.code).toBe("AUTHORIZATION_DENIED");
       expect(rig.seen).toHaveLength(0);
       expectCompletionAndRedaction(rig, [response], [], "(q)");
+    });
+  });
+
+  describe("through the production Node HTTP adapter (@hono/node-server), separate header lines on the wire", () => {
+    const CRLF = "\r\n";
+    /**
+     * Starts the rig's app on the same adapter as `apps/api/src/bootstrap`, writes one raw HTTP/1.1
+     * request whose `Idempotency-Key` lines are given verbatim, and returns the status code and the
+     * raw response text.
+     */
+    async function sendRaw(
+      rig: ReturnType<typeof idempotencyRig>,
+      keyLines: readonly string[],
+    ): Promise<{ status: number; raw: string }> {
+      const require = createRequire(new URL("../../apps/api/package.json", import.meta.url));
+      const { serve } =
+        require("@hono/node-server") as typeof import("../../apps/api/node_modules/@hono/node-server");
+      const server = serve({ fetch: rig.app.fetch, port: 0, hostname: "127.0.0.1" });
+      await new Promise<void>((resolve) => server.once("listening", resolve));
+      const port = (server.address() as AddressInfo).port;
+      const body = JSON.stringify(goodBody);
+      const head = [
+        `POST ${ROUTE} HTTP/1.1`,
+        `Host: 127.0.0.1:${port}`,
+        `Origin: ${WEB}`,
+        "Content-Type: application/json",
+        `Content-Length: ${Buffer.byteLength(body)}`,
+        "Connection: close",
+        ...keyLines.map((value) => `Idempotency-Key:${value}`),
+      ].join(CRLF);
+      try {
+        const raw = await new Promise<string>((resolve, reject) => {
+          const chunks: Buffer[] = [];
+          const socket = connect(port, "127.0.0.1", () => {
+            socket.write(`${head}${CRLF}${CRLF}${body}`);
+          });
+          socket.on("data", (chunk: Buffer) => chunks.push(chunk));
+          socket.on("end", () => resolve(Buffer.concat(chunks).toString("latin1")));
+          socket.on("error", reject);
+        });
+        const status = /^HTTP\/1\.1 (\d{3}) /.exec(raw)?.[1];
+        expect(status).toBeDefined();
+        return { status: Number(status), raw };
+      } finally {
+        await new Promise<void>((resolve, reject) =>
+          server.close((error) => (error ? reject(error) : resolve())),
+        );
+      }
+    }
+
+    it("(r) two separate lines reach the middleware as one concatenated value, and that value is hashed", async () => {
+      const rig = idempotencyRig();
+      const a = "a".repeat(16);
+      const b = "b".repeat(16);
+      const { status } = await sendRaw(rig, [` ${a}`, ` ${b}`]);
+      expect(status).toBe(200);
+      const received = rig.seen[0]?.header ?? "";
+      // The separator is left to the HTTP implementation (API-IDM-011 2.), so it is not asserted.
+      expect(received).toContain(a);
+      expect(received).toContain(b);
+      expect(received).not.toBe(a);
+      expect(received).not.toBe(b);
+      expect(Buffer.from(ctxOf(rig.seen[0]?.context).keyDigest).equals(sha256(received))).toBe(
+        true,
+      );
+      expectCompletionAndRedaction(rig, [new Response(null, { status })], [a, b, received], "(r)");
+    });
+    it("(s) spaces and tabs around the value are removed by HTTP parsing; the parsed value is hashed", async () => {
+      const rig = idempotencyRig();
+      const key = "s".repeat(16);
+      const { status } = await sendRaw(rig, [` \t  ${key} \t `]);
+      expect(status).toBe(200);
+      expect(rig.seen[0]?.header).toBe(key);
+      expect(Buffer.from(ctxOf(rig.seen[0]?.context).keyDigest).equals(sha256(key))).toBe(true);
+      expectCompletionAndRedaction(rig, [new Response(null, { status })], [key], "(s)");
+    });
+    it("(t) two valid 64-character lines whose concatenation exceeds 128 are a 400, with no handler", async () => {
+      const rig = idempotencyRig();
+      const a = "a".repeat(64);
+      const b = "b".repeat(64);
+      const { status, raw } = await sendRaw(rig, [` ${a}`, ` ${b}`]);
+      expect(status).toBe(400);
+      expect(raw).toContain('"code":"VALIDATION_FAILED"');
+      expect(raw).toContain('"details":null');
+      expect(rig.seen).toHaveLength(0);
+      expectCompletionAndRedaction(rig, [new Response(null, { status })], [a, b], "(t)");
     });
   });
 });

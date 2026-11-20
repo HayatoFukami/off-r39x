@@ -16,6 +16,7 @@ const KEY_A = `${MARKER}-0001`;
 const KEY_129 = `${MARKER}${"x".repeat(129 - MARKER.length)}`;
 const KEY_DEL = `${MARKER}-\u007f-0001`;
 const NL = String.fromCharCode(10);
+const sha256 = (text: string) => createHash("sha256").update(text, "utf8").digest();
 
 const digestForms = (digest: Uint8Array) => {
   const buffer = Buffer.from(digest);
@@ -32,23 +33,33 @@ function headerText(response: Response): string {
 }
 
 describe("TC-SEC-ERR-001-002 the key and the digests do not leak (SEC-ERR-001/002/003, OBS-COR-005/006, DEV-API-006)", () => {
-  // Digests of the accepted request, computed by an accepted call on a separate rig.
-  async function reference() {
+  // The request digest of `rawBody` as the route normalizes it, computed by an accepted call (with a
+  // valid key) on a separate rig; the key digest oracle is checked against node:crypto.
+  async function requestDigestOf(rawBody: string) {
     const rig = idempotencyRig();
-    const response = await rig.post(ROUTE, { headers: rig.withKey(KEY_A) });
+    const response = await rig.post(ROUTE, { headers: rig.withKey(KEY_A), rawBody });
     expect(response.status).toBe(200);
     const context = rig.seen[0]?.context as { keyDigest: Uint8Array; requestDigest: Uint8Array };
-    return context;
+    expect(Buffer.from(context.keyDigest).equals(sha256(KEY_A))).toBe(true);
+    return context.requestDigest;
   }
 
+  /**
+   * Each case forbids what it actually sends: the key (raw and JSON-escaped), the SHA-256 of that
+   * key, and the request digest of that body, in hex, upper hex, base64 and base64url.
+   */
   async function run(
     label: string,
+    sent: { readonly key: string; readonly rawBody: string },
     send: (rig: ReturnType<typeof idempotencyRig>) => Promise<Response>,
   ) {
-    const known = await reference();
-    const keySha = createHash("sha256").update(KEY_A, "utf8").digest();
-    expect(Buffer.from(known.keyDigest).equals(keySha), `${label} oracle`).toBe(true);
-    const forbidden = [KEY_A, MARKER, ...digestForms(keySha), ...digestForms(known.requestDigest)];
+    const forbidden = [
+      sent.key,
+      JSON.stringify(sent.key).slice(1, -1),
+      MARKER,
+      ...digestForms(sha256(sent.key)),
+      ...digestForms(await requestDigestOf(sent.rawBody)),
+    ];
     const rig = idempotencyRig();
     const response = await send(rig);
     const body = await response.text();
@@ -64,13 +75,12 @@ describe("TC-SEC-ERR-001-002 the key and the digests do not leak (SEC-ERR-001/00
 
   // The harness body carries a note equal to the marker where the request digest is concerned.
   const markerBody = JSON.stringify({ ...goodBody, note: MARKER });
+  const noteBody = JSON.stringify({ ...goodBody, note: "synthetic note" });
+  const defaultBody = JSON.stringify(goodBody);
 
   it("(a) an accepted key: the response and every log line stay clean; the context holds no raw key", async () => {
-    const { rig, response } = await run("(a)", (r) =>
-      r.post(ROUTE, {
-        headers: r.withKey(KEY_A),
-        rawBody: JSON.stringify({ ...goodBody, note: "synthetic note" }),
-      }),
+    const { rig, response } = await run("(a)", { key: KEY_A, rawBody: noteBody }, (r) =>
+      r.post(ROUTE, { headers: r.withKey(KEY_A), rawBody: noteBody }),
     );
     expect(response.status).toBe(200);
     const context = rig.seen[0]?.context as Record<string, unknown>;
@@ -82,21 +92,21 @@ describe("TC-SEC-ERR-001-002 the key and the digests do not leak (SEC-ERR-001/00
     expect(rig.seen[0]?.header).toBe(KEY_A);
   });
   it("(b) a 129-character key containing the marker: a clean 400", async () => {
-    const { rig, response } = await run("(b)", (r) =>
-      r.post(ROUTE, { headers: r.withKey(KEY_129) }),
+    const { rig, response } = await run("(b)", { key: KEY_129, rawBody: defaultBody }, (r) =>
+      r.post(ROUTE, { headers: r.withKey(KEY_129), rawBody: defaultBody }),
     );
     expect(response.status).toBe(400);
     expect(rig.seen).toHaveLength(0);
   });
   it("(c) a key with DEL and the marker: a clean 400", async () => {
-    const { rig, response } = await run("(c)", (r) =>
-      r.post(ROUTE, { headers: r.withKey(KEY_DEL) }),
+    const { rig, response } = await run("(c)", { key: KEY_DEL, rawBody: defaultBody }, (r) =>
+      r.post(ROUTE, { headers: r.withKey(KEY_DEL), rawBody: defaultBody }),
     );
     expect(response.status).toBe(400);
     expect(rig.seen).toHaveLength(0);
   });
   it("(d) a body with the marker and a normalize that throws it: a clean 500", async () => {
-    const { rig, response } = await run("(d)", (r) =>
+    const { rig, response } = await run("(d)", { key: KEY_A, rawBody: markerBody }, (r) =>
       r.post(`/api/v1/test/fc/normalize-body-marker/${ORDER_REF}`, {
         headers: r.withKey(KEY_A),
         rawBody: markerBody,

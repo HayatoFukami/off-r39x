@@ -26916,7 +26916,8 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "Every such value (undefined body, NaN, Infinity, bigint, Date, Map, class instance, function, symbol, cycle, hole, getter, toJSON, non-string params) throws a fixed message that does not contain the value"
+        "Every such value (undefined body, NaN, Infinity, bigint, Date, Map, class instance, function, symbol, cycle, hole, getter, toJSON, non-string params) throws a fixed message that does not contain the value",
+        "An accessor for body, params, query or a params value, and a proxy whose trap throws, are refused with the same fixed message and no cause; no accessor is invoked, so a getter cannot pass one value to the check and another to the digest"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -26971,6 +26972,7 @@
       "expected_http": [200, 400, 401, 403, 415],
       "expected_domain_postconditions": [
         "A missing, empty, short, long, non-ASCII or HTAB-containing key answers 400 VALIDATION_FAILED with details null and no handler run; 16, 128 and UUID keys reach the handler with the SHA-256 of the value in the context; surrounding spaces are removed by HTTP parsing; two header fields are validated and hashed as one concatenated value (separator not asserted)",
+        "Through the production Node HTTP adapter (@hono/node-server) with separate Idempotency-Key lines on the wire: two 16-character lines reach the handler as one concatenated value whose SHA-256 is the key digest, spaces and tabs around a value are removed before validation, and two 64-character lines answer 400 VALIDATION_FAILED with no handler run",
         "Authentication and authorization failures (401, 403) win over a missing key; against a body, media-type or malformed-JSON failure either failure is acceptable and the handler never runs"
       ],
       "expected_db_postconditions": [],
@@ -27058,7 +27060,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "Harness-only routes; an accepted key, a 129-character key, a key with DEL, and a normalize that throws the request body, all containing a synthetic marker; harness-only routes on a test app (not in the production route table), synthetic values only; no DB or Redis",
+      "preconditions": "Harness-only routes; an accepted key, a 129-character key, a key with DEL, and a normalize that throws the request body, all containing a synthetic marker; each case forbids its own sent key (raw and JSON-escaped), the SHA-256 of that key and the request digest of its own body; harness-only routes on a test app (not in the production route table), synthetic values only; no DB or Redis",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
