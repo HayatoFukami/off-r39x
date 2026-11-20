@@ -17505,7 +17505,7 @@
         "A slot overlapping A by 1 microsecond at either end, inside A's maintenance time, containing A or contained in A is 23P01 ex_karaoke_slots_scope_occupancy and the row count of the Scope is unchanged",
         "The same three times in another Scope are accepted",
         "All 16 pairs of Slot States (A state by B state, B overlapping by 1 microsecond) are 23P01: the exclusion has no predicate",
-        "The same three times in the same Scope are 23505 uq_karaoke_slots_scope_times (the UNIQUE index is checked before the exclusion, a known idempotent duplicate and not an overlap conflict); no row is committed by this case"
+        "The same three times in the same Scope are refused by 23505 uq_karaoke_slots_scope_times or 23P01 ex_karaoke_slots_scope_occupancy; which of the two reports it follows the index OID order and is not pinned (an exact match is resolved against the existing row by the generation service, SPEC-100 section 29 step 4); no row is committed by this case"
       ],
       "expected_provider_postconditions": [],
       "expected_observability": [],
@@ -17623,7 +17623,7 @@
       "expected_db_postconditions": [
         "The same cause, Scope and candidate number twice is 23505 uq_karaoke_slots_generation_candidate; another Scope or candidate number + 1 is accepted",
         "Candidate number 0 is accepted and -1 is 23514 ck_karaoke_slots_generation_candidate_no",
-        "The same three times are accepted in another Scope and are 23505 uq_karaoke_slots_scope_times in the same Scope; no row is committed by this case"
+        "The same three times are accepted in another Scope and are refused in the same Scope (23505 uq_karaoke_slots_scope_times or 23P01 ex_karaoke_slots_scope_occupancy, not pinned); no row is committed by this case"
       ],
       "expected_provider_postconditions": [],
       "expected_observability": [],

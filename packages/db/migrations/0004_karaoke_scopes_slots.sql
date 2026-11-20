@@ -57,8 +57,9 @@ CREATE INDEX ix_karaoke_slots_scope_usage ON app.karaoke_slots(exclusive_scope_i
 -- [usage_start, cycle_end) ranges. The range runs to cycle_end, so maintenance time is occupied. It is half-open, so
 -- cycle_end == next.usage_start is allowed (DB-KRK-002). There is deliberately NO WHERE clause: every Slot State,
 -- including SALES_STOPPED, stays in the exclusion, and a state change never legitimises an overlap (DB-KRK-003).
--- Added after the UNIQUE constraints so that an exact duplicate is reported by uq_karaoke_slots_scope_times (23505)
--- before this exclusion (23P01). Depends on btree_gist from 0001 (DB-MIG-001); there is no application fallback.
+-- An exact repeat of the three times violates both this exclusion and uq_karaoke_slots_scope_times; which one reports
+-- it follows the index OID order and is not a contract, so the generation service resolves an exact match against the
+-- existing row first (SPEC-100 §29 step 4). Depends on btree_gist from 0001 (DB-MIG-001); there is no application fallback.
 ALTER TABLE app.karaoke_slots
   ADD CONSTRAINT ex_karaoke_slots_scope_occupancy
   EXCLUDE USING gist (exclusive_scope_id WITH =, tstzrange(usage_start, cycle_end, '[)') WITH &&);

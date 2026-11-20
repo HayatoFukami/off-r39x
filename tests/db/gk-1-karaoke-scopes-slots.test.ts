@@ -284,6 +284,23 @@ async function expectRejected(table: string, row: Row, code: string, name: strin
   expectViolation(await tryInsert(table, row), code, name, label);
 }
 
+// An exact repeat of (Scope, usage_start, usage_end, cycle_end) violates both uq_karaoke_slots_scope_times and
+// ex_karaoke_slots_scope_occupancy. PostgreSQL checks the indexes in OID order, and a REINDEX CONCURRENTLY gives the
+// UNIQUE index a new OID, so which of the two reports it is not a stable contract. The test pins only that the row
+// is refused by one of them; the generation service resolves an exact match against the existing row first
+// (SPEC-100 §29 step 4) instead of relying on the SQLSTATE.
+async function expectExactRepeatRejected(table: string, row: Row, label: string) {
+  const error = await tryInsert(table, row);
+  expect(error, `${label}: must be rejected`).toBeDefined();
+  expect(
+    [
+      ["23505", "uq_karaoke_slots_scope_times"],
+      ["23P01", EXCLUSION],
+    ].some(([code, name]) => error?.code === code && error?.constraint === name),
+    `${label}: 23505 uq_karaoke_slots_scope_times or 23P01 ${EXCLUSION}, got ${error?.code} ${error?.constraint}`,
+  ).toBe(true);
+}
+
 async function expectUpdateRejected(
   statement: string,
   values: unknown[],
@@ -892,19 +909,11 @@ describe("TC-INV-010-04-001 KARAOKE_GIST_OVERLAP_REJECT: the same Scope never ho
     });
   });
 
-  it("TC-INV-010-04-001 a slot with the same three times as A in the same Scope is a unique violation of uq_karaoke_slots_scope_times (23505), checked before the exclusion", async () => {
+  it("TC-INV-010-04-001 a slot with the same three times as A in the same Scope is refused by uq_karaoke_slots_scope_times or the exclusion, without pinning which one", async () => {
     await withSeed(async (seed) => {
       await expectAccepted(SLOT, seed.slot(seed.scope1), "A");
-      // U-4: the exact repeat is classified by the UNIQUE constraint (a known idempotent duplicate,
-      // SPEC-110 §50), not by the exclusion (a conflict). The generation_cause_key differs so that
-      // uq_karaoke_slots_generation_candidate is not the one that fires.
-      await expectRejected(
-        SLOT,
-        seed.slot(seed.scope1),
-        "23505",
-        "uq_karaoke_slots_scope_times",
-        "same three times",
-      );
+      // The generation_cause_key differs so that uq_karaoke_slots_generation_candidate is not the one that fires.
+      await expectExactRepeatRejected(SLOT, seed.slot(seed.scope1), "same three times");
       expect(await scopeCount(seed.scope1)).toBe(1);
     });
   });
@@ -1213,17 +1222,11 @@ describe("TC-KRK-001-003 the UNIQUE constraints and the candidate number behind 
     });
   });
 
-  it("TC-KRK-001-003 the same three times are accepted in another Scope, while in the same Scope they are a 23505 of uq_karaoke_slots_scope_times", async () => {
+  it("TC-KRK-001-003 the same three times are accepted in another Scope, while in the same Scope they are refused", async () => {
     await withSeed(async (seed) => {
       await expectAccepted(SLOT, seed.slot(seed.scope1), "S1");
       await expectAccepted(SLOT, seed.slot(seed.scope2), "same three times in S2");
-      await expectRejected(
-        SLOT,
-        seed.slot(seed.scope2),
-        "23505",
-        "uq_karaoke_slots_scope_times",
-        "same three times again in S2",
-      );
+      await expectExactRepeatRejected(SLOT, seed.slot(seed.scope2), "same three times again in S2");
     });
   });
 });
