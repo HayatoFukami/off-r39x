@@ -3155,6 +3155,7 @@
         "scripts/build-git-identity.mts",
         "scripts/build-backend-image.mts",
         "infra/backend.Dockerfile",
+        ".dockerignore",
         ".github/workflows/backend-foundation.yml",
         "packages/config/src/build.ts"
       ],
@@ -3166,7 +3167,8 @@
         "TC-INF-DEP-001-005",
         "TC-INF-DEP-001-006",
         "TC-INF-DEP-001-007",
-        "TC-INF-DEP-001-008"
+        "TC-INF-DEP-001-008",
+        "TC-INF-DEP-001-009"
       ],
       "notes": "Configuration check plus separately recorded actual build; backend-build.json records the source git_sha (SPEC-180 §44 value, DEV-AI-003 build-tooling decision; the release manifest itself is not generated); no production deployment performed"
     },

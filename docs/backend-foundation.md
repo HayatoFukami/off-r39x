@@ -60,6 +60,8 @@ pnpm secret-scan --build-dir dist --require-build
 - image は `pnpm build:backend:image --commit <テスト済みの revision> [--tag <tag>]`（`scripts/build-backend-image.mts`）で build する。revision を 1 回だけ 40 桁の commit に解決し、その sha の `git archive` を唯一の build context として `docker build -` に渡し、同じ sha を `R39X_BUILD_GIT_SHA` にする。作業ツリーを context にしないので、古いファイルや未コミットの変更は image に入らず、記録される `git_sha` と build した tree が食い違わない。`docker build --build-arg R39X_BUILD_GIT_SHA=… .` のように build arg と作業ツリーの context を別々に指定する build は、この保証がないので release artifact にしない。
 - 両方あれば一致を要求する。どちらもない、値が 40 桁の小文字 hex でない（空は未設定と同じ）、HEAD がない、一致しない、のいずれかなら build を失敗させる（fail closed）。
 - `dirty` の artifact はその commit の build ではない（`INF-DEP-001`）。deploy に使わず、ある修正を含むかの判定（`git merge-base --is-ancestor <fix> <git_sha>`）でも、記録のない artifact と同じく「含まない」と扱う。`unverified` は、build 側が `git_sha` の tree から build したことを保証する前提の値で、その保証は上の `build:backend:image` で image を build したときに限る。
+- 依存パッケージ: backend build は `node_modules/` の依存を bundle するが、`node_modules/` は ignore されているので git では検査しない。checkout からの build の `clean` は git の source tree に変更がないことだけを表し、依存が `git_sha` の lockfile どおりであることは保証しない（install せずに別の commit を build すると、古い依存のまま `clean` になりうる）。`build:backend:image` の image では、`.dockerignore` が `node_modules`・`dist`・`.git` を context から除き、build stage は archive の context だけを `COPY` して `pnpm install --frozen-lockfile` で依存を `git_sha` の lockfile から入れ直してから build する。
+- このため、release artifact（SPEC-180 §44 の OCI image）として、ある修正を含むかの祖先判定に使えるのは、`build:backend:image` で build した image の中の `dist/backend-build.json` だけとする。ローカルや CI の checkout から build した `dist/` の記録（`clean` を含む）は、開発・検証用の情報であり、この判定に使わない。
 
 Worker の停止は、新規処理を止めて協調終了を待ち、15秒を超えれば接続破棄・最大2秒の後処理を経て process を非0終了する。未完了の外部結果を成功や確定失敗へ書き換えない。
 

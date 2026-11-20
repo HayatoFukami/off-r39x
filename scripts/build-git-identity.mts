@@ -14,6 +14,7 @@ import { join, resolve } from "node:path";
 
 /**
  * - `clean`: built from a git checkout of `git_sha` with no tracked, staged or untracked change.
+ *   It says nothing about ignored inputs (node_modules/), so it is not release identity.
  * - `dirty`: built from a git checkout with changes on top of `git_sha`; not a build of that commit.
  * - `unverified`: `git_sha` came from the build argument; the tree could not be inspected.
  */
@@ -102,6 +103,9 @@ function readCheckout(root: string, executable: string): Checkout | undefined {
   const index = runGit(executable, root, ["ls-files", "-v", "-z"]);
   if (!index.ok) throw uninspectable(root, index.reason);
   const hidden = index.stdout.split("\0").some((entry) => /^(?:[a-z]|S) /.test(entry));
+  // "clean" covers the git source tree only. Ignored inputs such as node_modules/ are not
+  // inspected, so a checkout build never ties its dependencies to HEAD; only the release image
+  // (scripts/build-backend-image.mts: archived context, frozen install) does.
   return { head: sha, dirty: hidden || status.stdout.trim() !== "" };
 }
 
