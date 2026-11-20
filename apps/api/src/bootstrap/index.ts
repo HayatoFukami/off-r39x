@@ -93,6 +93,10 @@ export function bootstrap(
       authSubjectRef: (subject) =>
         fingerprint("auth-subject", subject, config.observability.correlationKey()),
     },
+    listCursorKey: Object.freeze({
+      version: config.listCursor.hmacKeyVersion,
+      key: config.listCursor.hmacKey(),
+    }),
     draining: () => draining,
     // INF-HLT-005: the readiness answer is the snapshot of the background probe; it runs no check.
     ready: () => !draining && readinessProbe.isReady(),
