@@ -146,3 +146,25 @@ describe("TC-INF-DEP-001-008 a failing side of the archive pipe ends the whole i
     await expect(runImageBuild(plan, REPO_ROOT)).resolves.toBeUndefined();
   }, 30_000);
 });
+
+it("TC-INF-DEP-001-009 the release image reinstalls dependencies from the archived lockfile", () => {
+  // PR #80 review: a checkout build bundles whatever node_modules holds, which git status ignores,
+  // so only the image path ties dependencies to git_sha. Pin that path and the docs that say so.
+  const ignore = readFileSync(join(REPO_ROOT, ".dockerignore"), "utf8").split(/\r?\n/);
+  expect(ignore).toEqual(expect.arrayContaining([".git", "**/node_modules", "dist"]));
+  const container = readFileSync(join(REPO_ROOT, "infra/backend.Dockerfile"), "utf8");
+  // The build stage ends where the runtime stage (the last FROM) begins.
+  const buildStage = container.slice(0, container.lastIndexOf("\nFROM "));
+  expect(buildStage).toContain(" AS build");
+  const lines = buildStage.split(/\r?\n/).filter((line) => !line.startsWith("#"));
+  const at = (line: string) => lines.indexOf(line);
+  // One COPY of the (archived) context, then a frozen install, then the backend build.
+  expect(lines.filter((line) => line.startsWith("COPY"))).toEqual(["COPY . ."]);
+  expect(at("COPY . .")).toBeGreaterThan(-1);
+  expect(at("COPY . .")).toBeLessThan(at("RUN pnpm install --frozen-lockfile"));
+  expect(at("RUN pnpm install --frozen-lockfile")).toBeLessThan(at("RUN pnpm build:backend"));
+  expect(buildStage).not.toMatch(/--offline|--prefer-offline|--no-frozen-lockfile/);
+  const docs = readFileSync(join(REPO_ROOT, "docs/backend-foundation.md"), "utf8");
+  expect(docs).toContain("祖先判定に使えるのは、`build:backend:image` で build した image");
+  expect(docs).toContain("`clean` は git の source tree");
+});

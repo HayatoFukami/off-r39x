@@ -16396,6 +16396,30 @@
       "critical": false
     },
     {
+      "test_case_id": "TC-INF-DEP-001-009",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["INF-DEP-001"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": ".dockerignore, OCI recipe and docs source only; Docker is not run",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The image context excludes node_modules, dist and .git; the build stage copies only the context and runs a frozen pnpm install before the backend build; docs limit the ancestry check to backend-build.json inside an image from build:backend:image"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "verification_method": "config_validation"
+    },
+    {
       "test_case_id": "TC-COMMON-001",
       "level": "Unit",
       "suite": "unit",
