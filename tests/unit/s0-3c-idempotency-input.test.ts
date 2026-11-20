@@ -351,6 +351,14 @@ describe("TC-API-IDM-005-002 a request that is not JSON-representable is refused
       ["nested non-enumerable property", { params: {}, query: {}, body: { items: [hidden] } }],
       ["symbol key in body", { params: {}, query: {}, body: withSymbol }],
       ["symbol key on an array", { params: {}, query: {}, body: arrayWithSymbol }],
+      [
+        "non-enumerable array element",
+        {
+          params: {},
+          query: {},
+          body: Object.defineProperty([MARKER, MARKER], "1", { enumerable: false }),
+        },
+      ],
       ["non-enumerable query property", { params: {}, query: hiddenString, body: null }],
       [
         "non-enumerable params property",
@@ -476,6 +484,37 @@ describe("TC-API-IDM-005-002 a request that is not JSON-representable is refused
       }
     }
     expect(reads).toBe(0);
+  });
+  it("a params property's enumerability and value come from one descriptor", () => {
+    // A proxy reporting an enumerable descriptor for the first `n` reads and a non-enumerable one
+    // with another value afterwards: the hashed value must be the one whose descriptor passed the
+    // enumerability check, or the request is refused.
+    for (let n = 1; n <= 6; n += 1) {
+      let calls = 0;
+      const params = new Proxy(
+        {},
+        {
+          ownKeys: () => ["order_ref"],
+          getOwnPropertyDescriptor: () => {
+            calls += 1;
+            const enumerable = calls <= n;
+            return {
+              value: enumerable ? REF_A1 : REF_A2,
+              writable: true,
+              enumerable,
+              configurable: true,
+            };
+          },
+        },
+      );
+      let canonical: string | undefined;
+      try {
+        canonical = canonicalOf({ params, query: {}, body: null });
+      } catch (error) {
+        expect((error as Error).message, `n=${n}`).toBe("Request is not canonicalizable");
+      }
+      if (canonical !== undefined) expect(canonical, `n=${n}`).not.toContain(REF_A2);
+    }
   });
   it("a params value is read once: the value that passed the string check is the one hashed", () => {
     // A proxy whose descriptor answers a string for the first `n` reads and a number afterwards: for

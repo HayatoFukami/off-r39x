@@ -141,6 +141,8 @@ function copyJsonNode(value: unknown, active: WeakSet<object>, strict: boolean):
         // JSON reads every index whether or not it is enumerable; a hole or accessor is rejected.
         const descriptor = Object.getOwnPropertyDescriptor(value, String(i));
         if (descriptor === undefined || !("value" in descriptor)) return REJECTED;
+        // The copy's elements are all enumerable, so strict mode refuses a non-enumerable one.
+        if (strict && !descriptor.enumerable) return REJECTED;
         const item = copyJsonNode(descriptor.value, active, strict);
         if (!item.ok) return REJECTED;
         items.push(item.value);
@@ -191,8 +193,8 @@ function copyJsonNode(value: unknown, active: WeakSet<object>, strict: boolean):
  * does. Values are never logged or thrown.
  *
  * With `strict`, everything that JSON would drop silently is rejected instead of skipped: an
- * `undefined` object property, a non-enumerable property and a symbol key (on an object or an
- * array). A value with such a property then never has the same copy as one without it (a request
+ * `undefined` object property, a non-enumerable property or array element and a symbol key (on an
+ * object or an array). A value with such a property then never has the same copy as one without it (a request
  * digest input, API-IDM-005).
  */
 export function copyJsonValue(

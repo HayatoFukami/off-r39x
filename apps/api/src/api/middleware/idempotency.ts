@@ -141,10 +141,13 @@ export function canonicalRequestJson(request: NormalizedRequest): string {
     for (const key of Reflect.ownKeys(params)) {
       // A symbol key or a non-enumerable property would vanish from the digest: refuse it.
       if (typeof key !== "string") throw new Error(NOT_CANONICALIZABLE);
-      if (Object.getOwnPropertyDescriptor(params, key)?.enumerable !== true) {
+      // One descriptor answers both checks (enumerable data property, string value) and supplies
+      // the value that is copied.
+      const descriptor = Object.getOwnPropertyDescriptor(params, key);
+      if (descriptor === undefined || !("value" in descriptor) || descriptor.enumerable !== true) {
         throw new Error(NOT_CANONICALIZABLE);
       }
-      const value = ownDataValue(params, key);
+      const value: unknown = descriptor.value;
       if (typeof value !== "string") throw new Error(NOT_CANONICALIZABLE);
       Object.defineProperty(checkedParams, key, { value, enumerable: true });
     }
