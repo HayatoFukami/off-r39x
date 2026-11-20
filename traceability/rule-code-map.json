@@ -2876,14 +2876,17 @@
       "code_paths": [
         "packages/db/src/schema",
         "packages/db/migrations/0001_foundation.sql",
-        "packages/db/migrations/0003_public_content_sales.sql"
+        "packages/db/migrations/0003_public_content_sales.sql",
+        "packages/db/migrations/0005_idempotency_records.sql"
       ],
       "test_case_ids": [
         "TC-DB-FOUNDATION-001",
         "TC-DB-FOUNDATION-009",
         "TC-DB-ARC-007-001",
         "TC-DB-ARC-007-003",
-        "TC-DB-ARC-007-004"
+        "TC-DB-ARC-007-004",
+        "TC-DB-IDM-001-001",
+        "TC-DB-IDM-001-002"
       ],
       "notes": "Explicit named constraints and lossless bigint schema"
     },
@@ -2989,9 +2992,12 @@
     },
     {
       "rule_id": "SEC-DB-001",
-      "code_paths": ["packages/db/migrations/0003_public_content_sales.sql"],
-      "test_case_ids": ["TC-SEC-DB-001-001"],
-      "notes": "implementation mapping only: runtime role grants on the eight 0003 tables only (app_api_runtime SELECT / INSERT / UPDATE as needed; no DELETE or TRUNCATE for any runtime role)"
+      "code_paths": [
+        "packages/db/migrations/0003_public_content_sales.sql",
+        "packages/db/migrations/0005_idempotency_records.sql"
+      ],
+      "test_case_ids": ["TC-SEC-DB-001-001", "TC-DB-IDM-003-001"],
+      "notes": "implementation mapping only: runtime role grants on the eight 0003 tables and on app.idempotency_records (app_api_runtime SELECT / INSERT / UPDATE as needed; no DELETE or TRUNCATE for any runtime role)"
     },
     {
       "rule_id": "INF-DB-008",
@@ -5468,36 +5474,138 @@
       "rule_id": "API-IDM-011",
       "code_paths": ["apps/api/src/api/middleware/idempotency.ts"],
       "test_case_ids": ["TC-API-IDM-011-001", "TC-API-IDM-011-002", "TC-DEV-API-007-001"],
-      "notes": "Backend foundation only; no business Operation mounts this middleware yet; replay records are PR-S0-3d"
+      "notes": "Backend foundation only; no business Operation mounts this middleware yet; replay record primitives exist in packages/db; no business Operation mounts them yet"
     },
     {
       "rule_id": "DEV-API-007",
       "code_paths": ["apps/api/src/api/middleware/idempotency.ts"],
       "test_case_ids": ["TC-DEV-API-007-001", "TC-DEV-API-007-002", "TC-API-IDM-011-002"],
-      "notes": "Backend foundation only; no business Operation mounts this middleware yet; replay records are PR-S0-3d"
+      "notes": "Backend foundation only; no business Operation mounts this middleware yet; replay record primitives exist in packages/db; no business Operation mounts them yet"
     },
     {
       "rule_id": "API-IDM-003",
       "code_paths": ["apps/api/src/api/middleware/idempotency.ts"],
       "test_case_ids": ["TC-DEV-API-007-001"],
-      "notes": "Backend foundation only; no business Operation mounts this middleware yet; replay records are PR-S0-3d"
+      "notes": "Backend foundation only; no business Operation mounts this middleware yet; replay record primitives exist in packages/db; no business Operation mounts them yet"
     },
     {
       "rule_id": "API-IDM-005",
-      "code_paths": ["apps/api/src/api/middleware/idempotency.ts", "apps/api/src/api/respond.ts"],
+      "code_paths": [
+        "apps/api/src/api/middleware/idempotency.ts",
+        "apps/api/src/api/respond.ts",
+        "packages/db/src/idempotency-records.ts"
+      ],
       "test_case_ids": [
         "TC-API-IDM-005-001",
         "TC-API-IDM-005-002",
         "TC-API-IDM-005-003",
-        "TC-API-IDM-011-001"
+        "TC-API-IDM-011-001",
+        "TC-API-IDM-005-004",
+        "TC-TST-IDM-002-001"
       ],
-      "notes": "Backend foundation only; no business Operation mounts this middleware yet; replay records are PR-S0-3d"
+      "notes": "Backend foundation only; no business Operation mounts this middleware yet; replay record primitives exist in packages/db; no business Operation mounts them yet"
     },
     {
       "rule_id": "DEV-API-006",
       "code_paths": ["apps/api/src/api/middleware/idempotency.ts", "apps/api/src/api/failure.ts"],
       "test_case_ids": ["TC-API-IDM-005-003", "TC-SEC-ERR-001-002"],
-      "notes": "Backend foundation only; no business Operation mounts this middleware yet; replay records are PR-S0-3d"
+      "notes": "Backend foundation only; no business Operation mounts this middleware yet; replay record primitives exist in packages/db; no business Operation mounts them yet"
+    },
+    {
+      "rule_id": "DB-IDM-001",
+      "code_paths": [
+        "packages/db/migrations/0005_idempotency_records.sql",
+        "packages/db/src/schema/cross-functional.ts",
+        "packages/db/src/idempotency-records.ts"
+      ],
+      "test_case_ids": [
+        "TC-DB-IDM-001-001",
+        "TC-DB-IDM-001-002",
+        "TC-DB-IDM-001-003",
+        "TC-API-IDM-007-001"
+      ],
+      "notes": "implementation mapping only: only digests and references are stored; no raw key, body, URL, Session ID or Email column"
+    },
+    {
+      "rule_id": "DB-IDM-002",
+      "code_paths": ["packages/db/src/idempotency-records.ts"],
+      "test_case_ids": ["TC-DB-IDM-002-001", "TC-API-IDM-009-001"],
+      "notes": "implementation mapping only: claim primitive and its documented call position; each Operation PR places the call"
+    },
+    {
+      "rule_id": "DB-IDM-003",
+      "code_paths": [
+        "packages/db/migrations/0005_idempotency_records.sql",
+        "packages/db/src/idempotency-records.ts"
+      ],
+      "test_case_ids": ["TC-DB-IDM-003-001", "TC-API-IDM-008-001"],
+      "notes": "implementation mapping only: expired record reused by conditional UPDATE; no DELETE and no purge"
+    },
+    {
+      "rule_id": "API-IDM-001",
+      "code_paths": ["packages/db/src/idempotency-records.ts"],
+      "test_case_ids": ["TC-API-IDM-010-001"],
+      "notes": "implementation mapping only: the record is an aid; the Domain UNIQUE of each Operation is its own PR; the test uses a synthetic Business Cause UNIQUE"
+    },
+    {
+      "rule_id": "API-IDM-002",
+      "code_paths": ["packages/db/src/idempotency-records.ts"],
+      "test_case_ids": ["TC-API-IDM-010-001"],
+      "notes": "implementation mapping only: the record is an aid; the Domain UNIQUE of each Operation is its own PR; the test uses a synthetic Business Cause UNIQUE"
+    },
+    {
+      "rule_id": "API-IDM-010",
+      "code_paths": ["packages/db/src/idempotency-records.ts"],
+      "test_case_ids": ["TC-API-IDM-010-001"],
+      "notes": "implementation mapping only: the record is an aid; the Domain UNIQUE of each Operation is its own PR; the test uses a synthetic Business Cause UNIQUE"
+    },
+    {
+      "rule_id": "API-IDM-004",
+      "code_paths": [
+        "packages/db/src/idempotency-records.ts",
+        "packages/db/src/transactions/idempotency.ts"
+      ],
+      "test_case_ids": ["TC-API-IDM-004-001", "TC-API-IDM-004-002"],
+      "notes": "implementation mapping only: replay record primitives exist in packages/db; no business Operation mounts them yet; the minimal transaction is for an Operation that succeeds without a business update"
+    },
+    {
+      "rule_id": "API-IDM-006",
+      "code_paths": ["packages/db/src/idempotency-records.ts"],
+      "test_case_ids": [
+        "TC-API-IDM-006-001",
+        "TC-API-IDM-007-001",
+        "TC-API-IDM-008-001",
+        "TC-API-IDM-009-001",
+        "TC-API-IDM-004-002"
+      ],
+      "notes": "implementation mapping only: replay record primitives exist in packages/db; no business Operation mounts them yet; first, replay and reused decisions"
+    },
+    {
+      "rule_id": "API-IDM-007",
+      "code_paths": ["packages/db/src/idempotency-records.ts"],
+      "test_case_ids": ["TC-API-IDM-006-001", "TC-API-IDM-007-001", "TC-DB-IDM-001-003"],
+      "notes": "implementation mapping only: replay record primitives exist in packages/db; no business Operation mounts them yet; only a result type and references are stored"
+    },
+    {
+      "rule_id": "API-IDM-008",
+      "code_paths": [
+        "packages/db/migrations/0005_idempotency_records.sql",
+        "packages/db/src/idempotency-records.ts"
+      ],
+      "test_case_ids": ["TC-API-IDM-008-001", "TC-DB-IDM-001-001", "TC-DB-IDM-003-001"],
+      "notes": "implementation mapping only: replay record primitives exist in packages/db; no business Operation mounts them yet; 24 hour expiry"
+    },
+    {
+      "rule_id": "API-IDM-009",
+      "code_paths": ["packages/db/src/idempotency-records.ts"],
+      "test_case_ids": ["TC-API-IDM-009-001"],
+      "notes": "implementation mapping only: replay record primitives exist in packages/db; no business Operation mounts them yet; concurrent requests serialised by the unique key"
+    },
+    {
+      "rule_id": "TST-IDM-001",
+      "code_paths": ["packages/db/src/idempotency-records.ts"],
+      "test_case_ids": ["TC-API-IDM-006-001", "TC-API-IDM-009-001", "TC-API-IDM-010-001"],
+      "notes": "implementation mapping only: Transport layer cases only; the other layers are each Operation's PR"
     }
   ]
 }
