@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-150
 title: Reliability, Error and Recovery
-version: 2.2.0
+version: 2.3.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -371,6 +371,12 @@ delay = random_uniform(0, cap_n)   # full jitter
 **REL-AUTH-004:** parallel profile provisioningは`UNIQUE(auth_subject)` / `INSERT ON CONFLICT`のwinnerへ収束し、duplicate profileを作らない。
 
 **REL-AUTH-005:** temporary DB failureはDB retry policyを使用する。Auth identityが存在するのにBusiness Profile relationが壊れている場合はProfileを推測再作成せずConsistency Reviewとする。
+
+**REL-AUTH-009:** `API-AUTH-003` のProfile再select（`SPEC-100` `DB-AUTH-003`）が0件のとき、0件を観測したtransactionではProfileを作らず、同じtransactionでreason `AUTH_PROFILE_RELATION_INCONSISTENT`、対象 `auth_subject` のCaseを起票し（同じincidentは `REL-REC-016` により既存Caseへ収束する）、**commitしてから** `409 CONSISTENCY_REVIEW_REQUIRED` を返す。errorを返すことを理由にrollbackしない。Caseの `details` は `{}` とする（`REL-REC-008` のallowlistを広げない）。
+
+- Caseの `UNIQUE(dedupe_key)` 競合は known idempotent duplicate（`REL-DB-002`）として既存Caseへ収束し、同じく409とする。競合した既存Caseが既にresolvedでも同様に409へ収束する。このrequestはresolve前の観測に基づく1回限りの結果であり、後続のrequestはcurrent stateで評価し直す（新しいState・APIは作らない）。`UNIQUE(dedupe_key)` の競合（`23505`）でtransactionがabortした経路にはcommitすべき変更が残らないため、rollbackで終わってよい（上記のcommit規則は、Caseの起票が成立した経路に適用する）。
+- `40001` / `40P01` / `55P03` は `REL-DB-001` のpolicyで、transaction全体を同じCauseで再評価する。再評価でProfile rowが見えれば通常の200、rowがなくProfileのINSERTが成立すれば201になる。後者は0件を観測した後のretryの中で、retryの時点でrowがなく「未作成」と再評価された結果であり、不整合ではない。この経路ではCaseはcommitされない。0件の観測をどう記録するかは `SPEC-160` が定める（本書はlog schemaを固定しない。§63）。budgetを使い切った場合は `503 DATABASE_TEMPORARY_FAILURE`、COMMITの成否不明は `REL-DB-006` に従う。
+- 後続のrequestで、Profile行がなく `INSERT ... ON CONFLICT` が行を挿入した場合は `SPEC-060` §16.2 の通常のprovisioning（201）であり、`REL-AUTH-005` の「推測再作成」に当たらない。unresolved Caseがあってもprovisionを止めない。再selectで0件を観測した場合は、そのrequestも本Ruleの対象とする。
 
 ## 19. Role Resolution / Revoke
 
@@ -748,6 +754,17 @@ r150:<reason_code>:<primary_entity_type>:<primary_public_ref>:<cause_discriminat
 
 **REL-REC-013:** resolved後に別immutable causeで同種障害が再発した場合は新しい`cause_discriminator`で新Caseを作る。同じincidentのretryで新Caseを増やさない。
 
+**REL-REC-016:** `AUTH_PROFILE_RELATION_INCONSISTENT` の `dedupe_key` は次の形とする（`REL-REC-007` の具体化。このreasonに限り `primary_public_ref` の位置にPublic ReferenceではなくAuth Subjectを置く）。
+
+```text
+r150:AUTH_PROFILE_RELATION_INCONSISTENT:auth_subject:<auth_subject>:epoch-<n>
+```
+
+- `<auth_subject>` は小文字のcanonical UUIDとする。
+- `<n>` は、同じreason・同じ `auth_subject` のresolved Case（`resolved_at IS NOT NULL`）の件数 + 1（10進、先頭0なし）とする。件数は、再selectで0件を観測した後の文で数える。resolved Caseは削除されず（`SPEC-100` §12）、resolveは一方向なので、unresolvedの間は同じ値になる（このreasonのCaseの `resolved_at` を設定するのは `API-ADM-REC-007`（`REL-REC-017`）だけであり、`resolved_at` をNULLに戻す操作は定義されていない。`SPEC-110` §49はmark-fixed only / generic state writeを提供しない）。
+- 同時実行は同じ `<n>` を計算し、`UNIQUE(dedupe_key)` で1件に収束する。resolve後の再発は `<n>+1` で新しいCaseになる（`REL-REC-013`）。件数を数えた直後に同じepochのCaseがresolveされ、INSERTがそのresolved Caseの `dedupe_key` と競合した場合は、`REL-AUTH-009` のとおり既存Caseへ収束して409とする。
+- この `dedupe_key` はraw Auth Subjectを含むため、API応答・`details`・log・metric・alert・Audit Event（target refを含む）・dashboard・trace attributeへ出さない（`SPEC-100` `DB-XFN-004`）。HMAC指紋（`SPEC-160` §11）は使わない（`OBS-COR-005`）。
+
 ---
 
 # Part XV — Manual Recovery Runbooks
@@ -897,6 +914,8 @@ Result reconciliation専用operationは `API-ADM-REC-005`（`SPEC-110 §48.5`）
 - **Success:** source Authority / Invariantを再検証した後`resolved_at`設定
 - **Stale Case:** sourceが既に正規収束済みならmutationなしでresolve可
 - **Case recurrence:**新immutable causeなら新Case
+
+**REL-REC-017:** `AUTH_PROFILE_RELATION_INCONSISTENT` のCaseは、Caseの `auth_subject` について (i) `app.business_profiles` がちょうど1行ある、または (ii) `auth_read.identity_directory`（`SPEC-100` §5.1）が0行（Identity不存在）のときだけ、正規状態へ収束済みとして `API-ADM-REC-007` でresolveできる。どちらでもなければresolveせず `409 CONSISTENCY_REVIEW_REQUIRED` とする。再取得は `API-ADM-REC-007` のtransactionの中で `business_profiles` とDirectoryの読取りで行い、Profile rowはlockしない（provisionはProfileを消さないため）。管理者がProfileを作成・付け替えする操作はない（`REL-ADM-001`）。
 
 ## 56. Runbook — Goods Inventory Adjustment / Counter Recovery
 
@@ -1099,7 +1118,7 @@ SPEC-160は少なくとも次のReliability semanticを観測可能にする。
 | `REL-GDS-*` | `FR-GDS-*`,`FR-STF-*`,`FR-ADM-*`, `BR-GDS-*`, Goods API/DB rules |
 | `REL-EML-*` | `FR-EML-*`, `BR-NTF-*`, `EML-*`, `API-ADM-EML-*`, email support tables, `SEC-EML-*` |
 | `REL-WHK-*` | `PAY-WHK-*`, Resend webhook `EML-*`, `API-WHK-*`, `SEC-PAY-*`,`SEC-EML-*` |
-| `REL-REC-*` | `BR-ORD-010`, relevant `DI-030-*`, `DB-XFN-002〜003`, `API-REC-001`, `PG-ADM-022〜023`, `ADM-REC-*` |
+| `REL-REC-*` | `BR-ORD-010`, relevant `DI-030-*`, `DB-XFN-002〜004`, `API-REC-001`, `PG-ADM-022〜023`, `ADM-REC-*` |
 | `REL-ADM-*` | `AR-ROLE-014`, `PG-ADM-*`, `ADM-*`, `OPS-*`, existing explicit recovery endpoints |
 | `REL-SEC-*` | `SEC-ERR-004〜006`, `SEC-KEY-*`, `SEC-ABU-*`, `SEC-PAY-*`, `SEC-QR-*` |
 
@@ -1163,6 +1182,7 @@ SPEC-160は少なくとも次のReliability semanticを観測可能にする。
 50. SPEC-160が観測可能なReliability semanticをemit可能にするがlog / audit schemaを本書で固定しない。
 51. `INV-010-01〜10`、関連`FR-*`、`BR-*`、`DI-030-*`、`AR-*`、`PAY-*`、`TQR-*`、`KRK-*`、`DB-*`、`API-*`、`EML-*`、`ADM-*` / `STF-*` / `OPS-*`、`SEC-*`へ追跡できる。
 52. Manual Recovery Runbookは §46〜§48 / §53 / §55 / §56 のcanonical operation（`API-ADM-REC-003〜007`, `API-ADM-GDS-005`, `API-ADM-EML-004〜005`, `API-ADM-TQR-001`, `API-ADM-KRK-007`, `API-ADM-PAY-001`）だけを使用し、new route / state / retry / capability / lock / generic commandを追加しない。
+53. Profile再select 0件を観測したtransactionでは、`API-AUTH-003` はProfileを作らず、Caseをcommitしてから409を返す（`REL-AUTH-009`）。同じincidentでCaseを増やさず、resolve後の再発は新Caseになる（`REL-REC-016`）。`REL-REC-017` の収束条件でだけresolveする。
 
 ---
 
@@ -1201,6 +1221,13 @@ SPEC-160は少なくとも次のReliability semanticを観測可能にする。
 - 対象: `SPEC-150`（§9、§58、§58.1、Acceptance 41）
 - 内容: 共有rate limit storeの障害時のdeadline（250ms）、再試行禁止、短絡、Fail Closedを定義した。control semanticsは `SPEC-140` Part XIII、store wiringは `SPEC-180` が正である。
 - **残作業:** なし。process-localの縮退運用は本書の契約に含めない（別UCRとして検討する）。
+
+### UCR-100-004（SPEC-100起票）
+
+- **Status:** `INCORPORATED`（`SPEC-150 v2.3.0`）
+- 対象: `SPEC-150`（§18、§44、§55、Acceptance 53）
+- 内容: Profile再select 0件時のConsistency Review起票とcommit後の409（`REL-AUTH-009`）、`dedupe_key` と `cause_discriminator`（epoch。`REL-REC-016`）、`API-ADM-REC-007` の収束条件（`REL-REC-017`）を定めた。Caseの対象列とCHECKは `SPEC-100` §43、API応答は `SPEC-110` §25 / §48.5 が正である。
+- **残作業:** 実装（Case表、`API-AUTH-003`、`API-ADM-REC-007`）は後続のPRで行う。Identityが残り再provisionされないCaseはresolveできず、`SPEC-160` `OBS-ALT-023/024` のaging alertの対象のままとなる（alertは本改訂で変更しない）。`auth_subject` がout-of-bandに変更（UPDATE）された場合、旧Profileの誤った結び付きは本Caseでは検出・追跡されない（その検出と追跡は本UCRの範囲外。詳細は `SPEC-100` §70）。
 
 ---
 
