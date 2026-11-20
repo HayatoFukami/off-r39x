@@ -128,7 +128,20 @@ function copyJsonNode(value: unknown, active: WeakSet<object>, strict: boolean):
   active.add(value);
   try {
     if (Array.isArray(value)) {
-      const length = value.length;
+      let length: number;
+      if (strict) {
+        // Only a plain array: a subclass can carry state the copied elements lose. The length is
+        // read from its own data descriptor, never through a get trap that could hide elements.
+        if (Reflect.getPrototypeOf(value) !== Array.prototype) return REJECTED;
+        const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+        if (lengthDescriptor === undefined || !("value" in lengthDescriptor)) return REJECTED;
+        if (!Number.isSafeInteger(lengthDescriptor.value) || lengthDescriptor.value < 0) {
+          return REJECTED;
+        }
+        length = lengthDescriptor.value;
+      } else {
+        length = value.length;
+      }
       for (const key of Reflect.ownKeys(value)) {
         if (typeof key !== "string") {
           if (strict) return REJECTED; // a symbol key JSON would drop
@@ -194,7 +207,8 @@ function copyJsonNode(value: unknown, active: WeakSet<object>, strict: boolean):
  *
  * With `strict`, everything that JSON would drop silently is rejected instead of skipped: an
  * `undefined` object property, a non-enumerable property or array element and a symbol key (on an
- * object or an array). A value with such a property then never has the same copy as one without it (a request
+ * object or an array). It also accepts only plain arrays (Array.prototype, no subclass) and reads
+ * an array's length from its own data descriptor. A value with such a property then never has the same copy as one without it (a request
  * digest input, API-IDM-005).
  */
 export function copyJsonValue(

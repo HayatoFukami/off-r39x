@@ -345,12 +345,30 @@ describe("TC-API-IDM-005-002 a request that is not JSON-representable is refused
     const hiddenString = Object.defineProperty({}, "note", { value: MARKER });
     const withSymbol = { [Symbol(MARKER)]: 1 };
     const arrayWithSymbol = Object.assign([MARKER], { [Symbol(MARKER)]: 1 });
+    // An Array subclass can carry state (a private field) that the copied elements lose, and a
+    // proxy's length get trap can hide the elements a descriptor-based read would see.
+    class TaggedItems extends Array<unknown> {
+      readonly #kind = "replace";
+      kind() {
+        return this.#kind;
+      }
+    }
+    const sparse: unknown[] = [];
+    sparse[2] = MARKER;
+    const lengthLies = new Proxy(sparse, {
+      get: (target, key, receiver) => (key === "length" ? 0 : Reflect.get(target, key, receiver)),
+    });
     const dropped: [label: string, request: unknown][] = [
       ["non-enumerable body property (undefined)", { params: {}, query: {}, body: hidden }],
       ["non-enumerable body property (string)", { params: {}, query: {}, body: hiddenString }],
       ["nested non-enumerable property", { params: {}, query: {}, body: { items: [hidden] } }],
       ["symbol key in body", { params: {}, query: {}, body: withSymbol }],
       ["symbol key on an array", { params: {}, query: {}, body: arrayWithSymbol }],
+      ["Array subclass", { params: {}, query: {}, body: { items: new TaggedItems(MARKER) } }],
+      [
+        "array proxy whose length get reports 0 for a sparse array",
+        { params: {}, query: {}, body: { items: lengthLies } },
+      ],
       [
         "non-enumerable array element",
         {
