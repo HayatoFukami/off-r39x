@@ -142,8 +142,14 @@ export function canonicalRequestJson(request: NormalizedRequest): string {
     // A proxy (the request, params or query here; anything inside body and query in the strict
     // copy) could answer the reads below differently each time: refuse it before its traps run.
     if (types.isProxy(request) || !isPlainRecord(request)) throw new Error(NOT_CANONICALIZABLE);
-    // The request itself gets the strict rules too: a plain object whose three fields are
-    // enumerable data properties (a class instance or a hidden field is a wiring defect).
+    // The request itself gets the strict rules too: a plain object with exactly the three fields,
+    // each an enumerable data property (a class instance, a hidden field or any other own key, a
+    // symbol included, is a wiring defect).
+    for (const key of Reflect.ownKeys(request)) {
+      if (key !== "body" && key !== "params" && key !== "query") {
+        throw new Error(NOT_CANONICALIZABLE);
+      }
+    }
     const body = requestField(request, "body");
     const params = requestField(request, "params");
     const query = requestField(request, "query");

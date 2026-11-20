@@ -542,6 +542,21 @@ describe("TC-API-IDM-005-002 a request that is not JSON-representable is refused
       ["non-enumerable body", hiddenField("body")],
       ["non-enumerable params", hiddenField("params")],
       ["non-enumerable query", hiddenField("query")],
+      // NormalizedRequest has exactly these three fields: anything else on the request is refused.
+      ["extra string field", { params: {}, query: {}, body: null, extra: MARKER }],
+      ["extra undefined field", { params: {}, query: {}, body: null, extra: undefined }],
+      ["extra symbol key", { params: {}, query: {}, body: null, [Symbol(MARKER)]: 1 }],
+      [
+        "extra non-enumerable field",
+        Object.defineProperty({ params: {}, query: {}, body: null }, "extra", { value: MARKER }),
+      ],
+      [
+        "extra accessor",
+        Object.defineProperty({ params: {}, query: {}, body: null }, "extra", {
+          enumerable: true,
+          get: () => MARKER,
+        }),
+      ],
     ];
     for (const [label, request] of notPlain) {
       let thrown: unknown;
