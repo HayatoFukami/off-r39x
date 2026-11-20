@@ -6,6 +6,7 @@ import { validateQuery } from "../../apps/api/src/api/middleware/query.ts";
 import {
   type CursorKey,
   defineListCursor,
+  listCursorBinding,
   readListCursor,
   requireListCursorKey,
 } from "../../apps/api/src/api/pagination.ts";
@@ -36,7 +37,11 @@ function build(deps: Deps) {
     const query = listQuery.read(c);
     const position = readListCursor(cursorDef, key, query);
     reads.push(position);
-    const next = cursorDef.encode(key, { keys: [TIMESTAMP], publicRef: REF }, query);
+    const next = cursorDef.encode(
+      key,
+      { keys: [TIMESTAMP], publicRef: REF },
+      listCursorBinding(query),
+    );
     key.key.fill(0); // a handler zeroing its copy must not change the key of later requests
     return successResponse(c, listDataSchema(z.strictObject({})), {
       items: [],
