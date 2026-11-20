@@ -26022,7 +26022,7 @@
         "Store unavailable and commit_unknown are 503 DATABASE_TEMPORARY_FAILURE (retryable); a store not_found after the guard is 500 INTERNAL_ERROR (OI-2, user decision); without the profiles dependency both routes are 503 TEMPORARY_UNAVAILABLE",
         "Idempotency-Key is ignored (two PATCHes with the same key write twice); PUT, POST and DELETE are 405 with Allow: GET, HEAD, PATCH",
         "The completion log carries operation_id API-AUTH-002 / API-AUTH-004, http_route /api/v1/self/profile and one authorization.decision.completed",
-        "With the real repository on a fake pool, GET and PATCH answer the same DB failure the same way as the common boundary: EAI_AGAIN and 08006 are 503 DATABASE_TEMPORARY_FAILURE (retryable, details null), 57014 and 53300 are 500 INTERNAL_ERROR (not retryable); the raw error text is not logged",
+        "With the real repository on a fake pool, GET and PATCH answer the same DB failure the same way as the common boundary: EAI_AGAIN, 08006 and 53300 (too many connections) are 503 DATABASE_TEMPORARY_FAILURE (retryable, details null), 57014 and 53200 are 500 INTERNAL_ERROR (not retryable); the raw error text is not logged",
         "A store that returns an upper- or mixed-case profile_ref makes GET and PATCH answer 500 INTERNAL_ERROR (details null) through the common error envelope; the reference is never sent"
       ],
       "expected_db_postconditions": [],
@@ -26290,8 +26290,8 @@
       "expected_domain_postconditions": [
         "Each case first asserts that the raw pool error has no code and the node-postgres message (Connection terminated unexpectedly, Connection terminated due to connection timeout, Cannot use a pool after calling end on the pool)",
         "readCurrentBusinessProfile and updateCurrentBusinessProfile then return { status: unavailable } and do not throw",
-        "Coded failures follow the common DB classification on both paths (Issue #69): EAI_AGAIN, ENOTFOUND, ECONNRESET, ECONNREFUSED, a five-letter errno, no code at all, 08006 and 57P01 on the query, and EAI_AGAIN, ECONNREFUSED or no code on connect(), return { status: unavailable } for read and update; 40001 on the read is unavailable",
-        "57014 (statement timeout), 53300, 58030, 23514 and 22001 are not unavailable: read and update throw the original error with its code, which the HTTP boundary answers with 500"
+        "Coded failures follow the common DB classification on both paths (Issue #69): EAI_AGAIN, ENOTFOUND, ECONNRESET, ECONNREFUSED, a five-letter errno, no code at all, 08006, 57P01 and 53300 on the query, and EAI_AGAIN, ECONNREFUSED, 53300 or no code on connect(), return { status: unavailable } for read and update; 40001 on the read is unavailable",
+        "57014 (statement timeout), 53200, 58030, 23514 and 22001 are not unavailable: read and update throw the original error with its code, which the HTTP boundary answers with 500"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],
@@ -26414,7 +26414,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "classifyDatabaseError maps 40001/40P01/55P03 to retryable, a transaction deadline to deadline, SQLSTATE 08xxx/57P01-57P03 and DatabaseUnavailableError to unavailable and a bare Node errno (including EAI_AGAIN) to other, 57014 to statement_timeout, 23505/23P01/23503/23514 to constraint (name only when a string) and everything else to other",
+        "classifyDatabaseError maps 40001/40P01/55P03 to retryable, a transaction deadline to deadline, SQLSTATE 08xxx/53300 (too many connections)/57P01-57P03 and DatabaseUnavailableError to unavailable (53000/53100/53200/53400 stay other) and a bare Node errno (including EAI_AGAIN) to other, 57014 to statement_timeout, 23505/23P01/23503/23514 to constraint (name only when a string) and everything else to other",
         "resolveConstraintViolation calls the table's resolve exactly once and returns its result unchanged only for a registered name with a matching SQLSTATE; every other error is rethrown as the same reference with resolve not called; a resolve failure propagates; the original operation is never re-run"
       ],
       "expected_db_postconditions": [],

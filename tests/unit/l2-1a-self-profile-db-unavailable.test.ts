@@ -148,6 +148,8 @@ describe("TC-API-007-008 coded DB failures follow the common classification on r
     ["no code at all", undefined],
     ["SQLSTATE 08006 (connection failure)", "08006"],
     ["SQLSTATE 57P01 (admin shutdown)", "57P01"],
+    // PR #71 review: connection slots used up; PostgreSQL refuses the new connection.
+    ["SQLSTATE 53300 (too many connections)", "53300"],
   ];
   it.each(unavailable)(
     "%s: read and update (query failure) return unavailable",
@@ -160,7 +162,7 @@ describe("TC-API-007-008 coded DB failures follow the common classification on r
     },
   );
 
-  it.each(["EAI_AGAIN", "ECONNREFUSED", undefined])(
+  it.each(["EAI_AGAIN", "ECONNREFUSED", "53300", undefined])(
     "a pool that cannot connect (%s) is unavailable for read and update",
     async (code) => {
       const repo = createCurrentProfileRepository(unreachablePool(() => coded(code)));
@@ -177,11 +179,12 @@ describe("TC-API-007-008 coded DB failures follow the common classification on r
   });
 
   // The common boundary answers these with 500 INTERNAL_ERROR (statement timeout has no SPEC-110
-  // §50/§51 mapping; 53xxx / 58xxx and data or constraint errors are not connection failures), so
+  // §50/§51 mapping; 53xxx other than 53300 / 58xxx and data or constraint errors are not connection
+  // failures), so
   // the repository throws the original error on both paths instead of returning unavailable.
   const thrownCodes: [label: string, code: string][] = [
     ["SQLSTATE 57014 (statement timeout)", "57014"],
-    ["SQLSTATE 53300 (too many connections)", "53300"],
+    ["SQLSTATE 53200 (out of memory)", "53200"],
     ["SQLSTATE 58030 (I/O error)", "58030"],
     ["SQLSTATE 23514 (check violation)", "23514"],
     ["SQLSTATE 22001 (string data right truncation)", "22001"],

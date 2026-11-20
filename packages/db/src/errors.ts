@@ -41,6 +41,7 @@ export function isSqlstate(code: string | undefined): code is string {
 }
 
 const UNAVAILABLE_CODES: ReadonlySet<string> = new Set([
+  "53300",
   "57P01",
   "57P02",
   "57P03",
@@ -54,18 +55,29 @@ const UNAVAILABLE_CODES: ReadonlySet<string> = new Set([
   "EAI_AGAIN",
 ]);
 /**
- * Transaction-internal judgement: connection-class SQLSTATE (`08xxx`), server shutdown
- * (`57P01`-`57P03`) and Node connection errno. Not the API classification, which accepts only
+ * Transaction-internal judgement: connection-class SQLSTATE (`08xxx`), a connection refused for
+ * want of slots (`53300`), server shutdown (`57P01`-`57P03`) and Node connection errno. Not the API classification, which accepts only
  * typed errors and SQLSTATE (see `isUnavailableSqlstate`).
  */
 export function isDatabaseUnavailableCode(code: string): boolean {
   return code.startsWith("08") || UNAVAILABLE_CODES.has(code);
 }
 
+/**
+ * SQLSTATEs that mean the database connection failed or was refused (SPEC-110 section 51):
+ * connection exceptions (`08xxx`), `53300` too_many_connections, which PostgreSQL raises while
+ * starting a new connection when the connection slots are used up, and `57P01`-`57P03` (shutdown,
+ * cannot connect now). The other `53xxx` resource errors (disk full, out of memory, configuration
+ * limit) are raised on an open connection and are not connection failures.
+ */
 function isUnavailableSqlstate(code: string): boolean {
   return (
     isSqlstate(code) &&
-    (code.startsWith("08") || code === "57P01" || code === "57P02" || code === "57P03")
+    (code.startsWith("08") ||
+      code === "53300" ||
+      code === "57P01" ||
+      code === "57P02" ||
+      code === "57P03")
   );
 }
 

@@ -50,6 +50,17 @@ describe("TC-DEV-API-010-001 classifyDatabaseError", () => {
     },
   );
 
+  // PR #71 review: PostgreSQL refuses a new connection with 53300 (too_many_connections) when the
+  // connection slots are used up, during connection start-up like 57P03. That is a connection
+  // failure (SPEC-110 section 51), so it is unavailable; the other 53xxx resource errors (disk
+  // full, out of memory, configuration limit) are raised on an open connection and stay other.
+  it("SQLSTATE 53300 (too many connections) is unavailable", () => {
+    expect(classifyDatabaseError(syntheticSqlstateError("53300"))).toEqual({ kind: "unavailable" });
+  });
+  it.each(["53000", "53100", "53200", "53400"])("SQLSTATE %s is other", (code) => {
+    expect(classifyDatabaseError(syntheticSqlstateError(code))).toEqual({ kind: "other" });
+  });
+
   // Review fix F2: a bare Node errno proves nothing about the database (it can come from any socket,
   // e.g. a provider call), and SPEC-110 section 51 makes only a database connection failure a 503.
   // The origin is typed at the transaction() boundary (DatabaseUnavailableError), so a bare errno

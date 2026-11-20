@@ -427,7 +427,9 @@ describe("TC-API-007-001 the real repository's DB failures answer like the commo
     ["EAI_AGAIN", 503, "DATABASE_TEMPORARY_FAILURE", true],
     ["08006", 503, "DATABASE_TEMPORARY_FAILURE", true],
     ["57014", 500, "INTERNAL_ERROR", false],
-    ["53300", 500, "INTERNAL_ERROR", false],
+    // PR #71 review: too many connections is PostgreSQL refusing the connection (SPEC-110 §51).
+    ["53300", 503, "DATABASE_TEMPORARY_FAILURE", true],
+    ["53200", 500, "INTERNAL_ERROR", false],
   ] as const;
   for (const method of ["GET", "PATCH"] as const) {
     it.each(cases)(`${method}: %s is %i %s`, async (code, status, errorCode, retryable) => {
