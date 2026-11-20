@@ -16264,7 +16264,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "Throwaway git repository with a modified, staged or untracked non-ignored file",
+      "preconditions": "Throwaway git repository with a modified, staged or untracked non-ignored file, or a tracked file flagged assume-unchanged or skip-worktree",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -16365,6 +16365,29 @@
       "expected_http": null,
       "expected_domain_postconditions": [
         "The release revision resolves once to a 40-hex commit; git archive of that sha is the only build context and the same sha is the R39X_BUILD_GIT_SHA build argument; unknown, empty or option-shaped revisions are rejected"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-INF-DEP-001-008",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["INF-DEP-001"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Synthetic node child processes stand in for git archive and docker build; Docker is not run",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": ["build command missing", "build exits without reading", "archive exits non-zero", "archive command missing"],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "A failure on either side of the archive pipe rejects the image build only after the other child is stopped; both exiting 0 after the whole archive is consumed resolves"
       ],
       "expected_db_postconditions": [],
       "expected_provider_postconditions": [],

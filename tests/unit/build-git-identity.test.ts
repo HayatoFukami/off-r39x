@@ -106,6 +106,31 @@ describe("TC-INF-DEP-001-003 uncommitted changes are recorded as dirty", () => {
       git_tree_state: "dirty",
     });
   });
+
+  it.each([
+    ["assume-unchanged", "--assume-unchanged"],
+    ["skip-worktree", "--skip-worktree"],
+  ])("marks a %s file as dirty even though git status hides its change", (_label, flag) => {
+    // PR #80 review: git status does not report changes behind these index flags, so the tree
+    // cannot be shown to equal HEAD.
+    const { root, head } = committedRepo();
+    git(root, "update-index", flag, "README.md");
+    writeFileSync(join(root, "README.md"), "hidden change\n");
+    expect(git(root, "status", "--porcelain")).toBe("");
+    expect(resolveBuildGitIdentity(root, {})).toEqual({
+      git_sha: head,
+      git_tree_state: "dirty",
+    });
+  });
+
+  it("marks a flagged file as dirty even when its content still matches HEAD", () => {
+    const { root, head } = committedRepo();
+    git(root, "update-index", "--assume-unchanged", "README.md");
+    expect(resolveBuildGitIdentity(root, {})).toEqual({
+      git_sha: head,
+      git_tree_state: "dirty",
+    });
+  });
 });
 
 describe("TC-INF-DEP-001-004 build argument source without a git checkout", () => {

@@ -5,7 +5,11 @@ import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { imageBuildCommands, resolveReleaseCommit } from "../../scripts/build-backend-image.mts";
+import {
+  imageBuildCommands,
+  resolveReleaseCommit,
+  runImageBuild,
+} from "../../scripts/build-backend-image.mts";
 import { createFixtureRoot, REPO_ROOT, removeFixtureRoot } from "../harness/fixture-repo.ts";
 
 const SHA_A = "0123456789abcdef0123456789abcdef01234567";
@@ -99,4 +103,46 @@ describe("TC-INF-DEP-001-007 one resolved commit selects the context and the bui
     expect(container).toContain("pnpm build:backend:image --commit");
     expect(docs).toContain("pnpm build:backend:image --commit");
   });
+});
+
+describe("TC-INF-DEP-001-008 a failing side of the archive pipe ends the whole image build", () => {
+  // Synthetic stand-ins for git archive / docker build; settling proves both children have ended.
+  const node = (script: string) => ({ command: process.execPath, args: ["-e", script] });
+  const endlessWriter = node(
+    "const b=Buffer.alloc(65536,97);(function w(){while(process.stdout.write(b));process.stdout.once('drain',w)})()",
+  );
+  const waitForever = node("setInterval(()=>{},1000)");
+
+  it("rejects and stops the archive when the build command cannot be started", async () => {
+    // PR #80 review: with docker missing, the archive kept writing into a pipe nobody read.
+    const plan = { archive: endlessWriter, build: { command: "r39x-no-such-docker", args: [] } };
+    await expect(runImageBuild(plan, REPO_ROOT)).rejects.toThrow(
+      /r39x-no-such-docker|docker build/,
+    );
+  }, 30_000);
+
+  it("rejects and stops the archive when the build exits without reading the context", async () => {
+    const plan = { archive: endlessWriter, build: node("process.exit(3)") };
+    await expect(runImageBuild(plan, REPO_ROOT)).rejects.toThrow(/exited 3/);
+  }, 30_000);
+
+  it("rejects and stops the build when the archive fails", async () => {
+    const plan = { archive: node("process.exit(4)"), build: waitForever };
+    await expect(runImageBuild(plan, REPO_ROOT)).rejects.toThrow(/git archive exited 4/);
+  }, 30_000);
+
+  it("rejects when the archive command cannot be started", async () => {
+    const plan = { archive: { command: "r39x-no-such-git", args: [] }, build: waitForever };
+    await expect(runImageBuild(plan, REPO_ROOT)).rejects.toThrow(/git archive/);
+  }, 30_000);
+
+  it("resolves when the build consumes the whole archive and both exit 0", async () => {
+    const plan = {
+      archive: node("process.stdout.write('synthetic-context')"),
+      build: node(
+        "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.exit(s==='synthetic-context'?0:9))",
+      ),
+    };
+    await expect(runImageBuild(plan, REPO_ROOT)).resolves.toBeUndefined();
+  }, 30_000);
 });
