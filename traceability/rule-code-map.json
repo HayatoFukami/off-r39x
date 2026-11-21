@@ -3432,7 +3432,7 @@
     {
       "rule_id": "INF-SEED-003",
       "code_paths": ["packages/db/src/migration-lock.ts", "packages/db/src/initial-data/seed.ts"],
-      "test_case_ids": ["TC-TST-SEED-002-005", "TC-TST-SEED-005-004"],
+      "test_case_ids": ["TC-TST-SEED-002-005", "TC-TST-SEED-005-004", "TC-TST-SEED-002-006"],
       "notes": "implementation mapping only: runs as app_migrator under the migration lock handle; SQL limited to the target tables, audit_events, lock and session settings"
     },
     {
@@ -3450,7 +3450,9 @@
         "TC-TST-SEED-006-004",
         "TC-TST-SEED-006-005",
         "TC-TST-SEED-006-006",
-        "TC-TST-SEED-006-007"
+        "TC-TST-SEED-006-007",
+        "TC-TST-SEED-003-006",
+        "TC-TST-SEED-003-007"
       ],
       "notes": "implementation mapping only: decision order, four outcomes, exit codes 0/2/3, no repair after FAILED or UNKNOWN_RESULT"
     },
@@ -3480,7 +3482,8 @@
         "TC-TST-SEED-002-001",
         "TC-TST-SEED-002-002",
         "TC-TST-SEED-002-003",
-        "TC-TST-SEED-002-004"
+        "TC-TST-SEED-002-004",
+        "TC-TST-SEED-002-006"
       ],
       "notes": "implementation mapping only: create only when there is no Event (or no Offering for the only Event); never update or delete"
     },
@@ -3496,7 +3499,9 @@
         "TC-TST-SEED-006-004",
         "TC-TST-SEED-006-005",
         "TC-TST-SEED-006-006",
-        "TC-TST-SEED-006-007"
+        "TC-TST-SEED-006-007",
+        "TC-TST-SEED-002-006",
+        "TC-TST-SEED-003-006"
       ],
       "notes": "implementation mapping only: transaction advisory lock before the count; re-check on a new connection after an unknown COMMIT result"
     },
@@ -3518,7 +3523,7 @@
     {
       "rule_id": "DB-SEED-005",
       "code_paths": ["packages/db/src/initial-data/seed.ts", "packages/db/src/audit-events.ts"],
-      "test_case_ids": ["TC-TST-SEED-003-003", "TC-TST-SEED-004-001"],
+      "test_case_ids": ["TC-TST-SEED-003-003", "TC-TST-SEED-004-001", "TC-TST-SEED-003-007"],
       "notes": "implementation mapping only: one Audit Event per created row in the same transaction"
     },
     {

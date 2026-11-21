@@ -6,6 +6,7 @@ import { createLogger, type LogEvent } from "@off-r39x/observability";
 import { TIMEOUTS } from "@off-r39x/reliability";
 import { Client } from "pg";
 import {
+  failedOutcome,
   outcomeExitCode,
   outcomeLogFields,
   SEED_OPERATION_ID,
@@ -34,11 +35,12 @@ const CLOSE_WAIT_MS = 3000;
 
 type Logger = { log(event: LogEvent): void };
 
-const failedOutcome = (
+// A failure before any seed attempt ran is reported as attempt 1 (is_retry false).
+const failedBeforeSeed = (
   operationExecutionId: string,
   failureClass: SeedFailureClass,
   errorCode: string,
-): SeedOutcome => ({ outcome: "FAILED", operationExecutionId, failureClass, errorCode });
+): SeedOutcome => failedOutcome(operationExecutionId, 1, failureClass, errorCode);
 
 /** The same conditions as migrate-cli.ts: a dedicated, direct app_migrator URL. */
 function migrationUrl(connectionString: string | undefined): URL | undefined {
@@ -101,7 +103,7 @@ async function run(): Promise<void> {
   const url = migrationUrl(process.env.MIGRATION_DATABASE_URL);
   let outcome: SeedOutcome;
   if (appEnv === undefined || actorRef === undefined || url === undefined) {
-    outcome = failedOutcome(fallbackExecutionId, "PERMANENT_FAILURE", "CONFIGURATION_INVALID");
+    outcome = failedBeforeSeed(fallbackExecutionId, "PERMANENT_FAILURE", "CONFIGURATION_INVALID");
   } else {
     outcome = await execute(url, actorRef, logger, fallbackExecutionId);
   }
@@ -113,9 +115,10 @@ async function run(): Promise<void> {
       level: fields.level,
       result: fields.result,
       failure_class: fields.failure_class,
-      is_retry: false,
+      is_retry: outcome.attemptNumber > 1,
       operation_id: SEED_OPERATION_ID,
       operation_execution_id: outcome.operationExecutionId,
+      attempt_number: outcome.attemptNumber,
       error_code: "errorCode" in outcome ? outcome.errorCode : null,
       duration_ms: Math.round(performance.now() - startedAt),
     });
@@ -174,37 +177,37 @@ async function execute(
     try {
       await client.connect();
     } catch {
-      return failedOutcome(executionId, "TEMPORARY_FAILURE", "DATABASE_TEMPORARY_FAILURE");
+      return failedBeforeSeed(executionId, "TEMPORARY_FAILURE", "DATABASE_TEMPORARY_FAILURE");
     }
     try {
       lock = await acquireMigrationLock(client);
     } catch (error) {
       if (error instanceof MigrationPrincipalError)
-        return failedOutcome(executionId, "PERMANENT_FAILURE", "MIGRATION_PRINCIPAL_INVALID");
+        return failedBeforeSeed(executionId, "PERMANENT_FAILURE", "MIGRATION_PRINCIPAL_INVALID");
       if (error instanceof MigrationLockTimeoutError)
-        return failedOutcome(executionId, "TEMPORARY_FAILURE", "MIGRATION_LOCK_TIMEOUT");
-      return failedOutcome(executionId, "TEMPORARY_FAILURE", "DATABASE_TEMPORARY_FAILURE");
+        return failedBeforeSeed(executionId, "TEMPORARY_FAILURE", "MIGRATION_LOCK_TIMEOUT");
+      return failedBeforeSeed(executionId, "TEMPORARY_FAILURE", "DATABASE_TEMPORARY_FAILURE");
     }
-    try {
-      return await seedInitialData({
-        lock,
-        connect: async () => {
-          const next = newClient();
-          try {
-            await next.connect();
-          } catch (error) {
-            await closeQuietly(next.end());
-            throw error;
-          }
-          return next;
-        },
-        readInput: () => process.env.INITIAL_DATA_SEED_JSON,
-        actorRef,
-        ...(logger === undefined ? {} : { logger }),
-      });
-    } catch {
-      return failedOutcome(executionId, "TEMPORARY_FAILURE", "UNEXPECTED_INTERNAL_ERROR");
-    }
+    // No catch here: seedInitialData classifies every error of its own attempts. A throw that still
+    // reaches this point is a bug or a pre-flight refusal, and cannot be proven to have happened before
+    // COMMIT, so it must not be reported as FAILED (a rolled-back result). It leaves through the outer
+    // handler as a crash (exit 1), which the README treats like UNKNOWN_RESULT: run the command again.
+    return await seedInitialData({
+      lock,
+      connect: async () => {
+        const next = newClient();
+        try {
+          await next.connect();
+        } catch (error) {
+          await closeQuietly(next.end());
+          throw error;
+        }
+        return next;
+      },
+      readInput: () => process.env.INITIAL_DATA_SEED_JSON,
+      actorRef,
+      ...(logger === undefined ? {} : { logger }),
+    });
   } finally {
     if (lock) await closeQuietly(lock.release());
     await closeQuietly(client.end());
@@ -214,19 +217,7 @@ async function execute(
 try {
   await run();
 } catch {
-  // Never print the exception. Exit code 2 (not Node's 1): the failure happened before any decision.
-  process.stdout.write(
-    `${JSON.stringify({
-      schema_version: 1,
-      operation_id: SEED_OPERATION_ID,
-      operation_execution_id: randomUUID(),
-      outcome: "FAILED",
-      actor_ref: null,
-      created: { events: [], entry_ticket_offerings: [] },
-      counts: { events: 0, entry_ticket_offerings: 0 },
-      audit_event_ids: [],
-      error_code: "UNEXPECTED_INTERNAL_ERROR",
-    })}\n`,
-  );
-  process.exitCode = 2;
+  // Never print the exception. Whether COMMIT was reached is unknown here, so no FAILED result line
+  // is claimed: exit 1 like a crash, and run the command again (it is idempotent).
+  process.exitCode = 1;
 }

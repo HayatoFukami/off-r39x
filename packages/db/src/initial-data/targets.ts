@@ -6,7 +6,13 @@ import { defineAuditChange } from "../audit-events.ts";
 
 /** One input column. `required` columns must be present and non-null; the others default to NULL. */
 export type InputColumn =
-  | { readonly name: string; readonly kind: "text"; readonly required: boolean }
+  | {
+      readonly name: string;
+      readonly kind: "text";
+      readonly required: boolean;
+      /** Only the Event name has a CHECK (char_length > 0); other text may be empty. */
+      readonly nonEmpty?: boolean;
+    }
   | { readonly name: string; readonly kind: "timestamp"; readonly required: boolean }
   | {
       readonly name: string;
@@ -37,10 +43,11 @@ export type InitialDataTarget = {
   readonly fixed: readonly FixedColumn[];
 };
 
-const text = (name: string, required = false): InputColumn => ({
+const text = (name: string, required = false, nonEmpty = false): InputColumn => ({
   name,
   kind: "text",
   required,
+  nonEmpty,
 });
 const timestamp = (name: string, required = false): InputColumn => ({
   name,
@@ -57,7 +64,7 @@ export const INITIAL_DATA_TARGETS: readonly InitialDataTarget[] = [
     auditTargetType: "PUBLIC_CONTENT",
     afterState: null,
     columns: [
-      text("name", true),
+      text("name", true, true),
       text("summary"),
       timestamp("starts_at"),
       timestamp("ends_at"),

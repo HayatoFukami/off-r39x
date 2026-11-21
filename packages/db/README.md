@@ -128,5 +128,8 @@ has no Offering), reports `NOOP` otherwise, and fails when two or more Events ex
 JSON result line (`outcome` is `CREATED`, `NOOP`, `FAILED` or `UNKNOWN_RESULT`); stderr holds the common
 log lines. Exit codes: `0` CREATED or NOOP, `2` FAILED (fix the cause, run again), `3` UNKNOWN_RESULT
 (the COMMIT result could not be determined; restore the connection and run the same command again).
-Exit code `1` is an unexpected crash and is handled like `3`. The CLI tests need PostgreSQL on port 5432
+Exit code `1` is an unexpected crash (no result line is guaranteed) and is handled like `3`: run again.
+The package script runs `node --disable-warning=ExperimentalWarning src/seed-initial-data-cli.ts`, so the
+Node type stripping warning does not reach stderr, which carries only JSON log lines; a direct `node`
+call on an older Node 24.x prints that warning too. The CLI tests need PostgreSQL on port 5432
 with TLS.

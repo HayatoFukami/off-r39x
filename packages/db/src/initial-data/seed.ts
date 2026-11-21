@@ -41,19 +41,26 @@ export type SeedOutcome =
   | {
       readonly outcome: "CREATED";
       readonly operationExecutionId: string;
+      readonly attemptNumber: number;
       readonly created: SeedCreated;
       readonly auditEventIds: readonly string[];
     }
-  | { readonly outcome: "NOOP"; readonly operationExecutionId: string }
+  | {
+      readonly outcome: "NOOP";
+      readonly operationExecutionId: string;
+      readonly attemptNumber: number;
+    }
   | {
       readonly outcome: "FAILED";
       readonly operationExecutionId: string;
+      readonly attemptNumber: number;
       readonly failureClass: SeedFailureClass;
       readonly errorCode: string;
     }
   | {
       readonly outcome: "UNKNOWN_RESULT";
       readonly operationExecutionId: string;
+      readonly attemptNumber: number;
       readonly errorCode: "COMMIT_RESULT_UNKNOWN";
     };
 
@@ -98,6 +105,8 @@ export type SeedOptions = {
   /** An INFRASTRUCTURE_OPERATOR reference (SPEC-160 section 19.1). */
   readonly actorRef: string;
   readonly logger?: { log(event: LogEvent): void };
+  /** Wall clock of one seed transaction in ms (SPEC-150 section 9: 8000). Overridable for tests. */
+  readonly transactionDeadlineMs?: number;
 };
 
 type Plan = { readonly kind: "all" } | { readonly kind: "offerings"; readonly eventId: string };
@@ -110,11 +119,42 @@ type Recheck =
   | { readonly kind: "complete" }
   | { readonly kind: "uncommitted" };
 
-const failed = (
+export const failedOutcome = (
   operationExecutionId: string,
+  attemptNumber: number,
   failureClass: SeedFailureClass,
   errorCode: string,
-): SeedOutcome => ({ outcome: "FAILED", operationExecutionId, failureClass, errorCode });
+): SeedOutcome => ({
+  outcome: "FAILED",
+  operationExecutionId,
+  attemptNumber,
+  failureClass,
+  errorCode,
+});
+
+/**
+ * Failure class and error code of an attempt that was rolled back (plan v1.2 section 6). Retryable
+ * SQLSTATEs and an unknown COMMIT result are handled before this. An Audit stage failure is always
+ * AUDIT_WRITE_FAILED (temporary for a connection-class SQLSTATE or none, else permanent); a statement
+ * stage 23xxx is INITIAL_DATA_CONSTRAINT_REJECTED (permanent, REL-DB-002); anything else is unexpected
+ * and safe to run again.
+ */
+export function classifySeedFailure(
+  stage: "statement" | "audit",
+  sqlstate: string | undefined,
+): { failureClass: SeedFailureClass; errorCode: string } {
+  if (stage === "audit")
+    return {
+      failureClass:
+        sqlstate === undefined || isConnectionClass(sqlstate)
+          ? "TEMPORARY_FAILURE"
+          : "PERMANENT_FAILURE",
+      errorCode: "AUDIT_WRITE_FAILED",
+    };
+  if (sqlstate?.startsWith("23"))
+    return { failureClass: "PERMANENT_FAILURE", errorCode: "INITIAL_DATA_CONSTRAINT_REJECTED" };
+  return { failureClass: "TEMPORARY_FAILURE", errorCode: "UNEXPECTED_INTERNAL_ERROR" };
+}
 
 /** SPEC-150 REL-DB-005/006: only a missing or connection-class SQLSTATE leaves COMMIT undecided. */
 function commitAcknowledgementUnknown(error: unknown): boolean {
@@ -213,7 +253,8 @@ export async function seedInitialData(options: SeedOptions): Promise<SeedOutcome
   if (!isActiveMigrationLock(options.lock)) throw new Error("Active migration lock required");
   const { actorRef, readInput, connect } = options;
   if (!SAFE_REF.test(actorRef))
-    return failed(randomUUID(), "PERMANENT_FAILURE", "CONFIGURATION_INVALID");
+    return failedOutcome(randomUUID(), 1, "PERMANENT_FAILURE", "CONFIGURATION_INVALID");
+  const deadlineMs = options.transactionDeadlineMs ?? TIMEOUTS.transactionMs;
 
   const log = (event: LogEvent) => {
     try {
@@ -227,6 +268,9 @@ export async function seedInitialData(options: SeedOptions): Promise<SeedOutcome
   // The connection (and its migration lock) this run opened itself after an unknown COMMIT result.
   let ownedConnection: Client | undefined;
   let ownedLock: MigrationLock | undefined;
+  // Cleanup, not business work: unlock and end on the connection this run opened. On a connection
+  // that is already gone these fail fast and the failure is ignored. The caller's own connection and
+  // lock handle are never touched here.
   const closeOwned = async () => {
     const lock = ownedLock;
     const connection = ownedConnection;
@@ -245,24 +289,29 @@ export async function seedInitialData(options: SeedOptions): Promise<SeedOutcome
   // What the attempt in flight was creating, for the re-check after a lost COMMIT acknowledgement.
   let plan: Plan = { kind: "all" };
 
-  const attemptOnce = async (executionId: string): Promise<Attempt> => {
+  const attemptOnce = async (executionId: string, attemptNumber: number): Promise<Attempt> => {
+    const fail = (failureClass: SeedFailureClass, errorCode: string): Attempt => ({
+      kind: "done",
+      outcome: failedOutcome(executionId, attemptNumber, failureClass, errorCode),
+    });
     let commitSent = false;
     let stage: "statement" | "audit" = "statement";
+    const startedAt = performance.now();
     try {
       await beginSeedTransaction(client);
       const eventIds = await readEventIds(client);
       if (eventIds.length >= 2) {
         await client.query("ROLLBACK");
-        return {
-          kind: "done",
-          outcome: failed(executionId, "CONSISTENCY_FAILURE", "INITIAL_DATA_EVENT_NOT_UNIQUE"),
-        };
+        return fail("CONSISTENCY_FAILURE", "INITIAL_DATA_EVENT_NOT_UNIQUE");
       }
       if (eventIds.length === 1) {
         const eventId = eventIds[0] as string;
         if (await hasOfferings(client, eventId)) {
           await client.query("ROLLBACK");
-          return { kind: "done", outcome: { outcome: "NOOP", operationExecutionId: executionId } };
+          return {
+            kind: "done",
+            outcome: { outcome: "NOOP", operationExecutionId: executionId, attemptNumber },
+          };
         }
         plan = { kind: "offerings", eventId };
       } else {
@@ -272,10 +321,7 @@ export async function seedInitialData(options: SeedOptions): Promise<SeedOutcome
       const parsed = loadInput();
       if (!parsed.ok) {
         await client.query("ROLLBACK");
-        return {
-          kind: "done",
-          outcome: failed(executionId, "PERMANENT_FAILURE", parsed.errorCode),
-        };
+        return fail("PERMANENT_FAILURE", parsed.errorCode);
       }
       const data: InitialDataInput = parsed.value;
 
@@ -316,55 +362,68 @@ export async function seedInitialData(options: SeedOptions): Promise<SeedOutcome
         }
       }
       stage = "statement";
+      // Wall clock (SPEC-150 section 9), checked before COMMIT rather than only by a timer: a
+      // synchronous callback can block the event loop past the deadline. Not yet sent: roll back.
+      const remainingMs = deadlineMs - (performance.now() - startedAt);
+      if (remainingMs <= 0) {
+        await client.query("ROLLBACK");
+        return fail("TEMPORARY_FAILURE", "DATABASE_TEMPORARY_FAILURE");
+      }
       commitSent = true;
-      await client.query("COMMIT");
+      const committed = client.query("COMMIT").then(() => "ok" as const);
+      committed.catch(() => {});
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const settled = await Promise.race([
+          committed,
+          new Promise<"late">((resolve) => {
+            timer = setTimeout(() => resolve("late"), remainingMs);
+          }),
+        ]);
+        // COMMIT is sent and not acknowledged in time: the result is unknown, never a plain failure.
+        if (settled === "late") return { kind: "unknown" };
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
       return {
         kind: "done",
-        outcome: { outcome: "CREATED", operationExecutionId: executionId, created, auditEventIds },
+        outcome: {
+          outcome: "CREATED",
+          operationExecutionId: executionId,
+          attemptNumber,
+          created,
+          auditEventIds,
+        },
       };
     } catch (error) {
       if (commitSent && commitAcknowledgementUnknown(error)) return { kind: "unknown" };
       // Not committed: close the transaction. A connection that cannot even roll back is gone, which
       // proves nothing was committed (REL-DB-005): a temporary failure, to be run again.
       if (!(await succeedsWithin(client.query("ROLLBACK"), CLOSE_WAIT_MS)))
-        return {
-          kind: "done",
-          outcome: failed(executionId, "TEMPORARY_FAILURE", "DATABASE_TEMPORARY_FAILURE"),
-        };
-      const code = sqlState(error);
+        return fail("TEMPORARY_FAILURE", "DATABASE_TEMPORARY_FAILURE");
       if (isDatabaseRetryable(error)) return { kind: "retry", code: error.code };
-      // Rejected by a constraint the validation did not foresee (REL-DB-002): never retried.
-      if (isSqlstate(code) && (code.startsWith("23") || code.startsWith("22")))
-        return {
-          kind: "done",
-          outcome: failed(executionId, "PERMANENT_FAILURE", "INITIAL_DATA_CONSTRAINT_REJECTED"),
-        };
-      if (stage === "audit")
-        return {
-          kind: "done",
-          outcome: failed(
-            executionId,
-            isConnectionClass(code) ? "TEMPORARY_FAILURE" : "PERMANENT_FAILURE",
-            "AUDIT_WRITE_FAILED",
-          ),
-        };
-      return {
-        kind: "done",
-        outcome: failed(executionId, "TEMPORARY_FAILURE", "UNEXPECTED_INTERNAL_ERROR"),
-      };
+      const code = sqlState(error);
+      const { failureClass, errorCode } = classifySeedFailure(
+        stage,
+        isSqlstate(code) ? code : undefined,
+      );
+      return fail(failureClass, errorCode);
     }
   };
 
-  /** SPEC-150 section 11 "temporary DB connection acquisition": 3 attempts. */
+  /** SPEC-150 section 11 "temporary DB connection acquisition": 3 attempts within 3 seconds. */
   const reconnect = async (): Promise<Client | undefined> => {
     const policy = RETRY_POLICIES.databaseConnection;
+    const startedAt = performance.now();
     for (let n = 1; n <= policy.maxAttempts; n += 1) {
       try {
         const connection = await connect();
         connection.on("error", () => {});
         return connection;
       } catch {
-        if (n < policy.maxAttempts) await sleep(retryDelay(policy, n));
+        const elapsed = performance.now() - startedAt;
+        if (n >= policy.maxAttempts || elapsed >= policy.maxElapsedMs) break;
+        await sleep(Math.min(retryDelay(policy, n), policy.maxElapsedMs - elapsed));
       }
     }
     return undefined;
@@ -372,6 +431,7 @@ export async function seedInitialData(options: SeedOptions): Promise<SeedOutcome
 
   /** DB-SEED-002 (1)-(4). Resolves undefined when the result cannot be determined (4). */
   const recheck = async (connection: Client, executionId: string): Promise<Recheck | undefined> => {
+    const startedAt = performance.now();
     for (let n = 1; n <= MAX_ATTEMPTS; n += 1) {
       try {
         await beginSeedTransaction(connection);
@@ -411,7 +471,10 @@ export async function seedInitialData(options: SeedOptions): Promise<SeedOutcome
       } catch (error) {
         const closed = await succeedsWithin(connection.query("ROLLBACK"), CLOSE_WAIT_MS);
         if (!closed || !isDatabaseRetryable(error) || n >= MAX_ATTEMPTS) return undefined;
-        await sleep(retryDelay(RETRY_POLICIES[error.code], Math.min(n, 3)));
+        const policy = RETRY_POLICIES[error.code];
+        const elapsed = performance.now() - startedAt;
+        if (elapsed >= policy.maxElapsedMs) return undefined;
+        await sleep(retryDelay(policy, Math.min(n, policy.maxAttempts - 1)));
       }
     }
     return undefined;
@@ -420,27 +483,47 @@ export async function seedInitialData(options: SeedOptions): Promise<SeedOutcome
   try {
     let attemptNumber = 0;
     let retries = 0;
-    const startedAt = performance.now();
+    const budgetStartedAt = performance.now();
+    // Time spent waiting for the migration lock is not part of the retry budget (SPEC-180 section 24).
+    let lockWaitMs = 0;
     for (;;) {
       attemptNumber += 1;
       const executionId = randomUUID();
-      const attempt = await attemptOnce(executionId);
+      if (attemptNumber > 1)
+        log({
+          event_name: "reliability.retry.attempted",
+          level: "INFO",
+          result: "PENDING",
+          is_retry: true,
+          operation_id: SEED_OPERATION_ID,
+          operation_execution_id: executionId,
+          attempt_number: attemptNumber,
+          provider: "NEON_DB",
+        });
+      const attempt = await attemptOnce(executionId, attemptNumber);
       if (attempt.kind === "done") return attempt.outcome;
 
       if (attempt.kind === "retry") {
         retries += 1;
         const policy = RETRY_POLICIES[attempt.code];
+        const elapsed = performance.now() - budgetStartedAt - lockWaitMs;
         if (
           attemptNumber >= MAX_ATTEMPTS ||
           retries >= policy.maxAttempts ||
-          performance.now() - startedAt >= policy.maxElapsedMs
+          elapsed >= policy.maxElapsedMs
         )
-          return failed(executionId, "TEMPORARY_FAILURE", "DATABASE_TEMPORARY_FAILURE");
+          return failedOutcome(
+            executionId,
+            attemptNumber,
+            "TEMPORARY_FAILURE",
+            "DATABASE_TEMPORARY_FAILURE",
+          );
         await sleep(retryDelay(policy, retries));
         continue;
       }
 
       // COMMIT was sent and its acknowledgement was lost: the result is unknown (REL-DB-006).
+      const unknownAt = performance.now();
       const common = {
         is_retry: attemptNumber > 1,
         operation_id: SEED_OPERATION_ID,
@@ -459,62 +542,66 @@ export async function seedInitialData(options: SeedOptions): Promise<SeedOutcome
       const unknown: SeedOutcome = {
         outcome: "UNKNOWN_RESULT",
         operationExecutionId: executionId,
+        attemptNumber,
         errorCode: "COMMIT_RESULT_UNKNOWN",
       };
-      // The original connection is abandoned as it is: nothing more is sent on it.
+      // The lost connection is abandoned: no statement is sent on it (only a cleanup unlock on a
+      // connection this run opened itself, which fails fast when it is gone).
       await closeOwned();
       const reconnected = await reconnect();
       if (reconnected === undefined) return unknown;
       ownedConnection = reconnected;
       const checked = await recheck(reconnected, executionId);
       if (checked === undefined) return unknown;
+      const resolved = () => ({
+        ...common,
+        event_name: "reliability.unknown_result.resolved" as const,
+        duration_ms: Math.round(performance.now() - unknownAt),
+      });
 
       if (checked.kind === "created") {
-        log({
-          ...common,
-          event_name: "reliability.unknown_result.resolved",
-          level: "INFO",
-          result: "SUCCESS",
-          failure_class: "SUCCESS",
-        });
+        log({ ...resolved(), level: "INFO", result: "SUCCESS", failure_class: "SUCCESS" });
         return {
           outcome: "CREATED",
           operationExecutionId: executionId,
+          attemptNumber,
           created: checked.created,
           auditEventIds: checked.auditEventIds,
         };
       }
       if (checked.kind === "complete") {
-        log({
-          ...common,
-          event_name: "reliability.unknown_result.resolved",
-          level: "INFO",
-          result: "NOOP",
-          failure_class: null,
-        });
-        return { outcome: "NOOP", operationExecutionId: executionId };
+        log({ ...resolved(), level: "INFO", result: "NOOP", failure_class: null });
+        return { outcome: "NOOP", operationExecutionId: executionId, attemptNumber };
       }
       // Not committed (DB-SEED-002 (3)): take the migration lock again on the new connection, then
       // start over with a new execution id. The attempt counts against the same budget.
       log({
-        ...common,
-        event_name: "reliability.unknown_result.resolved",
+        ...resolved(),
         level: "WARN",
         result: "FAILED",
         failure_class: "TEMPORARY_FAILURE",
       });
       if (attemptNumber >= MAX_ATTEMPTS)
-        return failed(executionId, "TEMPORARY_FAILURE", "DATABASE_TEMPORARY_FAILURE");
+        return failedOutcome(
+          executionId,
+          attemptNumber,
+          "TEMPORARY_FAILURE",
+          "DATABASE_TEMPORARY_FAILURE",
+        );
+      const lockStartedAt = performance.now();
       try {
         ownedLock = await acquireMigrationLock(reconnected);
       } catch (error) {
-        return failed(
+        return failedOutcome(
           executionId,
+          attemptNumber,
           "TEMPORARY_FAILURE",
           error instanceof MigrationLockTimeoutError
             ? "MIGRATION_LOCK_TIMEOUT"
             : "DATABASE_TEMPORARY_FAILURE",
         );
+      } finally {
+        lockWaitMs += performance.now() - lockStartedAt;
       }
       client = reconnected;
     }

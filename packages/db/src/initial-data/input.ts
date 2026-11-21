@@ -69,7 +69,7 @@ const isText = (value: unknown): value is string =>
 function validValue(column: InputColumn, value: unknown): InputValue | undefined {
   switch (column.kind) {
     case "text":
-      return isText(value) && (!column.required || value.length > 0) ? value : undefined;
+      return isText(value) && (!column.nonEmpty || value.length > 0) ? value : undefined;
     case "timestamp":
       return typeof value === "string" && timestampMillis(value) !== null ? value : undefined;
     case "currency":
