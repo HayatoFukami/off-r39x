@@ -97,7 +97,11 @@ export function outcomeLogFields(outcome: SeedOutcome): {
 }
 
 export type SeedOptions = {
-  /** From `acquireMigrationLock`; its client runs the first attempt. */
+  /**
+   * From `acquireMigrationLock`; its client runs the first attempt. If that attempt's COMMIT result
+   * becomes unknown, the client is ended and the handle is invalidated (`release()` then returns
+   * false and sends no SQL), whatever the final outcome. Do not use the client after the seed.
+   */
   readonly lock: MigrationLock;
   /** A new connected client, for the re-check after an unknown COMMIT result and the retry after it. */
   readonly connect: () => Promise<Client>;
