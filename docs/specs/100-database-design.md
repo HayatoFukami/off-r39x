@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-100
 title: Database Design
-version: 2.5.0
+version: 2.5.1
 status: provisional
 depends_on:
   - SPEC-000
@@ -1700,7 +1700,9 @@ ck_idempotency_records_expiry CHECK (expires_at = created_at + interval '24 hour
 ck_idempotency_records_result_ref CHECK ((result_ref_type IS NULL) = (cardinality(result_refs) = 0))
 ```
 
-lookupはこのUNIQUE indexが担い、追加のindexを作らない。`expires_at` はgenerated columnにせず、既定値とCHECKで固定する（`created_at` と同じ `transaction_timestamp()` から求め、Clientが任意の `expires_at` をINSERT / UPDATEできない）。`result_ref_type` / `result_refs` は、INSERTの時点では結果の行がまだないため未設定（NULLと空配列）でよく、同じtransactionの中で結果の行を作った後に `UPDATE` で設定してよい。
+lookupはこのUNIQUE indexが担い、追加のindexを作らない。`expires_at` はgenerated columnにせず、既定値とCHECKで決める。`created_at` は `transaction_timestamp()`、`expires_at` はその24時間後とし、`ck_idempotency_records_expiry` が両者の関係を固定する（両者の関係を満たさないINSERT / UPDATEはCHECKで拒否される）。時刻を決めるのはDBの `transaction_timestamp()` であり、Clientは時刻を指定できない。ここでのClientは、HTTPのClientと、Business API（Hono repository）の中で記録を書くコードの呼出し側を指す。記録を書くコードは時刻を入力に取らず、INSERTでも期限切れの行の再利用（`DB-IDM-003`）でも、`created_at` を `transaction_timestamp()`、`expires_at` をその24時間後とする（`DB-TIM-002`）。時刻の列の保護は `app_api_runtime` のDB権限に求めない（保証しない）。`DB-IDM-003` の再利用は `created_at` と `expires_at` のUPDATEを要するため、runtimeの権限で2列を一緒に動かすことはDBでは防げない。INSERTの権限は、時刻の列を除いた列単位にしてよい（必須ではない）。時刻をDB triggerで決めることはしない（§58、`DB-TIM-003` の方針。時刻は既定値とHono repositoryの文で決める）。期限が本来の値からずれても、ずれるのは補助である記録の判定（期限切れとみなす時点）だけで、critical duplicateはDomain Business Cause / DB uniqueが防ぐ（`SPEC-110` `API-IDM-001`、`API-IDM-010`）。
+
+`result_ref_type` / `result_refs` は、INSERTの時点では結果の行がまだないため未設定（NULLと空配列）でよく、同じtransactionの中で結果の行を作った後に `UPDATE` で設定してよい。
 
 **DB-IDM-001:** raw `Idempotency-Key`、応答body、Checkout URL、Stripe Session ID、Email等の個人情報、QR tokenをこの表に保存しない。保存するのはPrincipal（Business Profile）、Operation ID、digest、結果の参照、時刻だけである（`SPEC-110` `API-IDM-005`、`API-IDM-007`）。
 
@@ -2386,6 +2388,7 @@ Retry count、backoff、reconciliation、Review Case解消Runbookを定義する
 | UCR-110-003 | INCORPORATED | §43.1 `app.idempotency_records`、§45.6、§47、§48、`DB-IDM-001〜003`、SPEC-110 §18.1 `API-IDM-003〜010` |
 | UCR-180-001 | INCORPORATED | §13.5 初期データ（`DB-SEED-001〜007`）、`SPEC-180 §45.3` `INF-SEED-001〜006` |
 | UCR-100-004 | INCORPORATED | §14.1 `DB-AUTH-003`、§43 `auth_subject` / CHECK / `DB-XFN-004`、§48、§62、§67、SPEC-110 §61 Acceptance 49、SPEC-150 §66 Acceptance 53、SPEC-150 `REL-AUTH-009` / `REL-REC-016〜017`、SPEC-110 `API-AUTH-003` / `API-ADM-REC-007` / §49 |
+| UCR-100-005 | INCORPORATED | §43.1 `app.idempotency_records` の `created_at` / `expires_at`（時刻を決める主体、Clientの範囲、時刻の列の保護を `app_api_runtime` の権限に求めないこと）、SPEC-170 §28.1 `TST-IDM-004` (1)、SPEC-170 §78 |
 
 既存の `UCR-130-005` は引き続き `DEFERRED_NONBLOCKING` であり、運用Indexの先取り追加は行わない。
 
@@ -2399,3 +2402,14 @@ Retry count、backoff、reconciliation、Review Case解消Runbookを定義する
 - 変更しない場合の影響: `API-AUTH-003` の実装が0件を500にする（`REL-AUTH-005` に反する）か、仕様にないCaseの形を推測で作る。
 - 影響を受ける可能性がある仕様書: SPEC-150、SPEC-110（本改訂で反映）。SPEC-060（§16.3で既にFail Closedと追跡を要求。変更不要）、SPEC-130（§61で既にAuth Subjectを表示しない。変更不要）、SPEC-140（`SEC-PII-002` と整合。変更不要）、SPEC-160（Profile未解決時の相関は既存の§11指紋、reason codeは既存の `BUSINESS_PROFILE_INCONSISTENT`。変更不要）、SPEC-170（Test Case IDとmanifestは実装のWork Planが `SPEC-170` §5 に従って割り当てる。本文の変更は不要）、SPEC-180（§22.2の権限で足りる。変更不要）、SPEC-200（`ACC-GEN-004`。変更不要）
 - 範囲外として残す事項: Profileが消えたIdentityが再度provisionすると新しいProfile（新しい `public_ref`、`display_name` はnull）になる。Profileが削除された場合、そのProfileを参照する業務履歴はRESTRICT FKにより存在しえない（制約を無効化した操作を除く）。一方、`auth_subject` がout-of-bandに変更（UPDATE）された場合、旧Profileは別のAuth Subjectに結び付いたまま残り、元のAuth Subjectの再provisionで `REL-REC-017` (i) が成立してCaseをresolveできるが、旧Profileの誤った結び付きは本Caseでは検出・追跡されない。その検出と追跡は本UCRの範囲外とする。Identityが存在し再provisionされないCaseは `REL-REC-017` の収束条件を満たさず、resolveできないままunresolvedで残り、`SPEC-160` `OBS-ALT-023` / `OBS-ALT-024` のaging alertの対象のままとなる（alertは本改訂で変更しない）。0件を観測した後のtransaction retryで同じrequestが201になりうる点は `REL-AUTH-009` に注記した。実装（Case表、`review-case.ts`、`API-AUTH-003`、`API-ADM-REC-007`）は後続のPRで行う。
+
+### UCR-100-005
+
+- **Status:** `INCORPORATED`。本改訂（SPEC-100 v2.5.1、SPEC-170 v2.8.1）で本文へ反映した（プロジェクト所有者の決定、2026-11-21。`SPEC-000` §8）。§43.1 の文言の明確化であり、表の列・型・既定値・CHECK・index、`DB-IDM-001`〜`DB-IDM-003`、`SPEC-180` §22.2 の権限は変えていない。新しいerror code・state・Capability・Operation・index・trigger・DB関数・roleは追加していない。現在の契約は本文を正とし、以下の要求はその経緯の記録である。
+- 対象: SPEC-100 §43.1（`app.idempotency_records` の `created_at` / `expires_at`）。`DB-IDM-003`、SPEC-170 §28.1 `TST-IDM-004` (1) に関連する。
+- 現在の仕様（改訂前）: §43.1 は「`expires_at` はgenerated columnにせず、既定値とCHECKで固定する（`created_at` と同じ `transaction_timestamp()` から求め、Clientが任意の `expires_at` をINSERT / UPDATEできない）」としていた。一方 `DB-IDM-003` は、期限切れの行の再利用で `created_at` と `expires_at` を条件付きの `UPDATE` で更新することを求めるため、`app_api_runtime`（`SPEC-180` §22.2）はこの2列をUPDATEできる。「Client」にDB roleを含めて読むと、runtimeは `ck_idempotency_records_expiry` を満たしたまま2列を一緒に動かせるので、この保証はDBの権限では実装できなかった。§58 はBusiness triggerと `updated_at` triggerを採らず（`DB-TIM-003`）、§43.1 は時刻を既定値とCHECKで決めていた。SPEC-170 `TST-IDM-004` (1) の「CHECKで固定され、任意の値をINSERT / UPDATEできない」にも同じ読み方の余地があった。
+- 要求する変更: (1) 「Client」を、HTTPのClientと、Business API（Hono repository）の中で記録を書くコードの呼出し側と明記する。記録を書くコードは時刻を入力に取らず、`created_at` を `transaction_timestamp()`、`expires_at` をその24時間後とする。CHECKは両者の関係を固定する。(2) 時刻の列の保護を `app_api_runtime` のDB権限に求めない（保証しない）ことを明記する。INSERTの権限は時刻の列を除いた列単位にしてよい（必須ではない）。(3) SPEC-170 `TST-IDM-004` (1) の括弧を、CHECKが関係を固定すること、DB権限で時刻の列が守られることを期待値にしないことに合わせる。
+- 理由: `DB-IDM-003` と両立するDB権限の手段がない（UPDATEの権限を列単位にしても、時刻の2列を含む）。DB側で時刻を決めるtriggerは §58 と `DB-TIM-003` の方針（Business logicをtriggerへ隠さず、invariantはCHECK等で守る）に反し、SECURITY DEFINERのDB関数や新しいroleは仕様にないobjectを増やす。期限を早めても遅らせても、ずれるのは補助である記録の判定（期限切れとみなす時点）だけで、critical duplicateはDomain Business Cause / DB uniqueが防ぐ（SPEC-110 `API-IDM-001`、`API-IDM-010`）。`app_api_runtime` は業務表そのものもUPDATEできる（`SPEC-180` §22.2）ので、この表の時刻の列だけを権限で守っても防御は強くならない。
+- 変更しない場合の影響: 現在の文言は実装できない保証を求めるため、実装は文言に反したままになるか、仕様にないtrigger・DB関数・roleを推測で足すことになる。レビューで同じ指摘が繰り返される（PR #84 への外部レビュー）。
+- 影響を受ける可能性がある仕様書: SPEC-170（本改訂で §28.1 `TST-IDM-004` (1) と §78 へ反映）。SPEC-110（§18.1 `API-IDM-008` は「作成時刻から24時間」、`API-IDM-006` 1 は再利用で作成時刻を更新するとだけ定め、時刻を決める主体と手段を定めないので変更不要）、SPEC-180（§22.2 の「Business APIに必要なSELECT / INSERT / UPDATE」は列単位のINSERTも含むので変更不要）、SPEC-140（§39 のexplicit table / sequence privilegeと整合し変更不要）、SPEC-150（この表の時刻に触れないので変更不要）、SPEC-190（変更不要）、SPEC-200（`ACC-GEN-004`。変更不要）
+- 範囲外として残す事項: 実装（`app.idempotency_records` のmigration、記録を書くHono repositoryのコード、INSERTの列単位の権限を採るかどうか、関係するTest）は後続のPRで行う。
