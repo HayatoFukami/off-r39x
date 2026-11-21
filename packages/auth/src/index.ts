@@ -282,18 +282,22 @@ export interface PrincipalRecord {
 export interface PrincipalStore {
   findByAuthSubject(subject: string): Promise<PrincipalRecord>;
 }
-export async function resolvePrincipal(
+type PrincipalDecision =
+  | { readonly profile: "present"; readonly principal: Principal }
+  | { readonly profile: "missing"; readonly subject: string };
+
+/**
+ * The single place where the directory, Email and Business Profile decisions are made, so the
+ * provisioning variant cannot drift from `resolvePrincipal` (SPEC-110 §24/§24.1, AR-ID-006).
+ * A missing Profile is returned as a value; each caller decides what it means.
+ */
+async function decidePrincipal(
   identity: VerifiedIdentity,
   store: PrincipalStore,
-  options: {
-    readonly requireVerifiedEmail?: boolean;
-    /**
-     * Called once when the Email verified check (step 3) has passed, before the Business Profile
-     * (step 5) is looked at, so the caller can record that decision even if step 5 then refuses.
-     */
-    readonly onEmailVerified?: () => void;
-  } = {},
-): Promise<Principal> {
+  verifyEmail: boolean,
+  onEmailVerified: (() => void) | undefined,
+  provisioning: boolean,
+): Promise<PrincipalDecision> {
   let row: PrincipalRecord;
   try {
     row = await store.findByAuthSubject(identity.subject);
@@ -308,12 +312,17 @@ export async function resolvePrincipal(
     typeof row.directory.emailVerified !== "boolean"
   )
     throw new AuthFailure("consistency");
-  if (options.requireVerifiedEmail) {
+  if (verifyEmail) {
     if (!row.directory.emailVerified) throw new AuthFailure("email");
-    options.onEmailVerified?.();
+    onEmailVerified?.();
   }
   // Step 5: the Business Profile, then the Role Assignments.
-  if (!row.profile) throw new AuthFailure("denied");
+  if (!row.profile) {
+    // For provisioning, a Role Assignment cannot exist without its Profile (LEFT JOIN); fail closed
+    // (AR-ID-006). resolvePrincipal keeps its existing "denied" for every missing Profile.
+    if (provisioning && row.roles.length > 0) throw new AuthFailure("consistency");
+    return { profile: "missing", subject: identity.subject };
+  }
   if (
     row.profile.authSubject !== identity.subject ||
     !z.uuid().safeParse(row.profile.publicRef).success ||
@@ -321,11 +330,48 @@ export async function resolvePrincipal(
   )
     throw new AuthFailure("consistency");
   return {
-    subject: identity.subject,
-    profileRef: row.profile.publicRef,
-    emailVerified: row.directory.emailVerified,
-    roles: row.roles as OperationalRole[],
+    profile: "present",
+    principal: {
+      subject: identity.subject,
+      profileRef: row.profile.publicRef,
+      emailVerified: row.directory.emailVerified,
+      roles: row.roles as OperationalRole[],
+    },
   };
+}
+export async function resolvePrincipal(
+  identity: VerifiedIdentity,
+  store: PrincipalStore,
+  options: {
+    readonly requireVerifiedEmail?: boolean;
+    /**
+     * Called once when the Email verified check (step 3) has passed, before the Business Profile
+     * (step 5) is looked at, so the caller can record that decision even if step 5 then refuses.
+     */
+    readonly onEmailVerified?: () => void;
+  } = {},
+): Promise<Principal> {
+  const decision = await decidePrincipal(
+    identity,
+    store,
+    options.requireVerifiedEmail === true,
+    options.onEmailVerified,
+    false,
+  );
+  if (decision.profile === "missing") throw new AuthFailure("denied");
+  return decision.principal;
+}
+/**
+ * API-AUTH-003 (SPEC-110 §24 step 5, provisioning requirement): like `resolvePrincipal` with the
+ * Email check always on, except that "verified Email and no Business Profile" is a result, not a
+ * refusal. Every other decision is shared with `resolvePrincipal` through `decidePrincipal`.
+ */
+export function resolveProvisioningPrincipal(
+  identity: VerifiedIdentity,
+  store: PrincipalStore,
+  options: { readonly onEmailVerified?: () => void } = {},
+): Promise<PrincipalDecision> {
+  return decidePrincipal(identity, store, true, options.onEmailVerified, true);
 }
 export function hasCapability(principal: Principal, capability: Capability): boolean {
   if (!Object.hasOwn(capabilityAuthorities, capability)) return false;

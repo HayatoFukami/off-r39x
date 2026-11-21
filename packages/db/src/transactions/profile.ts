@@ -1,7 +1,7 @@
 // SPEC-100 §55: business transaction module for the caller's own Business Profile
-// (API-AUTH-002 read, API-AUTH-004 update). One use case per function, database work only.
-// The target row is always resolved from the verified Auth Subject in the same statement's WHERE
-// (AR-OWN-006, DB-ID-002); there is no INSERT path (Profile provisioning is API-AUTH-003).
+// (API-AUTH-002 read, API-AUTH-004 update, API-AUTH-003 provision). One use case per function,
+// database work only. The target row is always resolved from the verified Auth Subject
+// (AR-OWN-006, DB-ID-002); the only INSERT path is provisioning, which writes auth_subject alone.
 import { DrizzleQueryError, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { type Pool, types } from "pg";
@@ -22,6 +22,12 @@ export type CurrentProfileRead =
 export type CurrentProfileUpdate =
   | { status: "updated"; profile: CurrentBusinessProfile }
   | { status: "not_found" }
+  | { status: "commit_unknown" }
+  | { status: "unavailable" };
+
+export type CurrentProfileProvision =
+  | { status: "created"; profile: CurrentBusinessProfile }
+  | { status: "existing"; profile: CurrentBusinessProfile }
   | { status: "commit_unknown" }
   | { status: "unavailable" };
 
@@ -110,6 +116,49 @@ export function createCurrentProfileRepository(pool: Pool) {
         if (rows.length === 0) return { status: "not_found" };
         if (rows.length > 1) throw new Error("Business Profile cardinality violation");
         return { status: "updated", profile: toProfile(rows[0] as Row) };
+      } catch (error) {
+        // transaction() has already typed a database-originated failure without a SQLSTATE.
+        if (isDatabaseTemporaryFailure(error)) return { status: "unavailable" };
+        throw error;
+      }
+    },
+    async provisionCurrentBusinessProfile(authSubject: string): Promise<CurrentProfileProvision> {
+      requireSubject(authSubject);
+      try {
+        // DB-AUTH-001 / AR-ID-004: INSERT ... ON CONFLICT (auth_subject) DO NOTHING, then reselect by
+        // the same subject. Only auth_subject is written; public_ref and timestamps are DB defaults
+        // and display_name stays NULL (SPEC-030 §9.2). READ COMMITTED lets the reselect see the row
+        // committed by the writer that ON CONFLICT waited for.
+        const result = await transaction(
+          pool,
+          async (client) => {
+            try {
+              const tx = drizzle(client);
+              const inserted = await tx
+                .insert(businessProfiles)
+                .values({ authSubject })
+                .onConflictDoNothing({ target: businessProfiles.authSubject })
+                .returning(profileColumns);
+              if (inserted.length === 1) return { created: true, row: inserted[0] as Row };
+              const existing = await tx
+                .select(profileColumns)
+                .from(businessProfiles)
+                .where(eq(businessProfiles.authSubject, authSubject));
+              // REL-AUTH-005: never re-create on a missing row; surface the inconsistency.
+              if (existing.length !== 1) {
+                throw new Error("Business Profile reselect cardinality violation");
+              }
+              return { created: false, row: existing[0] as Row };
+            } catch (error) {
+              // transaction() needs the driver's error for retry, unavailability and constraints.
+              throw driverError(error);
+            }
+          },
+          { queryName: "profile.provision_current" },
+        );
+        if (result.status === "commit_unknown") return { status: "commit_unknown" };
+        const { created, row } = result.value;
+        return { status: created ? "created" : "existing", profile: toProfile(row) };
       } catch (error) {
         // transaction() has already typed a database-originated failure without a SQLSTATE.
         if (isDatabaseTemporaryFailure(error)) return { status: "unavailable" };

@@ -1,4 +1,4 @@
-// SPEC-110 §25 API-AUTH-002 / API-AUTH-004 application service. No hono, ApiFailure, routes or
+// SPEC-110 §25 API-AUTH-002 / API-AUTH-003 / API-AUTH-004 application service. No hono, ApiFailure, routes or
 // middleware here (DEV-DEP-001): the route maps these results to HTTP.
 import { normalizeDisplayName } from "@off-r39x/domain";
 
@@ -19,6 +19,14 @@ export interface CurrentProfileStore {
   ): Promise<
     | { status: "updated"; profile: ProfileRecord }
     | { status: "not_found" }
+    | { status: "commit_unknown" }
+    | { status: "unavailable" }
+  >;
+  provisionCurrentBusinessProfile(
+    authSubject: string,
+  ): Promise<
+    | { status: "created"; profile: ProfileRecord }
+    | { status: "existing"; profile: ProfileRecord }
     | { status: "commit_unknown" }
     | { status: "unavailable" }
   >;
@@ -45,6 +53,24 @@ export async function readCurrentProfile(
   if (result.status === "found") return { kind: "ok", profile: result.profile };
   return result.status === "not_found"
     ? { kind: "profile_missing" }
+    : { kind: "database_unavailable" };
+}
+
+export type ProvisionCurrentProfileResult =
+  | { kind: "created" | "existing"; profile: ProfileRecord }
+  | { kind: "commit_unknown" }
+  | { kind: "database_unavailable" };
+
+/** API-AUTH-003. `subject` is the verified Auth Subject; the Domain key is `auth_subject` alone. */
+export async function provisionCurrentProfile(
+  store: CurrentProfileStore,
+  subject: string,
+): Promise<ProvisionCurrentProfileResult> {
+  const result = await store.provisionCurrentBusinessProfile(subject);
+  if (result.status === "created" || result.status === "existing")
+    return { kind: result.status, profile: result.profile };
+  return result.status === "commit_unknown"
+    ? { kind: "commit_unknown" }
     : { kind: "database_unavailable" };
 }
 

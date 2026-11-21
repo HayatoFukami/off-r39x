@@ -13,7 +13,9 @@ export {
   type CurrentProfile,
   currentProfileSchema,
   type PrincipalNavigation,
+  type ProvisionCurrentProfileRequest,
   principalNavigationSchema,
+  provisionCurrentProfileRequestSchema,
   type UpdateCurrentProfileRequest,
   updateCurrentProfileRequestSchema,
 } from "./schemas/profile.ts";

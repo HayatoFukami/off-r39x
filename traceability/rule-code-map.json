@@ -3532,7 +3532,13 @@
     {
       "rule_id": "SEC-AUTH-003",
       "code_paths": ["packages/auth/src/index.ts", "apps/api/src/api/middleware/principal.ts"],
-      "test_case_ids": ["TC-SEC-AUTH-003-001", "TC-SEC-AUTH-003-002"],
+      "test_case_ids": [
+        "TC-SEC-AUTH-003-001",
+        "TC-SEC-AUTH-003-002",
+        "TC-DB-AUTH-001-003",
+        "TC-DB-AUTH-001-006",
+        "TC-DB-AUTH-001-007"
+      ],
       "notes": "Email verified check from the restricted directory view, before Business Profile resolution (SPEC-110 section 24.1)"
     },
     {
@@ -3553,7 +3559,7 @@
         "apps/api/src/api/middleware/principal.ts",
         "apps/api/src/api/routes/self-profile.ts"
       ],
-      "test_case_ids": ["TC-SEC-AZ-013-050", "TC-API-007-007"],
+      "test_case_ids": ["TC-SEC-AZ-013-050", "TC-API-007-007", "TC-DB-AUTH-001-007"],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
     },
     {
@@ -3574,7 +3580,7 @@
         "apps/api/src/api/middleware/principal.ts",
         "apps/api/src/api/routes/self-profile.ts"
       ],
-      "test_case_ids": ["TC-SEC-AZ-013-050", "TC-API-007-007"],
+      "test_case_ids": ["TC-SEC-AZ-013-050", "TC-API-007-007", "TC-DB-AUTH-001-007"],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
     },
     {
@@ -3630,7 +3636,9 @@
         "TC-DEV-API-003-003",
         "TC-DEV-API-003-004",
         "TC-DEV-API-003-005",
-        "TC-DEV-API-002-001"
+        "TC-DEV-API-002-001",
+        "TC-DB-AUTH-001-002",
+        "TC-DB-AUTH-001-009"
       ],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
     },
@@ -3649,7 +3657,9 @@
         "TC-RPC-AUDIT-001",
         "TC-DEV-API-002-001",
         "TC-DEV-API-002-002",
-        "TC-API-007-009"
+        "TC-API-007-009",
+        "TC-DB-AUTH-001-002",
+        "TC-DB-AUTH-001-009"
       ],
       "notes": "Backend foundation only; does not assert completion of business flows or live Provider contracts"
     },
@@ -4672,7 +4682,8 @@
         "TC-RLM-007-002",
         "TC-RLM-007-003",
         "TC-RLM-004-239",
-        "TC-API-007-004"
+        "TC-API-007-004",
+        "TC-DB-AUTH-001-002"
       ],
       "notes": "Shared rate limit (UCR-140-003) implementation mapping; synthetic evidence only, Railway ingress/Redis external facts (SPEC-180 §17.2) are not asserted"
     },
@@ -5343,9 +5354,17 @@
       "code_paths": [
         "apps/api/src/api/routes/self-profile.ts",
         "apps/api/src/api/services/self-profile.ts",
-        "packages/db/src/transactions/profile.ts"
+        "packages/db/src/transactions/profile.ts",
+        "apps/api/src/api/middleware/principal.ts"
       ],
-      "test_case_ids": ["TC-API-007-001", "TC-API-007-006", "TC-API-007-007"],
+      "test_case_ids": [
+        "TC-API-007-001",
+        "TC-API-007-006",
+        "TC-API-007-007",
+        "TC-DB-AUTH-001-001",
+        "TC-DB-AUTH-001-006",
+        "TC-DB-AUTH-001-007"
+      ],
       "notes": "implementation mapping only: PR-L2-1a self Profile read and update; synthetic evidence, G8 (production-like E2E) not executed"
     },
     {
@@ -5355,7 +5374,7 @@
         "apps/api/src/api/services/self-profile.ts",
         "packages/db/src/transactions/profile.ts"
       ],
-      "test_case_ids": ["TC-API-007-006"],
+      "test_case_ids": ["TC-API-007-006", "TC-DB-AUTH-001-006"],
       "notes": "implementation mapping only: PR-L2-1a self Profile read and update; synthetic evidence, G8 (production-like E2E) not executed"
     },
     {
@@ -5367,20 +5386,99 @@
     {
       "rule_id": "DEV-DB-002",
       "code_paths": ["packages/db/src/transactions/profile.ts"],
-      "test_case_ids": ["TC-API-007-005"],
+      "test_case_ids": ["TC-API-007-005", "TC-DB-AUTH-001-004"],
       "notes": "implementation mapping only: PR-L2-1a self Profile read and update; synthetic evidence, G8 (production-like E2E) not executed"
     },
     {
       "rule_id": "DEV-DB-003",
       "code_paths": ["packages/db/src/transactions/profile.ts"],
-      "test_case_ids": ["TC-API-007-005"],
+      "test_case_ids": ["TC-API-007-005", "TC-DB-AUTH-001-004"],
       "notes": "implementation mapping only: PR-L2-1a self Profile read and update; synthetic evidence, G8 (production-like E2E) not executed"
+    },
+    {
+      "rule_id": "API-AUTH-003",
+      "code_paths": [
+        "packages/api-contract/src/rpc.ts",
+        "packages/api-contract/src/schemas/profile.ts",
+        "apps/api/src/api/routes/self-profile.ts",
+        "apps/api/src/api/services/self-profile.ts",
+        "apps/api/src/api/routes.ts",
+        "apps/api/src/api/middleware/principal.ts",
+        "packages/auth/src/index.ts",
+        "packages/db/src/transactions/profile.ts"
+      ],
+      "test_case_ids": [
+        "TC-DB-AUTH-001-001",
+        "TC-DB-AUTH-001-002",
+        "TC-DB-AUTH-001-003",
+        "TC-DB-AUTH-001-004",
+        "TC-DB-AUTH-001-005",
+        "TC-DB-AUTH-001-006",
+        "TC-DB-AUTH-001-007",
+        "TC-DB-AUTH-001-008",
+        "TC-DB-AUTH-001-009"
+      ],
+      "notes": "implementation mapping only: PR-L2-1b self Profile provisioning (API-AUTH-003); synthetic evidence, G8 (production-like E2E) not executed"
+    },
+    {
+      "rule_id": "DB-AUTH-001",
+      "code_paths": ["packages/db/src/transactions/profile.ts"],
+      "test_case_ids": [
+        "TC-DB-AUTH-001-004",
+        "TC-DB-AUTH-001-005",
+        "TC-DB-AUTH-001-006",
+        "TC-DB-AUTH-001-010"
+      ],
+      "notes": "implementation mapping only: PR-L2-1b self Profile provisioning (API-AUTH-003); synthetic evidence, G8 (production-like E2E) not executed"
+    },
+    {
+      "rule_id": "AR-ID-004",
+      "code_paths": [
+        "packages/db/src/transactions/profile.ts",
+        "apps/api/src/api/services/self-profile.ts"
+      ],
+      "test_case_ids": [
+        "TC-DB-AUTH-001-001",
+        "TC-DB-AUTH-001-004",
+        "TC-DB-AUTH-001-005",
+        "TC-DB-AUTH-001-006",
+        "TC-DB-AUTH-001-010"
+      ],
+      "notes": "implementation mapping only: PR-L2-1b self Profile provisioning (API-AUTH-003); synthetic evidence, G8 (production-like E2E) not executed"
+    },
+    {
+      "rule_id": "REL-AUTH-004",
+      "code_paths": ["packages/db/src/transactions/profile.ts"],
+      "test_case_ids": ["TC-DB-AUTH-001-005", "TC-DB-AUTH-001-006"],
+      "notes": "implementation mapping only: PR-L2-1b self Profile provisioning (API-AUTH-003); synthetic evidence, G8 (production-like E2E) not executed"
+    },
+    {
+      "rule_id": "REL-AUTH-005",
+      "code_paths": ["packages/db/src/transactions/profile.ts"],
+      "test_case_ids": ["TC-DB-AUTH-001-004", "TC-DB-AUTH-001-008", "TC-DB-AUTH-001-010"],
+      "notes": "implementation mapping only: PR-L2-1b self Profile provisioning (API-AUTH-003); synthetic evidence, G8 (production-like E2E) not executed; the missing-row case is not re-created but answered 500; the Consistency Review case and the 409 after commit (UCR-100-004, REL-AUTH-009, SPEC-110 section 25) are not implemented and follow in a separate PR after PR-L1-1c adds the case table"
+    },
+    {
+      "rule_id": "AR-ID-001",
+      "code_paths": [
+        "packages/auth/src/index.ts",
+        "apps/api/src/api/middleware/principal.ts",
+        "apps/api/src/api/routes/self-profile.ts"
+      ],
+      "test_case_ids": ["TC-DB-AUTH-001-001", "TC-DB-AUTH-001-003", "TC-DB-AUTH-001-007"],
+      "notes": "implementation mapping only: PR-L2-1b self Profile provisioning (API-AUTH-003); synthetic evidence, G8 (production-like E2E) not executed"
+    },
+    {
+      "rule_id": "AR-ID-005",
+      "code_paths": ["packages/db/src/transactions/profile.ts"],
+      "test_case_ids": ["TC-DB-AUTH-001-006"],
+      "notes": "implementation mapping only: PR-L2-1b self Profile provisioning (API-AUTH-003); synthetic evidence, G8 (production-like E2E) not executed"
     },
     {
       "rule_id": "DEV-DB-004",
       "code_paths": ["packages/db/src/transactions/profile.ts"],
-      "test_case_ids": ["TC-API-007-010"],
-      "notes": "implementation mapping only: the self Profile SELECT and UPDATE ... RETURNING are built from the Drizzle table declaration; transaction_timestamp() stays an SQL expression in the same UPDATE"
+      "test_case_ids": ["TC-API-007-010", "TC-DB-AUTH-001-010"],
+      "notes": "implementation mapping only: the self Profile SELECT, UPDATE ... RETURNING and the provisioning INSERT ... ON CONFLICT DO NOTHING RETURNING and reselect are built from the Drizzle table declaration; transaction_timestamp() stays an SQL expression in the same UPDATE"
     },
     {
       "rule_id": "DEV-API-010",
