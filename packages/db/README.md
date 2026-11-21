@@ -81,7 +81,14 @@ bigint-mode tables; reviewed SQL lives in `migrations/`.
    input or the bundled entrypoint directory. All SQL sources are ordered by filename,
    hashed individually and checked against the applied journal as an exact prefix.
    Only pending migrations are applied; altered, missing or unknown history fails.
-   Readiness requires the whole journal to match. `computeMigrationSetHash()` returns
+   Readiness requires the bundled set (filename byte order) to be an exact prefix of
+   the journal ordered by version byte order; later journal rows and additional
+   catalog objects are tolerated only when the journal is ahead, except a NOT NULL
+   column without default, identity or generation added to a required table
+   (SPEC-180 INF-HLT-006). It reads journal, catalog, journal outside a transaction and judges
+   only when both journal reads agree, retrying within the SPEC-150 55P03 budget;
+   an exhausted budget is a `release_schema_contract` failure.
+   `computeMigrationSetHash()` returns
    the release set identity using sorted filename, NUL, source bytes, NUL.
 
 `createDatabase` requires a runtime-role URL with no query overrides and verifies
