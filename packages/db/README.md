@@ -100,3 +100,49 @@ provider mapping, credential issuance, deployment DB metadata,
 business write repositories, and production provider evidence are intentionally
 not supplied by this foundation. Readiness is an infrastructure check, not proof
 that deferred business services are production-ready.
+
+## Initial data seeding
+
+`pnpm db:seed-initial-data` (`packages/db/src/seed-initial-data-cli.ts`, SPEC-180 §45.3) creates the
+first Event and its Entry Ticket Offerings in an empty database. There is no Business API or migration
+that creates them. Offerings are always created `SUSPENDED` with counters at 0, and the Event
+`business_timezone` is `Asia/Tokyo`. Run it after the migration and the schema readiness check and
+before the API deploy. The command takes the migration lock (`r39x:schema-migration`) itself; the
+library functions `acquireMigrationLock` and `seedInitialData({ lock, ... })` let a migration job run
+migrate, readiness and seed under one session lock. Running `db:migrate` and this command as two
+processes is for development, tests and re-runs: the lock is released in between. Every statement of the
+seed runs in a session that holds the migration lock: when a COMMIT result is lost, the re-check takes
+the lock again on its new connection (waiting up to 60 seconds, else `UNKNOWN_RESULT`) before it reads.
+Each statement of the seed transaction runs within the 8 second transaction deadline (SPEC-150 §9); a
+lock wait or read that would pass it ends the attempt as `FAILED`.
+
+Environment variables (an `app_migrator` direct URL on port 5432 over TLS, as for `db:migrate`):
+
+| Name | Meaning |
+| --- | --- |
+| `APP_ENV` | `production`, `staging`, `development` or `test` |
+| `MIGRATION_DATABASE_URL` | Direct `app_migrator` URL: no query string, no `-pooler` host, port 5432 |
+| `INITIAL_DATA_SEED_ACTOR_REF` | Stable non-secret identity for the Audit Event, `[A-Za-z0-9_:-]{1,128}` |
+| `INITIAL_DATA_SEED_JSON` | The input JSON; read only when a row has to be created |
+
+The input has the two keys `event` and `entry_ticket_offerings` (one or more). See
+`packages/db/seed/initial-data.example.json` (synthetic values only). Unknown keys are rejected,
+including `id`, `public_ref`, `event_id`, `sale_control_state`, `held_quantity`,
+`committed_quantity`, `business_timezone`, `created_at` and `updated_at`. Timestamps need an offset.
+Keep the real input in the protected GitHub Environment Secret of each environment; never share it
+between staging and production and never put it in the repository, a log or a pull request. For a
+local run: `export INITIAL_DATA_SEED_JSON="$(cat packages/db/seed/initial-data.example.json)"` (bash) or
+`$env:INITIAL_DATA_SEED_JSON = Get-Content -Raw packages/db/seed/initial-data.example.json` (PowerShell).
+
+The command never updates or deletes a row: it creates only when there is no Event (or the only Event
+has no Offering), reports `NOOP` otherwise, and fails when two or more Events exist. stdout is exactly one
+JSON result line (`outcome` is `CREATED`, `NOOP`, `FAILED` or `UNKNOWN_RESULT`); stderr holds the common
+log lines. Exit codes: `0` CREATED or NOOP, `2` FAILED (fix the cause, run again), `3` UNKNOWN_RESULT
+(the COMMIT result could not be determined; restore the connection and run the same command again).
+Exit code `1` is an unexpected crash (no result line is guaranteed) and is handled like `3`: run again.
+The root script `db:seed-initial-data` (and the package script `seed:initial-data`) runs `node
+--disable-warning=ExperimentalWarning` on the CLI file directly, not through `pnpm --filter`, which would
+turn the exit codes 2 and 3 into 1. The flag keeps the Node type stripping warning off stderr, which
+carries only JSON log lines (pnpm itself may print its own run lines there); a direct `node` call on an
+older Node 24.x prints that warning too. The CLI tests need PostgreSQL on port 5432
+with TLS.

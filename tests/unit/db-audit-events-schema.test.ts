@@ -322,6 +322,7 @@ const SPEC_TARGET_TYPES = [
   "ROLE_ASSIGNMENT",
   "CONSISTENCY_REVIEW",
   "PUBLIC_CONTENT",
+  "ENTRY_TICKET_OFFERING",
   "SECURITY_CONFIGURATION",
   "WEBHOOK_RECEIPT",
 ];
@@ -621,6 +622,6 @@ describe("TC-DB-ARC-007-002 Drizzle declaration of app.audit_events matches the 
     expect([...AUDIT_PROVIDERS]).toEqual(SPEC_PROVIDERS);
     expect([...AUDIT_FAILURE_CLASSES]).toEqual(SPEC_FAILURE_CLASSES);
     expect([...AUDIT_TARGET_TYPES]).toEqual(SPEC_TARGET_TYPES);
-    expect(SPEC_TARGET_TYPES).toHaveLength(21);
+    expect(SPEC_TARGET_TYPES).toHaveLength(22);
   });
 });
