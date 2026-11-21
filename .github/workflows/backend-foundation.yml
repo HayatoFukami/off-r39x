@@ -75,6 +75,10 @@ jobs:
           TEST_DATABASE_CA: ${{ runner.temp }}/pg-test.crt
           TEST_REDIS_URL: redis://localhost:6379
       - run: pnpm build:backend
+      - name: Backend build records the checked-out commit (INF-DEP-001, SPEC-180 §44 git_sha)
+        run: |
+          recorded="$(node -p "require('./dist/backend-build.json').git_sha")"
+          test "$recorded" = "$(git rev-parse HEAD)"
       - run: pnpm secret-scan --build-dir dist --require-build
       # Deliberately no deployment: this slice is not the completed G1–G10 system gate.
       # Live Neon Auth/proxy, provider smoke and business workers still block promotion.

@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-110
 title: API Specification
-version: 2.11.0
+version: 2.12.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -637,8 +637,9 @@ rate limit（`SPEC-140` Part XIII）は上記の番号付き手順に次の位�
 - **DB primitive:** `INSERT ... ON CONFLICT (auth_subject)` + existing row reselect, `READ COMMITTED`。
 - **Success:** `200` if existing, `201` if newly created。
 - **Response 201 / 200:** `API-AUTH-002`と同形のprofile（`{ profile_ref, display_name, updated_at }`）。新規作成時の `display_name` は `null` とし、Neon Authの氏名・Emailから補完しない（`SPEC-030` §9.2）。既存の場合は既存行を変更せずに返す（`UCR-110-010`）。
+- **Profile relation不整合:** 再select（`SPEC-100` `DB-AUTH-003`）が0件のとき、0件を観測したtransactionではProfileを作らず、`SPEC-150` `REL-AUTH-009` のCaseを同じtransactionでcommitした後に `409 CONSISTENCY_REVIEW_REQUIRED`（`retryable: false`、`details: null`）を返す。応答に `case_ref`、reason code、Auth Subjectを含めない（§49「一般Userへ内部reason codeを返さない」）。retry可能なDB失敗（`40001` / `40P01` / `55P03`）は `REL-AUTH-009` に従いtransaction全体を再評価し、再評価の結果として200 / 201になりうる。retry budgetを使い切れば `503 DATABASE_TEMPORARY_FAILURE`（§50、§51）とする。
 - **Idempotency:** Domain key=`auth_subject`。Transport key不要。
-- **Trace:** `AR-ID-004`, `DB-TXN matrix: Business Profile provisioning`.
+- **Trace:** `AR-ID-004`, `DB-TXN matrix: Business Profile provisioning`, `REL-AUTH-005`, `REL-AUTH-009`, `DB-AUTH-003`.
 
 ### API-AUTH-004 — Update current Business Profile
 
@@ -2043,13 +2044,13 @@ SPEC-150 Manual Recovery Runbookとの対応:
 - **Path:** `/api/v1/admin/recovery/consistency-reviews/{case_ref}/resolve`
 - **Auth:** active `ADMINISTRATOR`; **Capability:** `recovery.exception.execute`
 - **Body:** `{}`。target state / source state値、任意free-text noteを受け取らない。`app.consistency_review_cases.resolution_note` は本operationでは設定せず`NULL`のままとする。
-- **Precondition:** Case unresolved。source Entityを同じlock orderで再取得し、Case作成時snapshotではなくcurrent stateをpreconditionにする（`REL-REC-010`）。Caseがstaleでcurrent stateが既に正規状態へ収束済み、または対応するoperation-specific recoveryが完了し、Authority + Domain Invariantの再検証が成立する場合だけ。
+- **Precondition:** Case unresolved。source Entityを同じlock orderで再取得し、Case作成時snapshotではなくcurrent stateをpreconditionにする（`REL-REC-010`）。Caseがstaleでcurrent stateが既に正規状態へ収束済み、または対応するoperation-specific recoveryが完了し、Authority + Domain Invariantの再検証が成立する場合だけ。reason `AUTH_PROFILE_RELATION_INCONSISTENT` の収束条件は `SPEC-150` `REL-REC-017` とする。
 - **Allowed:** post-verification後に`resolved_at`を設定する。source historyを削除しない。Case reasonに対応する上流専用Recoveryを代替しない。
 - **Forbidden:** mark-fixed only、generic state write、arbitrary SQL、constraint disable、browserだけでresolvedにする操作。
 - **Idempotency:** already resolved replayは200 existing result。同じincidentのretryで新Caseを増やさない。
 - **Errors:** 再検証不成立は`409 CONSISTENCY_REVIEW_REQUIRED`。
 - **Response 200:** `case_ref`, `resolved_at`。Internal IDs / source history / free-text noteを返さない。
-- **Trace:** `REL-REC-010〜013`, `DB-XFN-002,003`, `SPEC-150 §55`.
+- **Trace:** `REL-REC-010〜013`, `REL-REC-017`, `DB-XFN-002,003`, `SPEC-150 §55`.
 
 ---
 
@@ -2071,7 +2072,7 @@ Client向け一般Order status:
 
 一般Userへ内部reason code / provider identifiersを返さない。
 
-Administrator `recovery.review` responseは`case_ref`, opened_at, allowlisted reason category, related public refsを返せるが、Internal IDsは返さない。
+Administrator `recovery.review` responseは`case_ref`, opened_at, allowlisted reason category, related public refsを返せるが、Internal IDsは返さない。Caseの `auth_subject` と `dedupe_key` はAdministratorの応答にも返さない（`SEC-PII-002`、`SPEC-100` `DB-XFN-004`）。`AUTH_PROFILE_RELATION_INCONSISTENT` のCaseはrelated public refsを持たない。
 
 Consistency Review readは §48.3 `consistencyReviewListQuery` を使用し、defaultは`resolution=UNRESOLVED`（`resolved_at IS NULL`相当）とする。Post-verification resolutionは §48.5 `API-ADM-REC-007` だけが提供し、mark-fixed only / generic state writeを提供しない。
 
@@ -2400,6 +2401,7 @@ resolveConsistencyReviewCase()
 46. Transport Idempotencyのreplay記録は業務DBの `app.idempotency_records` だけに保存し、業務更新と同じtransactionで書く。応答body・Checkout URL・個人情報・raw keyを保存せず、保持期間は24時間とする（§18.1）。DB障害による保存の失敗は既存の `503 DATABASE_TEMPORARY_FAILURE`（一意制約の競合は `API-IDM-009`、その他の制約違反は §50）、処理中の同じkeyは新しいerror codeを作らず、`IDEMPOTENCY_KEY_REUSED` または既存結果への収束とする。
 47. `API-IDM-011` の対象Operation（§18の対象一覧と `API-ADM-EML-004/005`）で `Idempotency-Key` が欠落、または16〜128文字の印字可能ASCII（0x20〜0x7E）でない場合は、認証・認可の失敗を先に返したうえで `400 VALIDATION_FAILED`（`details: null`）とし、Domain stateと記録（§18.1）を変更しない。受信した値は正規化せずに検証し、同名headerの複数指定は連結した1つの値として扱う（`API-IDM-011`）。
 48. Owner / Admin listのcursorは §12 `API-QRY-005` のとおり署名・検証し、形式・長さ・署名・鍵version・Operation ID・sort mode・filterの不一致を `400 VALIDATION_FAILED`（`details: null`）とし、先頭pageへ黙って戻さない。
+49. `API-AUTH-003` の再select 0件は500ではなく、Caseをcommitした後の `409 CONSISTENCY_REVIEW_REQUIRED` であり、0件を観測したtransactionではProfileを作らず、内部reason・Auth Subjectを返さない（`REL-AUTH-009`）。
 
 ---
 
@@ -2598,5 +2600,16 @@ retry count / backoff / queue / operator RunbookはSPEC-150。本書§48.5はSPE
 - §12: `API-QRY-005` を追加した。cursorは `SPEC-180` §28.3 の鍵によるHMAC-SHA-256で署名し、鍵versionを含め、少なくともOperation ID・sort mode・filterの値に結び付け、`limit` には結び付けない。形式・長さ・署名・鍵versionの不一致は既存の `400 VALIDATION_FAILED`（`details: null`）とし、先頭pageを返さない。旧versionのcursorは受け付けない。
 - §48.3: 共通の段落から `API-QRY-005` を参照した。
 - §61: Acceptance 48 を追加した。
+
+新しいerror code・state・Capability・Operationは追加していない。
+
+### UCR-100-004 — INCORPORATED
+
+`SPEC-100` が記録したProfile relation不整合のConsistency Review（`UCR-100-004`、`SPEC-100` §70）のうち、本書が所有する部分を本改訂（v2.12.0）で反映した。現在の契約は本文を正とする。
+
+- §25 `API-AUTH-003`: Profile再selectが0件のとき、0件を観測したtransactionではProfileを作らず、`SPEC-150` `REL-AUTH-009` のCaseを同じtransactionでcommitした後に `409 CONSISTENCY_REVIEW_REQUIRED`（`details: null`）を返す。応答に `case_ref`・reason code・Auth Subjectを含めない。retry可能なDB失敗は `SPEC-150` `REL-AUTH-009` に従って再評価し、budgetを使い切れば既存の `503 DATABASE_TEMPORARY_FAILURE` とする。
+- §48.5 `API-ADM-REC-007`: reason `AUTH_PROFILE_RELATION_INCONSISTENT` の収束条件を `SPEC-150` `REL-REC-017` とした。Body・Response・Errorsは変えていない。
+- §49: Caseの `auth_subject` と `dedupe_key` をAdministratorの応答にも返さないことを明記した。
+- §61: Acceptance 49 を追加した。
 
 新しいerror code・state・Capability・Operationは追加していない。

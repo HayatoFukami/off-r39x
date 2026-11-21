@@ -16234,6 +16234,192 @@
       "verification_method": "config_validation"
     },
     {
+      "test_case_id": "TC-INF-DEP-001-002",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["INF-DEP-001"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Throwaway git repository with one synthetic commit and an ignored dist/ directory",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "git_sha is the checked-out 40-hex HEAD and git_tree_state is clean; a matching R39X_BUILD_GIT_SHA is accepted; ignored build output is not a change"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-INF-DEP-001-003",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["INF-DEP-001"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Throwaway git repository with a modified, staged or untracked non-ignored file, or a tracked file flagged assume-unchanged or skip-worktree",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "git_sha stays HEAD and git_tree_state is dirty"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-INF-DEP-001-004",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["INF-DEP-001"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Directory without its own .git (OCI build context), or a missing git executable, with a synthetic R39X_BUILD_GIT_SHA",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "git_sha is the build argument and git_tree_state is unverified; the HEAD of an enclosing repository is never borrowed"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-INF-DEP-001-005",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["INF-DEP-001"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "No git checkout and no or malformed R39X_BUILD_GIT_SHA, a build argument that disagrees with HEAD, a repository without a commit, or a build root whose .git (directory or worktree file) git cannot inspect",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Build identity resolution throws before any bundle is emitted (fail closed)"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-INF-DEP-001-006",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["INF-DEP-001"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Build script, identity module, OCI recipe and CI workflow source only; actual build is a separate command gate",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Identity is resolved before esbuild and recorded in backend-build.json; only R39X_BUILD_GIT_SHA is read from the environment; the OCI recipe declares the build argument before the backend build; CI checks the recorded git_sha"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "verification_method": "config_validation"
+    },
+    {
+      "test_case_id": "TC-INF-DEP-001-007",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["INF-DEP-001"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Throwaway git repository with two commits and an annotated tag; image build plan only, Docker is not run",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The release revision resolves once to a 40-hex commit; git archive of that sha is the only build context and the same sha is the R39X_BUILD_GIT_SHA build argument; unknown, empty or option-shaped revisions are rejected"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-INF-DEP-001-008",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["INF-DEP-001"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Synthetic node child processes stand in for git archive and docker build; Docker is not run",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": ["build command missing", "build exits without reading", "archive exits non-zero", "archive command missing"],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "A failure on either side of the archive pipe rejects the image build only after the other child is stopped; both exiting 0 after the whole archive is consumed resolves"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-INF-DEP-001-009",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["INF-DEP-001"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": ".dockerignore, OCI recipe and docs source only; Docker is not run",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The image context excludes node_modules, dist and .git; the build stage copies only the context and runs a frozen pnpm install before the backend build; docs limit the ancestry check to backend-build.json inside an image from build:backend:image"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false,
+      "verification_method": "config_validation"
+    },
+    {
       "test_case_id": "TC-COMMON-001",
       "level": "Unit",
       "suite": "unit",
@@ -27139,6 +27325,342 @@
       ],
       "sensitivity_class": "synthetic",
       "critical": true
+    },
+    {
+      "test_case_id": "TC-INF-HLT-006-001",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "INF-HLT-006",
+        "SPEC-170-22-9",
+        "REL-DB-012",
+        "INF-RBK-002",
+        "INF-DEP-005"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Independent real PG17 database per scenario; repository migration set applied; a synthetic backward-compatible expand migration applied from a temporary next-release source directory by runMigrations; readiness evaluated from a temporary directory holding only the repository set (the old build)",
+      "fixture_ids": [
+        "tests/fixtures/migrations/compat-expand.sql"
+      ],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "No business mutation"
+      ],
+      "expected_db_postconditions": [
+        "Old build readiness is ready with no failures for the setup, API and Reconciliation identities; journal has one row beyond the build set"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "No readiness fail-closed event"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-INF-HLT-006-002",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "INF-HLT-006",
+        "SPEC-170-22-9",
+        "REL-DB-012",
+        "INF-RBK-002",
+        "INF-DEP-005"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Independent real PG17 database per scenario; repository migration set applied; expand applied; old build readiness evaluated inside a transaction that injects one reversible fault per case, then rolled back; required column SET NOT NULL injected only after proving no NULL row exists",
+      "fixture_ids": [
+        "tests/fixtures/migrations/compat-expand.sql"
+      ],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "required_constraint_removed",
+        "constraint_definition_changed",
+        "required_constraint_not_valid",
+        "index_removed_or_changed",
+        "column_contract_changed",
+        "required_column_set_not_null",
+        "table_renamed",
+        "extra_not_null_column",
+        "expand_column_set_not_null"
+      ],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "No business mutation"
+      ],
+      "expected_db_postconditions": [
+        "Each fault is Not Ready with release_schema_contract and Ready again after ROLLBACK; additional index and table only stay Ready; a required constraint validated after NOT VALID is accepted by the contains comparison (auxiliary check on real PG17 catalog output)"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "Each fault emits security.fail_closed.triggered with query_name readiness.release_schema_contract"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-INF-HLT-006-003",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "INF-HLT-006",
+        "SPEC-170-22-9",
+        "REL-DB-012",
+        "INF-RBK-002",
+        "INF-DEP-005"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Independent real PG17 database per scenario; repository migration set applied; expand applied; journal faults injected in a rolled-back transaction; injected version verified between bundled rows by ORDER BY version COLLATE \"C\"",
+      "fixture_ids": [
+        "tests/fixtures/migrations/compat-expand.sql"
+      ],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "journal_hash_altered",
+        "journal_row_deleted",
+        "journal_row_inserted_between"
+      ],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "No business mutation"
+      ],
+      "expected_db_postconditions": [
+        "Each journal fault is Not Ready with migration_hash and Ready again after ROLLBACK; a changed hash on a row after the bundled set stays Ready"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "Each fault emits security.fail_closed.triggered with query_name readiness.migration_hash"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-INF-HLT-006-004",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "INF-HLT-006",
+        "SPEC-170-22-9",
+        "REL-DB-012",
+        "INF-RBK-002",
+        "INF-DEP-005"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Independent real PG17 database per scenario; repository migration set applied; journal equals the repository set; readiness evaluated once with a build set one migration longer and once with the same set plus an additional index in a rolled-back transaction",
+      "fixture_ids": [
+        "tests/fixtures/migrations/compat-expand.sql"
+      ],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "journal_behind_build",
+        "extra_object_same_set"
+      ],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "No business mutation"
+      ],
+      "expected_db_postconditions": [
+        "A journal shorter than the build set is Not Ready with migration_hash and without release_schema_contract; an extra object with the same set is Not Ready with release_schema_contract and Ready after ROLLBACK"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "readiness.migration_hash and readiness.release_schema_contract are logged"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-INF-HLT-006-005",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "INF-HLT-006",
+        "SPEC-170-22-9",
+        "REL-DB-012",
+        "INF-RBK-002",
+        "INF-DEP-005"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Pure functions only; no database",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "No business mutation"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-INF-HLT-006-006",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "INF-HLT-006",
+        "SPEC-170-22-9",
+        "REL-DB-012",
+        "INF-RBK-002",
+        "INF-DEP-005",
+        "REL-DB-011"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Independent real PG17 database per scenario; repository migration set applied; readiness client wrapped by a test Proxy; a synthetic migration (DDL and journal row in one transaction) committed from another READ COMMITTED connection right after the catalog response",
+      "fixture_ids": [
+        "tests/fixtures/migrations/compat-expand.sql"
+      ],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "commit_between_reads_compatible",
+        "commit_between_reads_incompatible",
+        "commit_every_attempt"
+      ],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "No business mutation"
+      ],
+      "expected_db_postconditions": [
+        "A compatible commit between the reads is Ready after a journal re-read; an incompatible commit (required column SET NOT NULL) is Not Ready with release_schema_contract; a commit after every attempt exhausts four attempts as release_schema_contract without migration_hash and the next check is Ready; readiness issues no BEGIN"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "Not Ready cases emit security.fail_closed.triggered with query_name readiness.release_schema_contract; the Ready case emits none"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-INF-HLT-006-007",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "INF-HLT-006",
+        "SPEC-170-22-9",
+        "REL-DB-012",
+        "INF-RBK-002",
+        "INF-DEP-005",
+        "TST-DB-002"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Independent real PG17 database per scenario; repository migration set applied; readiness connection only is default_transaction_isolation repeatable read (verified by SHOW); migration and fixture connections verified read committed",
+      "fixture_ids": [
+        "tests/fixtures/migrations/compat-expand.sql"
+      ],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "repeatable_read_session"
+      ],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "No business mutation"
+      ],
+      "expected_db_postconditions": [
+        "With a repeatable read readiness session a compatible commit between the reads is Ready and an incompatible commit is Not Ready with release_schema_contract"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "The Not Ready case emits security.fail_closed.triggered with query_name readiness.release_schema_contract"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-INF-HLT-006-008",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "INF-HLT-006",
+        "SPEC-170-22-9",
+        "REL-DB-012",
+        "INF-RBK-002",
+        "INF-DEP-005",
+        "REL-DB-011"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Independent real PG17 database per scenario; repository migration set applied; readiness connection has lock_timeout 1000 ms as in production; another connection holds an uncommitted compatible migration and commits 0.5 s or 8 s after the readiness connection is first seen waiting for a lock in pg_stat_activity (no observed wait fails the test)",
+      "fixture_ids": [
+        "tests/fixtures/migrations/compat-expand.sql"
+      ],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "delayed_commit_within_budget",
+        "delayed_commit_beyond_budget"
+      ],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "No business mutation"
+      ],
+      "expected_db_postconditions": [
+        "A COMMIT delayed within the 5 s retry budget is Ready; a COMMIT delayed beyond it is Not Ready for that check with release_schema_contract and Ready after the COMMIT"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "The beyond-budget case emits security.fail_closed.triggered with query_name readiness.release_schema_contract; the within-budget case emits none"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-INF-HLT-006-009",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "INF-HLT-006",
+        "SPEC-170-22-9",
+        "REL-DB-012",
+        "INF-RBK-002",
+        "INF-DEP-005",
+        "REL-DB-011"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "readSchemaState with a fake client and fake timers (no database); retry budget of SPEC-150 section 11 for 55P03",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "lock_timeout_every_attempt",
+        "elapsed_budget"
+      ],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "No business mutation"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
     },
     {
       "test_case_id": "TC-INF-SEC-007-001",
