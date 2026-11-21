@@ -8,6 +8,7 @@
     ["faq_items", "r", "app_migrator", false],
     ["goods", "r", "app_migrator", false],
     ["goods_inventory", "r", "app_migrator", false],
+    ["idempotency_records", "r", "app_migrator", false],
     ["karaoke_sales_configurations", "r", "app_migrator", false],
     ["role_assignments", "r", "app_migrator", false],
     ["schema_migrations", "r", "app_migrator", false],
@@ -213,6 +214,31 @@
       "",
       "",
       "transaction_timestamp()"
+    ],
+    ["idempotency_records", "id", "bigint", true, "a", "", null],
+    ["idempotency_records", "principal_profile_id", "bigint", true, "", "", null],
+    ["idempotency_records", "operation_id", "text", true, "", "", null],
+    ["idempotency_records", "key_digest", "bytea", true, "", "", null],
+    ["idempotency_records", "request_digest", "bytea", true, "", "", null],
+    ["idempotency_records", "result_ref_type", "text", false, "", "", null],
+    ["idempotency_records", "result_refs", "uuid[]", true, "", "", "'{}'::uuid[]"],
+    [
+      "idempotency_records",
+      "created_at",
+      "timestamp with time zone",
+      true,
+      "",
+      "",
+      "transaction_timestamp()"
+    ],
+    [
+      "idempotency_records",
+      "expires_at",
+      "timestamp with time zone",
+      true,
+      "",
+      "",
+      "(transaction_timestamp() + '24:00:00'::interval)"
     ],
     ["karaoke_sales_configurations", "id", "bigint", true, "a", "", null],
     ["karaoke_sales_configurations", "public_ref", "uuid", true, "", "", "gen_random_uuid()"],
@@ -490,6 +516,20 @@
       true
     ],
     [
+      "idempotency_records",
+      "CREATE UNIQUE INDEX pk_idempotency_records ON app.idempotency_records USING btree (id)",
+      true,
+      true,
+      true
+    ],
+    [
+      "idempotency_records",
+      "CREATE UNIQUE INDEX ux_idempotency_records_principal_operation_key ON app.idempotency_records USING btree (principal_profile_id, operation_id, key_digest)",
+      true,
+      true,
+      true
+    ],
+    [
       "karaoke_sales_configurations",
       "CREATE UNIQUE INDEX pk_karaoke_sales_configurations ON app.karaoke_sales_configurations USING btree (id)",
       true,
@@ -562,6 +602,7 @@
     ["events_id_seq", "bigint", "app_migrator"],
     ["faq_items_id_seq", "bigint", "app_migrator"],
     ["goods_id_seq", "bigint", "app_migrator"],
+    ["idempotency_records_id_seq", "bigint", "app_migrator"],
     ["karaoke_sales_configurations_id_seq", "bigint", "app_migrator"],
     ["role_assignments_id_seq", "bigint", "app_migrator"],
     ["sponsor_logos_id_seq", "bigint", "app_migrator"]
@@ -905,6 +946,52 @@
       false
     ],
     ["goods_inventory", "pk_goods_inventory", "p", "PRIMARY KEY (goods_id)", true, false, false],
+    [
+      "idempotency_records",
+      "ck_idempotency_records_expiry",
+      "c",
+      "CHECK ((expires_at = (created_at + '24:00:00'::interval)))",
+      true,
+      false,
+      false
+    ],
+    [
+      "idempotency_records",
+      "ck_idempotency_records_key_digest",
+      "c",
+      "CHECK ((octet_length(key_digest) = 32))",
+      true,
+      false,
+      false
+    ],
+    [
+      "idempotency_records",
+      "ck_idempotency_records_request_digest",
+      "c",
+      "CHECK ((octet_length(request_digest) = 32))",
+      true,
+      false,
+      false
+    ],
+    [
+      "idempotency_records",
+      "ck_idempotency_records_result_ref",
+      "c",
+      "CHECK (((result_ref_type IS NULL) = (cardinality(result_refs) = 0)))",
+      true,
+      false,
+      false
+    ],
+    [
+      "idempotency_records",
+      "fk_idempotency_records_principal_profile",
+      "f",
+      "FOREIGN KEY (principal_profile_id) REFERENCES app.business_profiles(id) ON DELETE RESTRICT",
+      true,
+      false,
+      false
+    ],
+    ["idempotency_records", "pk_idempotency_records", "p", "PRIMARY KEY (id)", true, false, false],
     [
       "karaoke_sales_configurations",
       "ck_karaoke_sales_configurations_currency",

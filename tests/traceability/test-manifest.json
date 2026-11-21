@@ -16566,7 +16566,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "@off-r39x/db/schema exports exactly app and the eleven table declarations (announcements, auditEvents, businessProfiles, entryTicketOfferings, events, faqItems, goods, goodsInventory, karaokeSalesConfigurations, roleAssignments, sponsorLogos) with no helper leaking through the barrel",
+        "@off-r39x/db/schema exports exactly app and the twelve table declarations (announcements, auditEvents, businessProfiles, entryTicketOfferings, events, faqItems, goods, goodsInventory, idempotencyRecords, karaokeSalesConfigurations, roleAssignments, sponsorLogos) with no helper leaking through the barrel",
         "The app schema object and both tables use the schema name app",
         "@off-r39x/db root exports exactly the 19 runtime names (including createCurrentProfileRepository from PR-L2-1a, classifyDatabaseError, DatabaseUnavailableError and isDatabaseUnavailableCode from PR-S0-3a, and isDatabaseTemporaryFailure and typeDirectQueryFailure from the PR #66 round 6 follow-up) and does not export the schema"
       ],
@@ -16591,6 +16591,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
+        "The contract's app tables (excluding schema_migrations) equal exactly the twelve listed names, including idempotency_records (its constraint and index names are checked by TC-DB-IDM-001-002)",
         "Drizzle declaration names for business_profiles and role_assignments constraints and indexes equal schema-contract.json by name and kind",
         "Column order, SQL type, NOT NULL, identity always and default presence equal schema-contract.json; default SQL expressions (transaction_timestamp(), gen_random_uuid()) equal the pre-refactor golden and the contract",
         "CHECK expressions serialised by PgDialect equal the pre-refactor golden exactly and match the contract definitions by referenced columns, literals, numbers and NULL tests",
@@ -27137,6 +27138,419 @@
       "expected_observability": [
         "http.request.completed is logged once with a status that matches the response and shows no raw key, digest or marker"
       ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DB-IDM-001-001",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "DB-IDM-001",
+        "DB-ARC-007",
+        "DB-IDX-001",
+        "API-IDM-005",
+        "API-IDM-008",
+        "TST-IDM-004",
+        "SPEC-100-43.1",
+        "SPEC-170-22"
+      ],
+      "system_invariant_ids": ["INV-010-10"],
+      "api_operation_ids": [],
+      "db_constraint_names": [
+        "pk_idempotency_records",
+        "fk_idempotency_records_principal_profile",
+        "ck_idempotency_records_key_digest",
+        "ck_idempotency_records_request_digest",
+        "ck_idempotency_records_expiry",
+        "ck_idempotency_records_result_ref",
+        "ux_idempotency_records_principal_operation_key"
+      ],
+      "preconditions": "Independent real PostgreSQL 17 database (TLS) migrated with 0001 to the idempotency_records migration; synthetic Business Profiles and a synthetic_business.effects table outside the app schema; synthetic values only; the catalog is compared with hand-written goldens, not only with the contract",
+      "fixture_ids": [],
+      "clock_instant": "DB time: transaction_timestamp() read inside the transaction under test; the fixture sets expiry relative to that instant, no JavaScript clock",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The table has the nine SPEC-100 section 43.1 columns and no column for a raw key, body, URL, session id, Email or QR",
+        "A key or request digest that is not 32 bytes, an expiry other than created_at + 24 hours, a result type without references (or the reverse), a duplicate unique key, an absent Profile and the deletion of a referenced Profile are refused with the named constraint's SQLSTATE",
+        "A row written through the claim primitive holds only digests, references and times"
+      ],
+      "expected_db_postconditions": [
+        "Live columns, six named constraints, two indexes (pk and the ux unique index, valid, ready, live) and the identity sequence equal the hand-written goldens with no additional index; the live catalog equals requiredCatalog (schema-contract.json)"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DB-IDM-001-002",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["DB-IDM-001", "DB-ARC-007", "DB-MIG-002", "DEV-DB-006"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [
+        "pk_idempotency_records",
+        "fk_idempotency_records_principal_profile",
+        "ck_idempotency_records_key_digest",
+        "ck_idempotency_records_request_digest",
+        "ck_idempotency_records_expiry",
+        "ck_idempotency_records_result_ref",
+        "ux_idempotency_records_principal_operation_key"
+      ],
+      "preconditions": "Static Drizzle declaration check against schema-contract.json and hand-written goldens; no database connection",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The Drizzle declaration of app.idempotency_records equals the contract and the goldens: columns, lossless bigint mode for id and principal_profile_id, defaults (transaction_timestamp(), 24 hour expiry, empty uuid array), PK, FK ON DELETE RESTRICT, four CHECK expressions and the unique index (columns, unique, btree, no predicate)",
+        "The unique key is an index and not a constraint; the schema barrel exports idempotencyRecords"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-DB-IDM-001-003",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": ["DB-IDM-001", "API-IDM-005", "API-IDM-007"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "A fake client counts the queries the primitive sends; it proves validation order and message content only, never a DB constraint; synthetic values only",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "A digest that is not a 32 byte Uint8Array, a Principal or result reference that is not a lowercase UUID, an empty refs array, a result type that is not a token and an Operation ID outside the API-* form are refused before any query is sent",
+        "Refusal messages are fixed per field and do not contain the offending value; a valid input binds its values as parameters and sends no DELETE"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-DB-IDM-003-001",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "DB-IDM-003",
+        "SEC-DB-001",
+        "API-IDM-008",
+        "TST-IDM-006",
+        "SPEC-180-22.2"
+      ],
+      "system_invariant_ids": ["INV-010-10"],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Independent real PostgreSQL 17 database (TLS) migrated with 0001 to the idempotency_records migration; synthetic Business Profiles and a synthetic_business.effects table outside the app schema; synthetic values only; the administrator reads the catalog and ACLs, runtime roles log in through createDatabase",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "app_api_runtime can SELECT, INSERT and UPDATE a record and is refused DELETE and TRUNCATE with 42501; app_email_runtime and app_reconciliation_runtime are refused every operation with 42501"
+      ],
+      "expected_db_postconditions": [
+        "has_table_privilege: app_api_runtime has SELECT, INSERT and UPDATE only; app_email_runtime, app_reconciliation_runtime, app_runtime and PUBLIC have none; no column ACL; no role has a privilege on the identity sequence; the app schema has no purge function"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-API-IDM-005-004",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": ["API-IDM-005", "TST-IDM-004"],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": ["ux_idempotency_records_principal_operation_key"],
+      "preconditions": "Independent real PostgreSQL 17 database (TLS) migrated with 0001 to the idempotency_records migration; synthetic Business Profiles and a synthetic_business.effects table outside the app schema; synthetic values only",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The same key digest under another Principal or another Operation ID is a separate record and a first claim, never a reused decision"
+      ],
+      "expected_db_postconditions": ["Each (Principal, Operation ID, key digest) has its own row"],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-API-IDM-006-001",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": ["API-IDM-006", "API-IDM-007", "TST-IDM-005", "TST-IDM-001"],
+      "system_invariant_ids": ["INV-010-10"],
+      "api_operation_ids": [],
+      "db_constraint_names": ["ux_idempotency_records_principal_operation_key"],
+      "preconditions": "Independent real PostgreSQL 17 database (TLS) migrated with 0001 to the idempotency_records migration; synthetic Business Profiles and a synthetic_business.effects table outside the app schema; synthetic values only",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "A first claim writes one record; the same request digest is a replay carrying the stored type and references; another request digest is reused",
+        "After reused the record, its references and the synthetic Domain state are unchanged; the handle of a first claim does not expose the internal record id and the result can be set only once"
+      ],
+      "expected_db_postconditions": [
+        "request_digest, created_at and result references are unchanged after a reused decision"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-API-IDM-007-001",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "API-IDM-007",
+        "API-IDM-006",
+        "DB-IDM-001",
+        "TST-IDM-005",
+        "SPEC-170-28"
+      ],
+      "system_invariant_ids": ["INV-010-10"],
+      "api_operation_ids": [],
+      "db_constraint_names": ["ux_idempotency_records_principal_operation_key"],
+      "preconditions": "Independent real PostgreSQL 17 database (TLS) migrated with 0001 to the idempotency_records migration; synthetic Business Profiles and a synthetic_business.effects table outside the app schema; synthetic values only; harness-only route on a test app (not in the production route table) over the production Transport Idempotency middleware",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [201, 200, 409],
+      "expected_domain_postconditions": [
+        "First request 201; the same key and body 200 with data rebuilt from the effect's current state (a label changed between the two requests is returned); the same key and another body 409 IDEMPOTENCY_KEY_REUSED with details null and retryable false; one effect row; no status other than 201, 200 and 409",
+        "No response, record or log line contains the raw key marker"
+      ],
+      "expected_db_postconditions": ["The record holds digests and references only"],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-TST-IDM-002-001",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": ["TST-IDM-002", "SPEC-170-28", "SEC-API-023"],
+      "system_invariant_ids": ["INV-010-10"],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Independent real PostgreSQL 17 database (TLS) migrated with 0001 to the idempotency_records migration; synthetic Business Profiles and a synthetic_business.effects table outside the app schema; synthetic values only; harness-only route as TC-API-IDM-007-001",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": [201, 200],
+      "expected_domain_postconditions": [
+        "A resend with only X-Request-Id changed is a 200 replay and the effect stays one row; another key for the same Business Cause still leaves one effect"
+      ],
+      "expected_db_postconditions": ["No record column holds a request id"],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-API-IDM-008-001",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": ["API-IDM-008", "API-IDM-006", "DB-IDM-003", "TST-IDM-006"],
+      "system_invariant_ids": ["INV-010-10"],
+      "api_operation_ids": [],
+      "db_constraint_names": [
+        "ux_idempotency_records_principal_operation_key",
+        "ck_idempotency_records_expiry"
+      ],
+      "preconditions": "Independent real PostgreSQL 17 database (TLS) migrated with 0001 to the idempotency_records migration; synthetic Business Profiles and a synthetic_business.effects table outside the app schema; synthetic values only; the administrator moves the record to expires_at = T + 1 microsecond and to T, where T is the claim transaction's transaction_timestamp()",
+      "fixture_ids": [],
+      "clock_instant": "DB time: transaction_timestamp() read inside the transaction under test; the fixture sets expiry relative to that instant, no JavaScript clock",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "A record that expires after T is valid (replay or reused); a record whose expires_at is T is treated as absent and the claim is first, also for a new request digest, never 409",
+        "The expired row is reused in place: same id, one row, new request digest, no result, created_at = T, expires_at = T + 24 hours; no row is deleted"
+      ],
+      "expected_db_postconditions": [
+        "Row count unchanged by the reuse; ck_idempotency_records_expiry holds after the reuse"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-API-IDM-009-001",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "API-IDM-009",
+        "API-IDM-006",
+        "DB-IDM-002",
+        "TST-IDM-006",
+        "TST-IDM-007",
+        "TST-DB-005",
+        "REL-DB-001",
+        "TST-IDM-001"
+      ],
+      "system_invariant_ids": ["INV-010-10"],
+      "api_operation_ids": [],
+      "db_constraint_names": ["ux_idempotency_records_principal_operation_key"],
+      "preconditions": "Independent real PostgreSQL 17 database (TLS) migrated with 0001 to the idempotency_records migration; synthetic Business Profiles and a synthetic_business.effects table outside the app schema; synthetic values only; eight independent app_api_runtime pools synchronised by a barrier; a lock held by another transaction for the timeout case",
+      "fixture_ids": [],
+      "clock_instant": "DB time: transaction_timestamp() read inside the transaction under test; the fixture sets expiry relative to that instant, no JavaScript clock",
+      "concurrency_seed": "barrier of 8 concurrent transactions on 8 pools; the transaction whose claim is first is held before COMMIT until pg_stat_activity shows 7 sessions waiting for a lock; no random seed",
+      "fault_points": ["row_lock_held", "transaction_rollback"],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Same key and request: exactly one first, the rest replay, one effect; mixed requests: one first, the others replay or reused by digest; a rolled-back first lets exactly one waiter become first; an expired record reused concurrently has one first; a lock held beyond lock_timeout and the 55P03 retry budget is a temporary failure and leaves no record or effect",
+        "No 23505 reaches a caller and no in-progress status, code or state appears"
+      ],
+      "expected_db_postconditions": [
+        "One record row per unique key after each case; no record or effect after the timeout case"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DB-IDM-002-001",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": ["DB-IDM-002", "TST-IDM-007", "SPEC-100-47"],
+      "system_invariant_ids": ["INV-010-10"],
+      "api_operation_ids": [],
+      "db_constraint_names": ["ux_idempotency_records_principal_operation_key"],
+      "preconditions": "Independent real PostgreSQL 17 database (TLS) migrated with 0001 to the idempotency_records migration; synthetic Business Profiles and a synthetic_business.effects table outside the app schema; synthetic values only; eight pools claiming for the same Profile after locking it FOR UPDATE; the control uses raw sessions with lock_timeout 0 and a short deadlock_timeout",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": "barrier of 8 concurrent transactions on 8 pools; the first session to hold the Profile lock is held before its claim until pg_stat_activity shows 7 sessions waiting for a lock; no random seed",
+      "fault_points": ["lock_order_inversion"],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "All concurrent business transactions with different keys for one Profile succeed with one record and one effect each and no 40P01 in the logs",
+        "The reverse order (record insert, then Profile FOR UPDATE) is shown to deadlock with 40P01 on two raw sessions, which is the danger the call position avoids"
+      ],
+      "expected_db_postconditions": ["N records and N effects"],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-API-IDM-004-001",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "API-IDM-004",
+        "DB-TXN-002",
+        "DB-TXN-004",
+        "TST-IDM-007",
+        "SPEC-110-51",
+        "REL-DB-009"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": ["ux_idempotency_records_principal_operation_key"],
+      "preconditions": "Independent real PostgreSQL 17 database (TLS) migrated with 0001 to the idempotency_records migration; synthetic Business Profiles and a synthetic_business.effects table outside the app schema; synthetic values only; the lost COMMIT acknowledgement uses the commit proxy; harness-only route for the HTTP mapping",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "pg_terminate_backend",
+        "commit_ack_drop",
+        "row_lock_held",
+        "business_constraint_violation"
+      ],
+      "expected_http": [503, 200],
+      "expected_domain_postconditions": [
+        "A business failure after the claim, a connection terminated before the claim or before COMMIT, and a claim kept waiting past the 55P03 retry budget leave no record and no effect and answer 503 DATABASE_TEMPORARY_FAILURE",
+        "A lost COMMIT acknowledgement is commit_unknown (503): afterwards the record and the effect both exist, and the same key replays; no new error code appears"
+      ],
+      "expected_db_postconditions": [
+        "The record and the business change commit or roll back together"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-API-IDM-004-002",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": ["API-IDM-004", "API-IDM-006", "TST-IDM-005"],
+      "system_invariant_ids": ["INV-010-10"],
+      "api_operation_ids": [],
+      "db_constraint_names": ["ux_idempotency_records_principal_operation_key"],
+      "preconditions": "Independent real PostgreSQL 17 database (TLS) migrated with 0001 to the idempotency_records migration; synthetic Business Profiles and a synthetic_business.effects table outside the app schema; synthetic values only; an unreachable database and the commit proxy for the fault cases",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": ["database_unreachable", "commit_ack_drop"],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The minimal transaction records only (recorded, with references) and creates no effect; the same request replays; another request for the same key is reused; an unreachable database is unavailable and a lost COMMIT acknowledgement is commit_unknown, after which the same request replays"
+      ],
+      "expected_db_postconditions": ["One record row; no effect row"],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-API-IDM-010-001",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "API-IDM-001",
+        "API-IDM-002",
+        "API-IDM-010",
+        "TST-IDM-003",
+        "TST-IDM-008",
+        "SPEC-170-28",
+        "TST-IDM-001"
+      ],
+      "system_invariant_ids": ["INV-010-10"],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Independent real PostgreSQL 17 database (TLS) migrated with 0001 to the idempotency_records migration; synthetic Business Profiles and a synthetic_business.effects table outside the app schema; synthetic values only; the Domain duplicate guard is the synthetic cause_key UNIQUE, not a real Domain rule",
+      "fixture_ids": [],
+      "clock_instant": "DB time: transaction_timestamp() read inside the transaction under test; the fixture sets expiry relative to that instant, no JavaScript clock",
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "With the record deleted by the administrator, expired, or never claimed, a resend of the same Business Cause with the same or another key leaves one effect; in that state the same key with different content is not expected to be 409"
+      ],
+      "expected_db_postconditions": ["synthetic_business.effects holds one row per cause_key"],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": true
     }
