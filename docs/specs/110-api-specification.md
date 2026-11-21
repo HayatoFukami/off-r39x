@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-110
 title: API Specification
-version: 2.12.0
+version: 2.13.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -671,9 +671,69 @@ rate limit（`SPEC-140` Part XIII）は上記の番号付き手順に次の位�
 | `API-PUB-011` | `GET /public/goods/{goods_ref}` | Goods detail | `PG-GDS-002` |
 | `API-PUB-012` | `GET /public/sponsor-logos` | PUBLISHED Logo list | `FR-PUB-015`, `BR-EVT-005`, `app.sponsor_logos` |
 
-Public queryは`DRAFT` / `ARCHIVED`を返さない。availability query failureは空き0へ変換せず`503 TEMPORARY_UNAVAILABLE`。
+Public queryは`DRAFT` / `ARCHIVED`を返さない。availability query failureは空き0へ変換せず`503 TEMPORARY_UNAVAILABLE`。ただし、DBの一時障害（§51）による取得失敗は、availabilityを含め `503 DATABASE_TEMPORARY_FAILURE` とする（§26.1 `API-PUB-READ-006`）。
 
-`API-PUB-012` のfull pathは `GET /api/v1/public/sponsor-logos`。Queryは空のstrict object。Response dataは `{ items: [{ logo_ref: uuid, display_name: string, image_url: httpsUrl, link_url: httpsUrl | null, sort_order: integer }] }`。`sort_order ASC, public_ref ASC` で当該Eventの公開対象全件を返す。0件は `items: []`、DB／検証障害は503であり空成功に偽装しない。未公開Logo、内部ID、管理情報は返さず、この取得失敗で他の公開APIの成功を取り消さない。URLのCanonical検証は `SPEC-140`、画像の表示失敗時の代替は `SPEC-050` に従う。
+`API-PUB-012` のfull pathは `GET /api/v1/public/sponsor-logos`。Queryは空のstrict object。Response dataは `{ items: [{ logo_ref: uuid, display_name: string, image_url: httpsUrl, link_url: httpsUrl | null, sort_order: integer }] }`。`sort_order ASC, public_ref ASC` で当該Eventの公開対象全件を返す（「当該Event」とEventの件数の扱いは §26.1 `API-PUB-READ-002`）。0件は `items: []`、DB障害は `503 DATABASE_TEMPORARY_FAILURE`、DBから読んだ行が応答schemaを満たさない検証障害は `503 TEMPORARY_UNAVAILABLE` であり（§26.1 `API-PUB-READ-006`）、空成功に偽装しない。未公開Logo、内部ID、管理情報は返さず、この取得失敗で他の公開APIの成功を取り消さない。URLのCanonical検証は `SPEC-140`、画像の表示失敗時の代替は `SPEC-050` に従う。
+
+## 26.1 Public read contract（`API-PUB-001`〜`API-PUB-005`）
+
+`UCR-110-013`。本節は `API-PUB-001`〜`API-PUB-005` の入力・応答・失敗を定め、共通規則（`API-PUB-READ-001`〜`006`）は `API-PUB-012` にも適用する。新しいState・error code・Capability・DB列は追加しない。Karaoke（`API-PUB-006`〜`009`）とGoods（`API-PUB-010`〜`011`）の応答は本節の対象外である。
+
+**API-PUB-READ-001（入力）:** Queryは6 Operationとも空のstrict objectとし、未知または重複したquery parameterは `400 VALIDATION_FAILED`（`details: null`）とする。公開namespace（§6）では `Authorization` headerとCookieを読まず、付いていても応答を変えない。
+
+**API-PUB-READ-002（Eventの件数）:** 本書の公開readは、Eventが高々1件であること（`SPEC-100` `DB-SEED-001`・`DB-SEED-007`）を前提とし、その1件を「当該Event」とする。Eventが2件以上ある場合、`API-PUB-001`〜`005` と `API-PUB-012` はいずれの行も選ばず `500 INTERNAL_ERROR` とし、全Eventの行を混ぜて返さない。Eventが0件の場合、`API-PUB-001` は `404 RESOURCE_NOT_FOUND`、`API-PUB-004` は `404 RESOURCE_NOT_FOUND`、一覧（`API-PUB-002`、`003`、`005`、`012`）は `items: []` とする。
+
+**API-PUB-READ-003（公開条件）:** FAQ・Announcement・Sponsor Logoは `state = 'PUBLISHED'` の行だけを、server-sideのquery条件として返す（`SPEC-100` `DB-SAL-001`・`DB-SAL-002`）。`DRAFT` / `ARCHIVED` の行、`state`、`created_at` / `updated_at`、Internal IDは返さない（§9、§55）。一覧は当該Eventの公開対象全件を返し、cursorとlimitを持たない（§12のcursorはOwner / Admin listのもの）。
+
+**API-PUB-READ-004（未設定値）:** 全fieldを必須keyとし、DBでnullableな列だけを `| null` とする。未設定の値は `null` のまま返し、推測値・既定値・空文字で埋めない（`BR-EVT-001`、`FR-PUB-002`）。
+
+**API-PUB-READ-005（順序）:** 一覧の順序は次のとおりとし、Clientから順序を受けない（`API-QRY-002`）。
+
+| Operation | 順序 |
+|---|---|
+| `API-PUB-002` | `sort_order ASC, public_ref ASC` |
+| `API-PUB-003` | `published_at DESC, public_ref DESC`（§12） |
+| `API-PUB-005` | `created_at ASC, public_ref ASC` |
+| `API-PUB-012` | `sort_order ASC, public_ref ASC` |
+
+**API-PUB-READ-006（失敗）:** DBの一時障害（§51）は `503 DATABASE_TEMPORARY_FAILURE` とし、空の一覧・`404` に変換しない。DBから読んだ行が応答schemaを満たさない場合（例: `PUBLISHED` のAnnouncementの `published_at` がNULL）は、その行を推測値で補わず、黙って除外もせず、そのOperationの応答全体を `503 TEMPORARY_UNAVAILABLE` とする。1つのOperationの失敗は、他の公開Operationの成功を取り消さない。成功応答の `Cache-Control` は §19 の共通どおり `no-store` とする。
+
+### API-PUB-001 — Event public information
+
+- **Method / Path:** `GET /api/v1/public/event`
+- **Response 200:** `{ event_ref: uuid, name: string, summary: string | null, starts_at: isoUtc | null, ends_at: isoUtc | null, business_timezone: "Asia/Tokyo", venue_name: string | null, venue_details: string | null, access_information: string | null, participant_notices: string | null }`。`participant_notices` はDBの1列をそのまま返し、分割しない。
+- **Not found:** Eventが0件なら `404 RESOURCE_NOT_FOUND`（`API-PUB-READ-002`）。
+- **Trace:** `FR-PUB-001〜004`, `BR-EVT-001`, `PG-PUB-001`, `SPEC-100` §13.1.
+
+### API-PUB-002 — Published FAQ list
+
+- **Method / Path:** `GET /api/v1/public/faqs`
+- **Response 200:** `{ items: [{ faq_ref: uuid, question: string, answer: string, sort_order: integer }] }`。`published_at` は返さない。
+- **Trace:** `FR-PUB-005`, `BR-EVT-002`, `DB-SAL-001`, `PG-PUB-001`.
+
+### API-PUB-003 — Published Announcement list
+
+- **Method / Path:** `GET /api/v1/public/announcements`
+- **Response 200:** `{ items: [{ announcement_ref: uuid, title: string, published_at: isoUtc, excerpt: string, excerpt_truncated: boolean }] }`。`body` は一覧に含めない。
+- **Excerpt:** `body` のUnicode `White_Space` propertyを持つ文字（改行を含む）の連続を1つのU+0020に置き換え、先頭と末尾のU+0020を除いた文字列の先頭から、最大100 Unicode code pointsを `excerpt` とする。省略記号を付けない。正規化後の文字列が100 code pointsを超えて切った場合だけ `excerpt_truncated: true` とする。code point単位で切るため、書記素クラスタの途中で切れることがあり、表示上の扱い（省略記号等）はWeb（`SPEC-050` §11.2）が決める。
+- **Trace:** `FR-PUB-006`, `BR-EVT-002`, `DB-SAL-001`, `PG-PUB-001`, `PG-PUB-002`.
+
+### API-PUB-004 — Published Announcement detail
+
+- **Method / Path:** `GET /api/v1/public/announcements/{announcement_ref}`
+- **Path:** `announcement_ref` はUUID（§9）。大文字を含むUUIDは小文字のcanonical形式へ正規化して照会する。UUIDでない値は `400 VALIDATION_FAILED`（`details: null`）。
+- **Response 200:** `{ announcement_ref: uuid, title: string, body: string, published_at: isoUtc }`。`body` は保存された本文をそのまま返す。
+- **Not found:** 存在しない、または `PUBLISHED` でない（`DRAFT` / `ARCHIVED`）Announcementは、区別せず `404 RESOURCE_NOT_FOUND` とし、公開本文を返さない（`SPEC-050` §11.3）。
+- **Trace:** `FR-PUB-006`, `BR-EVT-002`, `DB-SAL-001`, `PG-PUB-003`.
+
+### API-PUB-005 — Entry Ticket sale information
+
+- **Method / Path:** `GET /api/v1/public/entry-offerings`
+- **範囲:** 当該EventのEntry Ticket Offeringを全件返す。Entry Ticket OfferingはPublication Stateを持たないため、`SUSPENDED` のOfferingも販売停止として返す（`FR-PUB-010`、`SPEC-050` §12.1）。
+- **Response 200:** `{ items: [{ offering_ref: uuid, name: string, description: string | null, unit_price: Money, sales_starts_at: isoUtc, sales_ends_at: isoUtc, purchase_limit: integer, availability: "AVAILABLE" | "UNAVAILABLE", unavailable_reason: "SALES_NOT_STARTED" | "SALES_CLOSED" | "SALES_STOPPED" | "SOLD_OUT" | null }] }`。`unit_price` は §11。`availability = "AVAILABLE"` のとき `unavailable_reason` は `null`、`"UNAVAILABLE"` のとき非null。`sales_capacity`、`held_quantity`、`committed_quantity`、残数、`sale_control_state`、check-in windowは返さない（残数の公開設定はない）。
+- **販売状態:** 判定時刻は、行を読む同じSQL文の `statement_timestamp()` とする。次の順で最初に当てはまるものを `unavailable_reason` とし（`API-PUR-ELG-001` のreason順。本人条件は含めない）、どれにも当てはまらなければ `AVAILABLE` とする。(1) 判定時刻 < `sales_starts_at` なら `SALES_NOT_STARTED`。(2) 判定時刻 >= `sales_ends_at` なら `SALES_CLOSED`（`BR-SAL-003`）。(3) `sale_control_state = 'SUSPENDED'`、またはEntryの購入を開始できるOperation（`API-PUR-ENTRY-001`、`API-PUR-CART-001`）が当該releaseのroute registry（`API-RLC-001`）に1つも登録されない場合は `SALES_STOPPED`（`UCR-110-004` と同じ扱い）。(4) `sales_capacity - held_quantity - committed_quantity <= 0` なら `SOLD_OUT`。
+- **Meaning:** 表示用の公開情報であり、確保・価格保証・購入の認可ではない。本人別の上限・購入可能数は `API-PUR-ELG-001` が返し、購入開始時に全条件を再検証する（`BR-SAL-005`）。
+- **Trace:** `FR-PUB-007`, `FR-PUB-010`, `FR-TKT-001〜002`, `BR-SAL-003〜004`, `PG-TKT-001`, `SPEC-100` §15.1.
 
 ## 27. Karaoke public availability schema
 
@@ -2402,6 +2462,7 @@ resolveConsistencyReviewCase()
 47. `API-IDM-011` の対象Operation（§18の対象一覧と `API-ADM-EML-004/005`）で `Idempotency-Key` が欠落、または16〜128文字の印字可能ASCII（0x20〜0x7E）でない場合は、認証・認可の失敗を先に返したうえで `400 VALIDATION_FAILED`（`details: null`）とし、Domain stateと記録（§18.1）を変更しない。受信した値は正規化せずに検証し、同名headerの複数指定は連結した1つの値として扱う（`API-IDM-011`）。
 48. Owner / Admin listのcursorは §12 `API-QRY-005` のとおり署名・検証し、形式・長さ・署名・鍵version・Operation ID・sort mode・filterの不一致を `400 VALIDATION_FAILED`（`details: null`）とし、先頭pageへ黙って戻さない。
 49. `API-AUTH-003` の再select 0件は500ではなく、Caseをcommitした後の `409 CONSISTENCY_REVIEW_REQUIRED` であり、0件を観測したtransactionではProfileを作らず、内部reason・Auth Subjectを返さない（`REL-AUTH-009`）。
+50. `API-PUB-001`〜`005`・`012` は §26.1 のとおり返す。FAQ・Announcement・Sponsor Logoは `PUBLISHED` の行だけをserver-sideのquery条件で返し、Publication Stateを持たないEventとEntry Ticket Offeringは当該Eventの行を返す。未設定値は `null` のまま返す。Eventが0件のとき、一覧（`002`・`003`・`005`・`012`）は `items: []`、単一resource（`001`・`004`）は `404`。非公開と不存在のAnnouncementは区別せず `404`。Eventが2件以上なら行を選ばず `500`、未知queryは `400`、DB障害は `503 DATABASE_TEMPORARY_FAILURE`、schemaを満たさない行は `503 TEMPORARY_UNAVAILABLE` であり、空成功に偽装しない。
 
 ---
 
@@ -2613,3 +2674,14 @@ retry count / backoff / queue / operator RunbookはSPEC-150。本書§48.5はSPE
 - §61: Acceptance 49 を追加した。
 
 新しいerror code・state・Capability・Operationは追加していない。
+
+### UCR-110-013 — INCORPORATED
+
+- **Status:** `INCORPORATED`。本改訂（v2.13.0）で §26（失敗の規定、`API-PUB-012` の「当該Event」と検証障害）、§26.1、§61 Acceptance 50へ反映した（プロジェクト所有者の決定、2026-11-21。`SPEC-000` §8）。新しいerror code・state・Capability・Operation・DB列は追加していない。現在の契約は本文を正とし、以下の要求はその経緯の記録である。
+- 対象: SPEC-110 §26、§26.1（新設）、§61。§12、§27、`API-PUR-ELG-001` の本文は変更しない。
+- 現在の仕様（改訂前）: §26 は `API-PUB-012` についてだけ、full path、Query（空のstrict object）、Response data、順序、0件、障害（503）を定めていた。`API-PUB-001`〜`005` は表の「主なResponse」に「Event公開情報」「`PUBLISHED` FAQ」「Published list」「Published detail」「Entry sale data」とあるだけで、応答field、Query、順序、Eventが0件・2件以上のときの応答、Announcement一覧の要約、Entry Ticket Offeringの公開範囲と販売状態の表し方を定めていなかった。`API-PUB-012` の「DB／検証障害は503」はerror codeを定めず、§26末尾の「availability query failureは `503 TEMPORARY_UNAVAILABLE`」は、§51のDB一時障害（`DATABASE_TEMPORARY_FAILURE`）との関係を定めていなかった。
+- 要求する変更: §26.1 に共通規則（`API-PUB-READ-001`〜`006`: 空のstrict query、Eventの件数、`PUBLISHED` のserver-side条件、未設定値の `null`、順序、失敗のcode）と、`API-PUB-001`〜`005` の入力・応答・Not foundを定める。Announcement一覧は `body` を含めず、server-sideで作る `excerpt`（空白を正規化した本文の先頭最大100 code points、省略記号なし）と `excerpt_truncated` を返す。Entry Ticket Offeringは当該Eventの全件を返し、販売状態を §27 と同じ `availability` + `unavailable_reason`（`API-PUR-ELG-001` のreason語彙と順序のうち本人条件を除く4つ）で表し、Entryの購入Operationがroute registryにないreleaseでは `UCR-110-004` と同じく `SALES_STOPPED` とする。§26末尾と `API-PUB-012` の失敗を、DB障害 `503 DATABASE_TEMPORARY_FAILURE`、schemaを満たさない行 `503 TEMPORARY_UNAVAILABLE` に揃える。
+- 検討した別案: Announcement一覧に `body` 全文を含める案、要約を返さず `SPEC-050` §11.2 を直す案（所有者は server-side の excerpt を選んだ）。Eventが0件のとき `200` で `data: null` を返す案（§19の `data` をnullableにする変更になる）、2件以上を `409 CONSISTENCY_REVIEW_REQUIRED` にする案（Caseの起票先とreasonが未定義）。schemaを満たさない行をWHEREで除外する案（`PUBLISHED` の行が黙って消える）。Entryの残数を返す案（公開設定が仕様にない）。
+- 理由: 応答の形がないと、実装は §16 / `SPEC-190` `DEV-API-003` のZod応答schemaを仕様なしに決めることになり、Web（公開Page）が接続先の形を決められない。Eventの件数と販売状態の扱いを誤ると、未公開・存在しない情報を推測で出す（`BR-EVT-001`、`FR-PUB-010`）。応答fieldはDB列（`SPEC-100` §13・§15.1）とAdmin read応答から管理専用の列を除いたものであり、§55の範囲に収まる。
+- 変更しない場合の影響: `API-PUB-001`〜`005` を実装・試験できない（期待値を仕様から導けない）。実装が独自にfieldと状態語彙を決めて仕様と乖離する。
+- 影響を受ける可能性がある仕様書: SPEC-170（§27.2 に `TST-API-009` を同じ改訂で追加）、SPEC-050（§11.2 の「本文冒頭の要約」は `excerpt` で満たし、本文の変更は不要）、SPEC-200（`ACC-BIZ-010` は変更不要）、SPEC-030（§7.6。変更不要）、SPEC-100（§13.3 の `published_at` のCHECKは本UCRの範囲外。変更不要）、SPEC-140（変更不要）
