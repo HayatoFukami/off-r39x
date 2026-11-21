@@ -11,13 +11,15 @@ import {
   runSeedCli,
   SEED_ACTOR_REF,
   sensitiveValues,
+  waitUntil,
 } from "../harness/db/initial-data.ts";
 
 // PR-SEED C1: the command as an operator runs it, in a child process over TLS (SPEC-170 TST-SEED-003 (4),
 // TST-SEED-005 (2); SPEC-180 INF-SEED-004, INF-SEED-005, INF-SEC-001; SPEC-160 OBS-LOG-005, TST-UNT-003).
-// UNKNOWN_RESULT (exit code 3) cannot be produced here: the commit proxy carries no TLS and the command
-// requires it. That outcome is checked in seed-initial-data-commit-unknown.test.ts and in the pure
-// mapping test (TC-TST-SEED-005-006). Real PostgreSQL 17, synthetic values only.
+// The commit proxy carries no TLS, so UNKNOWN_RESULT (exit code 3) is produced here without it: a
+// test-only deferred trigger holds COMMIT open, the test revokes CONNECT and ends the backend
+// (TC-TST-SEED-003-008). The library re-check cases are in seed-initial-data-commit-unknown.test.ts.
+// Real PostgreSQL 17, synthetic values only.
 
 const url = process.env.TEST_DATABASE_URL;
 if (!url || !process.env.TEST_DATABASE_CA)
@@ -394,5 +396,88 @@ describe("TC-TST-SEED-005-002 stdout and log content, and what they must never c
         service: "RECOVERY",
         operation_id: "PROVISION.INITIAL_DATA_SEED",
       });
+  });
+});
+
+// Test-only objects for the UNKNOWN_RESULT case: a deferred constraint trigger sleeps inside COMMIT, so
+// COMMIT is sent and not yet acknowledged when the test ends the backend. Dropped after the case.
+const COMMIT_SLEEP_SETUP = [
+  `CREATE FUNCTION app.seed_probe_commit_sleep() RETURNS trigger LANGUAGE plpgsql AS $$
+     BEGIN PERFORM pg_sleep(30); RETURN NULL; END $$`,
+  "GRANT EXECUTE ON FUNCTION app.seed_probe_commit_sleep() TO app_migrator",
+  `CREATE CONSTRAINT TRIGGER seed_probe_commit_sleep AFTER INSERT ON app.events
+     DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.seed_probe_commit_sleep()`,
+];
+const COMMIT_SLEEP_TEARDOWN = [
+  "DROP TRIGGER IF EXISTS seed_probe_commit_sleep ON app.events",
+  "DROP FUNCTION IF EXISTS app.seed_probe_commit_sleep()",
+];
+const SLEEPING_COMMIT_SQL = `SELECT pid FROM pg_stat_activity
+  WHERE datname = current_database() AND usename = 'app_migrator'
+    AND wait_event = 'PgSleep' AND query ILIKE 'commit%'`;
+
+describe("TC-TST-SEED-003-008 the public command keeps the stdout and exit code contract (INF-SEED-001, INF-SEED-004, INF-SEED-005)", () => {
+  // `pnpm db:seed-initial-data` from the repository root, as an operator or the migration job runs it:
+  // stdout is the one result line only, and the exit code is the command's own (0, 2, 3), not pnpm's.
+  it("TC-TST-SEED-003-008 (a) CREATED then NOOP: exit 0, stdout is exactly the one result line", async () => {
+    const first = await runSeedCli(baseEnv(buildInitialDataInput()), { entry: "public" });
+    expect(first.code).toBe(0);
+    const created = resultLine(first.stdout);
+    expect(Object.keys(created).sort()).toEqual(RESULT_KEYS);
+    expect(created.outcome).toBe("CREATED");
+    expect(await counts()).toEqual({ events: 1, offerings: 2, audits: 3 });
+
+    const second = await runSeedCli(baseEnv(undefined), { entry: "public" });
+    expect(second.code).toBe(0);
+    expect(resultLine(second.stdout).outcome).toBe("NOOP");
+  });
+
+  it("TC-TST-SEED-003-008 (b) FAILED: exit 2 (not 1), stdout is exactly the one result line", async () => {
+    const run = await runSeedCli(baseEnv(undefined), { entry: "public" });
+    expect(run.code).toBe(2);
+    expect(resultLine(run.stdout)).toMatchObject({
+      outcome: "FAILED",
+      error_code: "INITIAL_DATA_INPUT_MISSING",
+    });
+    expect(await counts()).toEqual(EMPTY);
+  });
+
+  it("TC-TST-SEED-003-008 (c) UNKNOWN_RESULT: exit 3 (not 1 and not 2), stdout is exactly the one result line, nothing committed", async () => {
+    const database = (await admin.query("SELECT current_database() AS name")).rows[0]
+      .name as string;
+    const quoted = `"${database.replaceAll('"', '""')}"`;
+    for (const sql of COMMIT_SLEEP_SETUP) await admin.query(sql);
+    let revoked = false;
+    try {
+      const seeding = runSeedCli(baseEnv(buildInitialDataInput()), { entry: "public" });
+      let pid: number | undefined;
+      await waitUntil(
+        async () => {
+          pid = (await admin.query(SLEEPING_COMMIT_SQL)).rows[0]?.pid;
+          return pid !== undefined;
+        },
+        { label: "the command's COMMIT sleeping in the deferred trigger" },
+      );
+      // No new connection can be made for the re-check (DB-SEED-002 (4)); then the backend ends while
+      // COMMIT is in flight, so the command cannot tell whether it committed.
+      await admin.query(`REVOKE CONNECT ON DATABASE ${quoted} FROM PUBLIC`);
+      revoked = true;
+      await admin.query("SELECT pg_terminate_backend($1)", [pid]);
+      const run = await seeding;
+      expect(run.code).toBe(3);
+      expect(resultLine(run.stdout)).toMatchObject({
+        outcome: "UNKNOWN_RESULT",
+        error_code: "COMMIT_RESULT_UNKNOWN",
+      });
+    } finally {
+      if (revoked) await admin.query(`GRANT CONNECT ON DATABASE ${quoted} TO PUBLIC`);
+      for (const sql of COMMIT_SLEEP_TEARDOWN) await admin.query(sql);
+    }
+    // The backend ended inside COMMIT: nothing was committed, and the next run creates one set.
+    expect(await counts()).toEqual(EMPTY);
+    const rerun = await runSeedCli(baseEnv(buildInitialDataInput()), { entry: "public" });
+    expect(rerun.code).toBe(0);
+    expect(resultLine(rerun.stdout).outcome).toBe("CREATED");
+    expect(await counts()).toEqual({ events: 1, offerings: 2, audits: 3 });
   });
 });

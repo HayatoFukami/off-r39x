@@ -494,6 +494,68 @@ describe("TC-TST-SEED-003-006 the seed transaction has an 8 second wall clock (p
     expect(shape(run.outcome).outcome).toBe("CREATED");
     expect(await counts()).toEqual({ events: 1, offerings: 2, audits: 3 });
   });
+
+  /**
+   * The rows already exist, so the attempt only locks and reads. `hold` makes another session hold a
+   * lock the attempt needs for `holdMs`, which is longer than the deadline but shorter than the
+   * per-statement lock and statement timeouts. Without the deadline the attempt would be NOOP.
+   */
+  async function readsPastTheDeadline(hold: string[]) {
+    expect(shape((await runSeed({ input: buildInitialDataInput() })).outcome).outcome).toBe(
+      "CREATED",
+    );
+    const before = await snapshotSeededTables(admin);
+    const holder = new Client({ connectionString: url });
+    await holder.connect();
+    let released: Promise<unknown> | undefined;
+    try {
+      const run = await runSeed({
+        input: buildInitialDataInput(),
+        transactionDeadlineMs: 300,
+        beforeSeed: async () => {
+          await holder.query("BEGIN");
+          for (const sql of hold) await holder.query(sql);
+          released = new Promise((resolve) => setTimeout(resolve, 700)).then(() =>
+            holder.query("ROLLBACK"),
+          );
+        },
+      });
+      return { run, before };
+    } finally {
+      await released?.catch(() => {});
+      await endQuietly(holder);
+    }
+  }
+
+  it("TC-TST-SEED-003-006 (c) the deadline also bounds the seed xact lock wait: FAILED(TEMPORARY_FAILURE, DATABASE_TEMPORARY_FAILURE), not NOOP, no retry", async () => {
+    const { run, before } = await readsPastTheDeadline([
+      "SELECT pg_advisory_xact_lock(hashtext('app:initial-data-seed'))",
+    ]);
+    expect(shape(run.outcome)).toMatchObject({
+      outcome: "FAILED",
+      failureClass: "TEMPORARY_FAILURE",
+      errorCode: "DATABASE_TEMPORARY_FAILURE",
+    });
+    expect(await snapshotSeededTables(admin)).toEqual(before);
+    expect(run.reads()).toBe(0);
+    expect(run.logs.filter((log) => log.event_name === "reliability.retry.attempted")).toEqual([]);
+    expect(run.statements.map((text) => text.trim().toLowerCase())).not.toContain("commit");
+  });
+
+  it("TC-TST-SEED-003-006 (d) the deadline also bounds the count SELECTs: FAILED(TEMPORARY_FAILURE, DATABASE_TEMPORARY_FAILURE), not NOOP, no retry", async () => {
+    // A SELECT waits behind ACCESS EXCLUSIVE; it is not the seed xact lock that waits here.
+    const { run, before } = await readsPastTheDeadline([
+      "LOCK TABLE app.entry_ticket_offerings IN ACCESS EXCLUSIVE MODE",
+    ]);
+    expect(shape(run.outcome)).toMatchObject({
+      outcome: "FAILED",
+      failureClass: "TEMPORARY_FAILURE",
+      errorCode: "DATABASE_TEMPORARY_FAILURE",
+    });
+    expect(await snapshotSeededTables(admin)).toEqual(before);
+    expect(run.reads()).toBe(0);
+    expect(run.logs.filter((log) => log.event_name === "reliability.retry.attempted")).toEqual([]);
+  });
 });
 
 describe("TC-TST-SEED-003-005 decision order (INF-SEED-002, INF-SEED-004, DB-SEED-002)", () => {

@@ -38,10 +38,19 @@ const OPENED = "reliability.unknown_result.opened";
 const RESOLVED = "reliability.unknown_result.resolved";
 const RETRY_ATTEMPTED = "reliability.retry.attempted";
 const SEED_TABLES = ["app.audit_events", "app.entry_ticket_offerings", "app.events"];
+// A session of this database waiting for an advisory lock: the re-check connection, which takes the
+// migration lock and then the seed xact lock (both still held by the original session while its
+// COMMIT is in progress).
 const LOCK_WAIT_SQL = `SELECT count(*)::int AS n FROM pg_stat_activity
   WHERE datname = current_database() AND pid <> pg_backend_pid()
     AND wait_event_type = 'Lock' AND wait_event = 'advisory'
-    AND query ILIKE '%pg_advisory_xact_lock%'`;
+    AND query ILIKE '%pg_advisory%lock%'`;
+const MIGRATION_LOCK_WAIT_SQL = `SELECT count(*)::int AS n FROM pg_stat_activity
+  WHERE datname = current_database() AND pid <> pg_backend_pid()
+    AND wait_event_type = 'Lock' AND wait_event = 'advisory'
+    AND query ILIKE '%r39x:schema-migration%'`;
+const MIGRATION_LOCK = /pg_advisory_lock\(hashtext\('r39x:schema-migration'\)\)/i;
+const AUDIT_RECHECK = /from app\.audit_events where operation_id/i;
 
 let admin: Client;
 beforeAll(async () => {
@@ -265,7 +274,7 @@ describe("TC-TST-SEED-006-004 Event exists, only Offerings were being created (D
 });
 
 describe("TC-TST-SEED-006-005 the re-check starts while the original COMMIT is in progress (DB-SEED-002 (3-2), REL-DB-006)", () => {
-  it("TC-TST-SEED-006-005 the re-check waits on the xact lock, then sees the committed rows: CREATED, not a false uncommitted", async () => {
+  it("TC-TST-SEED-006-005 the re-check waits on the original session's locks, then sees the committed rows: CREATED, not a false uncommitted", async () => {
     const proxy = await startCommitAcknowledgementDropProxy(new URL(url as string), {
       mode: "hold_request",
     });
@@ -281,7 +290,7 @@ describe("TC-TST-SEED-006-005 the re-check starts while the original COMMIT is i
     try {
       try {
         await waitUntil(async () => (await admin.query(LOCK_WAIT_SQL)).rows[0].n > 0, {
-          label: "the re-check connection waiting for pg_advisory_xact_lock",
+          label: "the re-check connection waiting for the original session's advisory locks",
         });
         expect(proxy.fired()).toBe(1);
         // The original transaction is still open: nothing is visible yet.
@@ -468,4 +477,57 @@ describe("TC-TST-SEED-006-008 the transaction deadline passes while COMMIT is in
     // lock timeout of INF-DB-008.
     expect(elapsedMs).toBeLessThan(15_000);
   }, 120_000);
+});
+
+describe("TC-TST-SEED-006-009 the re-check runs under the migration lock (INF-SEED-003, DB-SEED-002, SPEC-180 section 24)", () => {
+  it("TC-TST-SEED-006-009 while a migration holds the lock, the re-check waits; it reads only after taking the lock, then CREATED", async () => {
+    const migration = new Client({ connectionString: url });
+    await migration.connect();
+    const statements: string[] = [];
+    let migrationHeld = false;
+    let settled = false;
+    let seeding: ReturnType<typeof seedThroughProxy> | undefined;
+    try {
+      seeding = seedThroughProxy("drop_ack", {
+        statements,
+        connect: async (wrap) => {
+          if (!migrationHeld) {
+            migrationHeld = true;
+            // A migration job takes the lock as soon as the original session is gone.
+            await migration.query("SELECT pg_advisory_lock(hashtext('r39x:schema-migration'))");
+          }
+          return wrap(await connectAs("app_migrator"));
+        },
+      });
+      void seeding.then(
+        () => {
+          settled = true;
+        },
+        () => {
+          settled = true;
+        },
+      );
+      await waitUntil(async () => (await admin.query(MIGRATION_LOCK_WAIT_SQL)).rows[0].n > 0, {
+        label: "the re-check connection waiting for the migration lock",
+      });
+      // The re-check has not read anything and has not decided while the migration runs.
+      expect(statements.filter((text) => AUDIT_RECHECK.test(text))).toEqual([]);
+      expect(settled).toBe(false);
+    } finally {
+      await migration.query("SELECT pg_advisory_unlock(hashtext('r39x:schema-migration'))");
+      await endQuietly(migration);
+    }
+    const { run, fired } = await (seeding as ReturnType<typeof seedThroughProxy>);
+    expect(fired).toBe(1);
+    expect(shape(run.outcome).outcome).toBe("CREATED");
+    expect(await counts()).toEqual({ events: 1, offerings: 2, audits: 3 });
+    // On the re-check connection, the migration lock comes before the re-check's first read.
+    const lockAt = statements.findLastIndex((text) => MIGRATION_LOCK.test(text));
+    const recheckAt = statements.findIndex((text) => AUDIT_RECHECK.test(text));
+    expect(recheckAt).toBeGreaterThan(-1);
+    expect(lockAt).toBeGreaterThan(-1);
+    expect(lockAt).toBeLessThan(recheckAt);
+    expect(statements.filter((text) => MIGRATION_LOCK.test(text))).toHaveLength(2);
+    expect(disallowedStatements(statements)).toEqual([]);
+  });
 });

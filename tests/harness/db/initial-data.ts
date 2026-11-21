@@ -358,6 +358,9 @@ const CLI_PATH = fileURLToPath(
   new URL("../../../packages/db/src/seed-initial-data-cli.ts", import.meta.url),
 );
 const CLI_CWD = fileURLToPath(new URL("../../../packages/db", import.meta.url));
+const REPOSITORY_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+/** The public command an operator or the migration job runs (SPEC-180 INF-SEED-001). */
+export const PUBLIC_SEED_COMMAND = ["pnpm", "db:seed-initial-data"] as const;
 const SEED_ENV_KEYS = [
   "APP_ENV",
   "MIGRATION_DATABASE_URL",
@@ -374,10 +377,14 @@ export function migratorUrl(overrides: { password?: string } = {}): URL {
   return url;
 }
 
-/** Starts the CLI in a child process with a controlled environment and collects its output. */
+/**
+ * Starts the CLI in a child process with a controlled environment and collects its output. `entry`
+ * "node" starts the CLI file directly; "public" runs the public command (`pnpm db:seed-initial-data`
+ * from the repository root), so its stdout and exit codes are the ones a caller of that command sees.
+ */
 export async function runSeedCli(
   env: Record<string, string | undefined>,
-  options: { timeoutMs?: number } = {},
+  options: { timeoutMs?: number; entry?: "node" | "public" } = {},
 ): Promise<{ code: number | null; stdout: string; stderr: string }> {
   const childEnv: Record<string, string | undefined> = { ...process.env };
   for (const key of SEED_ENV_KEYS) delete childEnv[key];
@@ -388,11 +395,21 @@ export async function runSeedCli(
     // Node 24 releases that still mark type stripping experimental print an ExperimentalWarning
     // line on stderr at startup. It comes from the runtime, not from the command, so it is
     // silenced here to keep the stderr contract check (one JSON log event per line) about the CLI.
-    const child = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", CLI_PATH], {
-      cwd: CLI_CWD,
-      env: childEnv as NodeJS.ProcessEnv,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    const [pnpm, ...args] = PUBLIC_SEED_COMMAND;
+    const child =
+      options.entry === "public"
+        ? // pnpm is a .cmd shim on Windows, which only a shell can start; the arguments are fixed.
+          spawn(pnpm, args, {
+            cwd: REPOSITORY_ROOT,
+            env: childEnv as NodeJS.ProcessEnv,
+            stdio: ["ignore", "pipe", "pipe"],
+            shell: process.platform === "win32",
+          })
+        : spawn(process.execPath, ["--disable-warning=ExperimentalWarning", CLI_PATH], {
+            cwd: CLI_CWD,
+            env: childEnv as NodeJS.ProcessEnv,
+            stdio: ["ignore", "pipe", "pipe"],
+          });
     let stdout = "";
     let stderr = "";
     child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
