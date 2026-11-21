@@ -124,7 +124,7 @@ Worker の停止は、新規処理を止めて協調終了を待ち、15秒を�
 
 ## 監査後の実装境界
 
-- DB readinessはmigration journalに加え、release対象のPG17 catalog（列・default・制約定義／検証状態・Index定義／有効状態・sequence・schema owner）をsource-controlledな期待値と照合する。既存release以外の業務table実装を証明しない。
+- DB readinessは、artifactが同梱したmigration set（ファイル名のbyte順）がjournal（versionのbyte順）の先頭に順に一致することと、release対象のPG17 catalog（列・default・制約定義／検証状態・Index定義／有効状態・sequence・schema owner）をsource-controlledな期待値と照合する。journalがartifactより進んでいる場合だけ、期待値の各要素が同一の属性で存在することを求め（required制約のVALIDATE後の検証状態は許容）、追加のobjectとjournal行を許容する（required tableへのNOT NULLでdefault・identity・generatedのない追加列は許容しない）。読み取りはjournal→catalog→journalを明示的なtransactionの外で行い、2回のjournalが一致したときだけ判定する。不一致と`55P03`はSPEC-150 §11の`55P03` budget（4 attempts、最初のattemptから5秒）内で読み直し、使い切った場合は`release_schema_contract`で非Readyとする（SPEC-180 `INF-HLT-006`）。既存release以外の業務table実装を証明しない。
 - Directoryは3列の型／grantだけでなく、直接投影、Subjectの有効な一意Index、Subject／verified列のNOT NULLと有効な一意Indexによってcardinalityを確認する。catalogとOIDを用い、Directoryを読めないReconへ行読取権限を要求しない。実Neonのsource mappingはdeploymentで確認し、Provider所有tableは変更しない。
 - Stripe lookupはSDK Fetch transportを明示採用し、本文処理まで10秒のadapter deadlineと単調時計の確認を適用する。SDKの自動network retryは0。旧Node socket inactivity timeoutへの依存を除いた。
 - `GET /api/v1/self/principal` (`API-AUTH-001`) は公開RPC型と同じbuilderでmountする。署名済みJWT→現在Directory／Profile／Role→メール確認→共有guardを経てnavigation情報だけを返す。GETによるProfile作成は行わない。

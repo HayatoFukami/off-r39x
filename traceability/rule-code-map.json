@@ -3106,6 +3106,22 @@
       "notes": "Missing deployment mapping/schema/extension/hash/grant not ready"
     },
     {
+      "rule_id": "INF-HLT-006",
+      "code_paths": ["packages/db/src/readiness.ts"],
+      "test_case_ids": [
+        "TC-INF-HLT-006-001",
+        "TC-INF-HLT-006-002",
+        "TC-INF-HLT-006-003",
+        "TC-INF-HLT-006-004",
+        "TC-INF-HLT-006-005",
+        "TC-INF-HLT-006-006",
+        "TC-INF-HLT-006-007",
+        "TC-INF-HLT-006-008",
+        "TC-INF-HLT-006-009"
+      ],
+      "notes": "Backward-compatible readiness: journal, catalog, journal read outside a transaction within the SPEC-150 55P03 budget; bundled migration set (byte order) is a prefix of the journal; required catalog contained in the live catalog only when the journal is ahead, exact otherwise; a required constraint validated after NOT VALID is accepted (UCR-180-003)"
+    },
+    {
       "rule_id": "REL-DB-012",
       "code_paths": [
         "packages/db/src/readiness.ts",
@@ -3224,7 +3240,8 @@
         "packages/db/src/transaction.ts",
         "apps/api/src/api/app.ts",
         "apps/api/src/api/respond.ts",
-        "packages/db/src/errors.ts"
+        "packages/db/src/errors.ts",
+        "packages/db/src/readiness.ts"
       ],
       "test_case_ids": [
         "TC-DB-RETRY-001",
@@ -3237,7 +3254,10 @@
         "TC-DB-FOUNDATION-012",
         "TC-DB-FOUNDATION-013",
         "TC-DB-FOUNDATION-014",
-        "TC-HTTP-AUDIT-004"
+        "TC-HTTP-AUDIT-004",
+        "TC-INF-HLT-006-006",
+        "TC-INF-HLT-006-008",
+        "TC-INF-HLT-006-009"
       ],
       "notes": "55P03 retry, explicit ROLLBACK, 4 attempts / 5s, exhausted -> 503"
     },
