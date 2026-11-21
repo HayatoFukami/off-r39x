@@ -11,7 +11,6 @@ import {
   invalidateMigrationLock,
   isActiveMigrationLock,
   type MigrationLock,
-  MigrationLockTimeoutError,
 } from "../migration-lock.ts";
 import { type InitialDataInput, type InputRow, parseInitialDataInput } from "./input.ts";
 import {
@@ -24,7 +23,8 @@ import {
 // SPEC-160 OBS-AUD-014). One transaction per attempt: lock, count, (read input), insert, Audit, COMMIT.
 // Every value is a bind parameter; table and column names come from `targets.ts`. This module never
 // updates or deletes a row, never logs a value from the input, and never retries an unknown result
-// blindly: after a lost COMMIT acknowledgement it re-checks on a new connection (DB-SEED-002).
+// blindly: after a lost COMMIT acknowledgement it re-checks on a new connection (DB-SEED-002). Every
+// statement runs in a session that holds the migration lock (INF-SEED-003), the re-check included.
 
 export const SEED_OPERATION_ID = "PROVISION.INITIAL_DATA_SEED";
 const SEED_XACT_LOCK = "SELECT pg_advisory_xact_lock(hashtext('app:initial-data-seed'))";
@@ -103,14 +103,21 @@ export type SeedOptions = {
    * false and sends no SQL), whatever the final outcome. Do not use the client after the seed.
    */
   readonly lock: MigrationLock;
-  /** A new connected client, for the re-check after an unknown COMMIT result and the retry after it. */
+  /**
+   * A new connected client, for the re-check after an unknown COMMIT result and the retry after it.
+   * The seed takes the migration lock on it before the re-check reads anything, and releases the
+   * lock and ends the client before it returns.
+   */
   readonly connect: () => Promise<Client>;
   /** Called at most once, and only when a row has to be created (INF-SEED-002). */
   readonly readInput: () => string | undefined;
   /** An INFRASTRUCTURE_OPERATOR reference (SPEC-160 section 19.1). */
   readonly actorRef: string;
   readonly logger?: { log(event: LogEvent): void };
-  /** Wall clock of one seed transaction in ms (SPEC-150 section 9: 8000). Overridable for tests. */
+  /**
+   * Wall clock of one seed transaction in ms (SPEC-150 section 9: 8000). Overridable for tests. Every
+   * statement of the transaction (the xact lock, the reads and the writes) runs within the time left.
+   */
   readonly transactionDeadlineMs?: number;
 };
 
@@ -187,12 +194,12 @@ async function succeedsWithin(work: Promise<unknown>, ms: number): Promise<boole
   }
 }
 
-async function beginSeedTransaction(client: Client): Promise<void> {
+/** BEGIN with the SPEC-150 section 9 statement and lock timeouts. The xact lock is taken next. */
+async function beginTransaction(client: Client): Promise<void> {
   await client.query("BEGIN ISOLATION LEVEL READ COMMITTED");
   await client.query(
     `SET LOCAL statement_timeout = '${TIMEOUTS.statementMs}ms'; SET LOCAL lock_timeout = '${TIMEOUTS.lockMs}ms'; SET LOCAL timezone = 'UTC'`,
   );
-  await client.query(SEED_XACT_LOCK);
 }
 
 async function readEventIds(client: Client): Promise<string[]> {
@@ -301,20 +308,40 @@ export async function seedInitialData(options: SeedOptions): Promise<SeedOutcome
     let commitSent = false;
     let stage: "statement" | "audit" = "statement";
     const startedAt = performance.now();
-    // Checked before every statement that writes (N-4), not only before COMMIT.
+    const remainingMs = () => deadlineMs - (performance.now() - startedAt);
     const checkDeadline = () => {
-      if (performance.now() - startedAt >= deadlineMs) throw new DeadlineExceeded();
+      if (remainingMs() <= 0) throw new DeadlineExceeded();
+    };
+    // Each statement runs within the time left (SPEC-150 section 9). The BEGIN timeouts bound a
+    // statement to 5 s and a lock wait to 1 s; once less than 5 s is left, the statement timeout (which
+    // also bounds lock waits) is first lowered to the time left, and a timeout it causes is the
+    // deadline. The deadline is checked before and after each statement, so a slow lock wait or read
+    // cannot end in NOOP after the deadline either.
+    const withinDeadline = async <T>(work: () => Promise<T>): Promise<T> => {
+      checkDeadline();
+      const left = Math.floor(remainingMs());
+      const lowered = left < TIMEOUTS.statementMs;
+      if (lowered) await client.query(`SET LOCAL statement_timeout = '${Math.max(left, 1)}ms'`);
+      try {
+        const result = await work();
+        checkDeadline();
+        return result;
+      } catch (error) {
+        if (lowered && sqlState(error) === "57014") throw new DeadlineExceeded();
+        throw error;
+      }
     };
     try {
-      await beginSeedTransaction(client);
-      const eventIds = await readEventIds(client);
+      await beginTransaction(client);
+      await withinDeadline(() => client.query(SEED_XACT_LOCK));
+      const eventIds = await withinDeadline(() => readEventIds(client));
       if (eventIds.length >= 2) {
         await client.query("ROLLBACK");
         return fail("CONSISTENCY_FAILURE", "INITIAL_DATA_EVENT_NOT_UNIQUE");
       }
       if (eventIds.length === 1) {
         const eventId = eventIds[0] as string;
-        if (await hasOfferings(client, eventId)) {
+        if (await withinDeadline(() => hasOfferings(client, eventId))) {
           await client.query("ROLLBACK");
           return {
             kind: "done",
@@ -345,29 +372,31 @@ export async function seedInitialData(options: SeedOptions): Promise<SeedOutcome
         const rows = target.cardinality === "one" ? [data.event] : data.entry_ticket_offerings;
         for (const row of rows) {
           stage = "statement";
-          checkDeadline();
-          const inserted = await insertRow(client, target, row, parentEventId);
+          const inserted = await withinDeadline(() =>
+            insertRow(client, target, row, parentEventId),
+          );
           if (target.cardinality === "one") parentEventId = inserted.id;
           if (target.cardinality === "one") created.events.push(inserted.publicRef);
           else created.entry_ticket_offerings.push(inserted.publicRef);
           stage = "audit";
-          checkDeadline();
           auditEventIds.push(
-            await insertAuditEventReturningId(client, {
-              auditEventType: "BUSINESS_EFFECT",
-              actorType: "INFRASTRUCTURE_OPERATOR",
-              actorRef,
-              operationId: SEED_OPERATION_ID,
-              operationExecutionId: executionId,
-              targetType: target.auditTargetType,
-              targetRef: inserted.publicRef,
-              preconditionResult: "PASSED",
-              auditResult: "COMMITTED",
-              change: INITIAL_DATA_AUDIT_CHANGE.change({
-                afterState: target.afterState,
-                changedFields: inserted.fields,
+            await withinDeadline(() =>
+              insertAuditEventReturningId(client, {
+                auditEventType: "BUSINESS_EFFECT",
+                actorType: "INFRASTRUCTURE_OPERATOR",
+                actorRef,
+                operationId: SEED_OPERATION_ID,
+                operationExecutionId: executionId,
+                targetType: target.auditTargetType,
+                targetRef: inserted.publicRef,
+                preconditionResult: "PASSED",
+                auditResult: "COMMITTED",
+                change: INITIAL_DATA_AUDIT_CHANGE.change({
+                  afterState: target.afterState,
+                  changedFields: inserted.fields,
+                }),
               }),
-            }),
+            ),
           );
         }
       }
@@ -375,7 +404,7 @@ export async function seedInitialData(options: SeedOptions): Promise<SeedOutcome
       // Wall clock (SPEC-150 section 9), checked before COMMIT rather than only by a timer: a
       // synchronous callback can block the event loop past the deadline. Not yet sent: roll back.
       checkDeadline();
-      const remainingMs = deadlineMs - (performance.now() - startedAt);
+      const commitWaitMs = remainingMs();
       commitSent = true;
       const committed = client.query("COMMIT").then(() => "ok" as const);
       committed.catch(() => {});
@@ -384,7 +413,7 @@ export async function seedInitialData(options: SeedOptions): Promise<SeedOutcome
         const settled = await Promise.race([
           committed,
           new Promise<"late">((resolve) => {
-            timer = setTimeout(() => resolve("late"), remainingMs);
+            timer = setTimeout(() => resolve("late"), commitWaitMs);
           }),
         ]);
         // COMMIT is sent and not acknowledged in time: the result is unknown, never a plain failure.
@@ -443,7 +472,8 @@ export async function seedInitialData(options: SeedOptions): Promise<SeedOutcome
     const startedAt = performance.now();
     for (let n = 1; n <= MAX_ATTEMPTS; n += 1) {
       try {
-        await beginSeedTransaction(connection);
+        await beginTransaction(connection);
+        await connection.query(SEED_XACT_LOCK);
         const audit = await connection.query(
           "SELECT audit_event_id, target_type, target_ref FROM app.audit_events WHERE operation_id = $1 AND operation_execution_id = $2",
           [SEED_OPERATION_ID, executionId],
@@ -570,6 +600,19 @@ export async function seedInitialData(options: SeedOptions): Promise<SeedOutcome
       const reconnected = await reconnect();
       if (reconnected === undefined) return unknown;
       ownedConnection = reconnected;
+      // The re-check reads only under the migration lock (INF-SEED-003, SPEC-180 section 24): a
+      // migration that started after the lost session ended finishes first. While the session of the
+      // lost COMMIT still lives it holds the lock too, so this also waits for that COMMIT to end. Not
+      // acquired (the 60 second wait passed, or the connection failed): the re-check cannot run and
+      // the result stays unknown (DB-SEED-002 (4)). The wait is not part of the retry budget.
+      const lockStartedAt = performance.now();
+      try {
+        ownedLock = await acquireMigrationLock(reconnected);
+      } catch {
+        return unknown;
+      } finally {
+        lockWaitMs += performance.now() - lockStartedAt;
+      }
       const checked = await recheck(reconnected, executionId);
       if (checked === undefined) return unknown;
       const resolved = () => ({
@@ -592,8 +635,8 @@ export async function seedInitialData(options: SeedOptions): Promise<SeedOutcome
         log({ ...resolved(), level: "INFO", result: "NOOP", failure_class: null });
         return { outcome: "NOOP", operationExecutionId: executionId, attemptNumber };
       }
-      // Not committed (DB-SEED-002 (3)): take the migration lock again on the new connection, then
-      // start over with a new execution id. The attempt counts against the same budget.
+      // Not committed (DB-SEED-002 (3)): start over on the new connection, which already holds the
+      // migration lock, with a new execution id. The attempt counts against the same budget.
       log({
         ...resolved(),
         level: "WARN",
@@ -607,21 +650,6 @@ export async function seedInitialData(options: SeedOptions): Promise<SeedOutcome
           "TEMPORARY_FAILURE",
           "DATABASE_TEMPORARY_FAILURE",
         );
-      const lockStartedAt = performance.now();
-      try {
-        ownedLock = await acquireMigrationLock(reconnected);
-      } catch (error) {
-        return failedOutcome(
-          executionId,
-          attemptNumber,
-          "TEMPORARY_FAILURE",
-          error instanceof MigrationLockTimeoutError
-            ? "MIGRATION_LOCK_TIMEOUT"
-            : "DATABASE_TEMPORARY_FAILURE",
-        );
-      } finally {
-        lockWaitMs += performance.now() - lockStartedAt;
-      }
       client = reconnected;
     }
   } finally {

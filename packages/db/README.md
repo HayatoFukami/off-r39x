@@ -110,7 +110,11 @@ that creates them. Offerings are always created `SUSPENDED` with counters at 0, 
 before the API deploy. The command takes the migration lock (`r39x:schema-migration`) itself; the
 library functions `acquireMigrationLock` and `seedInitialData({ lock, ... })` let a migration job run
 migrate, readiness and seed under one session lock. Running `db:migrate` and this command as two
-processes is for development, tests and re-runs: the lock is released in between.
+processes is for development, tests and re-runs: the lock is released in between. Every statement of the
+seed runs in a session that holds the migration lock: when a COMMIT result is lost, the re-check takes
+the lock again on its new connection (waiting up to 60 seconds, else `UNKNOWN_RESULT`) before it reads.
+Each statement of the seed transaction runs within the 8 second transaction deadline (SPEC-150 §9); a
+lock wait or read that would pass it ends the attempt as `FAILED`.
 
 Environment variables (an `app_migrator` direct URL on port 5432 over TLS, as for `db:migrate`):
 
@@ -136,7 +140,9 @@ JSON result line (`outcome` is `CREATED`, `NOOP`, `FAILED` or `UNKNOWN_RESULT`);
 log lines. Exit codes: `0` CREATED or NOOP, `2` FAILED (fix the cause, run again), `3` UNKNOWN_RESULT
 (the COMMIT result could not be determined; restore the connection and run the same command again).
 Exit code `1` is an unexpected crash (no result line is guaranteed) and is handled like `3`: run again.
-The package script runs `node --disable-warning=ExperimentalWarning src/seed-initial-data-cli.ts`, so the
-Node type stripping warning does not reach stderr, which carries only JSON log lines; a direct `node`
-call on an older Node 24.x prints that warning too. The CLI tests need PostgreSQL on port 5432
+The root script `db:seed-initial-data` (and the package script `seed:initial-data`) runs `node
+--disable-warning=ExperimentalWarning` on the CLI file directly, not through `pnpm --filter`, which would
+turn the exit codes 2 and 3 into 1. The flag keeps the Node type stripping warning off stderr, which
+carries only JSON log lines (pnpm itself may print its own run lines there); a direct `node` call on an
+older Node 24.x prints that warning too. The CLI tests need PostgreSQL on port 5432
 with TLS.
