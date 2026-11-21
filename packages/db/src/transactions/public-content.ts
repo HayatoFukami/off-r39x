@@ -96,7 +96,13 @@ export type PublicEntryOfferingsRead =
 // node-postgres's own timestamptz parser (pg-types / postgres-date), as in transactions/profile.ts: it
 // keeps the year, the offset and the BC era of the text PostgreSQL sends.
 const parseTimestamptz = types.getTypeParser(types.builtins.TIMESTAMPTZ) as (text: string) => Date;
-const iso = (text: string): IsoUtc => parseTimestamptz(text).toISOString();
+// PostgreSQL accepts 'infinity' / '-infinity' for timestamptz, which the parser does not turn into an
+// instant (it answers a number, not a Date). Such a value is not guessed and not thrown (a 500): the
+// text is passed on unchanged, so the response schema refuses the row (SPEC-110 §26.1 API-PUB-READ-006).
+const iso = (text: string): IsoUtc => {
+  const parsed: unknown = parseTimestamptz(text);
+  return parsed instanceof Date && Number.isFinite(parsed.getTime()) ? parsed.toISOString() : text;
+};
 const isoOrNull = (text: string | null): IsoUtc | null => (text === null ? null : iso(text));
 /** A column the table declares NOT NULL. A NULL here is a defect, never a value to hide. */
 function present<T>(value: T | null): T {

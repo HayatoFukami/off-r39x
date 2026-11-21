@@ -23,12 +23,52 @@ export const announcementRefParamSchema = z
   .transform((value) => value.toLowerCase())
   .pipe(lowerCaseUuidSchema);
 
-// SEC-WEB-026 boundary: only "an https URL" (a host, an optional port, an optional path / query /
-// fragment, no whitespace or user information). The allowed origins are the management side's concern.
-// The package has no URL global (no DOM / Node lib), so the shape is a pattern.
-const httpsUrlSchema = z
-  .string()
-  .regex(/^https:\/\/[A-Za-z0-9][A-Za-z0-9.-]*(:[0-9]{1,5})?([/?#]\S*)?$/);
+// The WHATWG URL parser of the runtime (Node and browsers). This package's lib (ES2023) declares no URL
+// global, so only the members read here are declared, module-scoped.
+declare const URL: new (
+  input: string,
+) => {
+  readonly protocol: string;
+  readonly username: string;
+  readonly password: string;
+  readonly port: string;
+  readonly search: string;
+  readonly hash: string;
+  readonly hostname: string;
+};
+
+// Control characters, whitespace, backslash (read as "/") and the query / fragment markers: refused in
+// the text before parsing, since the parser would silently drop or repair some of them.
+const UNSAFE_URL_CHARACTERS = /[\s\\?#\p{Cc}]/u;
+// "https:host" and "https:/host" parse as https://host/ without a base, but a browser resolves them
+// against the page; requiring "https://" keeps the checked URL and the one the browser uses the same.
+const HTTPS_AUTHORITY_PREFIX = /^https:\/\//i;
+
+/**
+ * SEC-WEB-026: an absolute HTTPS URL parsed as WHATWG URL. No userinfo, no port other than 443 (the
+ * parser normalises 443 away), no query or fragment, no IP literal, no `localhost` / `*.localhost` /
+ * `*.local` host, no control character. The host is the parser's normalised ASCII form (lower case,
+ * punycode, IPv4 in dotted decimal, so `0x7f.1` and `2130706433` are caught as IP literals). The same
+ * rule as the Web's sponsor area model; the image origin allowlist is the CSP's (`img-src`).
+ */
+function isSponsorLogoUrl(value: string): boolean {
+  if (UNSAFE_URL_CHARACTERS.test(value) || !HTTPS_AUTHORITY_PREFIX.test(value)) return false;
+  let url: InstanceType<typeof URL>;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== "https:") return false;
+  if (url.username !== "" || url.password !== "" || url.port !== "") return false;
+  if (url.search !== "" || url.hash !== "") return false;
+  const host = url.hostname;
+  if (!/^[a-z0-9-]+(?:\.[a-z0-9-]+)*$/.test(host)) return false; // no IPv6 literal, no escapes
+  if (/^\d+(?:\.\d+){3}$/.test(host)) return false; // IPv4 literal
+  return !(host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local"));
+}
+
+const httpsUrlSchema = z.string().refine(isSponsorLogoUrl);
 
 /** API-PUB-001. */
 export const publicEventSchema = z.strictObject({

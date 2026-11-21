@@ -66,6 +66,7 @@ function unwrap<T>(result: PublicReadResult<T>): T {
   if (result.kind === "ok") return result.data;
   if (result.kind === "not_found") throw new ApiFailure("RESOURCE_NOT_FOUND");
   if (result.kind === "inconsistent") throw new ApiFailure("INTERNAL_ERROR");
+  if (result.kind === "invalid_row") throw new ApiFailure("TEMPORARY_UNAVAILABLE");
   throw new ApiFailure("DATABASE_TEMPORARY_FAILURE");
 }
 

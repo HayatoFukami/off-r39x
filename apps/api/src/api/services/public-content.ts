@@ -94,7 +94,9 @@ export type PublicReadResult<T> =
   | { kind: "ok"; data: T }
   | { kind: "not_found" }
   | { kind: "inconsistent" }
-  | { kind: "database_unavailable" };
+  | { kind: "database_unavailable" }
+  /** A row the public contract cannot represent (API-PUB-READ-006): never guessed, skipped or sent. */
+  | { kind: "invalid_row" };
 
 export type AnnouncementSummaryRecord = {
   publicRef: string;
@@ -181,6 +183,14 @@ export async function listEntryOfferings(
   const result = await store.listEntryOfferings();
   if (result.status === "multiple_events") return { kind: "inconsistent" };
   if (result.status === "unavailable") return { kind: "database_unavailable" };
+  // An instant the sales state cannot be judged from ('infinity', for example) makes the row invalid
+  // (API-PUB-READ-006, a 503), not a 500 from the domain rule and never a guessed state.
+  const readable = (value: string) => Number.isFinite(Date.parse(value));
+  if (
+    !readable(result.now) ||
+    result.items.some((item) => !readable(item.salesStartsAt) || !readable(item.salesEndsAt))
+  )
+    return { kind: "invalid_row" };
   return {
     kind: "ok",
     data: result.items.map((item) => ({
