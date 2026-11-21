@@ -8,7 +8,9 @@
     ["faq_items", "r", "app_migrator", false],
     ["goods", "r", "app_migrator", false],
     ["goods_inventory", "r", "app_migrator", false],
+    ["karaoke_exclusive_scopes", "r", "app_migrator", false],
     ["karaoke_sales_configurations", "r", "app_migrator", false],
+    ["karaoke_slots", "r", "app_migrator", false],
     ["role_assignments", "r", "app_migrator", false],
     ["schema_migrations", "r", "app_migrator", false],
     ["sponsor_logos", "r", "app_migrator", false]
@@ -214,6 +216,29 @@
       "",
       "transaction_timestamp()"
     ],
+    ["karaoke_exclusive_scopes", "id", "bigint", true, "a", "", null],
+    ["karaoke_exclusive_scopes", "public_ref", "uuid", true, "", "", "gen_random_uuid()"],
+    ["karaoke_exclusive_scopes", "event_id", "bigint", true, "", "", null],
+    ["karaoke_exclusive_scopes", "name", "text", true, "", "", null],
+    ["karaoke_exclusive_scopes", "sort_order", "integer", true, "", "", "0"],
+    [
+      "karaoke_exclusive_scopes",
+      "created_at",
+      "timestamp with time zone",
+      true,
+      "",
+      "",
+      "transaction_timestamp()"
+    ],
+    [
+      "karaoke_exclusive_scopes",
+      "updated_at",
+      "timestamp with time zone",
+      true,
+      "",
+      "",
+      "transaction_timestamp()"
+    ],
     ["karaoke_sales_configurations", "id", "bigint", true, "a", "", null],
     ["karaoke_sales_configurations", "public_ref", "uuid", true, "", "", "gen_random_uuid()"],
     ["karaoke_sales_configurations", "event_id", "bigint", true, "", "", null],
@@ -253,6 +278,34 @@
     ],
     [
       "karaoke_sales_configurations",
+      "updated_at",
+      "timestamp with time zone",
+      true,
+      "",
+      "",
+      "transaction_timestamp()"
+    ],
+    ["karaoke_slots", "id", "bigint", true, "a", "", null],
+    ["karaoke_slots", "public_ref", "uuid", true, "", "", "gen_random_uuid()"],
+    ["karaoke_slots", "exclusive_scope_id", "bigint", true, "", "", null],
+    ["karaoke_slots", "sales_configuration_id", "bigint", true, "", "", null],
+    ["karaoke_slots", "state", "text", true, "", "", null],
+    ["karaoke_slots", "usage_start", "timestamp with time zone", true, "", "", null],
+    ["karaoke_slots", "usage_end", "timestamp with time zone", true, "", "", null],
+    ["karaoke_slots", "cycle_end", "timestamp with time zone", true, "", "", null],
+    ["karaoke_slots", "generation_cause_key", "uuid", true, "", "", null],
+    ["karaoke_slots", "generation_candidate_no", "integer", true, "", "", null],
+    [
+      "karaoke_slots",
+      "created_at",
+      "timestamp with time zone",
+      true,
+      "",
+      "",
+      "transaction_timestamp()"
+    ],
+    [
+      "karaoke_slots",
       "updated_at",
       "timestamp with time zone",
       true,
@@ -490,6 +543,20 @@
       true
     ],
     [
+      "karaoke_exclusive_scopes",
+      "CREATE UNIQUE INDEX pk_karaoke_exclusive_scopes ON app.karaoke_exclusive_scopes USING btree (id)",
+      true,
+      true,
+      true
+    ],
+    [
+      "karaoke_exclusive_scopes",
+      "CREATE UNIQUE INDEX uq_karaoke_exclusive_scopes_public_ref ON app.karaoke_exclusive_scopes USING btree (public_ref)",
+      true,
+      true,
+      true
+    ],
+    [
       "karaoke_sales_configurations",
       "CREATE UNIQUE INDEX pk_karaoke_sales_configurations ON app.karaoke_sales_configurations USING btree (id)",
       true,
@@ -499,6 +566,55 @@
     [
       "karaoke_sales_configurations",
       "CREATE UNIQUE INDEX uq_karaoke_sales_configurations_public_ref ON app.karaoke_sales_configurations USING btree (public_ref)",
+      true,
+      true,
+      true
+    ],
+    [
+      "karaoke_slots",
+      "CREATE INDEX ex_karaoke_slots_scope_occupancy ON app.karaoke_slots USING gist (exclusive_scope_id, tstzrange(usage_start, cycle_end, '[)'::text))",
+      true,
+      true,
+      true
+    ],
+    [
+      "karaoke_slots",
+      "CREATE INDEX ix_karaoke_slots_scope_usage ON app.karaoke_slots USING btree (exclusive_scope_id, usage_start)",
+      true,
+      true,
+      true
+    ],
+    [
+      "karaoke_slots",
+      "CREATE INDEX ix_karaoke_slots_usage_start ON app.karaoke_slots USING btree (usage_start)",
+      true,
+      true,
+      true
+    ],
+    [
+      "karaoke_slots",
+      "CREATE UNIQUE INDEX pk_karaoke_slots ON app.karaoke_slots USING btree (id)",
+      true,
+      true,
+      true
+    ],
+    [
+      "karaoke_slots",
+      "CREATE UNIQUE INDEX uq_karaoke_slots_generation_candidate ON app.karaoke_slots USING btree (generation_cause_key, exclusive_scope_id, generation_candidate_no)",
+      true,
+      true,
+      true
+    ],
+    [
+      "karaoke_slots",
+      "CREATE UNIQUE INDEX uq_karaoke_slots_public_ref ON app.karaoke_slots USING btree (public_ref)",
+      true,
+      true,
+      true
+    ],
+    [
+      "karaoke_slots",
+      "CREATE UNIQUE INDEX uq_karaoke_slots_scope_times ON app.karaoke_slots USING btree (exclusive_scope_id, usage_start, usage_end, cycle_end)",
       true,
       true,
       true
@@ -562,7 +678,9 @@
     ["events_id_seq", "bigint", "app_migrator"],
     ["faq_items_id_seq", "bigint", "app_migrator"],
     ["goods_id_seq", "bigint", "app_migrator"],
+    ["karaoke_exclusive_scopes_id_seq", "bigint", "app_migrator"],
     ["karaoke_sales_configurations_id_seq", "bigint", "app_migrator"],
+    ["karaoke_slots_id_seq", "bigint", "app_migrator"],
     ["role_assignments_id_seq", "bigint", "app_migrator"],
     ["sponsor_logos_id_seq", "bigint", "app_migrator"]
   ],
@@ -906,6 +1024,33 @@
     ],
     ["goods_inventory", "pk_goods_inventory", "p", "PRIMARY KEY (goods_id)", true, false, false],
     [
+      "karaoke_exclusive_scopes",
+      "fk_karaoke_exclusive_scopes_event",
+      "f",
+      "FOREIGN KEY (event_id) REFERENCES app.events(id) ON DELETE RESTRICT",
+      true,
+      false,
+      false
+    ],
+    [
+      "karaoke_exclusive_scopes",
+      "pk_karaoke_exclusive_scopes",
+      "p",
+      "PRIMARY KEY (id)",
+      true,
+      false,
+      false
+    ],
+    [
+      "karaoke_exclusive_scopes",
+      "uq_karaoke_exclusive_scopes_public_ref",
+      "u",
+      "UNIQUE (public_ref)",
+      true,
+      false,
+      false
+    ],
+    [
       "karaoke_sales_configurations",
       "ck_karaoke_sales_configurations_currency",
       "c",
@@ -991,6 +1136,97 @@
       "uq_karaoke_sales_configurations_public_ref",
       "u",
       "UNIQUE (public_ref)",
+      true,
+      false,
+      false
+    ],
+    [
+      "karaoke_slots",
+      "ck_karaoke_slots_cycle_end",
+      "c",
+      "CHECK ((usage_end <= cycle_end))",
+      true,
+      false,
+      false
+    ],
+    [
+      "karaoke_slots",
+      "ck_karaoke_slots_generation_candidate_no",
+      "c",
+      "CHECK ((generation_candidate_no >= 0))",
+      true,
+      false,
+      false
+    ],
+    [
+      "karaoke_slots",
+      "ck_karaoke_slots_state",
+      "c",
+      "CHECK ((state = ANY (ARRAY['AVAILABLE'::text, 'HELD'::text, 'SOLD'::text, 'SALES_STOPPED'::text])))",
+      true,
+      false,
+      false
+    ],
+    [
+      "karaoke_slots",
+      "ck_karaoke_slots_usage_period",
+      "c",
+      "CHECK ((usage_start < usage_end))",
+      true,
+      false,
+      false
+    ],
+    [
+      "karaoke_slots",
+      "ex_karaoke_slots_scope_occupancy",
+      "x",
+      "EXCLUDE USING gist (exclusive_scope_id WITH =, tstzrange(usage_start, cycle_end, '[)'::text) WITH &&)",
+      true,
+      false,
+      false
+    ],
+    [
+      "karaoke_slots",
+      "fk_karaoke_slots_exclusive_scope",
+      "f",
+      "FOREIGN KEY (exclusive_scope_id) REFERENCES app.karaoke_exclusive_scopes(id) ON DELETE RESTRICT",
+      true,
+      false,
+      false
+    ],
+    [
+      "karaoke_slots",
+      "fk_karaoke_slots_sales_configuration",
+      "f",
+      "FOREIGN KEY (sales_configuration_id) REFERENCES app.karaoke_sales_configurations(id) ON DELETE RESTRICT",
+      true,
+      false,
+      false
+    ],
+    ["karaoke_slots", "pk_karaoke_slots", "p", "PRIMARY KEY (id)", true, false, false],
+    [
+      "karaoke_slots",
+      "uq_karaoke_slots_generation_candidate",
+      "u",
+      "UNIQUE (generation_cause_key, exclusive_scope_id, generation_candidate_no)",
+      true,
+      false,
+      false
+    ],
+    [
+      "karaoke_slots",
+      "uq_karaoke_slots_public_ref",
+      "u",
+      "UNIQUE (public_ref)",
+      true,
+      false,
+      false
+    ],
+    [
+      "karaoke_slots",
+      "uq_karaoke_slots_scope_times",
+      "u",
+      "UNIQUE (exclusive_scope_id, usage_start, usage_end, cycle_end)",
       true,
       false,
       false

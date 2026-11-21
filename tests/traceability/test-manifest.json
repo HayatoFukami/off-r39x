@@ -16752,7 +16752,7 @@
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "@off-r39x/db/schema exports exactly app and the eleven table declarations (announcements, auditEvents, businessProfiles, entryTicketOfferings, events, faqItems, goods, goodsInventory, karaokeSalesConfigurations, roleAssignments, sponsorLogos) with no helper leaking through the barrel",
+        "@off-r39x/db/schema exports exactly app and the thirteen table declarations (announcements, auditEvents, businessProfiles, entryTicketOfferings, events, faqItems, goods, goodsInventory, karaokeExclusiveScopes, karaokeSalesConfigurations, karaokeSlots, roleAssignments, sponsorLogos) with no helper leaking through the barrel",
         "The app schema object and both tables use the schema name app",
         "@off-r39x/db root exports exactly the 19 runtime names (including createCurrentProfileRepository from PR-L2-1a, classifyDatabaseError, DatabaseUnavailableError and isDatabaseUnavailableCode from PR-S0-3a, and isDatabaseTemporaryFailure and typeDirectQueryFailure from the PR #66 round 6 follow-up) and does not export the schema"
       ],
@@ -17506,6 +17506,417 @@
         "The ACL of each table has no PUBLIC entry and names only the owner and the approved app_api_runtime grants; no role has any privilege on the seven identity sequences",
         "app_api_runtime INSERT and UPDATE on the content tables and UPDATE on events, offerings and inventory succeed inside a transaction that is rolled back; INSERT on the five other tables is 42501, UPDATE on goods and karaoke_sales_configurations is 42501, and DELETE and TRUNCATE on all eight tables are 42501",
         "app_email_runtime and app_reconciliation_runtime SELECT, UPDATE, DELETE and INSERT are 42501 on every table; after every refusal the rows are unchanged"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DB-ARC-007-005",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "DB-ARC-007",
+        "DB-MIG-002",
+        "DB-STA-001",
+        "DB-STA-002",
+        "DB-TIM-001",
+        "DEV-DB-001",
+        "DEV-DB-006",
+        "SPEC-100-27",
+        "SPEC-100-28",
+        "SPEC-100-57"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Static Drizzle declaration check of the two Karaoke tables against the reviewed schema-contract.json and hand written SPEC-100 goldens; not a database execution test; DB enforcement is TC-DB-ARC-007-006 and the other DB cases on real PostgreSQL 17",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "For karaoke_exclusive_scopes and karaoke_slots the Drizzle table name, schema app, column order, SQL type, NOT NULL, identity always on id only and default expressions (gen_random_uuid(), transaction_timestamp(), 0; none on state or the generation columns) equal the hand written golden and schema-contract.json",
+        "Constraint names and kinds equal the golden and the contract without contype x (3 on the Scope table, 10 on the Slot table); the contract has exactly one EXCLUDE constraint, ex_karaoke_slots_scope_occupancy, with no predicate, and Drizzle declares it nowhere (neither as a constraint nor as a gist index)",
+        "CHECK expressions equal the golden text exactly and match the contract by column, literal and number; the foreign keys reference events(id), karaoke_sales_configurations(id) and karaoke_exclusive_scopes(id) with ON DELETE RESTRICT; the three UNIQUE column lists equal the golden",
+        "The two section 45.4 indexes carry the golden columns and order and equal the contract pg_get_indexdef; every bigint column is lossless PgBigInt64; both exports are in the schema barrel in the app schema"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-DB-ARC-007-006",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "DB-ARC-007",
+        "DB-KRK-003",
+        "DB-MIG-001",
+        "DB-MIG-002",
+        "DB-MIG-003",
+        "DB-TIM-001",
+        "DB-TIM-002",
+        "DB-ID-003",
+        "DB-IDX-001",
+        "DEV-DB-013",
+        "SPEC-170-22",
+        "SPEC-100-28.1",
+        "SPEC-100-45.4",
+        "SPEC-100-59"
+      ],
+      "system_invariant_ids": [
+        "INV-010-04"
+      ],
+      "api_operation_ids": [],
+      "db_constraint_names": [
+        "pk_karaoke_exclusive_scopes",
+        "uq_karaoke_exclusive_scopes_public_ref",
+        "fk_karaoke_exclusive_scopes_event",
+        "pk_karaoke_slots",
+        "uq_karaoke_slots_public_ref",
+        "uq_karaoke_slots_scope_times",
+        "uq_karaoke_slots_generation_candidate",
+        "fk_karaoke_slots_exclusive_scope",
+        "fk_karaoke_slots_sales_configuration",
+        "ck_karaoke_slots_state",
+        "ck_karaoke_slots_usage_period",
+        "ck_karaoke_slots_cycle_end",
+        "ck_karaoke_slots_generation_candidate_no",
+        "ex_karaoke_slots_scope_occupancy"
+      ],
+      "preconditions": "Independent real PG17 database with every migration applied by app_migrator; the catalog and constraint goldens are written by hand from SPEC-100 and are not derived from schema-contract.json or the migration; administrator connection inside BEGIN / ROLLBACK, one savepoint per attempt, synthetic data only",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Applied migrations are immutable: 0001, 0002 and 0003 equal their committed bytes, and 0004 statically creates only the two Karaoke tables, the two section 45.4 indexes and one ALTER TABLE ... ADD CONSTRAINT for the exclusion, with no DROP, TRUNCATE, DELETE, trigger, function, extension, role, OWNER TO, row level security or WHERE"
+      ],
+      "expected_db_postconditions": [
+        "The journal lists 0001_foundation, 0002_audit_events, 0003_public_content_sales and 0004_karaoke_scopes_slots once each with the source hashes of the bundled files, and a second runMigrations leaves it unchanged",
+        "The two tables have exactly 7 + 12 columns in attnum order with the specified types, NOT NULL, identity always on id and the defaults gen_random_uuid(), transaction_timestamp() and 0; state and the generation columns have no default",
+        "Exactly 14 named constraints (3 + 11) and 9 valid indexes (2 + 7) equal the golden definitions; the exclusion constraint has no WHERE, its backing index has no predicate and uses gist; only the two SPEC-100 section 45.4 indexes exist besides PK, UNIQUE and the exclusion",
+        "Both tables are owned by app_migrator with row level security off, there are two identity sequences and no time column is timestamp without time zone; the live catalog equals the release schema contract (requiredCatalog), checked directly and not only through readiness",
+        "public_ref is a database generated v4 UUID; a duplicate public_ref is 23505 uq_<table>_public_ref, a duplicate id is 23505 pk_<table>, and an explicit id without OVERRIDING SYSTEM VALUE is refused (428C9)",
+        "DROP EXTENSION btree_gist without CASCADE is refused with 2BP01 because the exclusion depends on it, and the extension and the constraint remain"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-KRK-001-001",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "TST-KRK-001",
+        "KRK-TIM-001",
+        "KRK-TIM-002",
+        "DB-TIM-001",
+        "DB-TIM-002",
+        "TST-DB-005",
+        "SPEC-100-28",
+        "SPEC-100-8.4"
+      ],
+      "system_invariant_ids": [
+        "INV-010-04"
+      ],
+      "api_operation_ids": [],
+      "db_constraint_names": [
+        "ck_karaoke_slots_usage_period",
+        "ck_karaoke_slots_cycle_end"
+      ],
+      "preconditions": "Independent real PG17 database with every migration applied by app_migrator; the catalog and constraint goldens are written by hand from SPEC-100 and are not derived from schema-contract.json or the migration; administrator connection inside BEGIN / ROLLBACK, one savepoint per attempt, synthetic data only",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Only the order usage_start < usage_end <= cycle_end is enforced; the standard 15 + 5 length is not fixed by the database (SPEC-100 section 28)"
+      ],
+      "expected_db_postconditions": [
+        "A standard slot, a slot with no maintenance, a 30 + 10 minute slot and a 1 microsecond slot are accepted",
+        "usage_start = usage_end and usage_start > usage_end are 23514 ck_karaoke_slots_usage_period (not a range construction error); usage_end one microsecond after cycle_end is 23514 ck_karaoke_slots_cycle_end",
+        "Omitting usage_start, usage_end, cycle_end, generation_cause_key or generation_candidate_no is 23502 naming the column; omitting a Scope name is 23502 and sort_order defaults to 0",
+        "created_at and updated_at of both tables default to the transaction transaction_timestamp(), not to the statement time; no row is committed by this case"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-INV-010-04-001",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "INV-010-04",
+        "DB-KRK-001",
+        "DB-KRK-002",
+        "KRK-SCP-003",
+        "KRK-SCP-004",
+        "TST-KRK-001",
+        "TST-DB-004",
+        "TST-DB-005",
+        "SPEC-100-28.1",
+        "SPEC-170-23"
+      ],
+      "system_invariant_ids": [
+        "INV-010-04"
+      ],
+      "api_operation_ids": [],
+      "db_constraint_names": [
+        "ex_karaoke_slots_scope_occupancy",
+        "uq_karaoke_slots_scope_times"
+      ],
+      "preconditions": "Independent real PG17 database with every migration applied by app_migrator; the catalog and constraint goldens are written by hand from SPEC-100 and are not derived from schema-contract.json or the migration; administrator connection inside BEGIN / ROLLBACK, one savepoint per attempt, synthetic data only",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "KARAOKE_GIST_OVERLAP_REJECT: the same Exclusive Scope never holds two slots whose occupancy [usage_start, cycle_end) overlaps, in any Slot State; the database is the final guard"
+      ],
+      "expected_db_postconditions": [
+        "A slot starting at the cycle_end of A and a slot ending at the usage_start of A are accepted ([) is half open, DB-KRK-002)",
+        "A slot overlapping A by 1 microsecond at either end, inside A's maintenance time, containing A or contained in A is 23P01 ex_karaoke_slots_scope_occupancy and the row count of the Scope is unchanged",
+        "The same three times in another Scope are accepted",
+        "All 16 pairs of Slot States (A state by B state, B overlapping by 1 microsecond) are 23P01: the exclusion has no predicate",
+        "The same three times in the same Scope are refused by 23505 uq_karaoke_slots_scope_times or 23P01 ex_karaoke_slots_scope_occupancy; which of the two reports it follows the index OID order and is not pinned (an exact match is resolved against the existing row by the generation service, SPEC-100 section 29 step 4); no row is committed by this case"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-KRK-001-002",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "DB-KRK-003",
+        "KRK-SCP-005",
+        "INV-010-04",
+        "TST-KRK-001",
+        "TST-DB-005",
+        "SPEC-100-28.1"
+      ],
+      "system_invariant_ids": [
+        "INV-010-04"
+      ],
+      "api_operation_ids": [],
+      "db_constraint_names": [
+        "ex_karaoke_slots_scope_occupancy",
+        "ck_karaoke_slots_cycle_end"
+      ],
+      "preconditions": "Independent real PG17 database with every migration applied by app_migrator; the catalog and constraint goldens are written by hand from SPEC-100 and are not derived from schema-contract.json or the migration; administrator connection inside BEGIN / ROLLBACK, one savepoint per attempt, synthetic data only; the Slot State order is not restricted by the database (DB-STA-002), this case shows only that the exclusion stays in force",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Changing a slot's state or times never removes it from the exclusion: no UPDATE can recreate an overlap"
+      ],
+      "expected_db_postconditions": [
+        "Updating a slot through AVAILABLE, HELD, SOLD, SALES_STOPPED and back to AVAILABLE succeeds, and after each state an overlapping INSERT is 23P01 ex_karaoke_slots_scope_occupancy",
+        "Moving a slot's times 1 microsecond into its neighbour, with or without a state change in the same UPDATE, and moving a slot into a Scope where it overlaps are 23P01 and the slot keeps its values and Scope",
+        "Extending a slot later while it stays adjacent, and shifting it later, are accepted; an UPDATE that makes usage_end exceed cycle_end is 23514 ck_karaoke_slots_cycle_end and the row is unchanged"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-CON-001-001",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "DB-KRK-001",
+        "INV-010-04",
+        "TST-CON-001",
+        "TST-DB-005",
+        "TST-KRK-001",
+        "SPEC-170-24",
+        "SPEC-100-28.1"
+      ],
+      "system_invariant_ids": [
+        "INV-010-04"
+      ],
+      "api_operation_ids": [],
+      "db_constraint_names": [
+        "ex_karaoke_slots_scope_occupancy"
+      ],
+      "preconditions": "Independent real PG17 database with every migration applied; two additional connections X and Y, a barrier on pg_stat_activity instead of sleep, statement_timeout 10s on Y; rows are committed so that other connections see them and are deleted again in finally; synthetic data only. The application has no write path yet; this case shows that the database refuses an overlap that a read-before-write check on a connection cannot see",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Neither connection finds an overlapping row with a SELECT before writing, yet the database lets only one of the two overlapping slots exist (DB-KRK-001)"
+      ],
+      "expected_db_postconditions": [
+        "X inserts slot A uncommitted; Y reads no overlap, sends an overlapping B and waits on a lock; after X commits, Y's INSERT is 23P01 ex_karaoke_slots_scope_occupancy and only A is stored",
+        "When X rolls back instead, Y's INSERT is accepted: the database does not refuse on an uncommitted row; the rows this case commits are removed in finally and nothing remains"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-KRK-001-003",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "KRK-GEN-005",
+        "KRK-GEN-009",
+        "INV-010-10",
+        "TST-KRK-001",
+        "TST-DB-005",
+        "SPEC-100-28",
+        "SPEC-100-29"
+      ],
+      "system_invariant_ids": [
+        "INV-010-10"
+      ],
+      "api_operation_ids": [],
+      "db_constraint_names": [
+        "uq_karaoke_slots_generation_candidate",
+        "uq_karaoke_slots_scope_times",
+        "ck_karaoke_slots_generation_candidate_no"
+      ],
+      "preconditions": "Independent real PG17 database with every migration applied by app_migrator; the catalog and constraint goldens are written by hand from SPEC-100 and are not derived from schema-contract.json or the migration; administrator connection inside BEGIN / ROLLBACK, one savepoint per attempt, synthetic data only; reuse of an exact match (DB-KRK-004) and all-or-nothing batches (DB-KRK-005) belong to the generation service, this case shows only physical uniqueness",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The same (generation cause, Scope, candidate number) identifies at most one slot"
+      ],
+      "expected_db_postconditions": [
+        "The same cause, Scope and candidate number twice is 23505 uq_karaoke_slots_generation_candidate; another Scope or candidate number + 1 is accepted",
+        "Candidate number 0 is accepted and -1 is 23514 ck_karaoke_slots_generation_candidate_no",
+        "The same three times are accepted in another Scope and are refused in the same Scope (23505 uq_karaoke_slots_scope_times or 23P01 ex_karaoke_slots_scope_occupancy, not pinned); no row is committed by this case"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-DB-STA-002-002",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "DB-STA-001",
+        "DB-STA-002",
+        "SPEC-100-10",
+        "SPEC-100-28",
+        "TST-KRK-001"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [
+        "ck_karaoke_slots_state"
+      ],
+      "preconditions": "Independent real PG17 database with every migration applied by app_migrator; the catalog and constraint goldens are written by hand from SPEC-100 and are not derived from schema-contract.json or the migration; administrator connection inside BEGIN / ROLLBACK, one savepoint per attempt, synthetic data only",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The CHECK allows only the upstream Slot States AVAILABLE, HELD, SOLD and SALES_STOPPED; no transition rule is placed in the database"
+      ],
+      "expected_db_postconditions": [
+        "The four states are accepted; an empty string, a lowercase value, RELEASED, ENABLED, a value with a trailing space and UNKNOWN_VALUE are 23514 ck_karaoke_slots_state; an omitted state is 23502 (no default); no row is committed by this case"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-DB-FK-002-002",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "DB-FK-001",
+        "DB-FK-002",
+        "DB-FK-004",
+        "DB-ID-003",
+        "KRK-SCP-002",
+        "SPEC-100-11",
+        "SPEC-100-12"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [
+        "fk_karaoke_exclusive_scopes_event",
+        "fk_karaoke_slots_exclusive_scope",
+        "fk_karaoke_slots_sales_configuration"
+      ],
+      "preconditions": "Independent real PG17 database with every migration applied by app_migrator; the catalog and constraint goldens are written by hand from SPEC-100 and are not derived from schema-contract.json or the migration; administrator connection inside BEGIN / ROLLBACK, one savepoint per attempt, synthetic data only",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Karaoke parents are never cascaded: a parent that has children cannot be deleted"
+      ],
+      "expected_db_postconditions": [
+        "The three foreign keys are ON DELETE RESTRICT (confdeltype r) and ON UPDATE NO ACTION (confupdtype a)",
+        "An absent event_id, exclusive_scope_id or sales_configuration_id is 23503 naming its foreign key; omitting any of the three is 23502",
+        "Deleting a Scope that has a slot, a sales configuration that has a slot, or an Event that has a Scope is 23503 and both parent and child remain; no row is committed by this case"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
+    },
+    {
+      "test_case_id": "TC-SEC-DB-001-002",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "SEC-DB-001",
+        "SEC-DB-003",
+        "INF-DB-005",
+        "SPEC-140-39",
+        "SPEC-180-22.2",
+        "SPEC-100-53",
+        "DB-FK-004"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Independent real PG17 database; app_api_runtime, app_email_runtime and app_reconciliation_runtime log in through createDatabase; the administrator reads the catalog, seeds and removes the synthetic rows the runtime roles act on; the expected privilege table is the approved one (app_api_runtime SELECT only on both tables; generation and Hold are not mounted and add their own grants when they are)",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "Only the API role has any privilege on the two Karaoke tables, and it is SELECT; no role can DELETE or TRUNCATE, and the workers hold nothing"
+      ],
+      "expected_db_postconditions": [
+        "has_table_privilege for the four roles over SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER and MAINTAIN equals the approved table; no column has an ACL of its own, the ACL has no PUBLIC entry, and no role has a privilege on the two identity sequences",
+        "app_api_runtime SELECT succeeds; its INSERT, UPDATE, DELETE, TRUNCATE and SELECT ... FOR UPDATE are 42501",
+        "app_email_runtime and app_reconciliation_runtime SELECT, INSERT, UPDATE and DELETE are 42501; after every refusal the rows are unchanged"
       ],
       "expected_provider_postconditions": [],
       "expected_observability": [],
@@ -18843,7 +19254,8 @@
       ],
       "expected_db_postconditions": [
         "Required metadata remains inspectable by Recon without granting Directory row access",
-        "Valid quoted Provider identifiers match the direct view projection"
+        "Valid quoted Provider identifiers match the direct view projection",
+        "The btree_gist drop (with CASCADE, because the Karaoke exclusion constraint of migration 0004 depends on the extension) is reported by the extensions readiness check"
       ],
       "expected_provider_postconditions": [],
       "expected_observability": [

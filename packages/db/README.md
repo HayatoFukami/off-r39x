@@ -16,6 +16,8 @@ bigint-mode tables; reviewed SQL lives in `migrations/`.
 - `src/schema/sales.ts`: `entry_ticket_offerings`, `karaoke_sales_configurations` and `goods` (SPEC-100 §15.1–15.3).
 - `src/schema/goods.ts`: `goods_inventory`. It is in its own file because SPEC-100 Part IX (§38) owns it; it
   references `goods` from `sales.ts`.
+- `src/schema/karaoke.ts`: `karaoke_exclusive_scopes` and `karaoke_slots` (SPEC-100 §27–28). The Scope overlap
+  exclusion `ex_karaoke_slots_scope_occupancy` is SQL-only (§57) and is not declared in Drizzle.
 - `src/audit-events.ts`: caller-transaction Audit writer (INSERT only, no RETURNING, no retry, per-operation change specs).
 - `src/schema/index.ts`: the barrel. It re-exports `app` and the tables by name,
   unchanged, and exports no helper (`DEV-DB-001`). To add a table, put it in the

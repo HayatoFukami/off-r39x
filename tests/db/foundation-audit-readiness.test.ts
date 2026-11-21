@@ -80,7 +80,8 @@ it("TC-DB-AUDIT-001 detects missing and altered release schema, constraints and 
       "ALTER TABLE app.business_profiles ALTER COLUMN created_at DROP DEFAULT",
       "ALTER TABLE app.role_assignments RENAME TO missing_role_assignments",
       "ALTER SCHEMA app RENAME TO missing_app",
-      "DROP EXTENSION btree_gist",
+      // CASCADE: from migration 0004 the Karaoke exclusion constraint depends on btree_gist, so a plain DROP is refused (2BP01).
+      "DROP EXTENSION btree_gist CASCADE",
       "ALTER TABLE synthetic_provider.identities DROP CONSTRAINT identities_pkey",
       "ALTER TABLE synthetic_provider.identities ALTER COLUMN verified DROP NOT NULL",
       "CREATE OR REPLACE VIEW auth_read.identity_directory WITH (security_barrier=true) AS SELECT subject AS auth_subject,current_email AS email,NOT verified AS email_verified FROM synthetic_provider.identities",
@@ -89,7 +90,12 @@ it("TC-DB-AUDIT-001 detects missing and altered release schema, constraints and 
       await pool.query("BEGIN");
       try {
         await pool.query(injection);
-        expect((await checkReadiness(pool, expected)).ready, injection).toBe(false);
+        const readiness = await checkReadiness(pool, expected);
+        expect(readiness.ready, injection).toBe(false);
+        // The extension check itself must notice the missing extension, not only the contract diff that CASCADE causes.
+        if (injection.startsWith("DROP EXTENSION btree_gist")) {
+          expect(readiness.failures, injection).toContain("extensions");
+        }
       } finally {
         await pool.query("ROLLBACK");
       }
