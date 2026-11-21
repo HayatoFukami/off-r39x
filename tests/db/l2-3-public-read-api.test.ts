@@ -307,7 +307,9 @@ describe("TC-API-009-006 API-PUB-001..005 from HTTP to PostgreSQL (SPEC-110 §26
 
     const detail = await app.get(PATHS.announcement(ref(0xa3)));
     expect(detail.status).toBe(200);
-    expect(await dataOf(detail)).toEqual({
+    // The body is read once and kept: a Response body cannot be read twice (PR #85 review).
+    const detailData = await dataOf(detail);
+    expect(detailData).toEqual({
       announcement_ref: ref(0xa3),
       title: "Synthetic title a3",
       body: "Synthetic   body a3\n\nsecond line",
@@ -315,7 +317,7 @@ describe("TC-API-009-006 API-PUB-001..005 from HTTP to PostgreSQL (SPEC-110 §26
     });
     // An upper-case ref is normalized and finds the same row.
     expect(await dataOf(await app.get(PATHS.announcement(ref(0xa3).toUpperCase())))).toEqual(
-      await dataOf(detail),
+      detailData,
     );
 
     expect(await dataOf(await app.get(PATHS.entryOfferings))).toEqual({
@@ -515,6 +517,24 @@ describe("TC-API-009-006 API-PUB-001..005 from HTTP to PostgreSQL (SPEC-110 §26
     expect((await app.get(PATHS.announcement(ref(0xa1)))).status).toBe(200);
   });
 
+  it("a PUBLISHED Announcement whose published_at is 'infinity' makes the list and its detail 503 TEMPORARY_UNAVAILABLE, not a 500 (PR #85 review)", async () => {
+    await resetPublicContent(admin);
+    const eventId = await insertEvent(admin, { ref: EVENT_REF });
+    await insertAnnouncement(admin, eventId, {
+      ref: ref(0xa6),
+      state: "PUBLISHED",
+      publishedAt: "infinity",
+    });
+    const app = makeApp();
+    for (const path of [PATHS.announcements, PATHS.announcement(ref(0xa6))]) {
+      const res = await app.get(path);
+      expect(res.status, path).toBe(503);
+      const error = await codeOf(res);
+      expect(error.code, path).toBe("TEMPORARY_UNAVAILABLE");
+      expect(error.retryable, path).toBe(true);
+    }
+  });
+
   it("an unreachable database is 503 DATABASE_TEMPORARY_FAILURE (retryable) for all six, never an empty list or a 404", async () => {
     await seedAll(Date.now());
     const net = await new Promise<number>((resolve) => {
@@ -580,6 +600,22 @@ describe("TC-API-006-101 API-PUB-012 from HTTP to PostgreSQL (SPEC-110 §26 API-
     const res = await makeApp().get(PATHS.sponsorLogos);
     expect(res.status).toBe(200);
     expect(await dataOf(res)).toEqual({ items: [] });
+  });
+
+  it("a stored PUBLISHED Logo whose image_url breaks SEC-WEB-026 (a localhost host) is 503 TEMPORARY_UNAVAILABLE and the URL is not sent (PR #85 review)", async () => {
+    await resetPublicContent(admin);
+    const eventId = await insertEvent(admin, { ref: EVENT_REF });
+    await insertLogo(admin, eventId, {
+      ref: ref(0xd7),
+      state: "PUBLISHED",
+      sortOrder: 0,
+      imageUrl: "https://localhost/d7.png",
+    });
+    const res = await makeApp().get(PATHS.sponsorLogos);
+    expect(res.status).toBe(503);
+    const text = await res.text();
+    expect(JSON.parse(text).error.code).toBe("TEMPORARY_UNAVAILABLE");
+    expect(text).not.toContain("localhost");
   });
 
   it("two Events are 500 INTERNAL_ERROR (API-PUB-READ-002) and no Logo of either is sent", async () => {

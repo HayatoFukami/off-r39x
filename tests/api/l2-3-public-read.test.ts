@@ -299,6 +299,27 @@ function commonCases(ops: readonly Op[]): void {
 }
 
 /** A row the response schema refuses (API-PUB-READ-006): the whole Operation is 503 TEMPORARY_UNAVAILABLE. */
+/** SEC-WEB-026: Logo URLs the response must refuse (each a stored PUBLISHED value). */
+const LOGO_URLS_REFUSED: readonly string[] = [
+  "https://localhost/a.png",
+  "https://cdn.localhost/a.png",
+  "https://logos.local/a.png",
+  "https://127.0.0.1/a.png",
+  "https://0x7f.1/a.png",
+  "https://2130706433/a.png",
+  "https://[::1]/a.png",
+  "https://logos.example.test:8443/a.png",
+  "https://logos.example.test/a.png?sig=abc",
+  "https://logos.example.test/a.png#frag",
+  "https://user:pass@logos.example.test/a.png",
+  "https://user@logos.example.test/a.png",
+  "https:logos.example.test/a.png",
+  "https://logos.example.test\\a.png",
+  "https://logos.example.test/a\tb.png",
+  "https://logos.example.test/a b.png",
+  "ftp://logos.example.test/a.png",
+];
+
 function invalidRowCases(include: (key: PublicOperationKey) => boolean): void {
   const REF_UPPER = "00000000-0000-4000-8000-0000000000A1";
   const offering = (patch: Partial<EntryOfferingRowFixture>) => ({
@@ -441,6 +462,74 @@ function invalidRowCases(include: (key: PublicOperationKey) => boolean): void {
     ],
     ["entryOfferings", "a negative unit amount", { offerings: offering({ unitAmount: "-1" }) }],
     ["entryOfferings", "a lower-case currency", { offerings: offering({ currency: "jpy" }) }],
+    // PR #85 review: a timestamptz the parser cannot turn into an instant ('infinity' / '-infinity') is
+    // an invalid row (API-PUB-READ-006), not a 500. The repository passes the raw text on unchanged.
+    [
+      "announcements",
+      "a PUBLISHED Announcement whose published_at is infinity",
+      {
+        announcements: {
+          status: "ok",
+          items: [
+            { ...(announcementRows()[0] as PublicAnnouncementRowFixture), publishedAt: "infinity" },
+          ],
+        },
+      },
+    ],
+    [
+      "announcement",
+      "a PUBLISHED Announcement whose published_at is -infinity",
+      {
+        announcement: {
+          status: "found",
+          announcement: {
+            ...(announcementRows()[0] as PublicAnnouncementRowFixture),
+            publishedAt: "-infinity",
+          },
+        },
+      },
+    ],
+    [
+      "entryOfferings",
+      "a sales_starts_at of -infinity (the sales state cannot be judged)",
+      { offerings: offering({ salesStartsAt: "-infinity" }) },
+    ],
+    [
+      "entryOfferings",
+      "a sales_ends_at of infinity (the sales state cannot be judged)",
+      { offerings: offering({ salesEndsAt: "infinity" }) },
+    ],
+    // PR #85 review / SEC-WEB-026: a stored Logo URL outside the allowed shape is never sent.
+    ...LOGO_URLS_REFUSED.flatMap(
+      (
+        url,
+      ): [
+        PublicOperationKey,
+        string,
+        Parameters<typeof createRecordingPublicContentStore>[0],
+      ][] => [
+        [
+          "sponsorLogos",
+          `an image_url ${JSON.stringify(url)}`,
+          {
+            logos: {
+              status: "ok",
+              items: [{ ...(logoRows()[0] as PublicLogoRowFixture), imageUrl: url }],
+            },
+          },
+        ],
+        [
+          "sponsorLogos",
+          `a link_url ${JSON.stringify(url)}`,
+          {
+            logos: {
+              status: "ok",
+              items: [{ ...(logoRows()[0] as PublicLogoRowFixture), linkUrl: url }],
+            },
+          },
+        ],
+      ],
+    ),
   ];
   describe.each(cases.filter(([key]) => include(key)))("%s: %s", (key, _label, data) => {
     it("is 503 TEMPORARY_UNAVAILABLE (retryable), the row is neither guessed, skipped nor sent", async () => {

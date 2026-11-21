@@ -233,3 +233,81 @@ describe("TC-API-009-008 failure classification of a driver rejection (SPEC-110 
     },
   );
 });
+
+// PR #85 review: PostgreSQL timestamptz accepts 'infinity' / '-infinity', which the node-postgres parser
+// does not turn into an instant. The repository must not throw on it (that would be a 500): it passes
+// the text on unchanged, so the response schema refuses the row (API-PUB-READ-006, 503).
+describe("TC-API-009-008 an unparseable timestamptz is passed on, never thrown (SPEC-110 §26.1 API-PUB-READ-006)", () => {
+  function answeringPool(row: Record<string, unknown>) {
+    const answer = async () => ({ rows: [row], rowCount: 1 });
+    const client = {
+      query: answer,
+      on: () => client,
+      once: () => client,
+      removeListener: () => client,
+      release: () => undefined,
+    };
+    return { query: answer, connect: async () => client } as unknown as Pool;
+  }
+
+  it.each(["infinity", "-infinity"])("Announcement detail: published_at %s", async (value) => {
+    const repo = createPublicContentRepository(
+      answeringPool({
+        event_count: 1,
+        public_ref: REF,
+        title: "Synthetic title",
+        body: "Synthetic body",
+        published_at: value,
+      }),
+    );
+    const result = await repo.readPublishedAnnouncement(REF);
+    expect(result).toEqual({
+      status: "found",
+      announcement: {
+        publicRef: REF,
+        title: "Synthetic title",
+        body: "Synthetic body",
+        publishedAt: value,
+      },
+    });
+  });
+
+  it.each(["infinity", "-infinity"])("Event: starts_at %s", async (value) => {
+    const repo = createPublicContentRepository(
+      answeringPool({
+        public_ref: REF,
+        name: "Synthetic event",
+        summary: null,
+        starts_at: value,
+        ends_at: null,
+        business_timezone: "Asia/Tokyo",
+        venue_name: null,
+        venue_details: null,
+        access_information: null,
+        participant_notices: null,
+      }),
+    );
+    const result = (await repo.readPublicEvent()) as {
+      status: string;
+      event: { startsAt: unknown };
+    };
+    expect(result.status).toBe("found");
+    expect(result.event.startsAt).toBe(value);
+  });
+
+  it("a parseable timestamptz is still normalised to the UTC Z form", async () => {
+    const repo = createPublicContentRepository(
+      answeringPool({
+        event_count: 1,
+        public_ref: REF,
+        title: "Synthetic title",
+        body: "Synthetic body",
+        published_at: "2030-05-03 19:20:30.456+09",
+      }),
+    );
+    const result = (await repo.readPublishedAnnouncement(REF)) as {
+      announcement: { publishedAt: unknown };
+    };
+    expect(result.announcement.publishedAt).toBe("2030-05-03T10:20:30.456Z");
+  });
+});

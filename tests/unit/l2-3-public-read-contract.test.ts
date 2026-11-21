@@ -125,6 +125,46 @@ describe("TC-API-006-103 publicSponsorLogoListSchema (API-PUB-012, SPEC-110 §26
     expect(ok(publicSponsorLogoListSchema, list({ ...LOGO, link_url: url }))).toBe(false);
   });
 
+  // PR #85 review: SEC-WEB-026 (WHATWG URL parse; no userinfo, non-443 port, query, fragment, IP literal,
+  // localhost / .local host, control character), the same rule as the Web's sponsor area model.
+  it.each([
+    ["localhost", "https://localhost/a.png"],
+    ["a *.localhost host", "https://cdn.localhost/a.png"],
+    ["a .local host", "https://logos.local/a.png"],
+    ["an upper-case .LOCAL host", "https://LOGOS.LOCAL/a.png"],
+    ["an IPv4 literal", "https://127.0.0.1/a.png"],
+    ["a hexadecimal IPv4 literal", "https://0x7f.1/a.png"],
+    ["a decimal IPv4 literal", "https://2130706433/a.png"],
+    ["an IPv6 literal", "https://[::1]/a.png"],
+    ["a non-standard port", "https://logos.example.test:8443/a.png"],
+    ["a query", "https://logos.example.test/a.png?sig=abc"],
+    ["an empty query", "https://logos.example.test/a.png?"],
+    ["a fragment", "https://logos.example.test/a.png#frag"],
+    ["user and password", "https://user:pass@logos.example.test/a.png"],
+    ["a user", "https://user@logos.example.test/a.png"],
+    ["no // after the scheme", "https:logos.example.test/a.png"],
+    ["a backslash", "https://logos.example.test\\a.png"],
+    ["a tab", "https://logos.example.test/a\tb.png"],
+    ["a newline", "https://logos.example.test/a\nb.png"],
+    ["a space", "https://logos.example.test/a b.png"],
+    ["a DEL", "https://logos.example.test/a\u007fb.png"],
+    ["another scheme", "ftp://logos.example.test/a.png"],
+  ])("SEC-WEB-026: image_url rejects %s, and so does link_url", (_label, url) => {
+    expect(ok(publicSponsorLogoListSchema, list({ ...LOGO, image_url: url }))).toBe(false);
+    expect(ok(publicSponsorLogoListSchema, list({ ...LOGO, link_url: url }))).toBe(false);
+  });
+
+  it.each([
+    ["a plain https URL", "https://logos.example.test/one.png"],
+    ["an upper-case scheme and host", "HTTPS://LOGOS.EXAMPLE.TEST/one.png"],
+    ["the default port 443", "https://logos.example.test:443/one.png"],
+    ["no path", "https://logos.example.test"],
+    ["a hyphenated host", "https://cdn-1.logos.example.test/a/b/one.png"],
+  ])("SEC-WEB-026: image_url accepts %s, and so does link_url", (_label, url) => {
+    expect(ok(publicSponsorLogoListSchema, list({ ...LOGO, image_url: url }))).toBe(true);
+    expect(ok(publicSponsorLogoListSchema, list({ ...LOGO, link_url: url }))).toBe(true);
+  });
+
   it("display_name must be a non-empty string; sort_order a non-negative integer", () => {
     expect(ok(publicSponsorLogoListSchema, list({ ...LOGO, display_name: "" }))).toBe(false);
     expect(ok(publicSponsorLogoListSchema, list({ ...LOGO, display_name: 1 }))).toBe(false);
