@@ -234,6 +234,11 @@ describe("TC-TST-SEED-005-002 stdout and log content, and what they must never c
     expect(completed).toHaveLength(1);
     expect(completed[0]).toMatchObject({ result: expected.result, level: expected.level });
     expect(completed[0]?.failure_class ?? null).toBe(expected.failureClass);
+    // SPEC-160 section 22: the completion record states which attempt it closes and whether it was a retry.
+    const attempt = completed[0]?.attempt_number;
+    expect(Number.isInteger(attempt), "attempt_number is an integer").toBe(true);
+    expect(attempt as number).toBeGreaterThanOrEqual(1);
+    expect(completed[0]?.is_retry).toBe((attempt as number) > 1);
   }
 
   it("TC-TST-SEED-005-002 CREATED, NOOP and FAILED: result line keys, log fields and result mapping; no input value, URL, password or stack", async () => {

@@ -3,7 +3,11 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { ROUTES } from "../../apps/api/src/api/routes.ts";
 import { parseInitialDataInput } from "../../packages/db/src/initial-data/input.ts";
-import { outcomeExitCode, outcomeLogFields } from "../../packages/db/src/initial-data/seed.ts";
+import {
+  classifySeedFailure,
+  outcomeExitCode,
+  outcomeLogFields,
+} from "../../packages/db/src/initial-data/seed.ts";
 import { createLogger, EVENT_NAMES } from "../../packages/observability/src/index.ts";
 import {
   buildInitialDataInput,
@@ -113,6 +117,12 @@ describe("TC-TST-SEED-003-001 input validation (DB-SEED-003: strict, same condit
       () => buildInitialDataInput({ event: { ends_at: undefined } }),
     ],
     ["one Offering", () => buildInitialDataInput({ offeringCount: 1 })],
+    // No CHECK on entry_ticket_offerings.name requires a non-empty value (DB-SEED-003: only the
+    // database's own conditions are enforced; ck_events_name covers the Event name alone).
+    [
+      "an empty Offering name (the database has no such CHECK)",
+      () => buildInitialDataInput({ offering: () => ({ name: "" }) }),
+    ],
     ["many Offerings (no upper bound)", () => buildInitialDataInput({ offeringCount: 120 })],
   ];
   for (const [label, build] of accepted) {
@@ -161,6 +171,14 @@ describe("TC-TST-SEED-003-001 input validation (DB-SEED-003: strict, same condit
     [
       "a lone surrogate in an Offering description",
       (i) => ({ ...i, entry_ticket_offerings: [{ ...offering0(i), description: "\ud83d" }] }),
+    ],
+    [
+      "an Event name containing a NUL character (PostgreSQL text cannot hold it)",
+      (i) => ({ ...i, event: { ...i.event, name: "a\u0000b" } }),
+    ],
+    [
+      "a NUL character in an Offering description",
+      (i) => ({ ...i, entry_ticket_offerings: [{ ...offering0(i), description: "x\u0000y" }] }),
     ],
     [
       "an Event whose starts_at equals ends_at",
@@ -547,4 +565,39 @@ describe("TC-TST-SEED-005-007 the completion event name is in the logger registr
       schema_version: 1,
     });
   });
+});
+
+describe("TC-TST-SEED-003-007 failure classification of a rolled-back attempt (plan v1.2 section 6, F-4, REL-DB-002)", () => {
+  // Retryable states (40001, 40P01, 55P03) and an unknown COMMIT result are handled before this function.
+  const PERMANENT_AUDIT = { failureClass: "PERMANENT_FAILURE", errorCode: "AUDIT_WRITE_FAILED" };
+  const TEMPORARY_AUDIT = { failureClass: "TEMPORARY_FAILURE", errorCode: "AUDIT_WRITE_FAILED" };
+  const CONSTRAINT = {
+    failureClass: "PERMANENT_FAILURE",
+    errorCode: "INITIAL_DATA_CONSTRAINT_REJECTED",
+  };
+  const UNEXPECTED = {
+    failureClass: "TEMPORARY_FAILURE",
+    errorCode: "UNEXPECTED_INTERNAL_ERROR",
+  };
+  const cases: ["statement" | "audit", string | undefined, object][] = [
+    ["audit", "23514", PERMANENT_AUDIT],
+    ["audit", "23505", PERMANENT_AUDIT],
+    ["audit", "42501", PERMANENT_AUDIT],
+    ["audit", "08006", TEMPORARY_AUDIT],
+    ["audit", "57P01", TEMPORARY_AUDIT],
+    ["audit", undefined, TEMPORARY_AUDIT],
+    ["statement", "23505", CONSTRAINT],
+    ["statement", "23514", CONSTRAINT],
+    ["statement", "23503", CONSTRAINT],
+    ["statement", "23P01", CONSTRAINT],
+    ["statement", "22P02", UNEXPECTED],
+    ["statement", "22008", UNEXPECTED],
+    ["statement", "22021", UNEXPECTED],
+    ["statement", undefined, UNEXPECTED],
+  ];
+  for (const [stage, sqlstate, expected] of cases) {
+    it(`TC-TST-SEED-003-007 ${stage} stage with ${sqlstate ?? "no SQLSTATE"} is ${JSON.stringify(expected)}`, () => {
+      expect(classifySeedFailure(stage, sqlstate)).toEqual(expected);
+    });
+  }
 });

@@ -17600,7 +17600,7 @@
       ],
       "expected_provider_postconditions": [],
       "expected_observability": [
-        "reliability.unknown_result.opened (WARN, PENDING, UNKNOWN_RESULT) then reliability.unknown_result.resolved (SUCCESS)"
+        "reliability.unknown_result.opened (WARN, PENDING, UNKNOWN_RESULT) then reliability.unknown_result.resolved (SUCCESS) with an integer duration_ms; no retry.attempted; every record passes the production strict logger schema"
       ],
       "sensitivity_class": "synthetic",
       "critical": true
@@ -17670,7 +17670,7 @@
       ],
       "expected_provider_postconditions": [],
       "expected_observability": [
-        "reliability.unknown_result.opened then resolved with FAILED and TEMPORARY_FAILURE"
+        "reliability.unknown_result.opened then resolved (FAILED, TEMPORARY_FAILURE, integer duration_ms), then reliability.retry.attempted with is_retry true and attempt_number 2 or more; every record passes the production strict logger schema"
       ],
       "sensitivity_class": "synthetic",
       "critical": true
@@ -17812,6 +17812,100 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": true
+    },
+    {
+      "test_case_id": "TC-TST-SEED-002-006",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "DB-SEED-002",
+        "DB-SEED-001",
+        "INF-SEED-003",
+        "INV-010-07",
+        "TST-SEED-002",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [
+        "INV-010-07"
+      ],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real PostgreSQL 17 test database created per test file with migrations 0001-0003 applied by app_migrator; synthetic Event and Offering values only; acquireMigrationLock then seedInitialData on a dedicated app_migrator connection; no Provider; a superuser session holds the seed xact lock while the seed starts, then creates the Event and an Offering and commits inside the seed's lock_timeout",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The seed ends NOOP without reading the input"
+      ],
+      "expected_db_postconditions": [
+        "The seed connection is seen waiting on an advisory lock in pg_stat_activity before the writer commits",
+        "The rows are the writer's, unchanged, and no Audit Event exists"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-TST-SEED-003-006",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "REL-DB-005",
+        "REL-DB-006",
+        "TST-SEED-003",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real PostgreSQL 17 test database created per test file with migrations 0001-0003 applied by app_migrator; synthetic Event and Offering values only; acquireMigrationLock then seedInitialData on a dedicated app_migrator connection; no Provider; transactionDeadlineMs option shortened to 300 ms and the transaction held open for 800 ms before COMMIT; a control run with the default deadline",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "A transaction still open after its deadline is rolled back before COMMIT and the result is FAILED (TEMPORARY_FAILURE, DATABASE_TEMPORARY_FAILURE); the control run is CREATED"
+      ],
+      "expected_db_postconditions": [
+        "No Event, Offering or Audit Event remains after the deadline run and no COMMIT was sent"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
+      "test_case_id": "TC-TST-SEED-003-007",
+      "level": "Unit",
+      "suite": "unit",
+      "upstream_rule_ids": [
+        "REL-DB-002",
+        "DB-SEED-005",
+        "TST-SEED-003",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Node unit test with no database; the pure classifySeedFailure(stage, sqlstate) of the seed module; retryable states and an unknown COMMIT result are handled before it",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "An Audit-stage failure is AUDIT_WRITE_FAILED: PERMANENT_FAILURE for 23xxx and other server states, TEMPORARY_FAILURE for connection-class states and a missing SQLSTATE",
+        "A statement-stage 23xxx is INITIAL_DATA_CONSTRAINT_REJECTED (PERMANENT_FAILURE); a 22xxx data exception or a missing SQLSTATE is UNEXPECTED_INTERNAL_ERROR (TEMPORARY_FAILURE)"
+      ],
+      "expected_db_postconditions": [],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": false
     },
     {
       "test_case_id": "TC-DB-ARC-007-003",

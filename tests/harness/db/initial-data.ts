@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { Client } from "pg";
 import type { MigrationLock } from "../../../packages/db/src/migration-lock.ts";
+import { createLogger } from "../../../packages/observability/src/index.ts";
 
 // PR-SEED harness (SPEC-170 TST-SEED-001..006, SPEC-180 INF-SEED-001..006). Synthetic values only; the
 // names, dates and amounts below do not describe any real venue, event or price (DB-SEED-006).
@@ -287,10 +288,15 @@ export async function runSeed(
     logs?: RecordedLog[] | undefined;
     /** Runs after the lock is held and before seeding starts. */
     beforeSeed?: (() => Promise<void>) | undefined;
+    /** Passed to seedInitialData as `transactionDeadlineMs` (SPEC-150 section 9 wall clock, plan v1.2 Q-2). */
+    transactionDeadlineMs?: number | undefined;
+    /** Blocks the (synchronous) readInput callback, i.e. the open transaction, for this long. */
+    readInputDelayMs?: number | undefined;
   } = {},
 ) {
   const statements = options.statements ?? [];
   const logs = options.logs ?? [];
+  const actorRef = options.actorRef ?? SEED_ACTOR_REF;
   const wrap = <T extends Client>(client: T) => recordStatements(client, statements);
   const main = wrap(
     await (options.openMain ?? (() => connectAs(options.role ?? "app_migrator")))(),
@@ -315,10 +321,25 @@ export async function runSeed(
         options.connect ? options.connect(wrap) : connectAs("app_migrator").then(wrap),
       readInput: () => {
         reads += 1;
+        if (options.readInputDelayMs)
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, options.readInputDelayMs);
         return raw;
       },
-      actorRef: options.actorRef ?? SEED_ACTOR_REF,
-      logger: { log: (event: object) => void logs.push(event as RecordedLog) },
+      actorRef,
+      // The production strict schema: a record it rejects is dropped by the command, so the test
+      // that expects it fails (plan v1.2 F-2). `logs` holds the parsed JSON lines.
+      logger: createLogger(
+        {
+          service: "RECOVERY",
+          environment: "test",
+          actor_type: "INFRASTRUCTURE_OPERATOR",
+          actor_ref: actorRef,
+        },
+        (line) => void logs.push(JSON.parse(line) as RecordedLog),
+      ),
+      ...(options.transactionDeadlineMs === undefined
+        ? {}
+        : { transactionDeadlineMs: options.transactionDeadlineMs }),
     });
     return { outcome, reads: () => reads, statements, logs };
   } finally {

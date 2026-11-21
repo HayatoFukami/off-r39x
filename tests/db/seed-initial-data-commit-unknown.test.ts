@@ -36,6 +36,7 @@ vi.setConfig({ testTimeout: 60_000 });
 
 const OPENED = "reliability.unknown_result.opened";
 const RESOLVED = "reliability.unknown_result.resolved";
+const RETRY_ATTEMPTED = "reliability.retry.attempted";
 const SEED_TABLES = ["app.audit_events", "app.entry_ticket_offerings", "app.events"];
 const LOCK_WAIT_SQL = `SELECT count(*)::int AS n FROM pg_stat_activity
   WHERE datname = current_database() AND pid <> pg_backend_pid()
@@ -65,6 +66,25 @@ const counts = async () => ({
   audits: (await audits()).length,
 });
 const named = (logs: RecordedLog[], name: string) => logs.filter((log) => log.event_name === name);
+
+// SPEC-160 section 22: a resolved record carries the elapsed time of the unknown result.
+function expectDuration(record: RecordedLog | undefined) {
+  const duration = record?.duration_ms;
+  expect(Number.isInteger(duration), "duration_ms is an integer").toBe(true);
+  expect(duration as number).toBeGreaterThanOrEqual(0);
+}
+
+// SPEC-160 section 22: the second and later seed transactions announce themselves as retries.
+function expectRetryAttempted(logs: RecordedLog[], executionId: string | undefined) {
+  const attempted = named(logs, RETRY_ATTEMPTED);
+  expect(attempted).toHaveLength(1);
+  expect(attempted[0]).toMatchObject({
+    is_retry: true,
+    operation_id: "PROVISION.INITIAL_DATA_SEED",
+    operation_execution_id: executionId,
+  });
+  expect(attempted[0]?.attempt_number as number).toBeGreaterThanOrEqual(2);
+}
 
 async function insertManualEvent(): Promise<string> {
   return (
@@ -132,6 +152,8 @@ describe("TC-TST-SEED-006-001 COMMIT took effect, acknowledgement lost (DB-SEED-
       operation_execution_id: outcome.operationExecutionId,
     });
     expect(resolved[0]).toMatchObject({ result: "SUCCESS" });
+    expectDuration(resolved[0]);
+    expect(named(logs, RETRY_ATTEMPTED)).toHaveLength(0);
     expect(logs.indexOf(opened[0] as RecordedLog)).toBeLessThan(
       logs.indexOf(resolved[0] as RecordedLog),
     );
@@ -171,6 +193,7 @@ describe("TC-TST-SEED-006-002 another run created the rows meanwhile (DB-SEED-00
     );
     expect(named(logs, OPENED)).toHaveLength(1);
     expect(named(logs, RESOLVED)[0]).toMatchObject({ result: "NOOP" });
+    expectDuration(named(logs, RESOLVED)[0]);
   });
 });
 
@@ -196,6 +219,8 @@ describe("TC-TST-SEED-006-003 COMMIT never took effect: re-check, then retry (DB
       result: "FAILED",
       failure_class: "TEMPORARY_FAILURE",
     });
+    expectDuration(named(logs, RESOLVED)[0]);
+    expectRetryAttempted(logs, outcome.operationExecutionId);
     // The Event INSERT was issued twice in total (attempt 1 on the lost connection, attempt 2 on the new
     // one), and the migration lock was taken again on the new connection (INF-SEED-003).
     expect(insertedTables(statements).filter((table) => table === "app.events")).toHaveLength(2);
@@ -229,6 +254,7 @@ describe("TC-TST-SEED-006-004 Event exists, only Offerings were being created (D
       result: "FAILED",
       failure_class: "TEMPORARY_FAILURE",
     });
+    expectRetryAttempted(logs, outcome.operationExecutionId);
   });
 });
 
@@ -272,6 +298,8 @@ describe("TC-TST-SEED-006-005 the re-check starts while the original COMMIT is i
       new Set([outcome.operationExecutionId]),
     );
     expect(named(logs, RESOLVED)[0]).toMatchObject({ result: "SUCCESS" });
+    expectDuration(named(logs, RESOLVED)[0]);
+    expect(named(logs, RETRY_ATTEMPTED)).toHaveLength(0);
   });
 });
 

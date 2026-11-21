@@ -22,6 +22,7 @@ import {
   sensitiveValues,
   shape,
   snapshotSeededTables,
+  waitUntil,
 } from "../harness/db/initial-data.ts";
 
 // PR-SEED C1 on a real PostgreSQL 17 (SPEC-170 §22.1 TST-SEED-001..005; SPEC-100 §13.5 DB-SEED-001..005;
@@ -90,12 +91,20 @@ const counts = async () => ({
 });
 const sortedSet = (values: Iterable<string>) => [...values].sort();
 
-async function insertManualEvent(name = "合成データ 手動イベント"): Promise<string> {
-  return (await admin.query("INSERT INTO app.events (name) VALUES ($1) RETURNING id::text", [name]))
-    .rows[0].id;
+async function insertManualEvent(
+  name = "合成データ 手動イベント",
+  client: Client = admin,
+): Promise<string> {
+  return (
+    await client.query("INSERT INTO app.events (name) VALUES ($1) RETURNING id::text", [name])
+  ).rows[0].id;
 }
-async function insertManualOffering(eventId: string, name = "合成データ 手動入場券") {
-  await admin.query(
+async function insertManualOffering(
+  eventId: string,
+  name = "合成データ 手動入場券",
+  client: Client = admin,
+) {
+  await client.query(
     `INSERT INTO app.entry_ticket_offerings
        (event_id, name, unit_amount, currency, sales_starts_at, sales_ends_at, sale_control_state,
         sales_capacity, purchase_limit)
@@ -322,6 +331,48 @@ describe("TC-TST-SEED-002-005 N concurrent commands create one set (DB-SEED-002,
   });
 });
 
+describe("TC-TST-SEED-002-006 the xact lock serialises the count decision (DB-SEED-002, DB-SEED-001, INF-SEED-003, INV-010-07)", () => {
+  it("TC-TST-SEED-002-006 a seed that waits on the lock while another session creates the rows ends NOOP and adds nothing", async () => {
+    const holder = await connectAs("postgres");
+    let seeding: ReturnType<typeof runSeed> | undefined;
+    try {
+      // An outside writer takes the seed's transaction lock first.
+      await holder.query("BEGIN");
+      await holder.query("SELECT pg_advisory_xact_lock(hashtext('app:initial-data-seed'))");
+      seeding = runSeed({ input: buildInitialDataInput() });
+      await waitUntil(
+        async () =>
+          (
+            await admin.query(
+              `SELECT count(*)::int AS n FROM pg_stat_activity
+                WHERE datname = current_database() AND pid <> pg_backend_pid()
+                  AND wait_event_type = 'Lock' AND wait_event = 'advisory'
+                  AND query ILIKE '%pg_advisory_xact_lock%'`,
+            )
+          ).rows[0].n > 0,
+        { label: "the seed connection waiting for pg_advisory_xact_lock" },
+      );
+      // Nothing is decided yet: the seed has not counted. The writer now creates the rows and commits,
+      // well inside the seed's 1 second lock_timeout.
+      const eventId = await insertManualEvent("合成データ 外部イベント", holder);
+      await insertManualOffering(eventId, "合成データ 外部入場券", holder);
+      await holder.query("COMMIT");
+    } catch (error) {
+      await holder.query("ROLLBACK").catch(() => {});
+      throw error;
+    } finally {
+      await endQuietly(holder);
+    }
+    const run = await (seeding as NonNullable<typeof seeding>);
+    const before = await snapshotSeededTables(admin);
+    expect(shape(run.outcome).outcome).toBe("NOOP");
+    expect(run.reads()).toBe(0);
+    expect(await counts()).toEqual({ events: 1, offerings: 1, audits: 0 });
+    expect((await events())[0].name).toBe("合成データ 外部イベント");
+    expect(await snapshotSeededTables(admin)).toEqual(before);
+  });
+});
+
 describe("TC-TST-SEED-003-002 validation failure rolls everything back (DB-SEED-003, DB-TXN-002, REL-DB-002)", () => {
   it("TC-TST-SEED-003-002 three Offerings, only the second invalid: FAILED, no Event, no Offering, no Audit Event", async () => {
     const input = buildInitialDataInput({
@@ -391,6 +442,53 @@ describe("TC-TST-SEED-003-003 FP.AUDIT.INSERT_FAILURE rolls the whole seed back 
     expect(await counts()).toEqual({ events: 0, offerings: 0, audits: 0 });
     // No retry: the Event INSERT was issued exactly once.
     expect(insertedTables(run.statements).filter((t) => t === "app.events")).toHaveLength(1);
+  });
+});
+
+describe("TC-TST-SEED-003-003 an Audit INSERT refused by a constraint is still an Audit failure (plan v1.2 F-4, DB-SEED-005)", () => {
+  it("TC-TST-SEED-003-003 23514 on app.audit_events: FAILED(AUDIT_WRITE_FAILED, PERMANENT_FAILURE), everything rolled back, one attempt", async () => {
+    // A CHECK only this test adds: the Audit stage is the one that fails, with a 23xxx state.
+    await admin.query(
+      "ALTER TABLE app.audit_events ADD CONSTRAINT ck_seed_probe_audit CHECK (operation_id <> 'PROVISION.INITIAL_DATA_SEED')",
+    );
+    let run: Awaited<ReturnType<typeof runSeed>>;
+    try {
+      run = await runSeed({ input: buildInitialDataInput() });
+    } finally {
+      await admin.query("ALTER TABLE app.audit_events DROP CONSTRAINT ck_seed_probe_audit");
+    }
+    const outcome = shape(run.outcome);
+    expect(outcome.outcome).toBe("FAILED");
+    expect(outcome.errorCode).toBe("AUDIT_WRITE_FAILED");
+    expect(outcome.failureClass).toBe("PERMANENT_FAILURE");
+    expect(await counts()).toEqual({ events: 0, offerings: 0, audits: 0 });
+    expect(insertedTables(run.statements).filter((t) => t === "app.events")).toHaveLength(1);
+  });
+});
+
+describe("TC-TST-SEED-003-006 the seed transaction has an 8 second wall clock (plan v1.2 Q-2, SPEC-150 section 9)", () => {
+  // The option `transactionDeadlineMs` replaces the 8000 ms default so the test need not wait 8 seconds.
+  // The (synchronous) readInput callback runs inside the open transaction and blocks it for 800 ms.
+  it("TC-TST-SEED-003-006 a transaction still open after its deadline is rolled back before COMMIT: FAILED(TEMPORARY_FAILURE, DATABASE_TEMPORARY_FAILURE), nothing remains", async () => {
+    const run = await runSeed({
+      input: buildInitialDataInput(),
+      transactionDeadlineMs: 300,
+      readInputDelayMs: 800,
+    });
+    const outcome = shape(run.outcome);
+    expect(outcome.outcome).toBe("FAILED");
+    expect(outcome.failureClass).toBe("TEMPORARY_FAILURE");
+    expect(outcome.errorCode).toBe("DATABASE_TEMPORARY_FAILURE");
+    expect(await counts()).toEqual({ events: 0, offerings: 0, audits: 0 });
+    const issued = run.statements.map((text) => text.trim().toLowerCase());
+    expect(issued).not.toContain("commit");
+    expect(issued).toContain("rollback");
+  });
+
+  it("TC-TST-SEED-003-006 the same slow transaction under the default deadline commits (the option, not the delay, causes the failure)", async () => {
+    const run = await runSeed({ input: buildInitialDataInput(), readInputDelayMs: 800 });
+    expect(shape(run.outcome).outcome).toBe("CREATED");
+    expect(await counts()).toEqual({ events: 1, offerings: 2, audits: 3 });
   });
 });
 
