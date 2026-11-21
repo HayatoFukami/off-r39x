@@ -17400,7 +17400,7 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "CLI child process over TLS (NODE_EXTRA_CA_CERTS) against the isolated real PostgreSQL 17 database as app_migrator, port 5432; UNKNOWN_RESULT exit code 3 is not reachable here and is covered by TC-TST-SEED-005-006 and the 006 cases",
+      "preconditions": "CLI child process over TLS (NODE_EXTRA_CA_CERTS) against the isolated real PostgreSQL 17 database as app_migrator, port 5432; UNKNOWN_RESULT exit code 3 is covered through the public command by TC-TST-SEED-003-008, by TC-TST-SEED-005-006 and by the 006 cases",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
@@ -18037,6 +18037,40 @@
       "critical": true
     },
     {
+      "test_case_id": "TC-TST-SEED-006-009",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "INF-SEED-003",
+        "DB-SEED-002",
+        "INF-SEED-004",
+        "REL-DB-006",
+        "TST-SEED-006",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real PostgreSQL 17 test database created per test file with migrations 0001-0003 applied by app_migrator; synthetic Event and Offering values only; acquireMigrationLock then seedInitialData on a dedicated app_migrator connection; no Provider; real TCP fault proxy in front of the original connection (plain transport; TLS is not carried), mode drop_ack; before the re-check connection is handed back, another session (standing for a migration job) takes the migration lock once the original session is gone",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "FP.DB.AFTER_COMMIT_SENT_BEFORE_ACK"
+      ],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "While the migration lock is held elsewhere the re-check waits for it, reads nothing and does not decide; after the lock is released it takes the lock, then re-checks and the result is CREATED"
+      ],
+      "expected_db_postconditions": [
+        "One set of rows and Audit Events; on the re-check connection the migration lock statement precedes the re-check's Audit Event read; only allowed statements are issued"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
       "test_case_id": "TC-TST-SEED-002-006",
       "level": "DB",
       "suite": "db",
@@ -18076,6 +18110,8 @@
       "level": "DB",
       "suite": "db",
       "upstream_rule_ids": [
+        "DB-SEED-002",
+        "INF-SEED-004",
         "REL-DB-005",
         "REL-DB-006",
         "TST-SEED-003",
@@ -18084,20 +18120,23 @@
       "system_invariant_ids": [],
       "api_operation_ids": [],
       "db_constraint_names": [],
-      "preconditions": "Real PostgreSQL 17 test database created per test file with migrations 0001-0003 applied by app_migrator; synthetic Event and Offering values only; acquireMigrationLock then seedInitialData on a dedicated app_migrator connection; no Provider; transactionDeadlineMs option shortened to 300 ms and the transaction held open for 800 ms before COMMIT; a control run with the default deadline",
+      "preconditions": "Real PostgreSQL 17 test database created per test file with migrations 0001-0003 applied by app_migrator; synthetic Event and Offering values only; acquireMigrationLock then seedInitialData on a dedicated app_migrator connection; no Provider; transactionDeadlineMs option shortened to 300 ms and the transaction held open for 800 ms before COMMIT; a control run with the default deadline; (c) and (d) with the rows already present, another session holds the seed xact lock (c) or an ACCESS EXCLUSIVE lock on app.entry_ticket_offerings (d) for 700 ms, longer than the deadline and shorter than the 1 s lock and 5 s statement timeouts",
       "fixture_ids": [],
       "clock_instant": null,
       "concurrency_seed": null,
       "fault_points": [],
       "expected_http": null,
       "expected_domain_postconditions": [
-        "A transaction still open after its deadline is rolled back before COMMIT and the result is FAILED (TEMPORARY_FAILURE, DATABASE_TEMPORARY_FAILURE); the control run is CREATED"
+        "A transaction still open after its deadline is rolled back before COMMIT and the result is FAILED (TEMPORARY_FAILURE, DATABASE_TEMPORARY_FAILURE); the control run is CREATED",
+        "The deadline also bounds the lock wait and the count reads: (c) and (d) are FAILED (TEMPORARY_FAILURE, DATABASE_TEMPORARY_FAILURE), not NOOP, and are not retried"
       ],
       "expected_db_postconditions": [
-        "No Event, Offering or Audit Event remains after the deadline run, no COMMIT was sent and no INSERT was issued after the deadline"
+        "No Event, Offering or Audit Event remains after the deadline run, no COMMIT was sent and no INSERT was issued after the deadline; in (c) and (d) the existing rows are unchanged and the input is not read"
       ],
       "expected_provider_postconditions": [],
-      "expected_observability": [],
+      "expected_observability": [
+        "In (c) and (d) no reliability.retry.attempted record"
+      ],
       "sensitivity_class": "synthetic",
       "critical": true
     },
@@ -18129,6 +18168,44 @@
       "expected_observability": [],
       "sensitivity_class": "synthetic",
       "critical": false
+    },
+    {
+      "test_case_id": "TC-TST-SEED-003-008",
+      "level": "Integration",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "INF-SEED-001",
+        "INF-SEED-004",
+        "INF-SEED-005",
+        "INF-DEP-005",
+        "DB-SEED-002",
+        "REL-DB-006",
+        "TST-SEED-003",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "The public command pnpm db:seed-initial-data run from the repository root in a child process over TLS (NODE_EXTRA_CA_CERTS) against the isolated real PostgreSQL 17 database as app_migrator, port 5432; synthetic values only; (c) a test-only deferred constraint trigger on app.events sleeps inside COMMIT, the test revokes CONNECT on the test database from PUBLIC and ends the command's backend while COMMIT is in flight, then restores CONNECT and drops the trigger",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "FP.DB.AFTER_COMMIT_SENT_BEFORE_ACK"
+      ],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The exit code is the command's own: (a) CREATED and then NOOP exit 0; (b) FAILED exits 2, not 1; (c) UNKNOWN_RESULT exits 3, not 1 or 2"
+      ],
+      "expected_db_postconditions": [
+        "(a) one set of rows and Audit Events; (b) nothing is created; (c) nothing is committed and the next run creates one set"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "stdout carries exactly one JSON result line for each run, with the nine result keys"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
     },
     {
       "test_case_id": "TC-DB-ARC-007-003",

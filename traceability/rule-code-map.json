@@ -3447,10 +3447,16 @@
       "code_paths": [
         "packages/db/src/seed-initial-data-cli.ts",
         "packages/db/src/initial-data/seed.ts",
-        "packages/db/package.json"
+        "packages/db/package.json",
+        "package.json"
       ],
-      "test_case_ids": ["TC-TST-SEED-005-003", "TC-TST-SEED-005-004", "TC-TST-SEED-005-005"],
-      "notes": "implementation mapping only: only the packages/db command creates the initial rows; no migration, API or runtime principal path; not exported from the package barrel"
+      "test_case_ids": [
+        "TC-TST-SEED-005-003",
+        "TC-TST-SEED-005-004",
+        "TC-TST-SEED-005-005",
+        "TC-TST-SEED-003-008"
+      ],
+      "notes": "implementation mapping only: only the packages/db command creates the initial rows; no migration, API or runtime principal path; not exported from the package barrel; the public root script starts the command with Node directly"
     },
     {
       "rule_id": "INF-SEED-002",
@@ -3465,8 +3471,13 @@
     {
       "rule_id": "INF-SEED-003",
       "code_paths": ["packages/db/src/migration-lock.ts", "packages/db/src/initial-data/seed.ts"],
-      "test_case_ids": ["TC-TST-SEED-002-005", "TC-TST-SEED-005-004", "TC-TST-SEED-002-006"],
-      "notes": "implementation mapping only: runs as app_migrator under the migration lock handle; SQL limited to the target tables, audit_events, lock and session settings"
+      "test_case_ids": [
+        "TC-TST-SEED-002-005",
+        "TC-TST-SEED-005-004",
+        "TC-TST-SEED-002-006",
+        "TC-TST-SEED-006-009"
+      ],
+      "notes": "implementation mapping only: runs as app_migrator under the migration lock handle, and takes the migration lock again on the new connection before the re-check after an unknown COMMIT result; SQL limited to the target tables, audit_events, lock and session settings"
     },
     {
       "rule_id": "INF-SEED-004",
@@ -3486,7 +3497,9 @@
         "TC-TST-SEED-006-007",
         "TC-TST-SEED-006-008",
         "TC-TST-SEED-003-006",
-        "TC-TST-SEED-003-007"
+        "TC-TST-SEED-003-007",
+        "TC-TST-SEED-003-008",
+        "TC-TST-SEED-006-009"
       ],
       "notes": "implementation mapping only: decision order, four outcomes, exit codes 0/2/3, no repair after FAILED or UNKNOWN_RESULT"
     },
@@ -3496,7 +3509,12 @@
         "packages/db/src/seed-initial-data-cli.ts",
         "packages/db/src/initial-data/seed.ts"
       ],
-      "test_case_ids": ["TC-TST-SEED-005-002", "TC-TST-SEED-005-006", "TC-TST-SEED-005-007"],
+      "test_case_ids": [
+        "TC-TST-SEED-005-002",
+        "TC-TST-SEED-005-006",
+        "TC-TST-SEED-005-007",
+        "TC-TST-SEED-003-008"
+      ],
       "notes": "implementation mapping only: result line on stdout, common log fields on stderr, no input value, connection string or exception message"
     },
     {
@@ -3536,9 +3554,10 @@
         "TC-TST-SEED-006-007",
         "TC-TST-SEED-006-008",
         "TC-TST-SEED-002-006",
-        "TC-TST-SEED-003-006"
+        "TC-TST-SEED-003-006",
+        "TC-TST-SEED-006-009"
       ],
-      "notes": "implementation mapping only: transaction advisory lock before the count; re-check on a new connection after an unknown COMMIT result"
+      "notes": "implementation mapping only: transaction advisory lock before the count; re-check on a new connection, under the migration lock, after an unknown COMMIT result"
     },
     {
       "rule_id": "DB-SEED-003",
