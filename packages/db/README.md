@@ -30,7 +30,9 @@ bigint-mode tables; reviewed SQL lives in `migrations/`.
   caller of `transaction()` (`DEV-DB-003`, `SPEC-100 §55`). Today it holds
   `src/transactions/profile.ts` (`readCurrentBusinessProfile` /
   `updateCurrentBusinessProfile`, the caller's own Profile for `API-AUTH-002` /
-  `API-AUTH-004`).
+  `API-AUTH-004`) and `src/transactions/public-content.ts` (the six read-only
+  public content reads for `API-PUB-001`..`005` and `API-PUB-012`, one plain
+  statement each, no transaction).
 
 ## Migration numbering
 

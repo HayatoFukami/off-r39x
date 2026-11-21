@@ -1,3 +1,4 @@
+export { createPublicReadRpc } from "./public-rpc.ts";
 export { type AppType, createPublicRpc } from "./rpc.ts";
 export { successSchema } from "./schemas/common.ts";
 export {
@@ -17,3 +18,19 @@ export {
   type UpdateCurrentProfileRequest,
   updateCurrentProfileRequestSchema,
 } from "./schemas/profile.ts";
+export {
+  announcementRefParamSchema,
+  emptyPublicQuerySchema,
+  type PublicAnnouncement,
+  type PublicAnnouncementList,
+  type PublicEntryOfferingList,
+  type PublicEvent,
+  type PublicFaqList,
+  type PublicSponsorLogoList,
+  publicAnnouncementListSchema,
+  publicAnnouncementSchema,
+  publicEntryOfferingListSchema,
+  publicEventSchema,
+  publicFaqListSchema,
+  publicSponsorLogoListSchema,
+} from "./schemas/public.ts";

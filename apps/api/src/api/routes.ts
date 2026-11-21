@@ -90,6 +90,42 @@ export function assertAuthAllowlist(
 export const ROUTES: readonly RouteRegistration[] = Object.freeze([
   {
     method: "GET",
+    path: "/api/v1/public/event",
+    operationId: "API-PUB-001",
+    rateLimitClass: "public_read",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/public/faqs",
+    operationId: "API-PUB-002",
+    rateLimitClass: "public_read",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/public/announcements",
+    operationId: "API-PUB-003",
+    rateLimitClass: "public_read",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/public/announcements/:announcement_ref",
+    operationId: "API-PUB-004",
+    rateLimitClass: "public_read",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/public/entry-offerings",
+    operationId: "API-PUB-005",
+    rateLimitClass: "public_read",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/public/sponsor-logos",
+    operationId: "API-PUB-012",
+    rateLimitClass: "public_read",
+  },
+  {
+    method: "GET",
     path: "/api/v1/self/principal",
     operationId: "API-AUTH-001",
     rateLimitClass: "self_read",

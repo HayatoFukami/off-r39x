@@ -1,6 +1,7 @@
 import { type Context, type Env, Hono, type MiddlewareHandler } from "hono";
 import type { z } from "zod";
-import { successSchema } from "./schemas/common.ts";
+import { envelope } from "./envelope.ts";
+import type { createPublicReadRpc } from "./public-rpc.ts";
 import {
   type CurrentProfile,
   currentProfileSchema,
@@ -15,15 +16,6 @@ import {
 type ProfileUpdateInput = {
   in: { json: z.input<typeof updateCurrentProfileRequestSchema> };
 };
-
-/**
- * SPEC-110 section 19 / DEV-API-003: the whole success envelope, meta.request_id included, is checked
- * by the shared successSchema before it is sent; a mismatch throws, so the route answers 500 and never
- * sends the data. The data schema is the route's strict response schema.
- */
-function envelope<S extends z.ZodType>(schema: S, data: unknown, requestId: string) {
-  return successSchema(schema).parse({ data, meta: { request_id: requestId } });
-}
 
 // The server mounts this same builder: no parallel route declaration or import
 // of server authority into the client-visible contract package.
@@ -74,4 +66,11 @@ export function createPublicRpc<E extends Env>(dependencies: {
         ),
     );
 }
-export type AppType = ReturnType<typeof createPublicRpc>;
+// The Browser RPC type is the union of the route schemas of the two builders. It is a type-only
+// composition: the server still mounts each builder from its own route module.
+type SchemaOf<T> = T extends Hono<Env, infer S, string> ? S : never;
+export type AppType = Hono<
+  Env,
+  SchemaOf<ReturnType<typeof createPublicRpc>> | SchemaOf<ReturnType<typeof createPublicReadRpc>>,
+  "/"
+>;

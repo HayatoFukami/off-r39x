@@ -12,7 +12,7 @@ import { createAdminRecoveryRoutes } from "./routes/admin-recovery.ts";
 import { createAdminRolesRoutes } from "./routes/admin-roles.ts";
 import { createAdminSalesRoutes } from "./routes/admin-sales.ts";
 import { createAdminTicketsRoutes } from "./routes/admin-tickets.ts";
-import { createPublicRoutes } from "./routes/public.ts";
+import { createPublicRoutes, type PublicRouteDependencies } from "./routes/public.ts";
 import { createSelfGoodsRoutes } from "./routes/self-goods.ts";
 import { createSelfKaraokeRoutes } from "./routes/self-karaoke.ts";
 import { createSelfOrdersRoutes } from "./routes/self-orders.ts";
@@ -28,9 +28,9 @@ export type { AppType } from "@off-r39x/api-contract";
 
 export function mountRpcRoutes(
   app: Hono<ApiEnvironment>,
-  dependencies: SelfProfileRouteDependencies,
+  dependencies: SelfProfileRouteDependencies & PublicRouteDependencies,
 ): void {
-  app.route("/", createPublicRoutes());
+  app.route("/", createPublicRoutes(dependencies));
   app.route("/", createSelfProfileRoutes(dependencies));
   app.route("/", createSelfOrdersRoutes());
   app.route("/", createSelfTicketsRoutes());
