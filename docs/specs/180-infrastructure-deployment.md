@@ -1,7 +1,7 @@
 ---
 spec_id: SPEC-180
 title: Infrastructure and Deployment Specification
-version: 2.6.0
+version: 2.7.0
 status: provisional
 depends_on:
   - SPEC-000
@@ -771,15 +771,15 @@ Startup validation:
 | 変数 | 種別 | 内容 |
 |---|---|---|
 | `LIST_CURSOR_HMAC_KEY` | Secret（Railway Sealed Variable） | 32 byteのHMAC key。値は、32 byteをRFC 4648 §4 のbase64（標準alphabet、padding付き）で符号化した44文字とする |
-| `LIST_CURSOR_HMAC_KEY_VERSION` | non-secret integer（1以上） | HMAC keyのversion。cursorに含める |
+| `LIST_CURSOR_HMAC_KEY_VERSION` | non-secret integer（1以上2147483647以下） | HMAC keyのversion。cursorに含める。値は10進数の正規形とし、正規表現 `^[1-9][0-9]*$` に一致し、かつ2147483647以下とする（先頭の0、符号（`+` / `-`）、空白、小数点、指数表記を含む値は形式不正）（`UCR-180-004`） |
 
 - Environment別（`INF-ENV-002` / `INF-SEC-002` / `SPEC-140` `SEC-KEY-004`）。Environmentのclone時はclone先で新しく発行する（`SPEC-140` §46）
 - API serviceだけが読む（§26、`INF-SEC-003`）
 - routine rotation 180日以内。漏えいの疑いがあれば即時（`SPEC-140` §46、`SEC-KEY-006`）
-- rotationでは鍵とversionを同時に替えて再deployする。古い鍵を受け付ける期間（grace）は設けない。旧versionのcursorは `400 VALIDATION_FAILED` となり、Clientは先頭pageから取り直す（`SPEC-110` `API-QRY-004` / `API-QRY-005`）。Event当日等、管理操作の多い時間帯を避けて実施する
+- rotationでは鍵とversionを同時に替えて再deployする。新しいversionは上表の範囲（1以上2147483647以下）に収める。古い鍵を受け付ける期間（grace）は設けない。旧versionのcursorは `400 VALIDATION_FAILED` となり、Clientは先頭pageから取り直す（`SPEC-110` `API-QRY-004` / `API-QRY-005`）。Event当日等、管理操作の多い時間帯を避けて実施する
 - Production（API 2 replica。§16）で、鍵をrotationするdeployの途中に新旧のreplicaが並行して応答する間は、一方のreplicaが発行したcursorが他方で一時的に `400` になりうる。これを許容し、graceの追加や署名の省略で回避しない
 
-**INF-SEC-007:** `LIST_CURSOR_HMAC_KEY` または `LIST_CURSOR_HMAC_KEY_VERSION` の欠落・形式不正（鍵の値が上表の44文字のbase64でない、decodeして32 byteにならない、decodeした値を再encodeすると元の値と一致しない、versionが正の整数でない）は、startup security configuration failureとしてAPIをReadyにしない（`INF-HLT-002`、`SPEC-140` `SEC-KEY-006`）。署名しないcursor、固定値・defaultの鍵、他のSecret（`RATE_LIMIT_HMAC_KEY`、`OBS_CORRELATION_HMAC_KEY`、QR keyring等）の流用またはそれからの導出へfallbackしない。この鍵を他の用途や他のSecretと共有しない（`SPEC-140` `SEC-KEY-003`）。
+**INF-SEC-007:** `LIST_CURSOR_HMAC_KEY` または `LIST_CURSOR_HMAC_KEY_VERSION` の欠落・形式不正（鍵の値が上表の44文字のbase64でない、decodeして32 byteにならない、decodeした値を再encodeすると元の値と一致しない、versionが上表の10進数の正規形でない、versionが2147483647を超える）は、startup security configuration failureとしてAPIをReadyにしない（`INF-HLT-002`、`SPEC-140` `SEC-KEY-006`）。署名しないcursor、固定値・defaultの鍵、他のSecret（`RATE_LIMIT_HMAC_KEY`、`OBS_CORRELATION_HMAC_KEY`、QR keyring等）の流用またはそれからの導出へfallbackしない。この鍵を他の用途や他のSecretと共有しない（`SPEC-140` `SEC-KEY-003`）。上表の範囲外のversionを持つcursorは、現在の `LIST_CURSOR_HMAC_KEY_VERSION` と一致しないため、`SPEC-110` `API-QRY-005` のとおり `400 VALIDATION_FAILED`（`details: null`）とする（`UCR-180-004`）。
 
 ## 29. Provider webhook Secret rotation
 
@@ -1897,7 +1897,7 @@ SPEC-180は次をすべて満たしたとき受入可能とする。
 
 ## 81. 上流仕様変更要求
 
-`UCR-140-003` により本書が受けた変更は §14、§16、§17.1〜§17.2、§26、§28.1〜§28.2、§40、§74.1、§77 に反映済みである。`UCR-RELSCOPE-001`（`SPEC-200 §48`）により本書が受けた変更は §44 に反映済みである。本書が起票する要求は次の3件である。
+`UCR-140-003` により本書が受けた変更は §14、§16、§17.1〜§17.2、§26、§28.1〜§28.2、§40、§74.1、§77 に反映済みである。`UCR-RELSCOPE-001`（`SPEC-200 §48`）により本書が受けた変更は §44 に反映済みである。本書が起票する要求は次の4件である。
 
 ### UCR-180-001 — INCORPORATED
 
@@ -1954,6 +1954,23 @@ SPEC-180は次をすべて満たしたとき受入可能とする。
 - **影響を受ける可能性がある仕様書:** SPEC-170（§22。変更した）。SPEC-200、SPEC-150、SPEC-100、SPEC-190は、読んだうえで変更不要と判断した（`SPEC-200` `ACC-DB-011` / `ACC-DB-012` / `ACC-INF-007` / `ACC-INF-008` / `ACC-INF-020` / `ACC-INF-022` の汎用の基準がCurrentの `INF-HLT-006` を含む。`SPEC-150` `REL-DB-012`、`SPEC-100` §60、`SPEC-190` `DEV-DB-014` は参照のみ）。
 - **反映先:** 本書 §20、§40（Common 7、`INF-HLT-006` の判定・読み取りの規定・既知の制約）、§45.2（§45.1にも及ぶ注記と手順17）、§50（`INF-RBK-002`）、§51、§74、§78、§80 項目10・58。`SPEC-170` v2.8.0 §16（`TST-DB-002`）・§22 項目9・§78。新しいState・Operation・Capability・error code・DB role・schema・readiness failure名は追加していない。
 - **決定（利用者、2026-11-20）:** 方式は前方一致と包含（journalが同梱setより長いときだけ包含、同じ長さなら完全一致）、required tableへのNOT NULLでdefault等のない追加列はReadyにしない、後続releaseのmigrationがrequired要素を変える場合（既存CHECKの定義の変更を含む）に、旧artifactが§45.2の手順5〜10の間Readyにならず、rollback対象にならないことは受け入れて本文に明記する、required制約の `VALIDATE CONSTRAINT`（検証状態のfalseからtrue）は同一とみなし、required列への `SET NOT NULL` はReadyにしない、transactionの外で実行するmigration stepの扱いは既知の制約として記し、導入時に決める、先行するjournal行の数に上限を設けない、failure名は既存のものを使う、`SPEC-170` §22に項目を加える、直前のreleaseの実artifactによる確認は今回はG2に入れない、`SPEC-200`・`SPEC-150`・`SPEC-100`・`SPEC-190` は変更しない。本改訂の効果は改訂後にbuildしたartifactにだけ及ぶため、本改訂を実装したreleaseを、次の新しいmigrationを含むreleaseより先にstaging・Productionへ出す（この順序は移行期の一度だけの制約であり、本文には置かず、実装のWork PlanとPull Requestで管理する）。要求する変更の7・8は、上記の方式の中の技術的な詳細として、Pull Request #78のレビュー（読み取りの間のCOMMIT、分離レベル、DDLのlock待ち、`503` の時点）への対応で定め、利用者がその修正を承認した（2026-11-20）。
+
+### UCR-180-004 — INCORPORATED
+
+- **Status:** `INCORPORATED`（本改訂 v2.7.0）。現在の契約は本文を正とし、本記録は経緯である。
+- **対象:** SPEC-180 §28.3（`LIST_CURSOR_HMAC_KEY_VERSION` の表、rotation、`INF-SEC-007`）。`SPEC-110` §12 `API-QRY-005` に関連する。
+- **現在の仕様（改訂前）:** §28.3 の表は `LIST_CURSOR_HMAC_KEY_VERSION` を「non-secret integer（1以上）」とし、`INF-SEC-007` は形式不正の一つを「versionが正の整数でない」とするだけである。上限と表記（10進数、先頭の0・符号・空白の扱い）がない。そのため、`202611211530` のような値や `01`・`+1` が仕様上有効かどうかが本文から決まらず、実装ごとに起動の成否が分かれる。cursorに入れたversionの表現と検証の範囲も、実装が独自に決めることになる。
+- **要求する変更:**
+  1. `LIST_CURSOR_HMAC_KEY_VERSION` の許容範囲を1以上2147483647以下とする（§28.3 の表）。
+  2. 値は10進数の正規形とし、正規表現 `^[1-9][0-9]*$` に一致し、かつ2147483647以下の場合だけ有効とする。先頭の0、符号（`+` / `-`）、空白、小数点、指数表記を含む値は形式不正とする。
+  3. 範囲外と非正規形を `INF-SEC-007` の形式不正に列挙し、startup security configuration failureとしてAPIをReadyにしない（既存の `INF-HLT-002`、§40）。
+  4. rotationで新しいversionを上表の範囲に収めることを §28.3 に明記する。
+  5. 範囲外のversionを持つcursorは、現在のversionと一致しないため、既存の `SPEC-110` `API-QRY-005` のとおり `400 VALIDATION_FAILED`（`details: null`）になることを `INF-SEC-007` に明記する。新しい状態・API・error codeは作らない。
+- **理由:** 上限と表記がないと、同じ値で起動するかどうかが実装ごとに変わる（`SPEC-000 §15.1`）。上限を2147483647（符号付き32 bit整数の最大値）とすれば、言語・libraryを問わず通常の整数型で精度を失わずに扱え、既存のcursor codec（`apps/api/src/api/pagination.ts`）の範囲とも一致する。rotationは180日以内に1回であり、versionを1ずつ増やす運用では上限に達しない。日時を埋め込んだ値（`202611211530` 等）は上限を超えるため使えないが、versionの用途は鍵の識別だけであり、日時を表す必要はない。表記を正規形に限るのは、`01` と `1` のように別の文字列が同じversionを表すことを防ぎ、Secret storeに設定した値とcursorに入るversionの対応を一意にするためである。実装の範囲を広げる案（任意精度の整数など）は、cursorの表現とcodecの変更を要し、利点が小さいため採らない。
+- **変更しない場合の影響:** 仕様上は有効に読める値（`202611211530`、`01` 等）でAPIが起動しない、または実装によって起動する。レビューで仕様と実装の食い違いとして扱われ、`INF-SEC-007` の形式不正の判定が実装ごとに分かれる。
+- **影響を受ける可能性がある仕様書:** SPEC-110、SPEC-140、SPEC-190。いずれも読んだうえで変更不要と判断した（`SPEC-110` `API-QRY-005` は現在のversionと異なるcursorを `400` とする既存の規則で範囲外のversionを含む。`SPEC-140` §85 と `SPEC-190` §24 は `INF-SEC-007` と変数名を参照するだけである）。SPEC-170とSPEC-200は、`SPEC-170` §46、`SPEC-200` `ACC-SEC-006` / `ACC-INF-005` の汎用の基準が対象に含むため変更しない。
+- **反映先:** 本書 §28.3（表、rotation、`INF-SEC-007`）。新しいState・Operation・Capability・error code・DB role・変数は追加していない。`RATE_LIMIT_HMAC_KEY_VERSION`（§28.1・§28.2）と `OBS_CORRELATION_HMAC_KEY_VERSION`（§28）には本件を及ぼしていない。
+- **決定（利用者、2026-11-21）:** 上限を仕様に明記し、実装の上限を広げる案は採らない。許容範囲は1〜2147483647、表記は10進数の正規形（`^[1-9][0-9]*$` かつ2147483647以下）とし、先頭の0・符号・空白・小数点・指数表記は形式不正とする。対象は `LIST_CURSOR_HMAC_KEY_VERSION` だけとする。Pull Request #82 のレビュー（versionの上限が仕様にない）への対応として決めた。
 
 本仕様は、Infrastructure Ownerとして明示的に委譲されたEnvironment、DB principal、Secret placement、scheduler、health、deployment、Audit access/purge、observability backend、backup / restore、Test gateの具体化だけを行っている。
 
