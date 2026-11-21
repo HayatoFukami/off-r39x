@@ -1,12 +1,16 @@
 // INF-DEP-001 / DEV-REP-001: no runtime configuration or credential is read at build time.
+// The only build input from outside the source tree is the commit identity (build-git-identity.mts).
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { computeMigrationSetHash } from "../packages/db/src/migrations.ts";
+import { resolveBuildGitIdentity } from "./build-git-identity.mts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const outdir = resolve(root, "dist");
+// SPEC-180 §44 git_sha: resolved first, so a build that cannot name its commit emits nothing.
+const gitIdentity = resolveBuildGitIdentity(root);
 const migrationSetHash = await computeMigrationSetHash(root);
 // DEV-RLM-003: the reviewed Lua bytes are embedded; the bundle never reads a script from disk.
 const rateLimitScript = await readFile(
@@ -41,6 +45,6 @@ await build({
 await writeFile(resolve(outdir, "package.json"), '{"type":"module"}\n');
 await writeFile(
   resolve(outdir, "backend-build.json"),
-  `${JSON.stringify({ node_major: 24, migration_set_sha256: migrationSetHash }, null, 2)}\n`,
+  `${JSON.stringify({ node_major: 24, migration_set_sha256: migrationSetHash, ...gitIdentity }, null, 2)}\n`,
 );
 process.stdout.write("OK backend build (API, email-worker, reconciliation-worker)\n");

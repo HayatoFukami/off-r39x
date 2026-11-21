@@ -9,6 +9,7 @@
     "dev": "pnpm --filter @off-r39x/web dev",
     "build": "pnpm build:backend && pnpm --filter @off-r39x/web build",
     "build:backend": "node scripts/build-backend.mts",
+    "build:backend:image": "node scripts/build-backend-image.mts",
     "start:api": "node dist/apps/api/server.js",
     "start:email-worker": "node dist/workers/email-worker.js",
     "start:reconciliation-worker": "node dist/workers/reconciliation-worker.js",

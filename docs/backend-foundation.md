@@ -53,6 +53,16 @@ pnpm secret-scan --build-dir dist --require-build
 
 共通の build 時に実行時 Secret は不要。SQL ファイル名・内容から計算した migration-set hash を3つの bundle に埋め込み、readiness で同梱 SQL・DB journal と照合する。hash の欠落・不一致は非 Ready とするため、未ビルドの source 起動は Ready にならない。`dist/backend-build.json` は同じ hash を記録するが、staging / Provider / approval gate の代替ではない。
 
+`dist/backend-build.json` は build 元の commit も記録する（`git_sha`: 40 桁の小文字 hex、`git_tree_state`）。SPEC-180 §44 の release manifest が持つ `git_sha` と同じ値で、manifest の生成はまだ実装していない（`DEV-AI-003` による build tooling の判断。仕様の変更ではない）。取得元と扱いは次のとおり（`scripts/build-git-identity.mts`）。
+
+- build root が git checkout の top level なら HEAD を使う。追跡・stage 済み・未追跡（ignore されていないもの）の変更があれば `dirty`、なければ `clean`。`assume-unchanged` または `skip-worktree` の付いた追跡ファイルが 1 つでもあれば、`git status` がその変更を報告しないため、内容にかかわらず `dirty` とする。
+- `.git` がない build context（OCI build。`.dockerignore` が `.git` を除外する）では build arg `R39X_BUILD_GIT_SHA` を使い、`unverified` とする。build root に `.git`（ディレクトリ、または linked worktree の `.git` ファイル）があるのに git で検査できない場合（git がない、所有者の不一致、壊れた worktree の参照など）は、build arg に切り替えず、理由を示して build を止める。
+- image は `pnpm build:backend:image --commit <テスト済みの revision> [--tag <tag>]`（`scripts/build-backend-image.mts`）で build する。revision を 1 回だけ 40 桁の commit に解決し、その sha の `git archive` を唯一の build context として `docker build -` に渡し、同じ sha を `R39X_BUILD_GIT_SHA` にする。作業ツリーを context にしないので、古いファイルや未コミットの変更は image に入らず、記録される `git_sha` と build した tree が食い違わない。`docker build --build-arg R39X_BUILD_GIT_SHA=… .` のように build arg と作業ツリーの context を別々に指定する build は、この保証がないので release artifact にしない。
+- 両方あれば一致を要求する。どちらもない、値が 40 桁の小文字 hex でない（空は未設定と同じ）、HEAD がない、一致しない、のいずれかなら build を失敗させる（fail closed）。
+- `dirty` の artifact はその commit の build ではない（`INF-DEP-001`）。deploy に使わず、ある修正を含むかの判定（`git merge-base --is-ancestor <fix> <git_sha>`）でも、記録のない artifact と同じく「含まない」と扱う。`unverified` は、build 側が `git_sha` の tree から build したことを保証する前提の値で、その保証は上の `build:backend:image` で image を build したときに限る。
+- 依存パッケージ: backend build は `node_modules/` の依存を bundle するが、`node_modules/` は ignore されているので git では検査しない。checkout からの build の `clean` は git の source tree に変更がないことだけを表し、依存が `git_sha` の lockfile どおりであることは保証しない（install せずに別の commit を build すると、古い依存のまま `clean` になりうる）。`build:backend:image` の image では、`.dockerignore` が `node_modules`・`dist`・`.git` を context から除き、build stage は archive の context だけを `COPY` して `pnpm install --frozen-lockfile` で依存を `git_sha` の lockfile から入れ直してから build する。
+- このため、release artifact（SPEC-180 §44 の OCI image）として、ある修正を含むかの祖先判定に使えるのは、`build:backend:image` で build した image の中の `dist/backend-build.json` だけとする。ローカルや CI の checkout から build した `dist/` の記録（`clean` を含む）は、開発・検証用の情報であり、この判定に使わない。
+
 Worker の停止は、新規処理を止めて協調終了を待ち、15秒を超えれば接続破棄・最大2秒の後処理を経て process を非0終了する。未完了の外部結果を成功や確定失敗へ書き換えない。
 
 ## 共有 Rate Limit（UCR-140-003）
@@ -114,7 +124,7 @@ Worker の停止は、新規処理を止めて協調終了を待ち、15秒を�
 
 ## 監査後の実装境界
 
-- DB readinessはmigration journalに加え、release対象のPG17 catalog（列・default・制約定義／検証状態・Index定義／有効状態・sequence・schema owner）をsource-controlledな期待値と照合する。既存release以外の業務table実装を証明しない。
+- DB readinessは、artifactが同梱したmigration set（ファイル名のbyte順）がjournal（versionのbyte順）の先頭に順に一致することと、release対象のPG17 catalog（列・default・制約定義／検証状態・Index定義／有効状態・sequence・schema owner）をsource-controlledな期待値と照合する。journalがartifactより進んでいる場合だけ、期待値の各要素が同一の属性で存在することを求め（required制約のVALIDATE後の検証状態は許容）、追加のobjectとjournal行を許容する（required tableへのNOT NULLでdefault・identity・generatedのない追加列は許容しない）。読み取りはjournal→catalog→journalを明示的なtransactionの外で行い、2回のjournalが一致したときだけ判定する。不一致と`55P03`はSPEC-150 §11の`55P03` budget（4 attempts、最初のattemptから5秒）内で読み直し、使い切った場合は`release_schema_contract`で非Readyとする（SPEC-180 `INF-HLT-006`）。既存release以外の業務table実装を証明しない。
 - Directoryは3列の型／grantだけでなく、直接投影、Subjectの有効な一意Index、Subject／verified列のNOT NULLと有効な一意Indexによってcardinalityを確認する。catalogとOIDを用い、Directoryを読めないReconへ行読取権限を要求しない。実Neonのsource mappingはdeploymentで確認し、Provider所有tableは変更しない。
 - Stripe lookupはSDK Fetch transportを明示採用し、本文処理まで10秒のadapter deadlineと単調時計の確認を適用する。SDKの自動network retryは0。旧Node socket inactivity timeoutへの依存を除いた。
 - `GET /api/v1/self/principal` (`API-AUTH-001`) は公開RPC型と同じbuilderでmountする。署名済みJWT→現在Directory／Profile／Role→メール確認→共有guardを経てnavigation情報だけを返す。GETによるProfile作成は行わない。
