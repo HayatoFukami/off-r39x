@@ -51,8 +51,14 @@ function migrationUrl(connectionString: string | undefined): URL | undefined {
   } catch {
     return undefined;
   }
+  let username: string;
+  try {
+    username = decodeURIComponent(url.username);
+  } catch {
+    return undefined;
+  }
   if (
-    decodeURIComponent(url.username) !== "app_migrator" ||
+    username !== "app_migrator" ||
     url.search ||
     url.hostname.includes("-pooler") ||
     (url.port && url.port !== "5432")
@@ -171,7 +177,12 @@ async function execute(
     return client;
   };
 
-  const client = newClient();
+  let client: Client;
+  try {
+    client = newClient();
+  } catch {
+    return failedBeforeSeed(executionId, "PERMANENT_FAILURE", "CONFIGURATION_INVALID");
+  }
   let lock: MigrationLock | undefined;
   try {
     try {

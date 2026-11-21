@@ -8,6 +8,7 @@ import { insertAuditEventReturningId } from "../audit-events.ts";
 import { isSqlstate, sqlState } from "../errors.ts";
 import {
   acquireMigrationLock,
+  invalidateMigrationLock,
   isActiveMigrationLock,
   type MigrationLock,
   MigrationLockTimeoutError,
@@ -145,10 +146,7 @@ export function classifySeedFailure(
 ): { failureClass: SeedFailureClass; errorCode: string } {
   if (stage === "audit")
     return {
-      failureClass:
-        sqlstate === undefined || isConnectionClass(sqlstate)
-          ? "TEMPORARY_FAILURE"
-          : "PERMANENT_FAILURE",
+      failureClass: isConnectionClass(sqlstate) ? "TEMPORARY_FAILURE" : "PERMANENT_FAILURE",
       errorCode: "AUDIT_WRITE_FAILED",
     };
   if (sqlstate?.startsWith("23"))
@@ -161,6 +159,8 @@ function commitAcknowledgementUnknown(error: unknown): boolean {
   const code = sqlState(error);
   return !isSqlstate(code) || code.startsWith("08") || ["57P01", "57P02", "57P03"].includes(code);
 }
+
+class DeadlineExceeded extends Error {}
 
 const isConnectionClass = (code: string | undefined): boolean =>
   isSqlstate(code) && (code.startsWith("08") || code.startsWith("57P0"));
@@ -297,6 +297,10 @@ export async function seedInitialData(options: SeedOptions): Promise<SeedOutcome
     let commitSent = false;
     let stage: "statement" | "audit" = "statement";
     const startedAt = performance.now();
+    // Checked before every statement that writes (N-4), not only before COMMIT.
+    const checkDeadline = () => {
+      if (performance.now() - startedAt >= deadlineMs) throw new DeadlineExceeded();
+    };
     try {
       await beginSeedTransaction(client);
       const eventIds = await readEventIds(client);
@@ -337,11 +341,13 @@ export async function seedInitialData(options: SeedOptions): Promise<SeedOutcome
         const rows = target.cardinality === "one" ? [data.event] : data.entry_ticket_offerings;
         for (const row of rows) {
           stage = "statement";
+          checkDeadline();
           const inserted = await insertRow(client, target, row, parentEventId);
           if (target.cardinality === "one") parentEventId = inserted.id;
           if (target.cardinality === "one") created.events.push(inserted.publicRef);
           else created.entry_ticket_offerings.push(inserted.publicRef);
           stage = "audit";
+          checkDeadline();
           auditEventIds.push(
             await insertAuditEventReturningId(client, {
               auditEventType: "BUSINESS_EFFECT",
@@ -364,11 +370,8 @@ export async function seedInitialData(options: SeedOptions): Promise<SeedOutcome
       stage = "statement";
       // Wall clock (SPEC-150 section 9), checked before COMMIT rather than only by a timer: a
       // synchronous callback can block the event loop past the deadline. Not yet sent: roll back.
+      checkDeadline();
       const remainingMs = deadlineMs - (performance.now() - startedAt);
-      if (remainingMs <= 0) {
-        await client.query("ROLLBACK");
-        return fail("TEMPORARY_FAILURE", "DATABASE_TEMPORARY_FAILURE");
-      }
       commitSent = true;
       const committed = client.query("COMMIT").then(() => "ok" as const);
       committed.catch(() => {});
@@ -400,6 +403,8 @@ export async function seedInitialData(options: SeedOptions): Promise<SeedOutcome
       // Not committed: close the transaction. A connection that cannot even roll back is gone, which
       // proves nothing was committed (REL-DB-005): a temporary failure, to be run again.
       if (!(await succeedsWithin(client.query("ROLLBACK"), CLOSE_WAIT_MS)))
+        return fail("TEMPORARY_FAILURE", "DATABASE_TEMPORARY_FAILURE");
+      if (error instanceof DeadlineExceeded)
         return fail("TEMPORARY_FAILURE", "DATABASE_TEMPORARY_FAILURE");
       if (isDatabaseRetryable(error)) return { kind: "retry", code: error.code };
       const code = sqlState(error);
@@ -545,9 +550,19 @@ export async function seedInitialData(options: SeedOptions): Promise<SeedOutcome
         attemptNumber,
         errorCode: "COMMIT_RESULT_UNKNOWN",
       };
-      // The lost connection is abandoned: no statement is sent on it (only a cleanup unlock on a
-      // connection this run opened itself, which fails fast when it is gone).
-      await closeOwned();
+      // Abandon the connection that lost the result, before the re-check and any retry. It may still
+      // be alive (the deadline timer fired while COMMIT was in flight), and its session holds the
+      // migration lock: a retry would wait for that lock. Invalidate the lock handle (the caller's
+      // release() then sends nothing) and end the client; with a query in flight pg destroys the
+      // socket, so the backend ends and drops its session lock. No unlock is sent on it. A late
+      // COMMIT that takes effect is found by the re-check (1); an uncommitted one is retried (3).
+      const lostClient = client;
+      invalidateMigrationLock(ownedLock ?? options.lock);
+      if (ownedConnection === lostClient) {
+        ownedLock = undefined;
+        ownedConnection = undefined;
+      }
+      await succeedsWithin(lostClient.end(), CLOSE_WAIT_MS);
       const reconnected = await reconnect();
       if (reconnected === undefined) return unknown;
       ownedConnection = reconnected;

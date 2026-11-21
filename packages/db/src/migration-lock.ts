@@ -31,6 +31,11 @@ export type MigrationLock = {
 // (the same registry approach as the Audit change specs; `pg_locks` is never read, INF-SEED-003).
 const active = new WeakSet<object>();
 
+/** Marks a handle as no longer usable (its connection was abandoned); `release()` then sends nothing. */
+export function invalidateMigrationLock(lock: MigrationLock): void {
+  active.delete(lock);
+}
+
 export function isActiveMigrationLock(lock: unknown): lock is MigrationLock {
   return typeof lock === "object" && lock !== null && active.has(lock);
 }
