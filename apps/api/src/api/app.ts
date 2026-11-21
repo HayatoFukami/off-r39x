@@ -8,6 +8,7 @@ import { actorContext } from "./actor-context.ts";
 import { AUTH_ROUTES, type AuthProxy } from "./auth-proxy.ts";
 import { type ApiEnvironment, ApiFailure } from "./failure.ts";
 import { operationContext, requestContextMiddleware } from "./middleware/request-context.ts";
+import type { CursorKey } from "./pagination.ts";
 import {
   type AppRateLimit,
   createPrincipalRateLimitHooks,
@@ -49,6 +50,8 @@ export interface AppDependencies {
   authProxy?: AuthProxy;
   /** API-AUTH-002 / 004. Absent => both routes fail closed (503). */
   profiles?: CurrentProfileStore;
+  /** API-QRY-005 / INF-SEC-007 (SPEC-180 §28.3). Absent => list routes fail closed (503) through requireListCursorKey. */
+  listCursorKey?: CursorKey;
 }
 const EXPOSED_HEADERS = "X-Request-Id, Retry-After";
 export function createApp(dependencies: AppDependencies) {

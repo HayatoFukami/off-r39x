@@ -4,8 +4,8 @@ import { ApiFailure } from "./failure.ts";
 
 /**
  * Opaque signed list cursor (SPEC-110 section 12, API-QRY-004, SEC-DEP-007). Pure functions: the key
- * and its version are arguments (the Secret placement is not specified yet), nothing reads the
- * environment, a clock or a random source.
+ * and its version are arguments (LIST_CURSOR_HMAC_KEY / _VERSION, SPEC-180 section 28.3, API-QRY-005,
+ * injected by bootstrap), nothing reads the environment, a clock or a random source.
  *
  * Token = base64url(MAC(32) || payload UTF-8), payload = {"v":1,"kv":keyVersion,"k":[sort keys],"r":publicRef}.
  * MAC = HMAC-SHA-256(key, JSON.stringify([DOMAIN, operationId, canonicalBinding, payloadBase64url])).
@@ -26,6 +26,18 @@ const safeScalar = (value: unknown): boolean =>
   typeof value !== "number" || Number.isSafeInteger(value);
 
 const publicRefSchema = z.string().regex(PUBLIC_REF);
+
+/**
+ * API-QRY-005 / INF-SEC-007: the list cursor key of the app (AppDependencies.listCursorKey). Absent =>
+ * 503 TEMPORARY_UNAVAILABLE (fail closed: no unsigned cursor, no default or borrowed key). Returns a
+ * copy so a handler cannot change the key of later requests (Uint8Array.from, not slice(): a Node.js
+ * Buffer is a Uint8Array whose slice() shares memory). List route factories call it in their guard for
+ * every request (first page included), before the Principal store or the database.
+ */
+export function requireListCursorKey(key: CursorKey | undefined): CursorKey {
+  if (!key) throw new ApiFailure("TEMPORARY_UNAVAILABLE");
+  return Object.freeze({ version: key.version, key: Uint8Array.from(key.key) });
+}
 
 function assertKey(cursorKey: CursorKey): void {
   const { version, key } = cursorKey;

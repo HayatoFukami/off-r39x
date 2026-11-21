@@ -9,6 +9,7 @@ import {
   withDeadline,
 } from "../../packages/reliability/src/index.ts";
 import { fingerprint, parseQrKeyring } from "../../packages/security/src/index.ts";
+import { listCursorEnv } from "../harness/pagination.ts";
 import { rateLimitEnv } from "../harness/rate-limit/api.ts";
 
 describe("common foundation contracts", () => {
@@ -376,6 +377,7 @@ function serviceEnvironment(
       ALLOWED_HOSTS: "api.example.test",
       ALLOWED_ORIGINS: "https://web.example.test",
       ...rateLimitEnv(),
+      ...listCursorEnv(),
     });
   return env;
 }
