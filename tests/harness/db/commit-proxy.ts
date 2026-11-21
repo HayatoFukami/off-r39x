@@ -10,8 +10,25 @@ import { createConnection, createServer, type Socket } from "node:net";
  *   committed; the server rolls the transaction back when it sees the connection close.
  * - `hold_request`: only the caller's socket is destroyed. The COMMIT frame is withheld, so the server
  *   backend stays inside its transaction (still holding its locks) until `releaseCommit()` forwards it.
+ * - `delay_ack`: PostgreSQL executes COMMIT and the commit is durable, but its acknowledgement (and every
+ *   frame after it) reaches the caller only after `delayMs` (or `releaseAck()`). The caller's own
+ *   deadline can therefore pass while the COMMIT is in flight; the connection stays open.
+ * - `rollback_for_commit`: the COMMIT frame is replaced by ROLLBACK, so the transaction is NOT committed
+ *   and its transaction locks go, but the backend session (and its session-level advisory locks) stays
+ *   alive. The ROLLBACK acknowledgement reaches the caller only after `delayMs` (or `releaseAck()`).
  */
-export type CommitProxyMode = "drop_ack" | "drop_request" | "hold_request";
+export type CommitProxyMode =
+  | "drop_ack"
+  | "drop_request"
+  | "hold_request"
+  | "delay_ack"
+  | "rollback_for_commit";
+
+const ROLLBACK_FRAME = Buffer.concat([
+  Buffer.from([81]),
+  Buffer.from([0, 0, 0, 13]),
+  Buffer.from("ROLLBACK\0"),
+]);
 
 const isCommitComplete = (frame: Buffer) =>
   frame[0] === 67 && frame.subarray(5).toString() === "COMMIT\0";
@@ -19,9 +36,11 @@ const isCommitComplete = (frame: Buffer) =>
 /** Plain local fixture transport only (it cannot carry TLS). */
 export async function startCommitAcknowledgementDropProxy(
   target: URL,
-  options: { mode?: CommitProxyMode } = {},
+  options: { mode?: CommitProxyMode; delayMs?: number } = {},
 ) {
   const mode = options.mode ?? "drop_ack";
+  const delayMs = options.delayMs ?? 3000;
+  const flushers = new Set<() => void>();
   const sockets = new Set<Socket>();
   let fired = 0;
   const heldCommits: Array<() => Promise<void>> = [];
@@ -35,6 +54,17 @@ export async function startCommitAcknowledgementDropProxy(
     let commitPending = false;
     // hold_request only: the caller is gone but the upstream backend must stay alive.
     let detached = false;
+    // delay_ack / rollback_for_commit: server frames withheld from the caller.
+    let holding = false;
+    let rollbackSent = false;
+    const held: Buffer[] = [];
+    let flushTimer: ReturnType<typeof setTimeout> | undefined;
+    const flush = () => {
+      if (flushTimer) clearTimeout(flushTimer);
+      flushers.delete(flush);
+      holding = false;
+      for (const frame of held.splice(0)) if (!downstream.destroyed) downstream.write(frame);
+    };
     downstream.on("data", (chunk) => {
       if (detached) return;
       incoming = Buffer.concat([incoming, chunk]);
@@ -65,6 +95,13 @@ export async function startCommitAcknowledgementDropProxy(
           downstream.destroy();
           return;
         }
+        if (isCommit && mode === "rollback_for_commit") {
+          fired += 1;
+          rollbackSent = true;
+          upstream.write(ROLLBACK_FRAME);
+          startup = false;
+          continue;
+        }
         if (isCommit) commitPending = true;
         upstream.write(frame);
         startup = false;
@@ -83,6 +120,23 @@ export async function startCommitAcknowledgementDropProxy(
             upstream.destroy();
             return;
           }
+          continue;
+        }
+        const startsHolding =
+          (mode === "delay_ack" && commitPending && isCommitComplete(frame)) ||
+          (mode === "rollback_for_commit" &&
+            rollbackSent &&
+            frame[0] === 67 &&
+            frame.subarray(5).toString() === "ROLLBACK\0");
+        if (startsHolding && !holding) {
+          if (mode === "delay_ack") fired += 1;
+          holding = true;
+          flushers.add(flush);
+          flushTimer = setTimeout(flush, delayMs);
+          flushTimer.unref();
+        }
+        if (holding) {
+          held.push(frame);
           continue;
         }
         if (mode === "drop_ack" && commitPending && isCommitComplete(frame)) {
@@ -107,6 +161,8 @@ export async function startCommitAcknowledgementDropProxy(
       downstream.destroy();
     });
     downstream.on("close", () => {
+      if (flushTimer) clearTimeout(flushTimer);
+      flushers.delete(flush);
       sockets.delete(downstream);
       if (!detached) upstream.destroy();
     });
@@ -126,6 +182,10 @@ export async function startCommitAcknowledgementDropProxy(
     didDrop: () => fired > 0,
     /** How many times the fault fired (TST-FLT-001). */
     fired: () => fired,
+    /** delay_ack and rollback_for_commit: hand the withheld acknowledgement to the caller now. */
+    releaseAck: () => {
+      for (const flush of [...flushers]) flush();
+    },
     /** hold_request only: forward every withheld COMMIT; resolves once PostgreSQL has executed it. */
     releaseCommit: async () => {
       const pending = heldCommits.splice(0);

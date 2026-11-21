@@ -17814,6 +17814,43 @@
       "critical": true
     },
     {
+      "test_case_id": "TC-TST-SEED-006-008",
+      "level": "DB",
+      "suite": "db",
+      "upstream_rule_ids": [
+        "DB-SEED-002",
+        "REL-DB-005",
+        "REL-DB-006",
+        "OBS-DB-004",
+        "INF-SEED-003",
+        "TST-SEED-006",
+        "SPEC-180-45.3"
+      ],
+      "system_invariant_ids": [],
+      "api_operation_ids": [],
+      "db_constraint_names": [],
+      "preconditions": "Real PostgreSQL 17 test database created per test file with migrations 0001-0003 applied by app_migrator; synthetic Event and Offering values only; acquireMigrationLock then seedInitialData on a dedicated app_migrator connection; no Provider; real TCP fault proxy in front of the original connection (plain transport; TLS is not carried); re-check and retries on direct connections; transactionDeadlineMs shortened to 1000 ms; (a) proxy mode delay_ack holds the COMMIT acknowledgement for 3 s after the commit took effect; (b) proxy mode rollback_for_commit replaces COMMIT by ROLLBACK (the backend session and its migration lock stay alive) and holds the acknowledgement for 4 s",
+      "fixture_ids": [],
+      "clock_instant": null,
+      "concurrency_seed": null,
+      "fault_points": [
+        "FP.DB.AFTER_COMMIT_SENT_BEFORE_ACK"
+      ],
+      "expected_http": null,
+      "expected_domain_postconditions": [
+        "The deadline passes after COMMIT was sent: the result is unknown and the re-check decides. (a) The re-check finds this run's Audit Events and the result is CREATED. (b) The re-check finds an uncommitted run, the retry takes the migration lock again and the result is CREATED, within 15 s (not the 60 s migration lock timeout)"
+      ],
+      "expected_db_postconditions": [
+        "One set of rows and Audit Events; in (a) with this run's operation_execution_id, in (b) with the second attempt's and none with the first attempt's"
+      ],
+      "expected_provider_postconditions": [],
+      "expected_observability": [
+        "reliability.unknown_result.opened then resolved (a: SUCCESS; b: FAILED, TEMPORARY_FAILURE) with an integer duration_ms; in (b) reliability.retry.attempted with is_retry true"
+      ],
+      "sensitivity_class": "synthetic",
+      "critical": true
+    },
+    {
       "test_case_id": "TC-TST-SEED-002-006",
       "level": "DB",
       "suite": "db",
@@ -17871,7 +17908,7 @@
         "A transaction still open after its deadline is rolled back before COMMIT and the result is FAILED (TEMPORARY_FAILURE, DATABASE_TEMPORARY_FAILURE); the control run is CREATED"
       ],
       "expected_db_postconditions": [
-        "No Event, Offering or Audit Event remains after the deadline run and no COMMIT was sent"
+        "No Event, Offering or Audit Event remains after the deadline run, no COMMIT was sent and no INSERT was issued after the deadline"
       ],
       "expected_provider_postconditions": [],
       "expected_observability": [],

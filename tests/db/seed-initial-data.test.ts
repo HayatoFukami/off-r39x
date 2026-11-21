@@ -335,6 +335,7 @@ describe("TC-TST-SEED-002-006 the xact lock serialises the count decision (DB-SE
   it("TC-TST-SEED-002-006 a seed that waits on the lock while another session creates the rows ends NOOP and adds nothing", async () => {
     const holder = await connectAs("postgres");
     let seeding: ReturnType<typeof runSeed> | undefined;
+    let before: Awaited<ReturnType<typeof snapshotSeededTables>> | undefined;
     try {
       // An outside writer takes the seed's transaction lock first.
       await holder.query("BEGIN");
@@ -357,6 +358,8 @@ describe("TC-TST-SEED-002-006 the xact lock serialises the count decision (DB-SE
       const eventId = await insertManualEvent("合成データ 外部イベント", holder);
       await insertManualOffering(eventId, "合成データ 外部入場券", holder);
       await holder.query("COMMIT");
+      // The writer's state, taken right after its COMMIT and before the seed is known to be done.
+      before = await snapshotSeededTables(admin);
     } catch (error) {
       await holder.query("ROLLBACK").catch(() => {});
       throw error;
@@ -364,7 +367,6 @@ describe("TC-TST-SEED-002-006 the xact lock serialises the count decision (DB-SE
       await endQuietly(holder);
     }
     const run = await (seeding as NonNullable<typeof seeding>);
-    const before = await snapshotSeededTables(admin);
     expect(shape(run.outcome).outcome).toBe("NOOP");
     expect(run.reads()).toBe(0);
     expect(await counts()).toEqual({ events: 1, offerings: 1, audits: 0 });
@@ -483,6 +485,8 @@ describe("TC-TST-SEED-003-006 the seed transaction has an 8 second wall clock (p
     const issued = run.statements.map((text) => text.trim().toLowerCase());
     expect(issued).not.toContain("commit");
     expect(issued).toContain("rollback");
+    // The deadline had already passed before the first INSERT: nothing is sent after it.
+    expect(insertedTables(run.statements)).toEqual([]);
   });
 
   it("TC-TST-SEED-003-006 the same slow transaction under the default deadline commits (the option, not the delay, causes the failure)", async () => {

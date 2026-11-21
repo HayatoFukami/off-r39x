@@ -585,7 +585,9 @@ describe("TC-TST-SEED-003-007 failure classification of a rolled-back attempt (p
     ["audit", "42501", PERMANENT_AUDIT],
     ["audit", "08006", TEMPORARY_AUDIT],
     ["audit", "57P01", TEMPORARY_AUDIT],
-    ["audit", undefined, TEMPORARY_AUDIT],
+    // After a successful ROLLBACK, no SQLSTATE means the failure came from outside the database
+    // (plan v1.2 section 6): permanent. Only connection-class states are temporary.
+    ["audit", undefined, PERMANENT_AUDIT],
     ["statement", "23505", CONSTRAINT],
     ["statement", "23514", CONSTRAINT],
     ["statement", "23503", CONSTRAINT],

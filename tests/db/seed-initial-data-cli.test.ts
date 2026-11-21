@@ -137,6 +137,12 @@ describe("TC-TST-SEED-003-004 exit codes and the CREATED / NOOP distinction (INF
       { MIGRATION_DATABASE_URL: "postgresql://postgres@db.invalid:5432/example" },
     ],
     [
+      // decodeURIComponent throws on this user name; the command must treat it as invalid
+      // configuration (exit 2, one result line), not crash.
+      "a URL whose user name has a broken percent-encoding",
+      { MIGRATION_DATABASE_URL: "postgresql://app%ZZ@db.invalid:5432/example" },
+    ],
+    [
       "a URL with another port",
       { MIGRATION_DATABASE_URL: "postgresql://app_migrator@db.invalid:5433/example" },
     ],

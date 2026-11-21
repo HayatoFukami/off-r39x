@@ -102,9 +102,14 @@ async function seedThroughProxy(
     connect?: (wrap: <T extends Client>(client: T) => T) => Promise<Client>;
     statements?: string[];
     logs?: RecordedLog[];
+    transactionDeadlineMs?: number;
+    delayMs?: number;
   } = {},
 ) {
-  const proxy = await startCommitAcknowledgementDropProxy(new URL(url as string), { mode });
+  const proxy = await startCommitAcknowledgementDropProxy(new URL(url as string), {
+    mode,
+    ...(options.delayMs === undefined ? {} : { delayMs: options.delayMs }),
+  });
   const statements = options.statements ?? [];
   const logs = options.logs ?? [];
   try {
@@ -114,6 +119,7 @@ async function seedThroughProxy(
       connect: options.connect,
       statements,
       logs,
+      transactionDeadlineMs: options.transactionDeadlineMs,
     });
     return { run, statements, logs, fired: proxy.fired() };
   } finally {
@@ -405,4 +411,61 @@ describe("TC-TST-SEED-006-007 re-running after recovery (INF-SEED-004, REL-DB-00
     expect(shape(again.outcome).outcome).toBe("NOOP");
     expect(await counts()).toEqual({ events: 1, offerings: 2, audits: 3 });
   });
+});
+
+describe("TC-TST-SEED-006-008 the transaction deadline passes while COMMIT is in flight (plan v1.2 Q-2, DB-SEED-002, REL-DB-005, REL-DB-006)", () => {
+  // The command's own deadline timer (transactionDeadlineMs) fires after COMMIT was sent and before its
+  // acknowledgement arrives: the result is unknown, and the re-check decides.
+  it("TC-TST-SEED-006-008 (a) the COMMIT took effect: the re-check finds this run's Audit Events, CREATED, one set of rows", async () => {
+    const { run, logs, fired } = await seedThroughProxy("delay_ack", {
+      transactionDeadlineMs: 1000,
+      delayMs: 3000,
+    });
+    const outcome = shape(run.outcome);
+    expect(fired).toBe(1);
+    expect(outcome.outcome).toBe("CREATED");
+    expect(await counts()).toEqual({ events: 1, offerings: 2, audits: 3 });
+    expect(new Set((await audits()).map((row) => row.operation_execution_id))).toEqual(
+      new Set([outcome.operationExecutionId]),
+    );
+    const opened = named(logs, OPENED);
+    expect(opened).toHaveLength(1);
+    expect(opened[0]).toMatchObject({
+      result: "PENDING",
+      failure_class: "UNKNOWN_RESULT",
+      operation_execution_id: outcome.operationExecutionId,
+    });
+    expect(named(logs, RESOLVED)[0]).toMatchObject({ result: "SUCCESS" });
+    expectDuration(named(logs, RESOLVED)[0]);
+    expect(named(logs, RETRY_ATTEMPTED)).toHaveLength(0);
+  });
+
+  it("TC-TST-SEED-006-008 (b) the COMMIT never took effect (the session stays open): re-check, retry and CREATED without waiting for the migration lock timeout", async () => {
+    const startedAt = Date.now();
+    const { run, logs, fired } = await seedThroughProxy("rollback_for_commit", {
+      transactionDeadlineMs: 1000,
+      delayMs: 4000,
+    });
+    const elapsedMs = Date.now() - startedAt;
+    const outcome = shape(run.outcome);
+    expect(fired).toBe(1);
+    expect(outcome.outcome).toBe("CREATED");
+    expect(await counts()).toEqual({ events: 1, offerings: 2, audits: 3 });
+    const opened = named(logs, OPENED);
+    expect(opened).toHaveLength(1);
+    const firstAttemptId = opened[0]?.operation_execution_id as string;
+    expect(outcome.operationExecutionId).not.toBe(firstAttemptId);
+    expect(new Set((await audits()).map((row) => row.operation_execution_id))).toEqual(
+      new Set([outcome.operationExecutionId]),
+    );
+    expect(named(logs, RESOLVED)[0]).toMatchObject({
+      result: "FAILED",
+      failure_class: "TEMPORARY_FAILURE",
+    });
+    expectDuration(named(logs, RESOLVED)[0]);
+    expectRetryAttempted(logs, outcome.operationExecutionId);
+    // The abandoned session must not keep the migration lock: the retry may not wait for the 60 second
+    // lock timeout of INF-DB-008.
+    expect(elapsedMs).toBeLessThan(15_000);
+  }, 120_000);
 });
